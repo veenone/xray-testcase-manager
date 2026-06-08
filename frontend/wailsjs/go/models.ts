@@ -85,6 +85,7 @@ export namespace main {
 	}
 	
 	export class Diagnostics {
+	    version: string;
 	    dbPath: string;
 	    logPath: string;
 	    os: string;
@@ -100,6 +101,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
 	        this.dbPath = source["dbPath"];
 	        this.logPath = source["logPath"];
 	        this.os = source["os"];
@@ -126,6 +128,20 @@ export namespace main {
 	        this.error = source["error"];
 	        this.dbPath = source["dbPath"];
 	        this.logPath = source["logPath"];
+	    }
+	}
+	export class JiraStepInfo {
+	    count: number;
+	    allBlank: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new JiraStepInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.count = source["count"];
+	        this.allBlank = source["allBlank"];
 	    }
 	}
 
@@ -477,6 +493,9 @@ export namespace testrepo {
 	    id: string;
 	    parentId: string;
 	    name: string;
+	    xrayId: string;
+	    testCount: number;
+	    totalTestCount: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Folder(source);
@@ -487,6 +506,9 @@ export namespace testrepo {
 	        this.id = source["id"];
 	        this.parentId = source["parentId"];
 	        this.name = source["name"];
+	        this.xrayId = source["xrayId"];
+	        this.testCount = source["testCount"];
+	        this.totalTestCount = source["totalTestCount"];
 	    }
 	}
 	export class ImportError {
@@ -585,6 +607,7 @@ export namespace testrepo {
 	    status: string;
 	    priority: string;
 	    labels: string[];
+	    components: string[];
 	    updated: string;
 	    folderId: string;
 	
@@ -601,6 +624,7 @@ export namespace testrepo {
 	        this.status = source["status"];
 	        this.priority = source["priority"];
 	        this.labels = source["labels"];
+	        this.components = source["components"];
 	        this.updated = source["updated"];
 	        this.folderId = source["folderId"];
 	    }
@@ -686,6 +710,7 @@ export namespace testrepo {
 	    status: string;
 	    folderId: string;
 	    containerKey: string;
+	    component: string;
 	    review: string;
 	    sortBy: string;
 	    desc: boolean;
@@ -702,6 +727,7 @@ export namespace testrepo {
 	        this.status = source["status"];
 	        this.folderId = source["folderId"];
 	        this.containerKey = source["containerKey"];
+	        this.component = source["component"];
 	        this.review = source["review"];
 	        this.sortBy = source["sortBy"];
 	        this.desc = source["desc"];
@@ -844,6 +870,7 @@ export namespace testrepo {
 	    byPriority: Bucket[];
 	    byLabel: Bucket[];
 	    byFolder: Bucket[];
+	    byComponent: Bucket[];
 	    updatedTrend: Bucket[];
 	    byRunStatus: Bucket[];
 	
@@ -865,6 +892,7 @@ export namespace testrepo {
 	        this.byPriority = this.convertValues(source["byPriority"], Bucket);
 	        this.byLabel = this.convertValues(source["byLabel"], Bucket);
 	        this.byFolder = this.convertValues(source["byFolder"], Bucket);
+	        this.byComponent = this.convertValues(source["byComponent"], Bucket);
 	        this.updatedTrend = this.convertValues(source["updatedTrend"], Bucket);
 	        this.byRunStatus = this.convertValues(source["byRunStatus"], Bucket);
 	    }

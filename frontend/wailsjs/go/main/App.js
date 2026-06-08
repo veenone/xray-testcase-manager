@@ -34,8 +34,16 @@ export function BulkTransitionTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkTransitionTests'](arg1, arg2, arg3);
 }
 
+export function CheckJiraTestSteps(arg1, arg2) {
+  return window['go']['main']['App']['CheckJiraTestSteps'](arg1, arg2);
+}
+
 export function CommitPendingChanges(arg1) {
   return window['go']['main']['App']['CommitPendingChanges'](arg1);
+}
+
+export function CommitPendingChangesByIDs(arg1, arg2) {
+  return window['go']['main']['App']['CommitPendingChangesByIDs'](arg1, arg2);
 }
 
 export function CreateContainerAndAllocate(arg1, arg2, arg3, arg4) {
@@ -202,6 +210,10 @@ export function ListAuditEntries(arg1, arg2) {
   return window['go']['main']['App']['ListAuditEntries'](arg1, arg2);
 }
 
+export function ListComponents(arg1) {
+  return window['go']['main']['App']['ListComponents'](arg1);
+}
+
 export function ListContainers(arg1, arg2) {
   return window['go']['main']['App']['ListContainers'](arg1, arg2);
 }
@@ -284,6 +296,10 @@ export function SetTheme(arg1) {
 
 export function SyncProfile(arg1) {
   return window['go']['main']['App']['SyncProfile'](arg1);
+}
+
+export function SyncProfileFull(arg1) {
+  return window['go']['main']['App']['SyncProfileFull'](arg1);
 }
 
 export function TestConnection(arg1, arg2) {

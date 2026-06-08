@@ -116,6 +116,7 @@ func (a *App) Health() HealthInfo {
 
 // Diagnostics is the environment + state summary shown in the diagnostics view.
 type Diagnostics struct {
+	Version       string `json:"version"`
 	DBPath        string `json:"dbPath"`
 	LogPath       string `json:"logPath"`
 	OS            string `json:"os"`
@@ -130,6 +131,7 @@ type Diagnostics struct {
 // view (FR-12.4). Safe to call even if the store failed to initialise.
 func (a *App) GetDiagnostics() Diagnostics {
 	d := Diagnostics{
+		Version:       productVersion(),
 		DBPath:        a.dbPath,
 		LogPath:       a.logPath,
 		OS:            goruntime.GOOS,
@@ -174,6 +176,7 @@ func (a *App) ExportDiagnostics() (string, error) {
 
 	var b strings.Builder
 	fmt.Fprintln(&b, "Xray Test Manager — diagnostics")
+	fmt.Fprintf(&b, "Version:        %s\n", d.Version)
 	fmt.Fprintf(&b, "Generated:      %s\n", time.Now().UTC().Format(time.RFC3339))
 	fmt.Fprintf(&b, "OS / Arch:      %s / %s\n", d.OS, d.Arch)
 	fmt.Fprintf(&b, "Go version:     %s\n", d.GoVersion)
@@ -420,6 +423,21 @@ func (a *App) TestConnection(jiraURL, token string) (string, error) {
 // subsequent syncs use the previous sync's timestamp as a watermark for an
 // incremental fetch (FR-1.1 / FR-1.2).
 func (a *App) SyncProfile(profileID string) error {
+	return a.runSync(profileID, false)
+}
+
+// SyncProfileFull forces a full re-sync, ignoring the stored watermark. Use it
+// to re-pull data the incremental path skips — notably the Test Repository
+// folder membership walk, which only runs on a full sync (it is one Jira call
+// per folder, too costly to repeat on every routine resync).
+func (a *App) SyncProfileFull(profileID string) error {
+	return a.runSync(profileID, true)
+}
+
+// runSync is the shared sync path behind SyncProfile (incremental) and
+// SyncProfileFull (forced full). forceFull blanks the watermark so the engine
+// treats the run as a full pull.
+func (a *App) runSync(profileID string, forceFull bool) error {
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -435,10 +453,14 @@ func (a *App) SyncProfile(profileID string) error {
 	if err != nil {
 		return fmt.Errorf("read sync state: %w", err)
 	}
+	since := state.LastSyncedAt
+	if forceFull {
+		since = ""
+	}
 	engine := syncer.New(jira.NewClient(p.JiraURL, token), a.repo)
 	started := time.Now().UTC()
 	var lastFetched int
-	syncErr := engine.Sync(a.ctx, profileID, p.ProjectKey, p.ScopeJQL, state.LastSyncedAt, func(pr syncer.Progress) {
+	syncErr := engine.Sync(a.ctx, profileID, p.ProjectKey, p.ScopeJQL, since, func(pr syncer.Progress) {
 		lastFetched = pr.Fetched
 		runtime.EventsEmit(a.ctx, "sync:progress", pr)
 	})
@@ -665,6 +687,34 @@ func (a *App) CommitPendingChanges(profileID string) (syncer.CommitResult, error
 	return engine.CommitChanges(a.ctx, profileID, p.ProjectKey)
 }
 
+// CommitPendingChangesByIDs pushes only the selected pending changes to Jira
+// (selective commit). The frontend passes all of one item's change ids together
+// (e.g. every row of a single Test) so a partial push doesn't strand sibling
+// edits against an advanced remote version.
+func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (syncer.CommitResult, error) {
+	empty := syncer.CommitResult{
+		Succeeded:  []string{},
+		Conflicted: []syncer.Conflict{},
+		Failed:     []syncer.FailedCommit{},
+	}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	if len(changeIDs) == 0 {
+		return empty, nil
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return empty, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return empty, fmt.Errorf("load credentials: %w", err)
+	}
+	engine := syncer.New(jira.NewClient(p.JiraURL, token), a.repo)
+	return engine.CommitChangesForIDs(a.ctx, profileID, p.ProjectKey, changeIDs)
+}
+
 // --- Workflow transitions (FR-4.2) ---
 
 // GetTestTransitions returns the workflow transitions available from a
@@ -790,6 +840,44 @@ func (a *App) GetTestSteps(profileID, testKey string, forceRefresh bool) ([]test
 		return nil, err
 	}
 	return steps, nil
+}
+
+// JiraStepInfo reports what Jira itself says about a Test's steps, independent
+// of the local cache — used to detect the "this Test has steps in Jira but the
+// tool shows none" situation before the user adds a (rejected) empty step.
+type JiraStepInfo struct {
+	Count    int  `json:"count"`    // number of steps Jira returned
+	AllBlank bool `json:"allBlank"` // steps exist but their content didn't map (shape issue)
+}
+
+// CheckJiraTestSteps asks Jira directly how many steps a Test has (FR-2.5),
+// bypassing the local cache. The detail panel calls it when its Steps panel is
+// empty so it can warn that Jira actually has steps that failed to load —
+// rather than letting the user add a blank step that Xray will reject.
+func (a *App) CheckJiraTestSteps(profileID, testKey string) (JiraStepInfo, error) {
+	if err := a.requireStore(); err != nil {
+		return JiraStepInfo{}, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return JiraStepInfo{}, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return JiraStepInfo{}, fmt.Errorf("load credentials: %w", err)
+	}
+	remote, err := jira.NewClient(p.JiraURL, token).GetTestSteps(a.ctx, testKey)
+	if err != nil {
+		return JiraStepInfo{}, err
+	}
+	info := JiraStepInfo{Count: len(remote), AllBlank: len(remote) > 0}
+	for _, s := range remote {
+		if s.Action != "" || s.Data != "" || s.Expected != "" {
+			info.AllBlank = false
+			break
+		}
+	}
+	return info, nil
 }
 
 // --- Custom fields (FR-2.6) ---
@@ -1389,6 +1477,15 @@ func (a *App) ListMatchingKeys(profileID string, q testrepo.Query) ([]string, er
 		return nil, err
 	}
 	return a.repo.ListMatchingKeys(profileID, q)
+}
+
+// ListComponents returns the distinct Jira components across a profile's Tests
+// (with a count each), for the group-by-component sidebar.
+func (a *App) ListComponents(profileID string) ([]testrepo.Bucket, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListComponents(profileID)
 }
 
 // GetTest returns one Test by its Jira key.

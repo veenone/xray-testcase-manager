@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import {
   Health,
   ListProfiles,
   SyncProfile,
+  SyncProfileFull,
   GetSyncState,
   ListFolders,
   CreateFolder,
   RenameFolder,
   DeleteFolder,
   ListContainers,
+  ListComponents,
   UpdateProfileScope,
   ExportProfile,
   ImportProfile,
@@ -22,6 +24,7 @@ import {
   ListPendingChanges,
   DiscardPendingChange,
   CommitPendingChanges,
+  CommitPendingChangesByIDs,
   EventsOn,
   errMsg,
 } from "./api";
@@ -32,6 +35,7 @@ import type {
   SyncProgress,
   Folder,
   Container,
+  Bucket,
   PendingChange,
   CommitResult,
 } from "./api";
@@ -40,6 +44,7 @@ import { TestTable } from "./components/TestTable";
 import { TestDetail } from "./components/TestDetail";
 import { FolderTree } from "./components/FolderTree";
 import { ContainerList } from "./components/ContainerList";
+import { ComponentList } from "./components/ComponentList";
 import { PendingChangesModal } from "./components/PendingChangesModal";
 import { BulkReviewModal } from "./components/BulkReviewModal";
 import { BulkEditModal } from "./components/BulkEditModal";
@@ -53,6 +58,7 @@ import { DiagnosticsModal } from "./components/DiagnosticsModal";
 import { SyncHistoryModal } from "./components/SyncHistoryModal";
 import { ImportTestsModal } from "./components/ImportTestsModal";
 import { Menu } from "./components/Menu";
+import { AboutModal } from "./components/AboutModal";
 import { usePrompt } from "./components/usePrompt";
 
 // applyTheme resolves the preference ("system" follows the OS) and sets the
@@ -85,13 +91,15 @@ function App() {
   const [selectedFolder, setSelectedFolder] = useState<string>("");
 
   // Browse grouping (FR-11.6): group the grid by folder (the default tree),
-  // Test Set or Test Plan. The container dimensions filter the grid to a
-  // chosen container's members.
-  const [groupBy, setGroupBy] = useState<"folder" | "testset" | "testplan">(
-    "folder",
-  );
+  // Test Set, Test Plan or Component. The container dimensions filter the grid
+  // to a chosen container's members; Component filters to a chosen component.
+  const [groupBy, setGroupBy] = useState<
+    "folder" | "testset" | "testplan" | "component"
+  >("folder");
   const [groupContainers, setGroupContainers] = useState<Container[]>([]);
   const [selectedContainer, setSelectedContainer] = useState<string>("");
+  const [components, setComponents] = useState<Bucket[]>([]);
+  const [selectedComponent, setSelectedComponent] = useState<string>("");
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -116,6 +124,7 @@ function App() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   // First: check whether the backend started up cleanly.
   useEffect(() => {
@@ -226,10 +235,11 @@ function App() {
     loadProfileData();
   }, [loadProfileData, refreshKey]);
 
-  // Clear folder + container + row selection when the profile changes.
+  // Clear folder + container + component + row selection when the profile changes.
   useEffect(() => {
     setSelectedFolder("");
     setSelectedContainer("");
+    setSelectedComponent("");
     setSelectedSet(new Set());
   }, [activeId]);
 
@@ -238,7 +248,7 @@ function App() {
   // profile changes so the grid doesn't keep filtering by a now-hidden key.
   useEffect(() => {
     setSelectedContainer("");
-    if (!activeId || groupBy === "folder") {
+    if (!activeId || (groupBy !== "testset" && groupBy !== "testplan")) {
       setGroupContainers([]);
       return;
     }
@@ -248,6 +258,25 @@ function App() {
         if (!cancelled) setGroupContainers(cs ?? []);
       })
       .catch((e) => console.error("list containers:", errMsg(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, groupBy, refreshKey]);
+
+  // Load the distinct components backing the group-by-component sidebar, and
+  // reset the chosen component when the dimension or profile changes.
+  useEffect(() => {
+    setSelectedComponent("");
+    if (!activeId || groupBy !== "component") {
+      setComponents([]);
+      return;
+    }
+    let cancelled = false;
+    ListComponents(activeId)
+      .then((cs) => {
+        if (!cancelled) setComponents(cs ?? []);
+      })
+      .catch((e) => console.error("list components:", errMsg(e)));
     return () => {
       cancelled = true;
     };
@@ -334,13 +363,13 @@ function App() {
     setSelectedSet(new Set(keys));
   }
 
-  async function runSync() {
+  async function doSync(full: boolean) {
     if (!activeId || syncing) return;
     setSyncing(true);
     setSyncError("");
-    setProgress({ fetched: 0, total: 0, done: false });
+    setProgress({ phase: "", fetched: 0, total: 0, done: false });
     try {
-      await SyncProfile(activeId);
+      await (full ? SyncProfileFull(activeId) : SyncProfile(activeId));
       setRefreshKey((k) => k + 1);
       setDetailVersion((v) => v + 1);
     } catch (e) {
@@ -350,6 +379,49 @@ function App() {
       setProgress(null);
     }
   }
+
+  function runSync() {
+    doSync(false);
+  }
+
+  // runFullSync forces a full re-pull, ignoring the incremental watermark, so
+  // the Test Repository folder membership (skipped on routine resyncs) is
+  // refreshed. It can be slow on large projects, so confirm first.
+  function runFullSync() {
+    if (!activeId || syncing) return;
+    if (
+      !window.confirm(
+        "Full resync re-pulls every test and re-maps Test Repository folders. " +
+          "This can take a while on large projects. Continue?",
+      )
+    ) {
+      return;
+    }
+    doSync(true);
+  }
+
+  // Native menu bar (built in main.go) drives the same actions via events. A ref
+  // holds the latest handlers so a single subscription always sees current
+  // state, rather than capturing stale closures.
+  const menuActions = useRef<Record<string, () => void>>({});
+  menuActions.current = {
+    "menu:sync": runSync,
+    "menu:full-sync": runFullSync,
+    "menu:new-profile": () => setShowForm(true),
+    "menu:import": () => setShowImport(true),
+    "menu:view-browse": () => setView("browse"),
+    "menu:view-dashboard": () => setView("dashboard"),
+    "menu:view-plans": () => setView("plans"),
+    "menu:sync-history": () => setShowSyncHistory(true),
+    "menu:diagnostics": () => setShowDiagnostics(true),
+    "menu:about": () => setShowAbout(true),
+  };
+  useEffect(() => {
+    const unsubs = Object.keys(menuActions.current).map((event) =>
+      EventsOn(event, () => menuActions.current[event]?.()),
+    );
+    return () => unsubs.forEach((u) => u && u());
+  }, []);
 
   // editScope adjusts the active profile's JQL scope override (FR-5.4). It
   // takes effect on the next sync.
@@ -493,6 +565,30 @@ function App() {
     setLastCommitResult(null);
     try {
       const result = await CommitPendingChanges(activeId);
+      setLastCommitResult(result);
+      setRefreshKey((k) => k + 1);
+      setDetailVersion((v) => v + 1);
+      reloadPending();
+    } catch (e) {
+      setLastCommitResult({
+        succeeded: [],
+        conflicted: [],
+        failed: [{ testKey: "", error: errMsg(e) }],
+      });
+    } finally {
+      setCommitting(false);
+    }
+  }
+
+  // handleCommitIds commits a selected subset of pending changes (selective
+  // commit) — the per-item Commit button in the modal. Same result handling as
+  // a full commit; only the chosen item leaves the list on success.
+  async function handleCommitIds(ids: number[]) {
+    if (!activeId || committing || ids.length === 0) return;
+    setCommitting(true);
+    setLastCommitResult(null);
+    try {
+      const result = await CommitPendingChangesByIDs(activeId, ids);
       setLastCommitResult(result);
       setRefreshKey((k) => k + 1);
       setDetailVersion((v) => v + 1);
@@ -736,6 +832,14 @@ function App() {
                 title: "Import tests from a CSV or XLSX file",
               },
               {
+                key: "fullsync",
+                label: "Full resync (re-pull folders)",
+                onClick: runFullSync,
+                title:
+                  "Force a full re-sync, ignoring the incremental watermark — " +
+                  "re-maps Test Repository folder membership",
+              },
+              {
                 key: "history",
                 label: "Sync history",
                 onClick: () => setShowSyncHistory(true),
@@ -847,7 +951,13 @@ function App() {
               className="groupby-select"
               value={groupBy}
               onChange={(e) => {
-                setGroupBy(e.target.value as "folder" | "testset" | "testplan");
+                setGroupBy(
+                  e.target.value as
+                    | "folder"
+                    | "testset"
+                    | "testplan"
+                    | "component",
+                );
                 setSelectedFolder("");
                 setSelectedKey(null);
               }}
@@ -855,8 +965,19 @@ function App() {
               <option value="folder">Group by: Folder</option>
               <option value="testset">Group by: Test Set</option>
               <option value="testplan">Group by: Test Plan</option>
+              <option value="component">Group by: Component</option>
             </select>
-            {groupBy === "folder" ? (
+            {groupBy === "component" ? (
+              <ComponentList
+                components={components}
+                selected={selectedComponent}
+                emptyLabel="No components synced."
+                onSelect={(name) => {
+                  setSelectedComponent(name);
+                  setSelectedKey(null);
+                }}
+              />
+            ) : groupBy === "folder" ? (
               folders.length > 0 ? (
                 <FolderTree
                   folders={folders}
@@ -899,7 +1020,12 @@ function App() {
           <TestTable
             profileId={activeId}
             folderId={groupBy === "folder" ? selectedFolder : ""}
-            containerKey={groupBy === "folder" ? "" : selectedContainer}
+            containerKey={
+              groupBy === "testset" || groupBy === "testplan"
+                ? selectedContainer
+                : ""
+            }
+            component={groupBy === "component" ? selectedComponent : ""}
             refreshKey={refreshKey}
             selectedKey={selectedKey}
             pendingByTestKey={pendingByTestKey}
@@ -939,6 +1065,7 @@ function App() {
           changes={pendingChanges}
           onDiscard={handleDiscard}
           onCommit={handleCommit}
+          onCommitIds={handleCommitIds}
           onJumpTo={(key) => {
             setSelectedKey(key);
             closePendingModal();
@@ -1036,6 +1163,8 @@ function App() {
         <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />
       )}
 
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+
       {showSyncHistory && (
         <SyncHistoryModal
           profileId={activeId}
@@ -1101,13 +1230,14 @@ function SyncBar({ progress }: { progress: SyncProgress }) {
     progress.total > 0
       ? Math.round((progress.fetched / progress.total) * 100)
       : 0;
+  const label = progress.phase === "folders" ? "Folders" : "Tests";
   return (
     <div className="syncbar">
       <div className="syncbar-track">
         <div className="syncbar-fill" style={{ width: `${pct}%` }} />
       </div>
       <span className="muted">
-        {progress.fetched.toLocaleString()} /{" "}
+        {label}: {progress.fetched.toLocaleString()} /{" "}
         {progress.total > 0 ? progress.total.toLocaleString() : "…"}
       </span>
     </div>

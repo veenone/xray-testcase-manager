@@ -23,7 +23,11 @@ export function BulkReviewTests(arg1:string,arg2:Array<string>,arg3:string,arg4:
 
 export function BulkTransitionTests(arg1:string,arg2:Array<string>,arg3:string):Promise<main.BulkTransitionResult>;
 
+export function CheckJiraTestSteps(arg1:string,arg2:string):Promise<main.JiraStepInfo>;
+
 export function CommitPendingChanges(arg1:string):Promise<syncer.CommitResult>;
+
+export function CommitPendingChangesByIDs(arg1:string,arg2:Array<number>):Promise<syncer.CommitResult>;
 
 export function CreateContainerAndAllocate(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<testrepo.CreateContainerResult>;
 
@@ -107,6 +111,8 @@ export function ListAllPreconditions(arg1:string):Promise<Array<testrepo.Precond
 
 export function ListAuditEntries(arg1:string,arg2:number):Promise<Array<testrepo.AuditEntry>>;
 
+export function ListComponents(arg1:string):Promise<Array<testrepo.Bucket>>;
+
 export function ListContainers(arg1:string,arg2:string):Promise<Array<testrepo.Container>>;
 
 export function ListFolders(arg1:string):Promise<Array<testrepo.Folder>>;
@@ -148,6 +154,8 @@ export function SetTestReview(arg1:string,arg2:string,arg3:string,arg4:string,ar
 export function SetTheme(arg1:string):Promise<void>;
 
 export function SyncProfile(arg1:string):Promise<void>;
+
+export function SyncProfileFull(arg1:string):Promise<void>;
 
 export function TestConnection(arg1:string,arg2:string):Promise<string>;
 

@@ -21,6 +21,7 @@ interface Props {
   profileId: string;
   folderId: string;
   containerKey: string;
+  component: string;
   refreshKey: number;
   selectedKey: string | null;
   pendingByTestKey: Map<string, PendingChange[]>;
@@ -31,13 +32,22 @@ interface Props {
   onSelectAllMatching: (keys: string[]) => void;
 }
 
-const PAGE_SIZE = 100;
+// Page-size choices for the grid pager. The backend caps a page at 500.
+const PAGE_SIZE_OPTIONS = [50, 100, 200, 500];
+const DEFAULT_PAGE_SIZE = 100;
 
 type SortCol = "key" | "summary" | "status" | "updated";
 
 // Configurable grid columns (FR-11.3). The select-checkbox column is fixed and
 // not part of this list. Column visibility + order persist in localStorage.
-type ColKey = "key" | "summary" | "status" | "priority" | "labels" | "updated";
+type ColKey =
+  | "key"
+  | "summary"
+  | "status"
+  | "priority"
+  | "labels"
+  | "components"
+  | "updated";
 
 interface ColDef {
   key: ColKey;
@@ -51,6 +61,7 @@ const ALL_COLUMNS: ColDef[] = [
   { key: "status", label: "Status", sortCol: "status" },
   { key: "priority", label: "Priority" },
   { key: "labels", label: "Labels" },
+  { key: "components", label: "Components" },
   { key: "updated", label: "Updated", sortCol: "updated" },
 ];
 
@@ -144,6 +155,20 @@ function renderCell(key: ColKey, t: TestCase, hasPending: boolean) {
           )}
         </td>
       );
+    case "components":
+      return (
+        <td key="components" className="labels-cell">
+          {t.components && t.components.length > 0 ? (
+            t.components.map((c) => (
+              <span key={c} className="component-chip">
+                {c}
+              </span>
+            ))
+          ) : (
+            <span className="muted">—</span>
+          )}
+        </td>
+      );
     case "updated":
       return (
         <td key="updated" className="muted">
@@ -157,6 +182,7 @@ export function TestTable({
   profileId,
   folderId,
   containerKey,
+  component,
   refreshKey,
   selectedKey,
   pendingByTestKey,
@@ -173,6 +199,8 @@ export function TestTable({
   const [sortBy, setSortBy] = useState<SortCol>("key");
   const [desc, setDesc] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageInput, setPageInput] = useState("");
 
   const [page, setPage] = useState<TestPage>({ tests: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -283,8 +311,10 @@ export function TestTable({
     review,
     folderId,
     containerKey,
+    component,
     sortBy,
     desc,
+    pageSize,
     profileId,
   ]);
 
@@ -297,10 +327,11 @@ export function TestTable({
       status: status.trim(),
       folderId,
       containerKey,
+      component,
       review,
       sortBy,
       desc,
-      limit: PAGE_SIZE,
+      limit: pageSize,
       offset,
     };
     ListTests(profileId, q)
@@ -322,10 +353,12 @@ export function TestTable({
     status,
     folderId,
     containerKey,
+    component,
     review,
     sortBy,
     desc,
     offset,
+    pageSize,
     refreshKey,
   ]);
 
@@ -339,7 +372,24 @@ export function TestTable({
   }
 
   const from = page.total === 0 ? 0 : offset + 1;
-  const to = Math.min(offset + PAGE_SIZE, page.total);
+  const to = Math.min(offset + pageSize, page.total);
+  const totalPages = Math.max(1, Math.ceil(page.total / pageSize));
+  const currentPage = Math.floor(offset / pageSize) + 1;
+
+  // goToPage clamps to the valid range and moves the offset to that page's
+  // first row.
+  function goToPage(n: number) {
+    const clamped = Math.min(Math.max(1, n), totalPages);
+    setOffset((clamped - 1) * pageSize);
+  }
+
+  // commitPageInput parses the jump-to-page box and navigates. Invalid input is
+  // ignored; the box is then cleared so it shows the live page again.
+  function commitPageInput() {
+    const n = parseInt(pageInput, 10);
+    if (!Number.isNaN(n)) goToPage(n);
+    setPageInput("");
+  }
 
   const pageKeys = page.tests.map((t) => t.key);
   const allOnPageSelected =
@@ -363,6 +413,7 @@ export function TestTable({
         status: status.trim(),
         folderId,
         containerKey,
+        component,
         review,
         sortBy,
         desc,
@@ -386,6 +437,7 @@ export function TestTable({
         status: status.trim(),
         folderId,
         containerKey,
+        component,
         review,
         sortBy,
         desc,
@@ -514,29 +566,6 @@ export function TestTable({
           )}
         </div>
         )}
-        <span className="muted count">
-          {loading
-            ? "Loading…"
-            : `${from}–${to} of ${page.total.toLocaleString()}`}
-        </span>
-        {!selectedKey && (
-          <div className="pager">
-            <button
-              className="btn"
-              disabled={offset === 0 || loading}
-              onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-            >
-              ‹ Prev
-            </button>
-            <button
-              className="btn"
-              disabled={offset + PAGE_SIZE >= page.total || loading}
-              onClick={() => setOffset(offset + PAGE_SIZE)}
-            >
-              Next ›
-            </button>
-          </div>
-        )}
       </div>
 
       {error && <div className="error-text table-error">{error}</div>}
@@ -634,6 +663,7 @@ export function TestTable({
                   status.trim() === "" &&
                   folderId === "" &&
                   containerKey === "" &&
+                  component === "" &&
                   review === ""
                     ? "No tests yet — run a sync to pull them from Jira."
                     : "No tests match the current filter."}
@@ -642,6 +672,80 @@ export function TestTable({
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="table-footer">
+        <div className="pager">
+          <select
+            className="page-size"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            title="Rows per page"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n} / page
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn page-btn"
+            disabled={currentPage <= 1 || loading}
+            onClick={() => goToPage(1)}
+            title="First page"
+          >
+            «
+          </button>
+          <button
+            className="btn page-btn"
+            disabled={currentPage <= 1 || loading}
+            onClick={() => goToPage(currentPage - 1)}
+            title="Previous page"
+          >
+            ‹
+          </button>
+          <span className="page-indicator">
+            Page{" "}
+            <input
+              className="page-jump"
+              type="text"
+              inputMode="numeric"
+              value={pageInput}
+              placeholder={String(currentPage)}
+              disabled={loading}
+              onChange={(e) =>
+                setPageInput(e.target.value.replace(/[^0-9]/g, ""))
+              }
+              onBlur={commitPageInput}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              title="Jump to page"
+            />{" "}
+            of {totalPages.toLocaleString()}
+          </span>
+          <button
+            className="btn page-btn"
+            disabled={currentPage >= totalPages || loading}
+            onClick={() => goToPage(currentPage + 1)}
+            title="Next page"
+          >
+            ›
+          </button>
+          <button
+            className="btn page-btn"
+            disabled={currentPage >= totalPages || loading}
+            onClick={() => goToPage(totalPages)}
+            title="Last page"
+          >
+            »
+          </button>
+        </div>
+        <span className="muted count">
+          {loading
+            ? "Loading…"
+            : `${from.toLocaleString()}–${to.toLocaleString()} of ${page.total.toLocaleString()}`}
+        </span>
       </div>
       {promptUI}
     </div>

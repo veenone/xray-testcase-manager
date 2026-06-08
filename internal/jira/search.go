@@ -18,12 +18,13 @@ type Test struct {
 	Status      string
 	Priority    string
 	Labels      []string
+	Components  []string
 	Updated     string
 	FolderID    string
 }
 
 // testFields are the issue fields requested from Jira's search API.
-const testFields = "summary,description,status,priority,labels,updated"
+const testFields = "summary,description,status,priority,labels,components,updated"
 
 // searchResponse is the /rest/api/2/search payload.
 type searchResponse struct {
@@ -42,6 +43,9 @@ type searchResponse struct {
 			Priority *struct {
 				Name string `json:"name"`
 			} `json:"priority"`
+			Components []struct {
+				Name string `json:"name"`
+			} `json:"components"`
 		} `json:"fields"`
 	} `json:"issues"`
 }
@@ -66,7 +70,13 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 	if extra := incrementalSinceClause(since); extra != "" {
 		jql += " AND " + extra
 	}
-	jql += " ORDER BY updated ASC"
+	// Order by a UNIQUE key, not `updated`. Paging with startAt over a non-unique
+	// sort is unstable: when many Tests share an `updated` timestamp (common for
+	// bulk-imported suites), the tie order shifts between page requests, so some
+	// Tests are skipped entirely and never synced — which is why a Test could be
+	// listed in its folder by Xray yet be missing from the local cache. Issue key
+	// is unique, so pagination is stable and every Test is fetched exactly once.
+	jql += " ORDER BY key ASC"
 
 	q := url.Values{}
 	q.Set("jql", jql)
@@ -94,6 +104,11 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 		}
 		if iss.Fields.Priority != nil {
 			t.Priority = iss.Fields.Priority.Name
+		}
+		for _, comp := range iss.Fields.Components {
+			if comp.Name != "" {
+				t.Components = append(t.Components, comp.Name)
+			}
 		}
 		tests = append(tests, t)
 	}

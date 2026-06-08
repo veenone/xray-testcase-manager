@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 13
+const schemaVersion = 16
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -50,10 +50,13 @@ CREATE TABLE IF NOT EXISTS sync_state (
 );
 
 CREATE TABLE IF NOT EXISTS test_folder (
-	profile_id TEXT NOT NULL,
-	id         TEXT NOT NULL,
-	parent_id  TEXT NOT NULL DEFAULT '',
-	name       TEXT NOT NULL,
+	profile_id       TEXT NOT NULL,
+	id               TEXT NOT NULL,
+	parent_id        TEXT NOT NULL DEFAULT '',
+	name             TEXT NOT NULL,
+	test_count       INTEGER NOT NULL DEFAULT 0,
+	total_test_count INTEGER NOT NULL DEFAULT 0,
+	xray_id          TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, id)
 );
 
@@ -68,6 +71,7 @@ CREATE TABLE IF NOT EXISTS test_case (
 	labels      TEXT NOT NULL DEFAULT '',
 	updated_at  TEXT NOT NULL DEFAULT '',
 	folder_id   TEXT NOT NULL DEFAULT '',
+	components  TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -296,6 +300,40 @@ func applyMigrations(db *sql.DB) error {
 			`ALTER TABLE profiles ADD COLUMN scope_jql TEXT NOT NULL DEFAULT ''`,
 		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("v11 add scope_jql: %w", err)
+		}
+	}
+	// v14: add components to test_case for the Jira components field (group-by /
+	// filter). Fresh installs get it from the CREATE above; this ALTER catches
+	// pre-v14 databases. Stored as a newline-delimited, newline-bounded string
+	// (see testrepo.encodeComponents) so a LIKE filter can match one component
+	// exactly without partial-name collisions.
+	if current < 14 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_case ADD COLUMN components TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v14 add components: %w", err)
+		}
+	}
+	// v15: add test counts to test_folder so the folder tree can show per-folder
+	// totals like Xray's Test Repository. Fresh installs get them from the CREATE
+	// above; these ALTERs catch pre-v15 databases.
+	if current < 15 {
+		for _, col := range []string{"test_count", "total_test_count"} {
+			if _, err := db.Exec(
+				fmt.Sprintf(`ALTER TABLE test_folder ADD COLUMN %s INTEGER NOT NULL DEFAULT 0`, col),
+			); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("v15 add %s: %w", col, err)
+			}
+		}
+	}
+	// v16: add the native Xray folder id to test_folder so a committed folder
+	// move can address the Xray Test Repository move endpoint (which takes the
+	// numeric folder id, not the path). Fresh installs get it from the CREATE.
+	if current < 16 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_folder ADD COLUMN xray_id TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v16 add xray_id: %w", err)
 		}
 	}
 	return nil

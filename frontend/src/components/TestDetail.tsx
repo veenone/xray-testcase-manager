@@ -10,6 +10,7 @@ import {
   DeallocateTests,
   GetTestTransitions,
   GetTestSteps,
+  CheckJiraTestSteps,
   GetTestReview,
   SetTestReview,
   GetTestCustomFields,
@@ -34,9 +35,11 @@ import type {
   Folder,
   CustomFieldValue,
   Review,
+  JiraStepInfo,
 } from "../api";
 
 import { usePrompt } from "./usePrompt";
+import { MarkdownField } from "./MarkdownField";
 
 const REVIEWER_KEY = "xtm.reviewer";
 
@@ -76,6 +79,10 @@ export function TestDetail({
   const [steps, setSteps] = useState<Step[]>([]);
   const [stepsLoading, setStepsLoading] = useState(false);
   const [stepsError, setStepsError] = useState("");
+  // What Jira itself reports about this Test's steps — used to warn when the
+  // panel is empty but Jira actually has steps (a load/shape problem), so the
+  // user doesn't add a blank step that Xray rejects.
+  const [jiraStepInfo, setJiraStepInfo] = useState<JiraStepInfo | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState("");
@@ -127,9 +134,20 @@ export function TestDetail({
         // rather than blocking the whole panel.
         setStepsLoading(true);
         setStepsError("");
+        setJiraStepInfo(null);
         GetTestSteps(profileId, testKey, false)
           .then((s) => {
-            if (!cancelled) setSteps(s ?? []);
+            if (cancelled) return;
+            setSteps(s ?? []);
+            // If nothing loaded, ask Jira whether this Test actually has steps,
+            // so we can warn instead of letting the user add a blank one.
+            if ((s ?? []).length === 0) {
+              CheckJiraTestSteps(profileId, testKey)
+                .then((info) => {
+                  if (!cancelled) setJiraStepInfo(info);
+                })
+                .catch((e) => console.error("check jira steps:", errMsg(e)));
+            }
           })
           .catch((e) => {
             if (!cancelled) setStepsError(errMsg(e));
@@ -212,6 +230,17 @@ export function TestDetail({
     try {
       const s = await GetTestSteps(profileId, testKey, true);
       setSteps(s ?? []);
+      // Refresh resolved the load — clear the warning. If it's still empty,
+      // re-check Jira so the banner reflects reality.
+      if ((s ?? []).length > 0) {
+        setJiraStepInfo(null);
+      } else {
+        try {
+          setJiraStepInfo(await CheckJiraTestSteps(profileId, testKey));
+        } catch (e) {
+          console.error("check jira steps:", errMsg(e));
+        }
+      }
     } catch (e) {
       setStepsError(errMsg(e));
     } finally {
@@ -662,12 +691,13 @@ export function TestDetail({
           <h4>
             Description {isDirty("description") && <DirtyDot />}
           </h4>
-          <textarea
+          <MarkdownField
             className="detail-desc-edit"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onBlur={() => saveField("description", description)}
+            onChange={setDescription}
+            onCommit={() => saveField("description", description)}
             rows={8}
+            placeholder="No description. Click to add — markdown supported."
           />
 
           <h4 className="steps-head">
@@ -687,9 +717,32 @@ export function TestDetail({
             </button>
           </h4>
           {stepsError && <div className="error-text">{stepsError}</div>}
-          {!stepsError && !stepsLoading && steps.length === 0 && (
-            <p className="muted">No steps defined for this test.</p>
-          )}
+          {!stepsError &&
+            !stepsLoading &&
+            steps.length === 0 &&
+            (jiraStepInfo && jiraStepInfo.count > 0 ? (
+              <div className="steps-warning">
+                ⚠ Jira reports {jiraStepInfo.count} step
+                {jiraStepInfo.count === 1 ? "" : "s"} for this test that didn't
+                load here. Don't add new steps yet — that would create
+                duplicates.{" "}
+                <button className="link-btn" onClick={refreshSteps}>
+                  Load from Jira
+                </button>
+              </div>
+            ) : (
+              <p className="muted">No steps defined for this test.</p>
+            ))}
+          {!stepsError &&
+            !stepsLoading &&
+            steps.length > 0 &&
+            steps.every((s) => !s.action && !s.data && !s.expected) && (
+              <div className="steps-warning">
+                ⚠ These steps loaded without content — this Xray instance may use
+                a step format the tool doesn't recognise yet. Avoid editing them
+                to prevent overwriting the real steps in Jira.
+              </div>
+            )}
           {steps.length > 0 && (
             <ol className="steps-list">
               {steps.map((s, i) => (
@@ -830,11 +883,11 @@ function StepRow({
   return (
     <li>
       <div className="step-head">
-        <textarea
+        <MarkdownField
           className="step-edit step-edit-action"
           value={action}
-          onChange={(e) => setAction(e.target.value)}
-          onBlur={() => save("action", action)}
+          onChange={setAction}
+          onCommit={() => save("action", action)}
           rows={2}
           placeholder="(action)"
         />
@@ -870,11 +923,12 @@ function StepRow({
         <span className="step-label">
           Data {isDirty("data") && <DirtyDot />}
         </span>
-        <input
+        <MarkdownField
           className="step-edit"
           value={data}
-          onChange={(e) => setData(e.target.value)}
-          onBlur={() => save("data", data)}
+          onChange={setData}
+          onCommit={() => save("data", data)}
+          multiline={false}
           placeholder="(optional)"
         />
       </div>
@@ -882,11 +936,11 @@ function StepRow({
         <span className="step-label">
           Expected {isDirty("expected") && <DirtyDot />}
         </span>
-        <textarea
+        <MarkdownField
           className="step-edit"
           value={expected}
-          onChange={(e) => setExpected(e.target.value)}
-          onBlur={() => save("expected", expected)}
+          onChange={setExpected}
+          onCommit={() => save("expected", expected)}
           rows={2}
           placeholder="(expected result)"
         />

@@ -449,7 +449,32 @@ func makeDemoTest(projectKey string, i int) Test {
 		Status:      status,
 		Priority:    priority,
 		Labels:      labels,
+		Components:  demoComponentsForIndex(i),
 		Updated:     updated,
 		FolderID:    demoFolderForFeature(feature),
 	}
+}
+
+// demoComponentNames is the demo Jira components vocabulary (the multi-valued
+// issue field, distinct from the "Component" custom field in customfields.go).
+// Names deliberately include spaces ("User Management") so the grouping /
+// filtering path is exercised against multi-word component names.
+var demoComponentNames = []string{
+	"Frontend", "Backend", "API", "Database",
+	"Authentication", "Payments", "Reporting",
+	"User Management", "Infrastructure", "Mobile",
+}
+
+// demoComponentsForIndex assigns a deterministic 1–2 component set to a demo
+// test so the same test always carries the same components.
+func demoComponentsForIndex(i int) []string {
+	first := demoComponentNames[i%len(demoComponentNames)]
+	if i%3 == 0 {
+		// Roughly a third of tests get a second, distinct component.
+		second := demoComponentNames[(i*7+3)%len(demoComponentNames)]
+		if second != first {
+			return []string{first, second}
+		}
+	}
+	return []string{first}
 }

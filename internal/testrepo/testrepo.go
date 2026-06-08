@@ -30,17 +30,23 @@ type TestCase struct {
 	Status      string   `json:"status"`
 	Priority    string   `json:"priority"`
 	Labels      []string `json:"labels"`
+	Components  []string `json:"components"`
 	Updated     string   `json:"updated"`
 	FolderID    string   `json:"folderId"`
 }
 
 // Folder is one node in the Xray Test Repository tree (FR-13.1). The ID is
 // the folder's full path ("/Authentication/Login"), so ParentID + Name + ID
-// together describe the tree without any extra lookup tables.
+// together describe the tree without any extra lookup tables. TestCount is the
+// Tests directly in the folder; TotalTestCount includes its descendants — the
+// counts the tree shows beside each folder, like Xray's Test Repository.
 type Folder struct {
-	ID       string `json:"id"`
-	ParentID string `json:"parentId"`
-	Name     string `json:"name"`
+	ID             string `json:"id"`
+	ParentID       string `json:"parentId"`
+	Name           string `json:"name"`
+	XrayID         string `json:"xrayId"` // native Xray folder id, used to commit moves
+	TestCount      int    `json:"testCount"`
+	TotalTestCount int    `json:"totalTestCount"`
 }
 
 // Precondition mirrors a Xray Precondition issue (FR-13.4).
@@ -147,6 +153,7 @@ type Query struct {
 	Status       string `json:"status"`
 	FolderID     string `json:"folderId"`     // empty = any folder
 	ContainerKey string `json:"containerKey"` // empty = any container (FR-11.6)
+	Component    string `json:"component"`    // empty = any component (group-by component)
 	Review       string `json:"review"`       // "approved"|"rejected"|"pending"|"unreviewed"|"" = any
 	SortBy       string `json:"sortBy"`
 	Desc         bool   `json:"desc"`
@@ -184,6 +191,7 @@ type Statistics struct {
 	ByPriority     []Bucket `json:"byPriority"`
 	ByLabel        []Bucket `json:"byLabel"`
 	ByFolder       []Bucket `json:"byFolder"`
+	ByComponent    []Bucket `json:"byComponent"`
 	UpdatedTrend   []Bucket `json:"updatedTrend"`
 	ByRunStatus    []Bucket `json:"byRunStatus"`
 }
@@ -264,10 +272,11 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 	// local value instead of overwriting from the incoming sync.
 	stmt, err := tx.Prepare(
 		`INSERT INTO test_case
-		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id, components)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
 		   jira_id     = excluded.jira_id,
+		   components  = excluded.components,
 		   summary     = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
@@ -320,7 +329,7 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 		if _, err := stmt.Exec(
 			profileID, t.Key, t.ID, t.Summary, t.Description,
 			t.Status, t.Priority, strings.Join(t.Labels, " "),
-			t.Updated, t.FolderID,
+			t.Updated, t.FolderID, encodeComponents(t.Components),
 		); err != nil {
 			return fmt.Errorf("upsert %s: %w", t.Key, err)
 		}
@@ -337,19 +346,83 @@ func (r *Repository) UpsertFolders(profileID string, folders []Folder) error {
 	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(
-		`INSERT INTO test_folder (profile_id, id, parent_id, name)
-		 VALUES (?, ?, ?, ?)
+		`INSERT INTO test_folder (profile_id, id, parent_id, name, test_count, total_test_count, xray_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, id) DO UPDATE SET
-		   parent_id = excluded.parent_id,
-		   name      = excluded.name`)
+		   parent_id        = excluded.parent_id,
+		   name             = excluded.name,
+		   test_count       = excluded.test_count,
+		   total_test_count = excluded.total_test_count,
+		   xray_id          = CASE WHEN excluded.xray_id <> '' THEN excluded.xray_id ELSE test_folder.xray_id END`)
 	if err != nil {
 		return fmt.Errorf("prepare upsert folder: %w", err)
 	}
 	defer stmt.Close()
 
 	for _, f := range folders {
-		if _, err := stmt.Exec(profileID, f.ID, f.ParentID, f.Name); err != nil {
+		if _, err := stmt.Exec(profileID, f.ID, f.ParentID, f.Name, f.TestCount, f.TotalTestCount, f.XrayID); err != nil {
 			return fmt.Errorf("upsert folder %s: %w", f.ID, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// FolderXrayID resolves a folder path to its native Xray folder id, for
+// committing a Test move (the Xray move endpoint addresses folders by id, not
+// path). The repository root (empty path) maps to "-1". A path with no synced
+// folder, or one synced before xray_id was captured, returns "" so the caller
+// can surface a clear "sync first" error.
+func (r *Repository) FolderXrayID(profileID, path string) (string, error) {
+	if path == "" {
+		return "-1", nil
+	}
+	var id string
+	err := r.db.QueryRow(
+		`SELECT xray_id FROM test_folder WHERE profile_id = ? AND id = ?`,
+		profileID, path,
+	).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve folder xray id: %w", err)
+	}
+	return id, nil
+}
+
+// ApplyTestFolders stamps the folder_id of each Test named in the map
+// (testKey -> folder path), used by the sync engine to record Test Repository
+// membership pulled from Xray (FR-13.1). A Test with a pending local folder
+// move is left untouched so the sync can't clobber an uncommitted edit (mirrors
+// the per-field guard in UpsertTests). Unknown Test keys are ignored.
+func (r *Repository) ApplyTestFolders(profileID string, testFolder map[string]string) error {
+	if len(testFolder) == 0 {
+		return nil
+	}
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.Prepare(
+		`UPDATE test_case SET folder_id = ?
+		 WHERE profile_id = ? AND jira_key = ?
+		   AND NOT EXISTS (
+		       SELECT 1 FROM pending_change
+		       WHERE pending_change.profile_id  = ?
+		         AND pending_change.entity_type = 'test_case'
+		         AND pending_change.entity_key  = ?
+		         AND pending_change.field       = 'folder'
+		   )`)
+	if err != nil {
+		return fmt.Errorf("prepare apply folder: %w", err)
+	}
+	defer stmt.Close()
+
+	for testKey, path := range testFolder {
+		if _, err := stmt.Exec(path, profileID, testKey, profileID, testKey); err != nil {
+			return fmt.Errorf("apply folder for %s: %w", testKey, err)
 		}
 	}
 	return tx.Commit()
@@ -359,20 +432,71 @@ func (r *Repository) UpsertFolders(profileID string, folders []Folder) error {
 // the path, so a stable depth-first ordering falls out naturally).
 func (r *Repository) ListFolders(profileID string) ([]Folder, error) {
 	rows, err := r.db.Query(
-		`SELECT id, parent_id, name FROM test_folder WHERE profile_id = ? ORDER BY id`,
+		`SELECT id, parent_id, name, xray_id
+		 FROM test_folder WHERE profile_id = ? ORDER BY id`,
 		profileID)
 	if err != nil {
 		return nil, fmt.Errorf("list folders: %w", err)
 	}
-	defer rows.Close()
-
 	out := []Folder{}
 	for rows.Next() {
 		var f Folder
-		if err := rows.Scan(&f.ID, &f.ParentID, &f.Name); err != nil {
+		if err := rows.Scan(&f.ID, &f.ParentID, &f.Name, &f.XrayID); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		out = append(out, f)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	// Count tests from the local cache so each folder's badge equals exactly
+	// what the grid shows when that folder is selected — the grid filters on
+	// "folder_id = path OR folder_id LIKE path/%", so TestCount is the direct
+	// count and TotalTestCount rolls in descendants the same way. (Using the
+	// Xray-reported counts instead drifts by any test Xray counts but the local
+	// cache doesn't hold — e.g. out-of-scope or unsynced tests.)
+	direct, err := r.folderDirectCounts(profileID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		f := &out[i]
+		f.TestCount = direct[f.ID]
+		total := f.TestCount
+		prefix := f.ID + "/"
+		for fid, n := range direct {
+			if strings.HasPrefix(fid, prefix) {
+				total += n
+			}
+		}
+		f.TotalTestCount = total
+	}
+	return out, nil
+}
+
+// folderDirectCounts returns the number of Tests whose folder_id is exactly each
+// folder path (direct membership), for the local folder-count roll-up.
+func (r *Repository) folderDirectCounts(profileID string) (map[string]int, error) {
+	rows, err := r.db.Query(
+		`SELECT folder_id, COUNT(*) FROM test_case
+		 WHERE profile_id = ? AND folder_id <> '' GROUP BY folder_id`,
+		profileID)
+	if err != nil {
+		return nil, fmt.Errorf("count tests per folder: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var fid string
+		var n int
+		if err := rows.Scan(&fid, &n); err != nil {
+			return nil, err
+		}
+		out[fid] = n
 	}
 	return out, rows.Err()
 }
@@ -1749,6 +1873,13 @@ func buildTestFilter(profileID string, q Query) (string, []any) {
 				"WHERE profile_id = ? AND container_key = ?)")
 		args = append(args, profileID, q.ContainerKey)
 	}
+	if q.Component != "" {
+		// Group-by component: match Tests carrying the chosen component. The
+		// stored value is newline-bounded so this LIKE matches a whole name and
+		// not a prefix of a longer one.
+		where = append(where, "components LIKE ?")
+		args = append(args, componentFilterPattern(q.Component))
+	}
 	if q.Review != "" {
 		// Filter by review verdict. "unreviewed" means no review row with a
 		// non-empty verdict; any other value matches that verdict exactly.
@@ -1851,7 +1982,7 @@ func (r *Repository) ListTests(profileID string, q Query) (Page, error) {
 	}
 
 	listSQL := fmt.Sprintf(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id
 		 FROM test_case %s ORDER BY %s %s LIMIT ? OFFSET ?`,
 		whereSQL, sortCol, dir)
 
@@ -1900,10 +2031,45 @@ func (r *Repository) ListMatchingKeys(profileID string, q Query) ([]string, erro
 	return out, rows.Err()
 }
 
+// ListComponents returns the distinct Jira components across a profile's Tests
+// with a count each, sorted by name — the master list the group-by-component
+// sidebar draws from. Computed by scanning the components column (one cheap
+// pass, same approach as the stats rollup).
+func (r *Repository) ListComponents(profileID string) ([]Bucket, error) {
+	rows, err := r.db.Query(
+		`SELECT components FROM test_case WHERE profile_id = ? AND components <> ''`,
+		profileID)
+	if err != nil {
+		return nil, fmt.Errorf("list components: %w", err)
+	}
+	defer rows.Close()
+
+	counts := map[string]int{}
+	for rows.Next() {
+		var stored string
+		if err := rows.Scan(&stored); err != nil {
+			return nil, err
+		}
+		for _, name := range decodeComponents(stored) {
+			counts[name]++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	out := make([]Bucket, 0, len(counts))
+	for name, n := range counts {
+		out = append(out, Bucket{Label: name, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	return out, nil
+}
+
 // GetTest returns one Test by its Jira key, or ErrNotFound.
 func (r *Repository) GetTest(profileID, key string) (TestCase, error) {
 	row := r.db.QueryRow(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id
 		 FROM test_case WHERE profile_id = ? AND jira_key = ?`, profileID, key)
 	t, err := scanTest(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1966,12 +2132,13 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 		ByPriority:   []Bucket{},
 		ByLabel:      []Bucket{},
 		ByFolder:     []Bucket{},
+		ByComponent:  []Bucket{},
 		UpdatedTrend: []Bucket{},
 		ByRunStatus:  []Bucket{},
 	}
 
 	rows, err := r.db.Query(
-		`SELECT status, priority, labels, folder_id, updated_at
+		`SELECT status, priority, labels, folder_id, components, updated_at
 		 FROM test_case WHERE profile_id = ?`, profileID)
 	if err != nil {
 		return stats, fmt.Errorf("read tests for stats: %w", err)
@@ -1982,11 +2149,12 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 	priorityCounts := map[string]int{}
 	labelCounts := map[string]int{}
 	folderCounts := map[string]int{}
+	componentCounts := map[string]int{}
 	trendCounts := map[string]int{}
 
 	for rows.Next() {
-		var status, priority, labels, folderID, updated string
-		if err := rows.Scan(&status, &priority, &labels, &folderID, &updated); err != nil {
+		var status, priority, labels, folderID, components, updated string
+		if err := rows.Scan(&status, &priority, &labels, &folderID, &components, &updated); err != nil {
 			return stats, err
 		}
 		stats.Total++
@@ -1996,6 +2164,9 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 			labelCounts[l]++
 		}
 		folderCounts[topFolder(folderID)]++
+		for _, c := range decodeComponents(components) {
+			componentCounts[c]++
+		}
 		if m := monthOf(updated); m != "" {
 			trendCounts[m]++
 		}
@@ -2008,6 +2179,7 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 	stats.ByPriority = topBuckets(priorityCounts, 0)
 	stats.ByLabel = topBuckets(labelCounts, 12)
 	stats.ByFolder = topBuckets(folderCounts, 12)
+	stats.ByComponent = topBuckets(componentCounts, 12)
 	stats.UpdatedTrend = recentMonths(trendCounts, 12)
 
 	if err := r.db.QueryRow(
@@ -3607,17 +3779,58 @@ type scanner interface {
 
 func scanTest(s scanner) (TestCase, error) {
 	var (
-		t      TestCase
-		labels string
+		t          TestCase
+		labels     string
+		components string
 	)
 	if err := s.Scan(
 		&t.Key, &t.ID, &t.Summary, &t.Description,
-		&t.Status, &t.Priority, &labels, &t.Updated, &t.FolderID,
+		&t.Status, &t.Priority, &labels, &components, &t.Updated, &t.FolderID,
 	); err != nil {
 		return TestCase{}, err
 	}
 	if labels != "" {
 		t.Labels = strings.Fields(labels)
 	}
+	t.Components = decodeComponents(components)
 	return t, nil
+}
+
+// componentSep separates component names in the stored, newline-bounded
+// components string. A newline can't appear in a Jira component name, and
+// bounding the whole value with separators lets a `components LIKE
+// '%\nName\n%'` filter match one component exactly without a multi-word name
+// like "User Management" colliding with "User".
+const componentSep = "\n"
+
+// encodeComponents joins component names into the bounded storage form, or ""
+// for none. Empty / whitespace-only names are dropped.
+func encodeComponents(names []string) string {
+	clean := make([]string, 0, len(names))
+	for _, n := range names {
+		if s := strings.TrimSpace(n); s != "" {
+			clean = append(clean, s)
+		}
+	}
+	if len(clean) == 0 {
+		return ""
+	}
+	return componentSep + strings.Join(clean, componentSep) + componentSep
+}
+
+// decodeComponents parses the stored components string back into a slice.
+func decodeComponents(stored string) []string {
+	out := []string{}
+	for _, n := range strings.Split(stored, componentSep) {
+		if s := strings.TrimSpace(n); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// componentFilterPattern builds the LIKE pattern that matches a single
+// component name within the bounded storage form.
+func componentFilterPattern(name string) string {
+	return "%" + componentSep + name + componentSep + "%"
 }

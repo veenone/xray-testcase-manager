@@ -4,6 +4,7 @@ interface Props {
   changes: PendingChange[];
   onDiscard: (id: number) => Promise<void> | void;
   onCommit: () => Promise<void> | void;
+  onCommitIds: (ids: number[]) => Promise<void> | void;
   onJumpTo: (testKey: string) => void;
   onResolveOverride: (testKey: string, remoteVersion: string) => void;
   onResolveKeepRemote: (testKey: string) => void;
@@ -16,6 +17,7 @@ export function PendingChangesModal({
   changes,
   onDiscard,
   onCommit,
+  onCommitIds,
   onJumpTo,
   onResolveOverride,
   onResolveKeepRemote,
@@ -23,6 +25,13 @@ export function PendingChangesModal({
   committing,
   lastResult,
 }: Props) {
+  // commitItem commits only this one row. The backend re-bases the Test's other
+  // pending edits onto the new remote version afterward, so committing a single
+  // item doesn't make the rest conflict.
+  function commitItem(c: PendingChange) {
+    onCommitIds([c.id]);
+  }
+
   const hasResult =
     lastResult &&
     (lastResult.succeeded.length > 0 ||
@@ -181,7 +190,15 @@ export function PendingChangesModal({
                       <td className="pending-after">
                         {truncate(after, 100)}
                       </td>
-                      <td>
+                      <td className="pending-row-actions">
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => commitItem(c)}
+                          disabled={committing}
+                          title="Commit just this item to Jira"
+                        >
+                          Commit
+                        </button>
                         <button
                           className="btn"
                           onClick={() => onDiscard(c.id)}

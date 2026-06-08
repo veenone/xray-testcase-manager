@@ -14,6 +14,7 @@ export {
   SetTheme,
   ListProfiles,
   CreateProfile,
+  SyncProfileFull,
   UpdateProfileScope,
   ExportProfile,
   ImportProfile,
@@ -47,6 +48,7 @@ export {
   BulkMoveToFolder,
   ListTests,
   ListMatchingKeys,
+  ListComponents,
   PreviewImport,
   ImportTests,
   ExportTests,
@@ -62,6 +64,7 @@ export {
   ListPendingChanges,
   ListAuditEntries,
   CommitPendingChanges,
+  CommitPendingChangesByIDs,
   BulkEditTests,
   GetTestTransitions,
   TransitionTest,
@@ -69,6 +72,7 @@ export {
   GetBulkTransitionOptions,
   BulkTransitionTests,
   GetTestSteps,
+  CheckJiraTestSteps,
   GetTestReview,
   SetTestReview,
   BulkReviewTests,
@@ -81,7 +85,7 @@ export {
   GetStatistics,
   GetTraceabilitySankey,
 } from "../wailsjs/go/main/App";
-export { EventsOn } from "../wailsjs/runtime/runtime";
+export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
 
 export interface HealthInfo {
   ok: boolean;
@@ -108,6 +112,7 @@ export interface Profile {
 // Diagnostics mirrors app.Diagnostics — the environment + state summary shown
 // in the diagnostics view (FR-12.4).
 export interface Diagnostics {
+  version: string;
   dbPath: string;
   logPath: string;
   os: string;
@@ -126,6 +131,7 @@ export interface TestCase {
   status: string;
   priority: string;
   labels: string[];
+  components: string[];
   updated: string;
   folderId: string;
 }
@@ -140,6 +146,7 @@ export interface TestQuery {
   status: string;
   folderId: string;
   containerKey: string;
+  component: string;
   review: string;
   sortBy: string;
   desc: boolean;
@@ -176,6 +183,8 @@ export interface Folder {
   id: string;
   parentId: string;
   name: string;
+  testCount: number;
+  totalTestCount: number;
 }
 
 export interface Precondition {
@@ -254,6 +263,13 @@ export interface ContainerMembership {
   runStatus: string;
 }
 
+// JiraStepInfo mirrors app.JiraStepInfo — what Jira reports about a Test's
+// steps, used to detect "Jira has steps but the tool shows none" (FR-2.5).
+export interface JiraStepInfo {
+  count: number;
+  allBlank: boolean;
+}
+
 // Step mirrors testrepo.Step — one ordered step in an Xray Test (FR-2.5).
 // xrayId is Xray's per-step identifier, kept around so a future step
 // editor can target each row individually.
@@ -299,7 +315,10 @@ export interface AuditEntry {
 }
 
 // SyncProgress mirrors the Go syncer.Progress payload emitted on "sync:progress".
+// phase is "" / "tests" for the Test pull or "folders" for the Test Repository
+// membership pass.
 export interface SyncProgress {
+  phase: string;
   fetched: number;
   total: number;
   done: boolean;
@@ -393,6 +412,7 @@ export interface Statistics {
   byPriority: Bucket[];
   byLabel: Bucket[];
   byFolder: Bucket[];
+  byComponent: Bucket[];
   updatedTrend: Bucket[];
   byRunStatus: Bucket[];
 }

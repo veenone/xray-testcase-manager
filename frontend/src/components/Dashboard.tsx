@@ -85,6 +85,11 @@ export function Dashboard({ profileId, refreshKey }: Props) {
           buckets={stats.byLabel}
           empty="No labels in use."
         />
+        <BarPanel
+          title="By component"
+          buckets={stats.byComponent}
+          empty="No components synced."
+        />
       </div>
 
       {(stats.testSets > 0 ||

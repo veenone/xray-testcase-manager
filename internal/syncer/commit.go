@@ -53,6 +53,25 @@ type FailedCommit struct {
 // Failures and conflicts leave pending rows in place so the user can
 // resolve and retry.
 func (e *Engine) CommitChanges(ctx context.Context, profileID, projectKey string) (CommitResult, error) {
+	return e.commitChanges(ctx, profileID, projectKey, nil)
+}
+
+// CommitChangesForIDs commits only the pending changes whose ids are in the
+// given set (selective commit), grouping and ordering them exactly as a full
+// commit would. The caller is expected to pass a whole entity's changes
+// together (e.g. all of one Test's rows) so a partial push can't leave sibling
+// edits stranded against a now-advanced remote version.
+func (e *Engine) CommitChangesForIDs(ctx context.Context, profileID, projectKey string, ids []int64) (CommitResult, error) {
+	only := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		only[id] = true
+	}
+	return e.commitChanges(ctx, profileID, projectKey, only)
+}
+
+// commitChanges is the shared commit core. When only is non-nil, pending
+// changes are filtered to that id set; nil means commit everything.
+func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string, only map[int64]bool) (CommitResult, error) {
 	result := CommitResult{
 		Succeeded:  []string{},
 		Conflicted: []Conflict{},
@@ -63,6 +82,7 @@ func (e *Engine) CommitChanges(ctx context.Context, profileID, projectKey string
 	if err != nil {
 		return result, err
 	}
+	changes = filterChangesByID(changes, only)
 
 	// Create new Preconditions first (FR-13.5) so any pending association that
 	// references a temporary precondition key is rewritten to the real key
@@ -73,6 +93,7 @@ func (e *Engine) CommitChanges(ctx context.Context, profileID, projectKey string
 		if err != nil {
 			return result, err
 		}
+		changes = filterChangesByID(changes, only)
 	}
 
 	// Group by parent Test key, preserving discovery order so the commit
@@ -277,11 +298,19 @@ testLoop:
 			}
 		}
 
-		// DELETE removed steps first — Xray validates the rest of the
-		// commit against whatever steps remain, so removing before edits
-		// avoids touching a step a parallel commit might also be removing.
+		// Test Repository move (FR-13.3). The pending change stores the target
+		// folder *path*; the Xray move endpoint needs the native folder id, so
+		// resolve it from the synced tree first.
 		if folderChange != nil {
-			if err := e.client.MoveTestToFolder(ctx, projectKey, testKey, folderChange.AfterVal); err != nil {
+			xrayFolderID, ferr := e.repo.FolderXrayID(profileID, folderChange.AfterVal)
+			if ferr != nil {
+				result.Failed = append(result.Failed, FailedCommit{
+					TestKey: testKey,
+					Error:   "move to folder: " + sanitizeError(ferr.Error()),
+				})
+				continue
+			}
+			if err := e.client.MoveTestToFolder(ctx, projectKey, testKey, xrayFolderID); err != nil {
 				result.Failed = append(result.Failed, FailedCommit{
 					TestKey: testKey,
 					Error:   "move to folder: " + sanitizeError(err.Error()),
@@ -416,6 +445,18 @@ testLoop:
 			continue
 		}
 		result.Succeeded = append(result.Succeeded, testKey)
+
+		// Selective commit: our PUT just advanced this Test's remote `updated`,
+		// so any of its OTHER pending edits (not in this commit) would now look
+		// stale and conflict on their next commit. Re-base them onto the fresh
+		// remote version so a per-item commit doesn't poison the Test's
+		// remaining items. (Full commits push everything at once, so there's
+		// nothing left to re-base.)
+		if only != nil {
+			if upd, uerr := e.client.GetIssueUpdated(ctx, testKey); uerr == nil && upd != "" {
+				_ = e.repo.RebaseTestConflict(profileID, testKey, upd)
+			}
+		}
 	}
 
 	e.commitMemberships(ctx, profileID, membershipRows, &result)
@@ -827,6 +868,21 @@ func diffPreconditionSets(beforeJSON, afterJSON string) (add, remove []string, e
 		}
 	}
 	return add, remove, nil
+}
+
+// filterChangesByID keeps only the changes whose id is in the set. A nil set
+// means "keep everything" (a full commit).
+func filterChangesByID(changes []testrepo.PendingChange, only map[int64]bool) []testrepo.PendingChange {
+	if only == nil {
+		return changes
+	}
+	out := make([]testrepo.PendingChange, 0, len(only))
+	for _, c := range changes {
+		if only[c.ID] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // parentTestKey extracts the parent Test key for a pending change so

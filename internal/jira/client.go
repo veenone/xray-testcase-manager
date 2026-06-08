@@ -75,6 +75,34 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// getBytes performs an authenticated GET and returns the raw response body
+// instead of decoding it. Unlike get, it surfaces a non-200 response body in
+// the error and leaves decoding to the caller — used where the response shape
+// varies between Xray versions and has to be sniffed (see parseStepsResponse).
+func (c *Client) getBytes(ctx context.Context, path string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jira: GET %s -> %s: %s", path, resp.Status, snippet(body, 1024))
+	}
+	return body, nil
+}
+
 // put performs an authenticated JSON PUT.
 func (c *Client) put(ctx context.Context, path string, body any) error {
 	return c.writeJSON(ctx, http.MethodPut, path, body)

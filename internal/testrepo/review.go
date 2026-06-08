@@ -124,11 +124,25 @@ func (r *Repository) AddTestComment(profileID, testKey, body string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Comments must never coalesce — each is its own row. Keying the pending row
+	// by the timestamp alone collides when two comments land in the same clock
+	// tick (the Windows clock is coarse), so add a per-Test sequence to keep the
+	// field unique regardless of clock resolution.
+	var seq int
+	if err := tx.QueryRow(
+		`SELECT COUNT(*) FROM pending_change
+		 WHERE profile_id = ? AND entity_type = ? AND entity_key = ?`,
+		profileID, entityIssueComment, testKey,
+	).Scan(&seq); err != nil {
+		return fmt.Errorf("count queued comments: %w", err)
+	}
+	field := fmt.Sprintf("comment:%s:%d", now, seq)
+
 	if _, err := tx.Exec(
 		`INSERT INTO pending_change
 		   (profile_id, entity_type, entity_key, field, before_val, after_val, base_version, created_at)
 		 VALUES (?, ?, ?, ?, '', ?, '', ?)`,
-		profileID, entityIssueComment, testKey, "comment:"+now, body, now,
+		profileID, entityIssueComment, testKey, field, body, now,
 	); err != nil {
 		return fmt.Errorf("queue comment: %w", err)
 	}

@@ -4,6 +4,7 @@ package syncer
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"xray-test-manager/internal/jira"
@@ -19,10 +20,14 @@ const pageSize = 100
 const throttle = 200 * time.Millisecond
 
 // Progress reports sync advancement to the caller, which forwards it to the UI.
+// Phase distinguishes the work being reported ("" / "tests" = the Test pull,
+// "folders" = the Test Repository membership pass) so the UI can label a phase
+// that would otherwise look stalled because it isn't fetching Test pages.
 type Progress struct {
-	Fetched int  `json:"fetched"`
-	Total   int  `json:"total"`
-	Done    bool `json:"done"`
+	Phase   string `json:"phase"`
+	Fetched int    `json:"fetched"`
+	Total   int    `json:"total"`
+	Done    bool   `json:"done"`
 }
 
 // Engine runs a pull sync for one profile.
@@ -42,9 +47,11 @@ func New(client *jira.Client, repo *testrepo.Repository) *Engine {
 // incremental sync that only fetches Tests updated since the watermark
 // (FR-1.2). Upserts are idempotent, so an interrupted sync is safe to re-run.
 func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, since string, onProgress func(Progress)) error {
-	if err := e.syncFolders(ctx, profileID, projectKey); err != nil {
-		return err
-	}
+	// The folder tree refreshes on every sync (one cheap call); the per-folder
+	// membership walk is expensive (one call per folder) so it runs only on a
+	// full sync, never on an incremental resync. Folder syncing is best-effort —
+	// a folder-API problem must never block or fail the Test pull.
+	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
 
 	fetched := 0
 	total := -1
@@ -98,26 +105,85 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 	return nil
 }
 
-// syncFolders pulls the Test Repository folder tree and upserts it. Empty
-// results are tolerated — the real-Jira implementation is currently a no-op
-// (FR-13.1), but demo mode populates the tree.
-func (e *Engine) syncFolders(ctx context.Context, profileID, projectKey string) error {
-	folders, err := e.client.ListFolders(ctx, projectKey)
+// syncFolders refreshes the Test Repository folder tree and maps Tests to their
+// folder (FR-13.1). Membership comes from two sources: any Test keys embedded in
+// the tree response (applied on every sync, free), and — on a full sync only —
+// a per-folder walk for instances whose tree doesn't carry Test keys. It is
+// best-effort: every failure is logged and swallowed so a folder-API problem
+// can't block or fail the Test pull. Demo mode carries folder membership on the
+// Tests themselves, so neither pass is needed there.
+func (e *Engine) syncFolders(ctx context.Context, profileID, projectKey string, fullSync bool, onProgress func(Progress)) {
+	res, err := e.client.FolderTree(ctx, projectKey)
 	if err != nil {
-		return fmt.Errorf("list folders: %w", err)
+		log.Printf("xtm: folder tree sync: %v", err)
+		return
 	}
-	if len(folders) == 0 {
-		return nil
+	if len(res.Folders) == 0 {
+		return
 	}
-	repoFolders := make([]testrepo.Folder, len(folders))
-	for i, f := range folders {
+	repoFolders := make([]testrepo.Folder, len(res.Folders))
+	for i, f := range res.Folders {
 		repoFolders[i] = testrepo.Folder{
-			ID:       f.ID,
-			ParentID: f.ParentID,
-			Name:     f.Name,
+			ID:             f.ID,
+			ParentID:       f.ParentID,
+			Name:           f.Name,
+			XrayID:         f.XrayID,
+			TestCount:      f.TestCount,
+			TotalTestCount: f.TotalTestCount,
 		}
 	}
-	return e.repo.UpsertFolders(profileID, repoFolders)
+	if err := e.repo.UpsertFolders(profileID, repoFolders); err != nil {
+		log.Printf("xtm: upsert folders: %v", err)
+		return
+	}
+	// Membership embedded in the tree is free — apply it every sync.
+	if len(res.TreeMembership) > 0 {
+		if err := e.repo.ApplyTestFolders(profileID, res.TreeMembership); err != nil {
+			log.Printf("xtm: apply tree membership: %v", err)
+		}
+		return
+	}
+	// Otherwise walk the folders that actually contain Tests (empty folders are
+	// skipped via their testCount, so this is one call per non-empty folder, not
+	// per folder). That's cheap enough to run on every sync — full or not.
+	e.syncFolderMembership(ctx, profileID, projectKey, res.FoldersWithTests, onProgress)
+	_ = fullSync
+}
+
+// syncFolderMembership maps Tests to their Test Repository folder by fetching
+// the member Tests of each folder that actually has any (empty folders were
+// already filtered out). It emits "folders"-phase progress so the walk doesn't
+// look stalled, and a per-folder failure is logged and skipped rather than
+// aborting — a partial mapping still helps, and the tree itself is already saved.
+func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey string, folders []jira.FolderRef, onProgress func(Progress)) {
+	if len(folders) == 0 {
+		return
+	}
+	total := len(folders)
+	testFolder := map[string]string{}
+	for i, f := range folders {
+		if ctx.Err() != nil {
+			return
+		}
+		keys, err := e.client.ListTestsInFolder(ctx, projectKey, f.ID)
+		if err != nil {
+			log.Printf("xtm: folder %s (%s) membership: %v", f.Path, f.ID, err)
+		} else {
+			for _, k := range keys {
+				testFolder[k] = f.Path
+			}
+		}
+		if onProgress != nil {
+			onProgress(Progress{Phase: "folders", Fetched: i + 1, Total: total})
+		}
+		time.Sleep(throttle)
+	}
+	if len(testFolder) == 0 {
+		return
+	}
+	if err := e.repo.ApplyTestFolders(profileID, testFolder); err != nil {
+		log.Printf("xtm: apply test folders: %v", err)
+	}
 }
 
 // syncPreconditions pulls the Preconditions for a project and reconciles the
@@ -213,6 +279,7 @@ func toRepoTests(in []jira.Test) []testrepo.TestCase {
 			Status:      t.Status,
 			Priority:    t.Priority,
 			Labels:      t.Labels,
+			Components:  t.Components,
 			Updated:     t.Updated,
 			FolderID:    t.FolderID,
 		}
