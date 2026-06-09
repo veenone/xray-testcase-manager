@@ -3034,6 +3034,20 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 	case entityIssueComment:
 		// A queued comment has no local cache state — discarding it just drops
 		// the pending row (handled after the switch).
+	case entityTestRun:
+		// Revert the Test's run status in the execution (entity_key is
+		// "<execKey>:<testKey>").
+		execKey, runTestKey, ok := splitRunKey(entityKey)
+		if !ok {
+			return fmt.Errorf("malformed run-status key %q", entityKey)
+		}
+		if _, err := tx.Exec(
+			`UPDATE test_container_test SET run_status = ?
+			 WHERE profile_id = ? AND container_key = ? AND test_key = ?`,
+			beforeVal, profileID, execKey, runTestKey,
+		); err != nil {
+			return fmt.Errorf("revert run status: %w", err)
+		}
 	case entityTestReview:
 		// Restore the prior review from the before snapshot (empty verdict
 		// means there was no review, so the row is removed).
@@ -3667,6 +3681,7 @@ const (
 	entityTestCreate       = "test_create"
 	entityTestReview       = "test_review"
 	entityIssueComment     = "issue_comment"
+	entityTestRun          = "test_run"
 )
 
 // preconditionFields whitelists which Precondition columns can be edited via

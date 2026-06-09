@@ -38,6 +38,7 @@ export {
   ListContainers,
   AllocateTests,
   DeallocateTests,
+  SetTestRunStatus,
   CreateContainerAndAllocate,
   EditContainer,
   DeleteContainer,

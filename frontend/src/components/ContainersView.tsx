@@ -7,6 +7,7 @@ import {
   EditContainer,
   DeleteContainer,
   DeallocateTests,
+  SetTestRunStatus,
   ExportPytest,
   errMsg,
 } from "../api";
@@ -26,6 +27,9 @@ const KINDS: Array<{ value: string; label: string }> = [
   { value: "testplan", label: "Test Plan" },
   { value: "testexec", label: "Test Execution" },
 ];
+
+// Standard Xray Test Run result vocabulary (mirrors testrepo.RunStatuses).
+const RUN_STATUSES = ["TODO", "EXECUTING", "PASS", "FAIL", "ABORTED", "BLOCKED"];
 
 // ContainersView manages Test Sets / Plans / Executions (FR-13.7 + container
 // CRUD): pick a kind and a container, see its member Tests with run status, and
@@ -51,6 +55,19 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
     setError("");
     try {
       await DeallocateTests(profileId, selected, [testKey]);
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
+  // setRunStatus updates a Test's run result in the selected Test Execution,
+  // queued for commit to Xray.
+  async function setRunStatus(testKey: string, status: string) {
+    if (!selected || !status) return;
+    setError("");
+    try {
+      await SetTestRunStatus(profileId, selected, testKey, status);
       onChanged();
     } catch (e) {
       setError(errMsg(e));
@@ -365,7 +382,21 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
                   <td>{r.summary}</td>
                   <td>{r.status || "—"}</td>
                   <td>
-                    {r.runStatus ? (
+                    {kind === "testexec" ? (
+                      <select
+                        className={`run-select run-${(r.runStatus || "todo").toLowerCase()}`}
+                        value={r.runStatus || ""}
+                        onChange={(e) => setRunStatus(r.testKey, e.target.value)}
+                        title="Set this test's result in this execution"
+                      >
+                        {!r.runStatus && <option value="">— set result —</option>}
+                        {RUN_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    ) : r.runStatus ? (
                       <span
                         className={`run-badge run-${r.runStatus.toLowerCase()}`}
                       >

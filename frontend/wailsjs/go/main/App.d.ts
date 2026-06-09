@@ -143,6 +143,8 @@ export function ResolveConflictKeepRemote(arg1:string,arg2:string):Promise<void>
 
 export function ResolveConflictOverride(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function RunStatuses():Promise<Array<string>>;
+
 export function SeedSampleContainers(arg1:string):Promise<testrepo.SeedResult>;
 
 export function SetDefaultProfile(arg1:string):Promise<void>;
@@ -150,6 +152,8 @@ export function SetDefaultProfile(arg1:string):Promise<void>;
 export function SetTestPreconditions(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function SetTestReview(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
+
+export function SetTestRunStatus(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
 

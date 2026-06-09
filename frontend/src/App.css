@@ -489,6 +489,42 @@
   background: #f3e8ff;
   color: #7e22ce;
 }
+.run-blocked {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+/* Editable run-result select (Test Execution board) — neutral, theme-aware,
+   with a status-coloured left accent. */
+.run-select {
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
+  border-left-width: 3px;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--text);
+}
+.run-select.run-pass {
+  border-left-color: #22c55e;
+}
+.run-select.run-fail {
+  border-left-color: #ef4444;
+}
+.run-select.run-todo {
+  border-left-color: #6366f1;
+}
+.run-select.run-executing {
+  border-left-color: #f59e0b;
+}
+.run-select.run-aborted {
+  border-left-color: #a855f7;
+}
+.run-select.run-blocked {
+  border-left-color: #6b7280;
+}
 
 /* View tabs (Browse / Dashboard) */
 .view-tabs {

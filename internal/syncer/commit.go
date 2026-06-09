@@ -116,6 +116,8 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 	reviewRows := make([]testrepo.PendingChange, 0)
 	// Free-text comments (FR-4.4) also post as Jira comments.
 	commentRows := make([]testrepo.PendingChange, 0)
+	// Test-run result updates, keyed by "<execKey>:<testKey>".
+	runRows := make([]testrepo.PendingChange, 0)
 	for _, c := range changes {
 		if c.EntityType == "test_membership_add" ||
 			c.EntityType == "test_membership_remove" ||
@@ -143,6 +145,10 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		}
 		if c.EntityType == "issue_comment" {
 			commentRows = append(commentRows, c)
+			continue
+		}
+		if c.EntityType == "test_run" {
+			runRows = append(runRows, c)
 			continue
 		}
 		testKey, ok := parentTestKey(c)
@@ -465,8 +471,39 @@ testLoop:
 	e.commitTestCreates(ctx, profileID, projectKey, testCreateRows, &result)
 	e.commitReviews(ctx, profileID, reviewRows, &result)
 	e.commitComments(ctx, profileID, commentRows, &result)
+	e.commitRuns(ctx, profileID, runRows, &result)
 
 	return result, nil
+}
+
+// commitRuns pushes Test-run result updates to Xray. Each pending row is keyed
+// by "<execKey>:<testKey>"; reported under the Test key.
+func (e *Engine) commitRuns(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	for _, c := range rows {
+		execKey, testKey, ok := splitRunEntityKey(c.EntityKey)
+		if !ok {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed run-status key"})
+			continue
+		}
+		if err := e.client.SetTestRunStatus(ctx, execKey, testKey, c.AfterVal); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "set run status: " + sanitizeError(err.Error())})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "Xray accepted the result but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, testKey)
+	}
+}
+
+// splitRunEntityKey parses "<execKey>:<testKey>" (issue keys have no colon).
+func splitRunEntityKey(entityKey string) (execKey, testKey string, ok bool) {
+	i := strings.Index(entityKey, ":")
+	if i < 0 {
+		return "", "", false
+	}
+	return entityKey[:i], entityKey[i+1:], true
 }
 
 // commitComments posts each queued free-text comment on its Test (FR-4.4).

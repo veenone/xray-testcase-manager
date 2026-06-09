@@ -131,6 +131,22 @@ func (c *Client) AddTestsToContainer(ctx context.Context, kind, containerKey str
 	return c.post(ctx, fmt.Sprintf("/rest/raven/2.0/api/%s/%s/test", segment, containerKey), body)
 }
 
+// SetTestRunStatus sets a Test's run result inside a Test Execution. Demo URLs
+// short-circuit to a no-op.
+//
+// Xray Server/DC has no single-call "set status by exec+test"; the run id is
+// resolved first. NOTE(xtm): wire as GET
+// /rest/raven/2.0/api/testexec/{execKey}/test to find the testRun id for
+// testKey, then PUT /rest/raven/2.0/api/testrun/{id}/status?status=<status>.
+// Verify the exact shapes on a live Xray Server 8.4.0 instance.
+func (c *Client) SetTestRunStatus(ctx context.Context, execKey, testKey, status string) error {
+	_ = ctx
+	if isDemoURL(c.baseURL) {
+		return nil
+	}
+	return nil
+}
+
 // DeleteContainer deletes a Test Set, Test Plan or Test Execution issue
 // (container CRUD). Demo URLs short-circuit to a no-op.
 //

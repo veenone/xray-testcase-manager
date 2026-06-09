@@ -159,12 +159,18 @@ export function PendingChangesModal({
                   const hasStepID = isStepLike && c.entityKey.includes(":");
                   const suffixLabel =
                     c.entityType === "custom_field" ? "field" : "step";
-                  const parentKey = hasStepID
-                    ? c.entityKey.split(":")[0]
-                    : c.entityKey;
+                  // test_run keys are "<execKey>:<testKey>" — jump to the test
+                  // and show the execution as context.
+                  const isRun = c.entityType === "test_run";
+                  const parentKey = isRun
+                    ? c.entityKey.substring(c.entityKey.indexOf(":") + 1)
+                    : hasStepID
+                      ? c.entityKey.split(":")[0]
+                      : c.entityKey;
                   const stepID = hasStepID
                     ? c.entityKey.substring(c.entityKey.indexOf(":") + 1)
                     : "";
+                  const runExec = isRun ? c.entityKey.split(":")[0] : "";
                   const { field, before, after } = describeChange(c);
                   return (
                     <tr key={c.id}>
@@ -180,6 +186,12 @@ export function PendingChangesModal({
                           <span className="muted step-suffix">
                             {` · ${suffixLabel} `}
                             <span className="mono">{stepID}</span>
+                          </span>
+                        )}
+                        {isRun && (
+                          <span className="muted step-suffix">
+                            {` · in `}
+                            <span className="mono">{runExec}</span>
                           </span>
                         )}
                       </td>
@@ -311,6 +323,8 @@ function describeChange(c: PendingChange): {
       };
     case "issue_comment":
       return { field: "comment", before: "", after: c.afterVal };
+    case "test_run":
+      return { field: "run result", before: c.beforeVal, after: c.afterVal };
     case "folder_create":
       return { field: "new folder", before: "", after: c.entityKey };
     case "folder_rename":

@@ -1232,6 +1232,21 @@ func (a *App) DeallocateTests(profileID, containerKey string, testKeys []string)
 	return a.repo.DeallocateTests(profileID, containerKey, testKeys)
 }
 
+// RunStatuses returns the Test Run result vocabulary for execution result
+// editing.
+func (a *App) RunStatuses() []string {
+	return testrepo.RunStatuses
+}
+
+// SetTestRunStatus updates a Test's run result within a Test Execution and
+// queues it for commit to Xray.
+func (a *App) SetTestRunStatus(profileID, execKey, testKey, status string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.SetTestRunStatus(profileID, execKey, testKey, status)
+}
+
 // EditContainer renames a Test Set / Plan / Execution and queues the change
 // for commit (container CRUD).
 func (a *App) EditContainer(profileID, key, summary string) error {

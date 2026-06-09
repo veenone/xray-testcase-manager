@@ -274,6 +274,10 @@ export function ResolveConflictOverride(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResolveConflictOverride'](arg1, arg2, arg3);
 }
 
+export function RunStatuses() {
+  return window['go']['main']['App']['RunStatuses']();
+}
+
 export function SeedSampleContainers(arg1) {
   return window['go']['main']['App']['SeedSampleContainers'](arg1);
 }
@@ -288,6 +292,10 @@ export function SetTestPreconditions(arg1, arg2, arg3) {
 
 export function SetTestReview(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SetTestReview'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function SetTestRunStatus(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetTestRunStatus'](arg1, arg2, arg3, arg4);
 }
 
 export function SetTheme(arg1) {
