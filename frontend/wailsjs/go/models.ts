@@ -548,6 +548,7 @@ export namespace testrepo {
 	    description: string;
 	    priority: string;
 	    labels: string;
+	    components: string;
 	    folder: string;
 	    action: string;
 	    data: string;
@@ -563,6 +564,7 @@ export namespace testrepo {
 	        this.description = source["description"];
 	        this.priority = source["priority"];
 	        this.labels = source["labels"];
+	        this.components = source["components"];
 	        this.folder = source["folder"];
 	        this.action = source["action"];
 	        this.data = source["data"];

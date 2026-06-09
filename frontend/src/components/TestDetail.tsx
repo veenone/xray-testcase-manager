@@ -43,6 +43,7 @@ import type {
 import { usePrompt } from "./usePrompt";
 import { useConfirm } from "./useConfirm";
 import { MarkdownField } from "./MarkdownField";
+import { formatDateTime } from "../dates";
 
 const REVIEWER_KEY = "xtm.reviewer";
 
@@ -1204,18 +1205,6 @@ function verdictLabel(verdict?: string): string {
     default:
       return "Not reviewed";
   }
-}
-
-// formatDateTime renders a Jira timestamp as dd/mm/YYYY HH:mm in local time,
-// falling back to "—" / the raw string for empty / unparseable input.
-function formatDateTime(s?: string): string {
-  if (!s) return "—";
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(
-    d.getHours(),
-  )}:${p(d.getMinutes())}`;
 }
 
 function DirtyDot() {

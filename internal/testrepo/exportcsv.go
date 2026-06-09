@@ -12,7 +12,7 @@ import (
 // exportHeader is the column order for exported Tests (FR-10.8). It mirrors the
 // import columns (plus Key / Status) so an export round-trips through import.
 var exportHeader = []string{
-	"Key", "Summary", "Description", "Status", "Priority", "Labels", "Folder",
+	"Key", "Summary", "Description", "Status", "Priority", "Labels", "Components", "Folder",
 }
 
 // ListTestsForExport returns every Test matching a query (no pagination),
@@ -60,7 +60,7 @@ func (r *Repository) ExportTests(profileID string, q Query, format string) ([]by
 	for _, t := range tests {
 		rows = append(rows, []string{
 			t.Key, t.Summary, t.Description, t.Status, t.Priority,
-			strings.Join(t.Labels, " "), t.FolderID,
+			strings.Join(t.Labels, " "), strings.Join(t.Components, ", "), t.FolderID,
 		})
 	}
 	if format == "xlsx" {

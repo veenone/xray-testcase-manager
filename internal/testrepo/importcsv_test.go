@@ -21,6 +21,27 @@ func recordsOf(t *testing.T, csv string) [][]string {
 	return recs
 }
 
+// TestImportTestsStoresComponents verifies a mapped Components column (comma-
+// separated, names may contain spaces) lands on the imported Test.
+func TestImportTestsStoresComponents(t *testing.T) {
+	repo := newRepo(t)
+	csv := "Summary,Components\n" +
+		"With components,\"Frontend, User Management\"\n"
+	mapping := testrepo.ImportMapping{Summary: "Summary", Components: "Components"}
+
+	if _, err := repo.ImportTests("p1", recordsOf(t, csv), mapping, false); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	page, err := repo.ListTests("p1", testrepo.Query{})
+	if err != nil || page.Total != 1 {
+		t.Fatalf("expected 1 test, got %d (err %v)", page.Total, err)
+	}
+	got := page.Tests[0].Components
+	if len(got) != 2 || got[0] != "Frontend" || got[1] != "User Management" {
+		t.Errorf("components = %v, want [Frontend, User Management]", got)
+	}
+}
+
 func TestParseImportPreviewReportsHeadersAndRows(t *testing.T) {
 	pv, err := testrepo.ParseImportPreview(recordsOf(t, importCSV))
 	if err != nil {

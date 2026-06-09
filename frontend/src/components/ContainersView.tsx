@@ -46,7 +46,12 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [boardPage, setBoardPage] = useState(0);
   const { prompt, promptUI } = usePrompt();
+
+  // Member tables can be long (an Execution may hold hundreds of tests), so the
+  // board is paged client-side.
+  const BOARD_PAGE_SIZE = 50;
 
   // removeTest unassigns a single Test from the selected container (FR-3.4–3.6),
   // queued for commit.
@@ -139,12 +144,12 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
     }
   }
 
-  async function generatePytest() {
+  async function generatePytest(style: string) {
     if (!selected) return;
     setError("");
     try {
-      const path = await ExportPytest(profileId, selected);
-      if (path) window.alert(`pytest scaffold saved to:\n${path}`);
+      const path = await ExportPytest(profileId, selected, style);
+      if (path) window.alert(`Scaffold saved to:\n${path}`);
     } catch (e) {
       setError(errMsg(e));
     }
@@ -200,6 +205,7 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
     }
     let cancelled = false;
     setError("");
+    setBoardPage(0);
     GetContainerBoard(profileId, selected)
       .then((b) => {
         if (!cancelled) setBoard(b);
@@ -211,6 +217,18 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
       cancelled = true;
     };
   }, [profileId, selected, refreshKey]);
+
+  // Client-side paging of the member table.
+  const allRows = board?.rows ?? [];
+  const boardTotalPages = Math.max(
+    1,
+    Math.ceil(allRows.length / BOARD_PAGE_SIZE),
+  );
+  const safePage = Math.min(boardPage, boardTotalPages - 1);
+  const pageRows = allRows.slice(
+    safePage * BOARD_PAGE_SIZE,
+    (safePage + 1) * BOARD_PAGE_SIZE,
+  );
 
   return (
     <div className="board">
@@ -263,9 +281,19 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
               {
                 key: "pytest",
                 label: "Generate pytest…",
-                onClick: generatePytest,
+                onClick: () => generatePytest("function"),
                 disabled: !selected,
-                title: "Generate a pytest scaffold from this container's tests",
+                title:
+                  "Plain pytest: one @pytest.mark.xray function per test",
+              },
+              {
+                key: "pytest-unittest",
+                label: "Generate pytest (unittest class)…",
+                onClick: () => generatePytest("unittest"),
+                disabled: !selected,
+                title:
+                  "unittest.TestCase subclass: one test method per test " +
+                  "(runs under python -m unittest and pytest)",
               },
               {
                 key: "delete",
@@ -376,7 +404,7 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
                 </td>
               </tr>
             ) : (
-              board.rows.map((r) => (
+              pageRows.map((r) => (
                 <tr key={r.testKey}>
                   <td className="mono">{r.testKey}</td>
                   <td>{r.summary}</td>
@@ -420,6 +448,35 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
             )}
           </tbody>
         </table>
+      )}
+
+      {board && allRows.length > BOARD_PAGE_SIZE && (
+        <div className="board-pager">
+          <button
+            className="btn"
+            disabled={safePage === 0}
+            onClick={() => setBoardPage((p) => Math.max(0, p - 1))}
+          >
+            ‹ Prev
+          </button>
+          <span className="muted">
+            {(safePage * BOARD_PAGE_SIZE + 1).toLocaleString()}–
+            {Math.min(
+              (safePage + 1) * BOARD_PAGE_SIZE,
+              allRows.length,
+            ).toLocaleString()}{" "}
+            of {allRows.length.toLocaleString()}
+          </span>
+          <button
+            className="btn"
+            disabled={safePage >= boardTotalPages - 1}
+            onClick={() =>
+              setBoardPage((p) => Math.min(boardTotalPages - 1, p + 1))
+            }
+          >
+            Next ›
+          </button>
+        </div>
       )}
 
       {showAdd && selectedContainer && (

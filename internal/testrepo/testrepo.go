@@ -1764,6 +1764,24 @@ func (r *Repository) RenameContainer(profileID, oldKey, newKey string) error {
 	); err != nil {
 		return fmt.Errorf("rename container links: %w", err)
 	}
+	// Rewrite still-pending changes that key off the container so they commit
+	// against the real key — membership add/remove, edits and deletes key by the
+	// bare container key; run-status rows key by "<execKey>:<testKey>".
+	if _, err := tx.Exec(
+		`UPDATE pending_change SET entity_key = ?
+		 WHERE profile_id = ? AND entity_key = ?
+		   AND entity_type IN ('test_membership_add','test_membership_remove','container_edit','container_delete')`,
+		newKey, profileID, oldKey,
+	); err != nil {
+		return fmt.Errorf("rewrite container pending rows: %w", err)
+	}
+	if _, err := tx.Exec(
+		`UPDATE pending_change SET entity_key = ? || substr(entity_key, ?)
+		 WHERE profile_id = ? AND entity_type = 'test_run' AND entity_key LIKE ?`,
+		newKey, len(oldKey)+1, profileID, oldKey+":%",
+	); err != nil {
+		return fmt.Errorf("rewrite run-status pending rows: %w", err)
+	}
 	return tx.Commit()
 }
 

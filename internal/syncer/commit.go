@@ -96,6 +96,20 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		changes = filterChangesByID(changes, only)
 	}
 
+	// Create new Containers (Test Sets / Plans / Executions) next, for the same
+	// reason: a freshly-created Execution gets its real key here, and
+	// RenameContainer rewrites the still-pending membership and run-status rows
+	// that referenced its temporary key — so adding tests to, or setting results
+	// in, a brand-new Execution in the same commit targets the created issue
+	// rather than the placeholder. Re-read so later passes see the real keys.
+	if e.commitContainerCreates(ctx, profileID, changes, &result) {
+		changes, err = e.repo.ListPendingChanges(profileID)
+		if err != nil {
+			return result, err
+		}
+		changes = filterChangesByID(changes, only)
+	}
+
 	// Group by parent Test key, preserving discovery order so the commit
 	// run is deterministic. Step entity_keys are "<testKey>:<xrayID>" — we
 	// strip the suffix to put step changes under the same Test bucket as
@@ -578,6 +592,7 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 			Description string `json:"description"`
 			Priority    string `json:"priority"`
 			Labels      string `json:"labels"`
+			Components  string `json:"components"`
 			Steps       []struct {
 				Action   string `json:"action"`
 				Data     string `json:"data"`
@@ -592,7 +607,13 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 		if p.Labels != "" {
 			labels = strings.Fields(p.Labels)
 		}
-		realKey, err := e.client.CreateTest(ctx, projectKey, p.Summary, p.Description, p.Priority, labels)
+		var components []string
+		for _, comp := range strings.Split(p.Components, ",") {
+			if s := strings.TrimSpace(comp); s != "" {
+				components = append(components, s)
+			}
+		}
+		realKey, err := e.client.CreateTest(ctx, projectKey, p.Summary, p.Description, p.Priority, labels, components)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "create test: " + sanitizeError(err.Error())})
 			continue
@@ -788,6 +809,35 @@ func (e *Engine) commitPreconditionDeletes(ctx context.Context, profileID string
 		}
 		result.Succeeded = append(result.Succeeded, c.EntityKey)
 	}
+}
+
+// commitContainerCreates creates new Containers (FR-3.4–3.6) before the
+// membership / run-status passes, renaming each local "new-container-N"
+// placeholder to the real key Jira assigned (RenameContainer rewrites the
+// dependent pending rows). Returns true if any were processed so the caller
+// re-reads pending changes and the later passes see the real keys.
+func (e *Engine) commitContainerCreates(ctx context.Context, profileID string, changes []testrepo.PendingChange, result *CommitResult) bool {
+	processed := false
+	for _, c := range changes {
+		if c.EntityType != "test_container_add" {
+			continue
+		}
+		processed = true
+		key, err := e.commitContainerCreate(ctx, profileID, c)
+		if err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: key, Error: err.Error()})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{
+				TestKey: key,
+				Error:   "Jira created container but local cleanup failed: " + err.Error(),
+			})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, key)
+	}
+	return processed
 }
 
 // commitMemberships pushes container-allocation pending rows (FR-3.4–3.6).

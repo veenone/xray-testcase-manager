@@ -1210,20 +1210,25 @@ func (a *App) GetTraceabilitySankey(profileID, planFilter, execFilter string) (t
 
 // --- pytest helper (FR-7.2) ---
 
-// ExportPytest generates a pytest scaffold from a Test Set / Plan / Execution
-// and writes it to a user-chosen .py file (FR-7.2). Returns the saved path, or
-// "" if cancelled.
-func (a *App) ExportPytest(profileID, containerKey string) (string, error) {
+// ExportPytest generates a Python test scaffold from a Test Set / Plan /
+// Execution and writes it to a user-chosen .py file (FR-7.2). style is
+// "function" (plain pytest, the default) or "unittest" (a unittest.TestCase
+// subclass). Returns the saved path, or "" if cancelled.
+func (a *App) ExportPytest(profileID, containerKey, style string) (string, error) {
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
-	code, err := a.repo.GeneratePytest(profileID, containerKey)
+	code, err := a.repo.GeneratePytest(profileID, containerKey, style)
 	if err != nil {
 		return "", err
 	}
+	suffix := ""
+	if style == "unittest" {
+		suffix = "_unittest"
+	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Save pytest scaffold",
-		DefaultFilename: "test_" + sanitizeFilename(containerKey) + ".py",
+		Title:           "Save Python scaffold",
+		DefaultFilename: "test_" + sanitizeFilename(containerKey) + suffix + ".py",
 		Filters:         []runtime.FileFilter{{DisplayName: "Python", Pattern: "*.py"}},
 	})
 	if err != nil {

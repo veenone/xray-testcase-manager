@@ -10,6 +10,7 @@ import {
   errMsg,
 } from "../api";
 import { usePrompt } from "./usePrompt";
+import { formatDate } from "../dates";
 import type {
   TestPage,
   TestQuery,
@@ -788,10 +789,4 @@ function SortHeader({
       <span className="sort-caret">{active ? (desc ? " ▼" : " ▲") : ""}</span>
     </th>
   );
-}
-
-function formatDate(s: string): string {
-  if (!s) return "—";
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? s : d.toLocaleDateString();
 }

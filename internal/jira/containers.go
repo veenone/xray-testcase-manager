@@ -336,17 +336,74 @@ func (c *Client) AddTestsToContainer(ctx context.Context, kind, containerKey str
 // SetTestRunStatus sets a Test's run result inside a Test Execution. Demo URLs
 // short-circuit to a no-op.
 //
-// Xray Server/DC has no single-call "set status by exec+test"; the run id is
-// resolved first. NOTE(xtm): wire as GET
-// /rest/raven/2.0/api/testexec/{execKey}/test to find the testRun id for
-// testKey, then PUT /rest/raven/2.0/api/testrun/{id}/status?status=<status>.
-// Verify the exact shapes on a live Xray Server 8.4.0 instance.
+// Xray Server/DC has no single "set status by exec+test" call: the Test Run is
+// resolved first via GET /rest/raven/1.0/api/testrun?testExecIssueKey=…&
+// testIssueKey=… (which returns the run, including its id), then its status is
+// set via PUT /rest/raven/1.0/api/testrun/{id}/status?status=<status>.
 func (c *Client) SetTestRunStatus(ctx context.Context, execKey, testKey, status string) error {
-	_ = ctx
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
-	return nil
+	status = strings.ToUpper(strings.TrimSpace(status))
+	if status == "" {
+		return fmt.Errorf("a run status is required")
+	}
+
+	runID, err := c.resolveTestRunID(ctx, execKey, testKey)
+	if err != nil {
+		return err
+	}
+
+	qs := url.Values{}
+	qs.Set("status", status)
+	return c.put(ctx, fmt.Sprintf("/rest/raven/1.0/api/testrun/%s/status?%s", runID, qs.Encode()), struct{}{})
+}
+
+// resolveTestRunID returns the Xray Test Run id for a Test within an Execution.
+//
+// When a Test is added to an Execution and its result set in the same commit,
+// Xray creates the Test Run for the just-added membership asynchronously, so an
+// immediate lookup can return a 400/404 ("no run yet"). That case is retried
+// with a short backoff to give Xray a moment to materialise the run; a
+// genuinely different error fails fast.
+func (c *Client) resolveTestRunID(ctx context.Context, execKey, testKey string) (string, error) {
+	q := url.Values{}
+	q.Set("testExecIssueKey", execKey)
+	q.Set("testIssueKey", testKey)
+	path := "/rest/raven/1.0/api/testrun?" + q.Encode()
+
+	backoff := []time.Duration{0, 800 * time.Millisecond, 1600 * time.Millisecond, 3200 * time.Millisecond}
+	for attempt, wait := range backoff {
+		if wait > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+		var run struct {
+			ID json.Number `json:"id"`
+		}
+		err := c.get(ctx, path, &run)
+		if err == nil {
+			if id := run.ID.String(); id != "" && id != "0" {
+				return id, nil
+			}
+			// 200 but no run id — treat like "not ready yet" and keep retrying.
+		} else {
+			var he *HTTPError
+			notReady := errors.As(err, &he) && (he.Code == http.StatusBadRequest || he.Code == http.StatusNotFound)
+			if !notReady {
+				return "", fmt.Errorf("look up test run for %s in %s: %w", testKey, execKey, err)
+			}
+		}
+		if attempt < len(backoff)-1 {
+			log.Printf("xtm: test run for %s in %s not ready yet (attempt %d) — retrying", testKey, execKey, attempt+1)
+		}
+	}
+	return "", fmt.Errorf(
+		"%s has no test run in execution %s yet — Xray may still be creating it; "+
+			"sync the execution and commit again", testKey, execKey)
 }
 
 // DeleteContainer deletes a Test Set, Test Plan or Test Execution issue

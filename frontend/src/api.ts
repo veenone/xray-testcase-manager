@@ -461,6 +461,7 @@ export interface ImportMapping {
   description: string;
   priority: string;
   labels: string;
+  components: string;
   folder: string;
   action: string;
   data: string;

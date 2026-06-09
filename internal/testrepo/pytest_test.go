@@ -39,7 +39,7 @@ func seedPytestContainer(t *testing.T) *testrepo.Repository {
 func TestGeneratePytestHasOneFunctionPerTest(t *testing.T) {
 	repo := seedPytestContainer(t)
 
-	code, err := repo.GeneratePytest("p1", "QA-TE-1")
+	code, err := repo.GeneratePytest("p1", "QA-TE-1", "")
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestGeneratePytestHasOneFunctionPerTest(t *testing.T) {
 func TestGeneratePytestIncludesStepsAndMarker(t *testing.T) {
 	repo := seedPytestContainer(t)
 
-	code, _ := repo.GeneratePytest("p1", "QA-TE-1")
+	code, _ := repo.GeneratePytest("p1", "QA-TE-1", "")
 	if !strings.Contains(code, `@pytest.mark.xray("QA-1")`) {
 		t.Errorf("missing xray marker for QA-1:\n%s", code)
 	}
@@ -68,7 +68,34 @@ func TestGeneratePytestIncludesStepsAndMarker(t *testing.T) {
 
 func TestGeneratePytestUnknownContainerErrors(t *testing.T) {
 	repo := seedPytestContainer(t)
-	if _, err := repo.GeneratePytest("p1", "NOPE-1"); err == nil {
+	if _, err := repo.GeneratePytest("p1", "NOPE-1", ""); err == nil {
 		t.Error("unknown container should error")
+	}
+}
+
+func TestGeneratePytestUnittestStyle(t *testing.T) {
+	repo := seedPytestContainer(t)
+
+	code, err := repo.GeneratePytest("p1", "QA-TE-1", "unittest")
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if !strings.Contains(code, "import unittest") {
+		t.Errorf("missing unittest import:\n%s", code)
+	}
+	if !strings.Contains(code, "(unittest.TestCase):") {
+		t.Errorf("missing TestCase class:\n%s", code)
+	}
+	if strings.Count(code, "def test_") != 2 {
+		t.Errorf("want 2 test methods, got:\n%s", code)
+	}
+	if !strings.Contains(code, "def test_qa_1(self):") {
+		t.Errorf("methods should take self:\n%s", code)
+	}
+	if !strings.Contains(code, `self.xray_key = "QA-1"`) {
+		t.Errorf("missing xray key traceability:\n%s", code)
+	}
+	if !strings.Contains(code, "unittest.main()") {
+		t.Errorf("missing unittest.main() entrypoint:\n%s", code)
 	}
 }

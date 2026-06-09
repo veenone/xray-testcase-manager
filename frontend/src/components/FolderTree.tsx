@@ -5,9 +5,13 @@ interface Props {
   folders: Folder[];
   selected: string; // "" means "All tests"
   onSelect: (folderId: string) => void;
-  onCreate: (parentPath: string) => void;
-  onRename: (path: string, currentName: string) => void;
-  onDelete: (path: string) => void;
+  onCreate?: (parentPath: string) => void;
+  onRename?: (path: string, currentName: string) => void;
+  onDelete?: (path: string) => void;
+  // readOnly hides the per-folder create/rename/delete actions — for reusing
+  // the tree purely as a navigation/filter control (e.g. in the add-tests
+  // modal).
+  readOnly?: boolean;
 }
 
 // FolderIcon is a small flat folder glyph (closed / open), styled to read like
@@ -49,6 +53,7 @@ export function FolderTree({
   onCreate,
   onRename,
   onDelete,
+  readOnly = false,
 }: Props) {
   // Index folders by parentId so each node can find its children in O(1).
   const childrenOf = useMemo(() => {
@@ -77,16 +82,18 @@ export function FolderTree({
         <FolderIcon open={selected === ""} />
         <span className="folder-name">All tests</span>
         {allCount > 0 && <span className="folder-count">{allCount}</span>}
-        <button
-          className="folder-action"
-          title="New top-level folder"
-          onClick={(e) => {
-            e.stopPropagation();
-            onCreate("");
-          }}
-        >
-          ＋
-        </button>
+        {!readOnly && (
+          <button
+            className="folder-action"
+            title="New top-level folder"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreate?.("");
+            }}
+          >
+            ＋
+          </button>
+        )}
       </div>
       {roots.map((root) => (
         <FolderNode
@@ -98,6 +105,7 @@ export function FolderTree({
           onCreate={onCreate}
           onRename={onRename}
           onDelete={onDelete}
+          readOnly={readOnly}
         />
       ))}
     </nav>
@@ -109,9 +117,10 @@ interface NodeProps {
   childrenOf: Map<string, Folder[]>;
   selected: string;
   onSelect: (id: string) => void;
-  onCreate: (parentPath: string) => void;
-  onRename: (path: string, currentName: string) => void;
-  onDelete: (path: string) => void;
+  onCreate?: (parentPath: string) => void;
+  onRename?: (path: string, currentName: string) => void;
+  onDelete?: (path: string) => void;
+  readOnly?: boolean;
 }
 
 function FolderNode({
@@ -122,6 +131,7 @@ function FolderNode({
   onCreate,
   onRename,
   onDelete,
+  readOnly = false,
 }: NodeProps) {
   const [open, setOpen] = useState(true);
   const children = childrenOf.get(folder.id) ?? [];
@@ -152,38 +162,40 @@ function FolderNode({
         <FolderIcon open={open && hasChildren} />
         <span className="folder-name">{folder.name}</span>
         {count && <span className="folder-count">{count}</span>}
-        <span className="folder-actions">
-          <button
-            className="folder-action"
-            title="New subfolder"
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreate(folder.id);
-            }}
-          >
-            ＋
-          </button>
-          <button
-            className="folder-action"
-            title="Rename folder"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRename(folder.id, folder.name);
-            }}
-          >
-            ✎
-          </button>
-          <button
-            className="folder-action"
-            title="Delete folder"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(folder.id);
-            }}
-          >
-            ✕
-          </button>
-        </span>
+        {!readOnly && (
+          <span className="folder-actions">
+            <button
+              className="folder-action"
+              title="New subfolder"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCreate?.(folder.id);
+              }}
+            >
+              ＋
+            </button>
+            <button
+              className="folder-action"
+              title="Rename folder"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename?.(folder.id, folder.name);
+              }}
+            >
+              ✎
+            </button>
+            <button
+              className="folder-action"
+              title="Delete folder"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete?.(folder.id);
+              }}
+            >
+              ✕
+            </button>
+          </span>
+        )}
       </div>
       {hasChildren && open && (
         <div className="folder-children">
@@ -197,6 +209,7 @@ function FolderNode({
               onCreate={onCreate}
               onRename={onRename}
               onDelete={onDelete}
+              readOnly={readOnly}
             />
           ))}
         </div>

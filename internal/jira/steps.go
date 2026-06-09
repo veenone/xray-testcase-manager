@@ -74,13 +74,14 @@ func (c *Client) CreateTestStep(ctx context.Context, key, action, data, expected
 		return "", nil
 	}
 	// Xray rejects an all-empty step with a 400 ("Step fields must be provided
-	// to create a new test step"). Catch it here with a message that points at
-	// the real cause instead of letting that opaque error surface — most often
-	// the user added a blank step to a Test whose existing steps hadn't loaded.
+	// to create a new test step"). Catch it here with a plain-language message
+	// instead of letting that opaque error surface — most often the user added a
+	// blank step to a Test whose existing steps hadn't loaded.
 	if strings.TrimSpace(action) == "" && strings.TrimSpace(data) == "" && strings.TrimSpace(expected) == "" {
 		return "", fmt.Errorf(
-			"cannot create an empty step — a step needs an action, data, or expected result " +
-				"(if this Test already has steps in Jira, refresh its Steps panel before adding)")
+			"this test has an empty step that can't be saved. Open the test, fill in the " +
+				"step's Action, Data, or Expected Result — or delete the blank step — then commit again. " +
+				"(If the test already has steps in Jira, refresh its Steps panel first so a blank row isn't added.)")
 	}
 	// Xray v2.0 expects step content under "fields", keyed by the field display
 	// names; sending the old step/data/result shape is what produced the

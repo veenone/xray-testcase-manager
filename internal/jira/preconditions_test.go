@@ -120,6 +120,87 @@ func TestCreatePreconditionUsesResolvedTypeID(t *testing.T) {
 	}
 }
 
+// TestUpdateTestPreconditionsUsesPreconditionSide verifies associations are
+// POSTed to /precondition/{key}/test (the test-side path 404s on Xray Server),
+// with the test key in add / remove.
+func TestUpdateTestPreconditionsUsesPreconditionSide(t *testing.T) {
+	type call struct {
+		path string
+		body map[string][]string
+	}
+	var calls []call
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/rest/raven/1.0/api/precondition/") {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var body map[string][]string
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		calls = append(calls, call{path: r.URL.Path, body: body})
+	}))
+	defer srv.Close()
+
+	err := newTestClient(srv).UpdateTestPreconditions(context.Background(), "QA-1",
+		[]string{"PC-1"}, []string{"PC-2"})
+	if err != nil {
+		t.Fatalf("UpdateTestPreconditions: %v", err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("want 2 POSTs, got %d", len(calls))
+	}
+	if calls[0].path != "/rest/raven/1.0/api/precondition/PC-1/test" || calls[0].body["add"][0] != "QA-1" {
+		t.Errorf("add call wrong: %+v", calls[0])
+	}
+	if calls[1].path != "/rest/raven/1.0/api/precondition/PC-2/test" || calls[1].body["remove"][0] != "QA-1" {
+		t.Errorf("remove call wrong: %+v", calls[1])
+	}
+}
+
+// TestSetTestRunStatusRetriesUntilRunExists covers the "add test to execution,
+// set result, commit" case: Xray returns 400 while it's still creating the run,
+// so the lookup retries, then the status PUT fires with the resolved id.
+func TestSetTestRunStatusRetriesUntilRunExists(t *testing.T) {
+	var lookups int
+	var statusPath, statusQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/rest/raven/1.0/api/testrun":
+			lookups++
+			if lookups == 1 {
+				// First attempt: run not created yet.
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"no run"}`))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 5150, "status": "TODO"})
+		case strings.HasPrefix(r.URL.Path, "/rest/raven/1.0/api/testrun/") &&
+			strings.HasSuffix(r.URL.Path, "/status"):
+			statusPath = r.URL.Path
+			statusQuery = r.URL.Query().Get("status")
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	err := newTestClient(srv).SetTestRunStatus(context.Background(), "EXEC-1", "QA-1", "pass")
+	if err != nil {
+		t.Fatalf("SetTestRunStatus: %v", err)
+	}
+	if lookups < 2 {
+		t.Errorf("expected the lookup to retry, got %d call(s)", lookups)
+	}
+	if statusPath != "/rest/raven/1.0/api/testrun/5150/status" {
+		t.Errorf("status PUT path = %q, want .../testrun/5150/status", statusPath)
+	}
+	if statusQuery != "PASS" {
+		t.Errorf("status = %q, want PASS (upper-cased)", statusQuery)
+	}
+}
+
 // TestListPreconditionsNoTypeIsSoft verifies that an instance without a
 // Precondition issue type yields empty results, not an error (sync must go on).
 func TestListPreconditionsNoTypeIsSoft(t *testing.T) {

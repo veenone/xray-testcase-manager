@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ListSyncLog, errMsg } from "../api";
 import type { SyncLogEntry } from "../api";
+import { formatDateTimeLong, parseJiraDate } from "../dates";
 
 interface Props {
   profileId: string;
@@ -95,14 +96,12 @@ export function SyncHistoryModal({ profileId, refreshKey, onClose }: Props) {
 }
 
 function formatTime(s: string): string {
-  if (!s) return "—";
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? s : d.toLocaleString();
+  return formatDateTimeLong(s);
 }
 
 function duration(start: string, end: string): string {
   if (!start || !end) return "—";
-  const ms = new Date(end).getTime() - new Date(start).getTime();
+  const ms = parseJiraDate(end).getTime() - parseJiraDate(start).getTime();
   if (isNaN(ms) || ms < 0) return "—";
   if (ms < 1000) return `${ms} ms`;
   return `${(ms / 1000).toFixed(1)} s`;

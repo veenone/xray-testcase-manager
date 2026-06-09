@@ -32,7 +32,7 @@ func TestExportTestsCSVHasHeaderAndRows(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("got %d lines, want 3 (header + 2 tests)", len(lines))
 	}
-	if !strings.HasPrefix(lines[0], "Key,Summary,Description,Status,Priority,Labels,Folder") {
+	if !strings.HasPrefix(lines[0], "Key,Summary,Description,Status,Priority,Labels,Components,Folder") {
 		t.Errorf("header = %q, want the export columns", lines[0])
 	}
 	if !strings.Contains(text, "QA-1") || !strings.Contains(text, "Login works") {

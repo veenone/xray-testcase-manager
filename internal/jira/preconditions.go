@@ -260,9 +260,11 @@ func (c *Client) CreatePrecondition(ctx context.Context, projectKey, summary, pt
 // (FR-13.5 / 13.6). add and remove are Precondition keys. Demo URLs
 // short-circuit to a no-op.
 //
-// Maps to POST /rest/raven/1.0/api/test/{testKey}/precondition with an
-// {"add":[…], "remove":[…]} body. NOTE(xtm): verify the endpoint + body shape
-// on a live Xray Server 8.4.0 instance.
+// Xray Server/DC exposes the association from the *precondition* side, not the
+// test side — POST /rest/raven/1.0/api/precondition/{preconditionKey}/test with
+// an {"add":[testKey]} / {"remove":[testKey]} body (the test-side path returns
+// 404). This is the write counterpart of the GET used during sync, so one POST
+// is issued per precondition.
 func (c *Client) UpdateTestPreconditions(ctx context.Context, testKey string, add, remove []string) error {
 	if len(add) == 0 && len(remove) == 0 {
 		return nil
@@ -270,14 +272,23 @@ func (c *Client) UpdateTestPreconditions(ctx context.Context, testKey string, ad
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
-	body := map[string]any{}
-	if len(add) > 0 {
-		body["add"] = add
+	for _, pk := range add {
+		if err := c.post(ctx,
+			fmt.Sprintf("/rest/raven/1.0/api/precondition/%s/test", pk),
+			map[string]any{"add": []string{testKey}},
+		); err != nil {
+			return err
+		}
 	}
-	if len(remove) > 0 {
-		body["remove"] = remove
+	for _, pk := range remove {
+		if err := c.post(ctx,
+			fmt.Sprintf("/rest/raven/1.0/api/precondition/%s/test", pk),
+			map[string]any{"remove": []string{testKey}},
+		); err != nil {
+			return err
+		}
 	}
-	return c.post(ctx, fmt.Sprintf("/rest/raven/1.0/api/test/%s/precondition", testKey), body)
+	return nil
 }
 
 // DeletePrecondition deletes a Precondition issue (FR-13.4 management). Demo

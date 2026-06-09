@@ -1005,12 +1005,48 @@ i.sankey-node-l2 {
 .board-remove:hover {
   color: var(--danger-text);
 }
+/* Add-tests modal: folder tree (filter) on the left, search + list on the right. */
+.add-tests-body {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+.add-tests-folders {
+  width: 210px;
+  flex-shrink: 0;
+  overflow: auto;
+  max-height: 52vh;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-3);
+  padding: 4px 2px;
+}
+.add-tests-folders .folder-tree {
+  width: auto;
+  min-width: 100%;
+}
+.add-tests-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
 .add-test-list {
   list-style: none;
   margin: 10px 0 0;
   padding: 0;
   max-height: 46vh;
   overflow: auto;
+}
+.add-test-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 12px;
 }
 .add-test-list li {
   padding: 5px 4px;
@@ -1091,6 +1127,14 @@ i.sankey-node-l2 {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  font-size: 13px;
+}
+.board-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 12px;
   font-size: 13px;
 }
 .board-table th,

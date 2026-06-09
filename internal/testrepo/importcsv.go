@@ -28,6 +28,7 @@ type ImportMapping struct {
 	Description string `json:"description"`
 	Priority    string `json:"priority"`
 	Labels      string `json:"labels"`
+	Components  string `json:"components"`
 	Folder      string `json:"folder"`
 	Action      string `json:"action"`
 	Data        string `json:"data"`
@@ -60,6 +61,7 @@ type testCreatePayload struct {
 	Description string       `json:"description"`
 	Priority    string       `json:"priority"`
 	Labels      string       `json:"labels"`
+	Components  string       `json:"components"` // comma-separated names
 	Folder      string       `json:"folder"`
 	Steps       []importStep `json:"steps,omitempty"`
 }
@@ -101,6 +103,7 @@ func (r *Repository) ImportTests(profileID string, records [][]string, mapping I
 	descIdx := col(mapping.Description)
 	prioIdx := col(mapping.Priority)
 	labelsIdx := col(mapping.Labels)
+	componentsIdx := col(mapping.Components)
 	folderIdx := col(mapping.Folder)
 	actionIdx := col(mapping.Action)
 	dataIdx := col(mapping.Data)
@@ -134,6 +137,7 @@ func (r *Repository) ImportTests(profileID string, records [][]string, mapping I
 				Description: get(records[i], descIdx),
 				Priority:    get(records[i], prioIdx),
 				Labels:      get(records[i], labelsIdx),
+				Components:  get(records[i], componentsIdx),
 				Folder:      get(records[i], folderIdx),
 			})
 			curIdx = len(tests) - 1
@@ -186,9 +190,10 @@ func insertImportedTest(tx *sql.Tx, profileID string, p testCreatePayload) error
 	}
 	if _, err := tx.Exec(
 		`INSERT INTO test_case
-		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id)
-		 VALUES (?, ?, '', ?, ?, '', ?, ?, '', ?)`,
-		profileID, tempKey, p.Summary, p.Description, p.Priority, p.Labels, p.Folder,
+		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id)
+		 VALUES (?, ?, '', ?, ?, '', ?, ?, ?, '', ?)`,
+		profileID, tempKey, p.Summary, p.Description, p.Priority, p.Labels,
+		encodeComponents(strings.Split(p.Components, ",")), p.Folder,
 	); err != nil {
 		return fmt.Errorf("insert imported test: %w", err)
 	}
@@ -302,12 +307,15 @@ func parseXLSX(data []byte) ([][]string, error) {
 	return rows, nil
 }
 
-// ImportTemplateCSV returns a starter CSV with the supported columns (FR-10.3).
-// The second test shows the multi-row step format (FR-10.7): a row with a
-// Summary starts a test; following rows with an empty Summary add steps.
+// ImportTemplateCSV returns a starter CSV with the supported columns (FR-10.3),
+// matching the current Test fields (Components included) and the export column
+// order so an export round-trips through import. Labels are space-separated;
+// Components are comma-separated (component names can contain spaces). The
+// second test shows the multi-row step format (FR-10.7): a row with a Summary
+// starts a test; following rows with an empty Summary add steps.
 func ImportTemplateCSV() string {
-	return "Summary,Description,Priority,Labels,Folder,Action,Data,Expected\n" +
-		"Login with valid credentials,Verify a user can log in,High,smoke api,/Authentication/Login,,,\n" +
-		"Login flow with steps,Multi-step example,Medium,smoke,/Authentication/Login,Open the login page,,Login form is shown\n" +
-		",,,,,Enter credentials and submit,user / pass,User is logged in\n"
+	return "Summary,Description,Priority,Labels,Components,Folder,Action,Data,Expected\n" +
+		"Login with valid credentials,Verify a user can log in,High,smoke api,\"Authentication, Frontend\",/Authentication/Login,,,\n" +
+		"Login flow with steps,Multi-step example,Medium,smoke,Frontend,/Authentication/Login,Open the login page,,Login form is shown\n" +
+		",,,,,,Enter credentials and submit,user / pass,User is logged in\n"
 }

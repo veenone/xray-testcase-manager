@@ -121,8 +121,9 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 //
 // TODO(xtm): POST /rest/api/2/issue with issuetype Test and the mapped fields,
 // then return the new key — verify on a live instance.
-func (c *Client) CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels []string) (string, error) {
+func (c *Client) CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error) {
 	_ = ctx
+	_ = components
 	if isDemoURL(c.baseURL) {
 		return "", nil
 	}

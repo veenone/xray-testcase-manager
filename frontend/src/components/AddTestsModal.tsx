@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ListTests, AllocateTests, errMsg } from "../api";
-import type { TestCase } from "../api";
+import { ListTests, AllocateTests, ListFolders, errMsg } from "../api";
+import type { TestCase, Folder } from "../api";
+import { FolderTree } from "./FolderTree";
 
 interface Props {
   profileId: string;
@@ -33,8 +34,34 @@ export function AddTestsModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [folderId, setFolderId] = useState("");
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
 
+  const PAGE_SIZE = 50;
   const existing = new Set(existingKeys);
+
+  // Reset to the first page whenever the query (search or folder) changes.
+  useEffect(() => {
+    setPage(0);
+  }, [search, folderId]);
+
+  // Load the Test Repository folder tree once, so tests can be narrowed by
+  // folder the same way the Browse view does.
+  useEffect(() => {
+    let cancelled = false;
+    ListFolders(profileId)
+      .then((fs) => {
+        if (!cancelled) setFolders(fs ?? []);
+      })
+      .catch(() => {
+        /* folders are optional navigation; ignore load failures */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,17 +70,19 @@ export function AddTestsModal({
       ListTests(profileId, {
         search,
         status: "",
-        folderId: "",
+        folderId,
         containerKey: "",
         component: "",
         review: "",
         sortBy: "key",
         desc: false,
-        limit: 50,
-        offset: 0,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
       })
         .then((p) => {
-          if (!cancelled) setResults(p.tests ?? []);
+          if (cancelled) return;
+          setResults(p.tests ?? []);
+          setTotal(p.total ?? 0);
         })
         .catch((e) => {
           if (!cancelled) setError(errMsg(e));
@@ -66,7 +95,7 @@ export function AddTestsModal({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [profileId, search]);
+  }, [profileId, search, folderId, page]);
 
   function toggle(key: string) {
     setPicked((prev) => {
@@ -101,46 +130,81 @@ export function AddTestsModal({
           </button>
         </div>
 
-        <div className="bulk-body">
-          <input
-            className="detail-input"
-            autoFocus
-            placeholder="Search key, summary, description…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {loading ? (
-            <p className="muted">Searching…</p>
-          ) : (
-            <ul className="add-test-list">
-              {results.map((t) => {
-                const already = existing.has(t.key);
-                return (
-                  <li
-                    key={t.key}
-                    className={already ? "add-test-already" : ""}
-                  >
-                    <label>
-                      <input
-                        type="checkbox"
-                        disabled={already}
-                        checked={already || picked.has(t.key)}
-                        onChange={() => toggle(t.key)}
-                      />
-                      <span className="mono">{t.key}</span> {t.summary}
-                      {already && (
-                        <span className="muted"> · already a member</span>
-                      )}
-                    </label>
-                  </li>
-                );
-              })}
-              {results.length === 0 && (
-                <li className="muted">No tests match.</li>
-              )}
-            </ul>
+        <div className="add-tests-body">
+          {folders.length > 0 && (
+            <div className="add-tests-folders">
+              <FolderTree
+                folders={folders}
+                selected={folderId}
+                onSelect={setFolderId}
+                readOnly
+              />
+            </div>
           )}
-          {error && <div className="error-text">{error}</div>}
+          <div className="add-tests-main">
+            <input
+              className="detail-input"
+              autoFocus
+              placeholder="Search key, summary, description…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {loading ? (
+              <p className="muted">Searching…</p>
+            ) : (
+              <ul className="add-test-list">
+                {results.map((t) => {
+                  const already = existing.has(t.key);
+                  return (
+                    <li
+                      key={t.key}
+                      className={already ? "add-test-already" : ""}
+                    >
+                      <label>
+                        <input
+                          type="checkbox"
+                          disabled={already}
+                          checked={already || picked.has(t.key)}
+                          onChange={() => toggle(t.key)}
+                        />
+                        <span className="mono">{t.key}</span> {t.summary}
+                        {already && (
+                          <span className="muted"> · already a member</span>
+                        )}
+                      </label>
+                    </li>
+                  );
+                })}
+                {results.length === 0 && (
+                  <li className="muted">No tests match.</li>
+                )}
+              </ul>
+            )}
+            {total > PAGE_SIZE && (
+              <div className="add-test-pager">
+                <button
+                  className="btn"
+                  disabled={page === 0 || loading}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  ‹ Prev
+                </button>
+                <span className="muted">
+                  {(page * PAGE_SIZE + 1).toLocaleString()}–
+                  {Math.min((page + 1) * PAGE_SIZE, total).toLocaleString()} of{" "}
+                  {total.toLocaleString()}
+                </span>
+                <button
+                  className="btn"
+                  disabled={(page + 1) * PAGE_SIZE >= total || loading}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next ›
+                </button>
+              </div>
+            )}
+            {error && <div className="error-text">{error}</div>}
+          </div>
         </div>
 
         <div className="pending-actions">
