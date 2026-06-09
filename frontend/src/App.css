@@ -523,7 +523,8 @@
   background: var(--surface-2);
 }
 .dashboard {
-  max-width: 1100px;
+  width: 100%;
+  max-width: none;
 }
 .dashboard-note {
   margin-top: 18px;
@@ -689,7 +690,8 @@
 
 /* Test Plan board (FR-13.7) */
 .board {
-  max-width: 1100px;
+  width: 100%;
+  max-width: none;
 }
 .board-head {
   display: flex;
