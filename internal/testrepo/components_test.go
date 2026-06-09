@@ -121,6 +121,27 @@ func TestListFoldersLocalCounts(t *testing.T) {
 	}
 }
 
+// TestListTestStatuses returns the distinct, sorted statuses present on synced
+// Tests — the local fallback for the status filter.
+func TestListTestStatuses(t *testing.T) {
+	repo := newRepo(t)
+	if err := repo.UpsertTests(compProfile, []testrepo.TestCase{
+		{Key: "QA-1", Summary: "a", Status: "Open"},
+		{Key: "QA-2", Summary: "b", Status: "Done"},
+		{Key: "QA-3", Summary: "c", Status: "Open"},
+		{Key: "QA-4", Summary: "d", Status: ""}, // blank excluded
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	got, err := repo.ListTestStatuses(compProfile)
+	if err != nil {
+		t.Fatalf("list statuses: %v", err)
+	}
+	if len(got) != 2 || got[0] != "Done" || got[1] != "Open" {
+		t.Fatalf("want [Done Open], got %v", got)
+	}
+}
+
 // TestFolderXrayID resolves a folder path to its native Xray id for committing
 // a move: root -> "-1", a synced folder -> its id, an unknown path -> "".
 func TestFolderXrayID(t *testing.T) {

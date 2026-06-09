@@ -33,7 +33,11 @@ type Sankey struct {
 // exactly one, "Multiple plans" if more, "No plan" if none. Because each run is
 // counted once per layer, all three layers sum to the same total, so the
 // diagram balances. Computed entirely from the local store.
-func (r *Repository) GetTraceabilitySankey(profileID string) (Sankey, error) {
+//
+// planFilter / execFilter narrow the flow: a plan filter restricts to runs of
+// Tests in that Plan (and collapses layer 0 to that single Plan); an execution
+// filter restricts to that one Execution. Either may be "" for "all".
+func (r *Repository) GetTraceabilitySankey(profileID, planFilter, execFilter string) (Sankey, error) {
 	out := Sankey{Nodes: []SankeyNode{}, Links: []SankeyLink{}}
 
 	plansByTest, err := r.testPlanMemberships(profileID)
@@ -45,13 +49,23 @@ func (r *Repository) GetTraceabilitySankey(profileID string) (Sankey, error) {
 		return out, err
 	}
 
-	execRows, err := r.db.Query(
-		`SELECT l.container_key, l.test_key, l.run_status
+	q := `SELECT l.container_key, l.test_key, l.run_status
 		 FROM test_container_test l
 		 JOIN test_container c
 		   ON c.profile_id = l.profile_id AND c.jira_key = l.container_key
-		 WHERE l.profile_id = ? AND c.kind = 'testexec'`,
-		profileID)
+		 WHERE l.profile_id = ? AND c.kind = 'testexec'`
+	args := []any{profileID}
+	if execFilter != "" {
+		q += " AND l.container_key = ?"
+		args = append(args, execFilter)
+	}
+	if planFilter != "" {
+		q += ` AND l.test_key IN (
+			SELECT test_key FROM test_container_test
+			WHERE profile_id = ? AND container_key = ?)`
+		args = append(args, profileID, planFilter)
+	}
+	execRows, err := r.db.Query(q, args...)
 	if err != nil {
 		return out, fmt.Errorf("read execution runs: %w", err)
 	}
@@ -75,7 +89,12 @@ func (r *Repository) GetTraceabilitySankey(profileID string) (Sankey, error) {
 			return out, err
 		}
 
-		planID, planLabel := planBucket(plansByTest[testKey], summaryByKey)
+		var planID, planLabel string
+		if planFilter != "" {
+			planID, planLabel = "plan:"+planFilter, orKey(summaryByKey[planFilter], planFilter)
+		} else {
+			planID, planLabel = planBucket(plansByTest[testKey], summaryByKey)
+		}
 		execID := "exec:" + execKey
 		execLabel := orKey(summaryByKey[execKey], execKey)
 		status := runStatus

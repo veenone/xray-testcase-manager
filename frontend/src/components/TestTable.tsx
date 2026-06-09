@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ListTests,
   ListMatchingKeys,
+  ListStatuses,
   ExportTests,
   CreateSavedView,
   ListSavedViews,
@@ -210,6 +211,7 @@ export function TestTable({
 
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [activeView, setActiveView] = useState("");
+  const [statusOptions, setStatusOptions] = useState<string[]>([]);
   const { prompt, promptUI } = usePrompt();
 
   const [columns, setColumns] = useState<ColState[]>(loadColumns);
@@ -242,6 +244,13 @@ export function TestTable({
         if (!cancelled) setSavedViews(vs ?? []);
       })
       .catch((e) => console.error("list views:", errMsg(e)));
+    // Workflow statuses for the filter dropdown (FR-4): authoritative list from
+    // Jira's Test workflow, unioned with statuses present in the synced data.
+    ListStatuses(profileId)
+      .then((s) => {
+        if (!cancelled) setStatusOptions(s ?? []);
+      })
+      .catch((e) => console.error("list statuses:", errMsg(e)));
     return () => {
       cancelled = true;
     };
@@ -464,10 +473,17 @@ export function TestTable({
         />
         <input
           className="status-filter"
-          placeholder="Status (exact match)"
+          placeholder="Status…"
+          list="status-options"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
+          title="Filter by workflow status (pick from the list or type)"
         />
+        <datalist id="status-options">
+          {statusOptions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
         <select
           className="review-filter"
           value={review}

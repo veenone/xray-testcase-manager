@@ -50,6 +50,7 @@ export {
   ListTests,
   ListMatchingKeys,
   ListComponents,
+  ListStatuses,
   PreviewImport,
   ImportTests,
   ExportTests,
@@ -58,6 +59,7 @@ export {
   ListSavedViews,
   DeleteSavedView,
   GetTest,
+  GetTestMeta,
   EditTestField,
   DiscardPendingChange,
   ResolveConflictOverride,
@@ -274,6 +276,14 @@ export interface JiraStepInfo {
 // Step mirrors testrepo.Step — one ordered step in an Xray Test (FR-2.5).
 // xrayId is Xray's per-step identifier, kept around so a future step
 // editor can target each row individually.
+// TestMeta mirrors jira.TestMeta — issue-level metadata for the detail summary.
+export interface TestMeta {
+  created: string;
+  creator: string;
+  updated: string;
+  updatedBy: string;
+}
+
 export interface Step {
   xrayId: string;
   index: number;

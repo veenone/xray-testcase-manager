@@ -47,12 +47,6 @@ func New(client *jira.Client, repo *testrepo.Repository) *Engine {
 // incremental sync that only fetches Tests updated since the watermark
 // (FR-1.2). Upserts are idempotent, so an interrupted sync is safe to re-run.
 func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, since string, onProgress func(Progress)) error {
-	// The folder tree refreshes on every sync (one cheap call); the per-folder
-	// membership walk is expensive (one call per folder) so it runs only on a
-	// full sync, never on an incremental resync. Folder syncing is best-effort —
-	// a folder-API problem must never block or fail the Test pull.
-	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
-
 	fetched := 0
 	total := -1
 
@@ -83,6 +77,13 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 			time.Sleep(throttle)
 		}
 	}
+
+	// Folders sync AFTER the Tests are in the store. Folder membership stamps
+	// folder_id onto existing test_case rows, so running it before the Test pull
+	// (as it used to) left the first sync's folders empty — the rows didn't exist
+	// yet. The tree refreshes every sync; the per-folder membership walk is
+	// best-effort and never blocks the Test pull.
+	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
 
 	if err := e.syncPreconditions(ctx, profileID, projectKey); err != nil {
 		return err

@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import { GetStatistics, GetTraceabilitySankey, errMsg } from "../api";
-import type { Statistics, Bucket, Sankey } from "../api";
+import {
+  GetStatistics,
+  GetTraceabilitySankey,
+  ListContainers,
+  errMsg,
+} from "../api";
+import type { Statistics, Bucket, Sankey, Container } from "../api";
 import { SankeyChart } from "./SankeyChart";
 
 interface Props {
@@ -17,16 +22,21 @@ export function Dashboard({ profileId, refreshKey }: Props) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Traceability filters (FR-9): narrow the flow to one Test Plan / Execution.
+  const [plans, setPlans] = useState<Container[]>([]);
+  const [execs, setExecs] = useState<Container[]>([]);
+  const [planFilter, setPlanFilter] = useState("");
+  const [execFilter, setExecFilter] = useState("");
+  const [sankeyErr, setSankeyErr] = useState("");
+
   useEffect(() => {
     if (!profileId) return;
     let cancelled = false;
     setLoading(true);
     setError("");
-    Promise.all([GetStatistics(profileId), GetTraceabilitySankey(profileId)])
-      .then(([s, sk]) => {
-        if (cancelled) return;
-        setStats(s);
-        setSankey(sk);
+    GetStatistics(profileId)
+      .then((s) => {
+        if (!cancelled) setStats(s);
       })
       .catch((e) => {
         if (!cancelled) setError(errMsg(e));
@@ -38,6 +48,47 @@ export function Dashboard({ profileId, refreshKey }: Props) {
       cancelled = true;
     };
   }, [profileId, refreshKey]);
+
+  // Filter options: the project's Test Plans and Test Executions.
+  useEffect(() => {
+    if (!profileId) return;
+    let cancelled = false;
+    setPlanFilter("");
+    setExecFilter("");
+    Promise.all([
+      ListContainers(profileId, "testplan"),
+      ListContainers(profileId, "testexec"),
+    ])
+      .then(([tp, te]) => {
+        if (cancelled) return;
+        setPlans(tp ?? []);
+        setExecs(te ?? []);
+      })
+      .catch((e) => console.error("list containers:", errMsg(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, refreshKey]);
+
+  // The Sankey re-fetches whenever the filters change (or the data refreshes).
+  useEffect(() => {
+    if (!profileId) return;
+    let cancelled = false;
+    setSankeyErr("");
+    GetTraceabilitySankey(profileId, planFilter, execFilter)
+      .then((sk) => {
+        if (!cancelled) setSankey(sk);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        // Surface it — a silent catch made a failed call look like "no data".
+        setSankeyErr(errMsg(e));
+        console.error("traceability:", errMsg(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, refreshKey, planFilter, execFilter]);
 
   if (loading && !stats) {
     return <div className="dashboard muted">Loading…</div>;
@@ -133,26 +184,70 @@ export function Dashboard({ profileId, refreshKey }: Props) {
         />
       )}
 
-      {sankey && sankey.nodes.length > 0 && (
+      {stats.testExecutions > 0 && (
         <div className="stat-panel sankey-panel">
-          <h4>
-            Traceability
-            <span className="stat-panel-sub">
-              how test runs flow from plans through executions to outcomes
-            </span>
-          </h4>
-          <div className="sankey-legend">
-            <span>
-              <i className="sankey-swatch sankey-node-l0" /> Test Plan
-            </span>
-            <span>
-              <i className="sankey-swatch sankey-node-l1" /> Test Execution
-            </span>
-            <span>
-              <i className="sankey-swatch sankey-node-l2" /> Run status
-            </span>
+          <div className="sankey-head">
+            <h4>
+              Traceability
+              <span className="stat-panel-sub">
+                how test runs flow from plans through executions to outcomes
+              </span>
+            </h4>
+            <div className="sankey-filters">
+              <select
+                value={planFilter}
+                onChange={(e) => setPlanFilter(e.target.value)}
+                title="Filter by Test Plan"
+              >
+                <option value="">All plans</option>
+                {plans.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.key}
+                    {p.summary ? ` — ${p.summary}` : ""}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={execFilter}
+                onChange={(e) => setExecFilter(e.target.value)}
+                title="Filter by Test Execution"
+              >
+                <option value="">All executions ({execs.length})</option>
+                {execs.map((x) => (
+                  <option key={x.key} value={x.key}>
+                    {x.key}
+                    {x.summary ? ` — ${x.summary}` : ""}
+                  </option>
+                ))}
+              </select>
+              {(planFilter || execFilter) && (
+                <button
+                  className="btn btn-ghost sankey-clear"
+                  onClick={() => {
+                    setPlanFilter("");
+                    setExecFilter("");
+                  }}
+                  title="Clear filters"
+                >
+                  ✕ Clear
+                </button>
+              )}
+            </div>
           </div>
-          <SankeyChart data={sankey} />
+          {sankeyErr ? (
+            <p className="error-text sankey-empty">
+              Couldn&apos;t build the traceability flow: {sankeyErr}
+            </p>
+          ) : (
+            <SankeyChart
+              data={sankey ?? { nodes: [], links: [] }}
+              filtered={!!(planFilter || execFilter)}
+              onClearFilter={() => {
+                setPlanFilter("");
+                setExecFilter("");
+              }}
+            />
+          )}
         </div>
       )}
 

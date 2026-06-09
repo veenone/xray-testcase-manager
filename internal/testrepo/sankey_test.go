@@ -30,7 +30,7 @@ func TestTraceabilitySankeyBalancesAcrossLayers(t *testing.T) {
 		t.Fatalf("seed links: %v", err)
 	}
 
-	s, err := repo.GetTraceabilitySankey("p1")
+	s, err := repo.GetTraceabilitySankey("p1", "", "")
 	if err != nil {
 		t.Fatalf("sankey: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestTraceabilitySankeyBalancesAcrossLayers(t *testing.T) {
 
 func TestTraceabilitySankeyEmptyWhenNoExecutions(t *testing.T) {
 	repo := newRepo(t)
-	s, err := repo.GetTraceabilitySankey("p1")
+	s, err := repo.GetTraceabilitySankey("p1", "", "")
 	if err != nil {
 		t.Fatalf("sankey: %v", err)
 	}

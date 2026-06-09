@@ -126,6 +126,34 @@ function App() {
   const [showImport, setShowImport] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
+  // Resizeable browse sidebar (FR-11): drag the divider to widen it for long
+  // folder names / deep nesting; the width persists across sessions.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem("xtm.sidebarWidth"));
+    return saved >= 160 && saved <= 640 ? saved : 240;
+  });
+  useEffect(() => {
+    localStorage.setItem("xtm.sidebarWidth", String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  function startSidebarResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const onMove = (ev: MouseEvent) =>
+      setSidebarWidth(Math.min(640, Math.max(160, startW + ev.clientX - startX)));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   // First: check whether the backend started up cleanly.
   useEffect(() => {
     Health()
@@ -946,7 +974,7 @@ function App() {
         </main>
       ) : (
         <main className="content">
-          <div className="browse-sidebar">
+          <div className="browse-sidebar" style={{ width: sidebarWidth }}>
             <select
               className="groupby-select"
               value={groupBy}
@@ -1017,6 +1045,11 @@ function App() {
               />
             )}
           </div>
+          <div
+            className="sidebar-resizer"
+            onMouseDown={startSidebarResize}
+            title="Drag to resize the sidebar"
+          />
           <TestTable
             profileId={activeId}
             folderId={groupBy === "folder" ? selectedFolder : ""}

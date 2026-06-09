@@ -12,6 +12,7 @@ import (
 	goruntime "runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -36,6 +37,11 @@ type App struct {
 	dbPath     string
 	logPath    string
 	startupErr string
+
+	// statusCache holds the per-profile workflow status list fetched from Jira,
+	// for the session — workflow config rarely changes, so one fetch is enough.
+	statusMu    sync.Mutex
+	statusCache map[string][]string
 }
 
 // HealthInfo reports whether the backend initialised successfully. The
@@ -50,7 +56,7 @@ type HealthInfo struct {
 
 // NewApp creates a new App application struct.
 func NewApp() *App {
-	return &App{}
+	return &App{statusCache: map[string][]string{}}
 }
 
 // startup wires the service layer. Failures are captured into startupErr
@@ -1150,12 +1156,13 @@ func (a *App) SeedSampleContainers(profileID string) (testrepo.SeedResult, error
 }
 
 // GetTraceabilitySankey returns the Plan -> Execution -> run-status traceability
-// flow for the dashboard (FR-9).
-func (a *App) GetTraceabilitySankey(profileID string) (testrepo.Sankey, error) {
+// flow for the dashboard (FR-9), optionally narrowed to one Test Plan and/or one
+// Test Execution (pass "" for either to include all).
+func (a *App) GetTraceabilitySankey(profileID, planFilter, execFilter string) (testrepo.Sankey, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.Sankey{}, err
 	}
-	return a.repo.GetTraceabilitySankey(profileID)
+	return a.repo.GetTraceabilitySankey(profileID, planFilter, execFilter)
 }
 
 // --- pytest helper (FR-7.2) ---
@@ -1503,12 +1510,99 @@ func (a *App) ListComponents(profileID string) ([]testrepo.Bucket, error) {
 	return a.repo.ListComponents(profileID)
 }
 
+// ListStatuses returns the statuses for the browse filter: the Test issue
+// type's workflow statuses from Jira (in workflow order, cached per profile for
+// the session) unioned with the statuses actually present on synced Tests — so
+// the dropdown is both authoritative and never empty.
+func (a *App) ListStatuses(profileID string) ([]string, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	synced, err := a.repo.ListTestStatuses(profileID)
+	if err != nil {
+		return nil, err
+	}
+	return mergeStatuses(a.workflowStatuses(profileID), synced), nil
+}
+
+// workflowStatuses returns the Test workflow statuses from Jira, cached per
+// profile for the session. A fetch failure yields nil (synced statuses still
+// fill the dropdown) and is not cached, so a later call can retry.
+func (a *App) workflowStatuses(profileID string) []string {
+	a.statusMu.Lock()
+	cached, ok := a.statusCache[profileID]
+	a.statusMu.Unlock()
+	if ok {
+		return cached
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return nil
+	}
+	statuses, err := jira.NewClient(p.JiraURL, token).ListStatuses(a.ctx, p.ProjectKey)
+	if err != nil || len(statuses) == 0 {
+		return nil
+	}
+	a.statusMu.Lock()
+	a.statusCache[profileID] = statuses
+	a.statusMu.Unlock()
+	return statuses
+}
+
+// mergeStatuses returns the workflow statuses in order, then any synced statuses
+// not already listed (sorted) — leading with the authoritative workflow order
+// while still surfacing anything unexpected in the data.
+func mergeStatuses(workflow, synced []string) []string {
+	seen := make(map[string]struct{}, len(workflow)+len(synced))
+	out := make([]string, 0, len(workflow)+len(synced))
+	for _, s := range workflow {
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	extra := []string{}
+	for _, s := range synced {
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		extra = append(extra, s)
+	}
+	sort.Strings(extra)
+	return append(out, extra...)
+}
+
 // GetTest returns one Test by its Jira key.
 func (a *App) GetTest(profileID, key string) (testrepo.TestCase, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.TestCase{}, err
 	}
 	return a.repo.GetTest(profileID, key)
+}
+
+// GetTestMeta fetches a Test's created / creator / updated / last-updated-by
+// metadata from Jira for the detail summary (FR-2). Fetched lazily on detail
+// open (like steps / custom fields) rather than stored, since it isn't needed
+// for browsing.
+func (a *App) GetTestMeta(profileID, testKey string) (jira.TestMeta, error) {
+	if err := a.requireStore(); err != nil {
+		return jira.TestMeta{}, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return jira.TestMeta{}, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return jira.TestMeta{}, fmt.Errorf("load credentials: %w", err)
+	}
+	return jira.NewClient(p.JiraURL, token).GetTestMeta(a.ctx, testKey)
 }
 
 // defaultDBPath returns <user-config-dir>/xray-test-manager/xtm.db, creating

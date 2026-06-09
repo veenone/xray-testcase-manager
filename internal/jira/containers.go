@@ -2,8 +2,14 @@ package jira
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // Container kinds — the three Xray issue types that group Tests. The values
@@ -45,11 +51,163 @@ type ContainerLink struct {
 // {key}/test for memberships (the testexec variant returns run status) — once
 // the response shapes can be verified on a live instance.
 func (c *Client) ListContainers(ctx context.Context, projectKey string) ([]Container, []ContainerLink, error) {
-	_ = ctx
 	if isDemoURL(c.baseURL) {
 		return demoContainersAndLinks(projectKey)
 	}
-	return nil, nil, nil
+
+	containers := []Container{}
+	links := []ContainerLink{}
+	for _, kind := range []string{KindTestSet, KindTestPlan, KindTestExec} {
+		found, err := c.searchContainers(ctx, projectKey, kind)
+		if err != nil {
+			return nil, nil, fmt.Errorf("search %s issues: %w", kind, err)
+		}
+		containers = append(containers, found...)
+
+		// Pull each container's Test memberships. Best-effort per container so a
+		// single inaccessible container can't abort the whole sync.
+		for _, ct := range found {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, err
+			}
+			ls, err := c.listContainerTests(ctx, kind, ct.Key)
+			if err != nil {
+				log.Printf("xtm: container %s members: %v", ct.Key, err)
+				continue
+			}
+			links = append(links, ls...)
+			time.Sleep(150 * time.Millisecond)
+		}
+		log.Printf("xtm: containers %s: %d found for %s", kind, len(found), projectKey)
+	}
+	return containers, links, nil
+}
+
+// searchContainers finds every container issue of one kind in a project via JQL,
+// paging until the reported total is reached. Returns key / summary / workflow
+// status for each.
+func (c *Client) searchContainers(ctx context.Context, projectKey, kind string) ([]Container, error) {
+	issueType, err := containerIssueType(kind)
+	if err != nil {
+		return nil, err
+	}
+	jql := fmt.Sprintf(`project = %s AND issuetype = "%s" ORDER BY key ASC`, projectKey, issueType)
+
+	out := []Container{}
+	startAt := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		q := url.Values{}
+		q.Set("jql", jql)
+		q.Set("startAt", strconv.Itoa(startAt))
+		q.Set("maxResults", "100")
+		q.Set("fields", "summary,status")
+
+		var resp struct {
+			Total  int `json:"total"`
+			Issues []struct {
+				Key    string `json:"key"`
+				Fields struct {
+					Summary string `json:"summary"`
+					Status  *struct {
+						Name string `json:"name"`
+					} `json:"status"`
+				} `json:"fields"`
+			} `json:"issues"`
+		}
+		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
+			return nil, err
+		}
+		for _, iss := range resp.Issues {
+			ct := Container{Key: iss.Key, Kind: kind, Summary: iss.Fields.Summary}
+			if iss.Fields.Status != nil {
+				ct.Status = iss.Fields.Status.Name
+			}
+			out = append(out, ct)
+		}
+		startAt += len(resp.Issues)
+		if len(resp.Issues) == 0 || startAt >= resp.Total {
+			break
+		}
+		time.Sleep(throttleContainers)
+	}
+	return out, nil
+}
+
+// throttleContainers paces container issue-search pages.
+const throttleContainers = 150 * time.Millisecond
+
+// listContainerTests returns the Test memberships of one container. For a Test
+// Execution each membership carries the Test's run status; Test Sets and Test
+// Plans are plain memberships (run status left empty — the Plan board
+// consolidates run status from executions locally).
+//
+// Maps to GET /rest/raven/2.0/api/{testset|testplan|testexec}/{key}/test, which
+// returns a bare array of {id, key, rank, status} objects.
+func (c *Client) listContainerTests(ctx context.Context, kind, containerKey string) ([]ContainerLink, error) {
+	segment, err := containerPathSegment(kind)
+	if err != nil {
+		return nil, err
+	}
+	body, err := c.getBytes(ctx, fmt.Sprintf("/rest/raven/2.0/api/%s/%s/test", segment, containerKey))
+	if err != nil {
+		return nil, err
+	}
+	return parseContainerTests(kind, containerKey, body)
+}
+
+// parseContainerTests pulls Test keys (and, for executions, run status) out of a
+// container's tests response, tolerating a bare array or a {"tests":[…]} wrapper
+// the way the folder endpoints do.
+func parseContainerTests(kind, containerKey string, body []byte) ([]ContainerLink, error) {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" || trimmed == "null" {
+		return []ContainerLink{}, nil
+	}
+	type ref struct {
+		Key     string `json:"key"`
+		TestKey string `json:"testKey"`
+		Status  string `json:"status"`
+	}
+	var refs []ref
+	switch trimmed[0] {
+	case '[':
+		if err := json.Unmarshal([]byte(trimmed), &refs); err != nil {
+			return nil, fmt.Errorf("decode container tests: %w", err)
+		}
+	case '{':
+		var wrapper struct {
+			Tests []ref `json:"tests"`
+		}
+		if err := json.Unmarshal([]byte(trimmed), &wrapper); err != nil || wrapper.Tests == nil {
+			if msg := jiraErrorMessage([]byte(trimmed)); msg != "" {
+				return nil, fmt.Errorf("xray could not return container tests: %s", msg)
+			}
+			return nil, fmt.Errorf("unexpected container tests response: %s", snippet([]byte(trimmed), 256))
+		}
+		refs = wrapper.Tests
+	default:
+		return nil, fmt.Errorf("unexpected container tests response: %s", snippet([]byte(trimmed), 256))
+	}
+
+	out := make([]ContainerLink, 0, len(refs))
+	for _, r := range refs {
+		key := r.Key
+		if key == "" {
+			key = r.TestKey
+		}
+		if key == "" {
+			continue
+		}
+		link := ContainerLink{ContainerKey: containerKey, TestKey: key}
+		if kind == KindTestExec {
+			link.RunStatus = strings.ToUpper(strings.TrimSpace(r.Status))
+		}
+		out = append(out, link)
+	}
+	return out, nil
 }
 
 // containerPathSegment maps a Container kind to its Xray REST path segment.

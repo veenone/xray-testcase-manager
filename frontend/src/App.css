@@ -350,7 +350,7 @@
   display: flex;
   gap: 6px;
   font-size: 11px;
-  color: #4b5563;
+  color: var(--text-muted);
 }
 .step-label {
   font-weight: 600;
@@ -765,13 +765,85 @@
   font-size: 12px;
 }
 /* Traceability Sankey (FR-9) */
+/* ===== Traceability Sankey ===== */
 .sankey-panel {
   overflow: hidden;
 }
+.sankey-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sankey-filters {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.sankey-filters select {
+  max-width: 220px;
+  padding: 4px 7px;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+.sankey-clear {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Container the chart measures for its responsive width. */
+.sankey-wrap {
+  position: relative;
+  margin-top: 10px;
+  padding-top: 22px; /* room for the sticky column headers */
+}
+.sankey-cols {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 18px;
+  pointer-events: none;
+}
+.sankey-col-head {
+  position: absolute;
+  top: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sankey-scroll {
+  max-height: 460px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* hairline frame + faint column-band backdrop for depth */
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+}
+.sankey {
+  display: block;
+}
+.sankey-loading,
+.sankey-empty {
+  padding: 28px 0;
+  text-align: center;
+}
+
+/* Legend — run-status chips (swatch colour set inline to match ribbons). */
 .sankey-legend {
   display: flex;
-  gap: 18px;
-  margin: 2px 0 10px;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 10px 2px 0;
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -780,23 +852,20 @@
   align-items: center;
   gap: 6px;
 }
+.sankey-legend-n {
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
 .sankey-swatch {
   width: 11px;
   height: 11px;
   border-radius: 3px;
   display: inline-block;
 }
-.sankey {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-.sankey-empty {
-  padding: 16px 0;
-}
+
 /* Nodes */
 .sankey-node {
-  stroke: rgba(0, 0, 0, 0.12);
+  stroke: rgba(0, 0, 0, 0.14);
   stroke-width: 0.5;
 }
 .sankey-node-l0,
@@ -814,17 +883,33 @@ i.sankey-node-l2 {
   fill: #475569;
   background: #475569;
 }
+.node-hover .sankey-node {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
 .sankey-label {
   font-size: 11px;
   fill: var(--text-strong);
 }
-/* Links: translucent ribbons, coloured by destination */
+.sankey-label-exec {
+  fill: var(--text-muted);
+}
+.sankey-label-status {
+  font-weight: 600;
+}
+
+/* Links: translucent ribbons, coloured by destination; hovering a node lights
+   its flows and dims the rest. */
 .sankey-link {
-  fill-opacity: 0.32;
+  fill-opacity: 0.3;
   transition: fill-opacity 0.12s ease;
 }
-.sankey-link:hover {
-  fill-opacity: 0.6;
+.sankey-link:hover,
+.sankey-links.has-hover .sankey-link.lit {
+  fill-opacity: 0.62;
+}
+.sankey-links.has-hover .sankey-link.dim {
+  fill-opacity: 0.07;
 }
 .link-plan {
   fill: #9aa7bd;
@@ -845,6 +930,9 @@ i.sankey-node-l2 {
 }
 .link-status.link-aborted {
   fill: var(--text-muted);
+}
+.link-status.link-blocked {
+  fill: #a855f7;
 }
 .link-status {
   fill: #94a3b8;
@@ -1361,13 +1449,26 @@ tr.row-selected {
 /* Browse sidebar wrapper — holds the group-by selector and the folder tree
    or container list (FR-11.6). */
 .browse-sidebar {
+  /* width is set inline (resizeable, persisted); these bound the drag range. */
   width: 240px;
+  min-width: 160px;
+  max-width: 640px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--surface-3);
-  border-right: 1px solid var(--border);
   overflow: hidden;
+}
+/* Draggable divider between the sidebar and the grid. */
+.sidebar-resizer {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.12s;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: var(--accent);
 }
 .groupby-select {
   margin: 8px;
@@ -1433,8 +1534,11 @@ tr.row-selected {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Rows grow to their content so long names / deep nesting overflow and the
+     tree scrolls horizontally; min-width keeps short rows (and their hover /
+     selection background) spanning the full sidebar width. */
+  width: max-content;
+  min-width: 100%;
 }
 .folder-item:hover {
   background: var(--row-hover);
@@ -1455,9 +1559,8 @@ tr.row-selected {
   cursor: pointer;
 }
 .folder-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
   flex: 1;
+  white-space: nowrap;
 }
 /* Flat folder glyph in the tree, tinted like Xray's Test Repository (muted
    normally, accent for the selected/open folder). */
@@ -2315,6 +2418,12 @@ tr.row-checked:hover {
 /* Pastel status/run badges read fine on dark; just lift their text a touch. */
 :root[data-theme="dark"] .run-badge {
   filter: brightness(1.04);
+}
+/* Folder / list selection — its light highlight is baked with !important, so
+   re-point it for dark to keep the selected row readable. */
+:root[data-theme="dark"] .folder-selected {
+  background: #233356 !important;
+  color: var(--text);
 }
 
 /* --- Markdown fields (description + step text) --- */

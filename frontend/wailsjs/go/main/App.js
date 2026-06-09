@@ -170,6 +170,10 @@ export function GetTestCustomFields(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetTestCustomFields'](arg1, arg2, arg3);
 }
 
+export function GetTestMeta(arg1, arg2) {
+  return window['go']['main']['App']['GetTestMeta'](arg1, arg2);
+}
+
 export function GetTestPreconditions(arg1, arg2) {
   return window['go']['main']['App']['GetTestPreconditions'](arg1, arg2);
 }
@@ -186,8 +190,8 @@ export function GetTestTransitions(arg1, arg2) {
   return window['go']['main']['App']['GetTestTransitions'](arg1, arg2);
 }
 
-export function GetTraceabilitySankey(arg1) {
-  return window['go']['main']['App']['GetTraceabilitySankey'](arg1);
+export function GetTraceabilitySankey(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetTraceabilitySankey'](arg1, arg2, arg3);
 }
 
 export function Health() {
@@ -236,6 +240,10 @@ export function ListProfiles() {
 
 export function ListSavedViews(arg1) {
   return window['go']['main']['App']['ListSavedViews'](arg1);
+}
+
+export function ListStatuses(arg1) {
+  return window['go']['main']['App']['ListStatuses'](arg1);
 }
 
 export function ListSyncLog(arg1, arg2) {

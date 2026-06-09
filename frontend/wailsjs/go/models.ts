@@ -1,5 +1,23 @@
 export namespace jira {
 	
+	export class TestMeta {
+	    created: string;
+	    creator: string;
+	    updated: string;
+	    updatedBy: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TestMeta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.created = source["created"];
+	        this.creator = source["creator"];
+	        this.updated = source["updated"];
+	        this.updatedBy = source["updatedBy"];
+	    }
+	}
 	export class Transition {
 	    id: string;
 	    name: string;

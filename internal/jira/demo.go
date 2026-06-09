@@ -83,6 +83,21 @@ var demoStatuses = []string{
 	"Deprecated",
 }
 
+// demoStatusList is the demo workflow's distinct statuses, in workflow order —
+// what ListStatuses returns for a demo profile.
+func demoStatusList() []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, s := range demoStatuses {
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
 var demoPriorities = []string{
 	"Medium", "Medium", "Medium",
 	"High", "High",

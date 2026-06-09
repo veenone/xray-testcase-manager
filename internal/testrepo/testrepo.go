@@ -2066,6 +2066,29 @@ func (r *Repository) ListComponents(profileID string) ([]Bucket, error) {
 	return out, nil
 }
 
+// ListTestStatuses returns the distinct statuses actually present on a profile's
+// synced Tests, sorted — the local fallback/supplement for the status filter so
+// the dropdown is never empty even if the workflow fetch fails.
+func (r *Repository) ListTestStatuses(profileID string) ([]string, error) {
+	rows, err := r.db.Query(
+		`SELECT DISTINCT status FROM test_case
+		 WHERE profile_id = ? AND status <> '' ORDER BY status`,
+		profileID)
+	if err != nil {
+		return nil, fmt.Errorf("list test statuses: %w", err)
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // GetTest returns one Test by its Jira key, or ErrNotFound.
 func (r *Repository) GetTest(profileID, key string) (TestCase, error) {
 	row := r.db.QueryRow(

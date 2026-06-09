@@ -11,6 +11,7 @@ import {
   GetTestTransitions,
   GetTestSteps,
   CheckJiraTestSteps,
+  GetTestMeta,
   GetTestReview,
   SetTestReview,
   GetTestCustomFields,
@@ -36,6 +37,7 @@ import type {
   CustomFieldValue,
   Review,
   JiraStepInfo,
+  TestMeta,
 } from "../api";
 
 import { usePrompt } from "./usePrompt";
@@ -66,6 +68,7 @@ export function TestDetail({
 }: Props) {
   const { prompt, promptUI } = usePrompt();
   const [test, setTest] = useState<TestCase | null>(null);
+  const [meta, setMeta] = useState<TestMeta | null>(null);
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [allPreconditions, setAllPreconditions] = useState<Precondition[]>([]);
   const [containers, setContainers] = useState<ContainerMembership[]>([]);
@@ -164,6 +167,15 @@ export function TestDetail({
           .catch((e) => {
             if (!cancelled) console.error("custom fields:", errMsg(e));
           });
+        // Created / creator / last-updated-by load lazily from Jira (one issue
+        // call incl. changelog). Non-blocking — the summary still shows the
+        // synced "Updated" timestamp if this fails.
+        setMeta(null);
+        GetTestMeta(profileId, testKey)
+          .then((m) => {
+            if (!cancelled) setMeta(m);
+          })
+          .catch((e) => console.error("test meta:", errMsg(e)));
       })
       .catch((e) => {
         if (!cancelled) setError(errMsg(e));
@@ -522,8 +534,17 @@ export function TestDetail({
               </>
             )}
 
+            <dt>Created</dt>
+            <dd>{formatDateTime(meta?.created)}</dd>
+
+            <dt>Creator</dt>
+            <dd>{meta?.creator || "—"}</dd>
+
             <dt>Updated</dt>
-            <dd>{test.updated || "—"}</dd>
+            <dd>{formatDateTime(meta?.updated || test.updated)}</dd>
+
+            <dt>Updated by</dt>
+            <dd>{meta?.updatedBy || "—"}</dd>
           </dl>
 
           <h4>
@@ -1119,6 +1140,18 @@ function verdictLabel(verdict?: string): string {
     default:
       return "Not reviewed";
   }
+}
+
+// formatDateTime renders a Jira timestamp as dd/mm/YYYY HH:mm in local time,
+// falling back to "—" / the raw string for empty / unparseable input.
+function formatDateTime(s?: string): string {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(
+    d.getHours(),
+  )}:${p(d.getMinutes())}`;
 }
 
 function DirtyDot() {
