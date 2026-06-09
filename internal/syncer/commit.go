@@ -108,6 +108,8 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 	// Precondition edits are keyed by the Precondition's own issue key, not a
 	// Test, so they commit in their own pass grouped by precondition.
 	preconditionEditRows := make([]testrepo.PendingChange, 0)
+	// Precondition deletes (FR-13.4), keyed by the Precondition's issue key.
+	preconditionDeleteRows := make([]testrepo.PendingChange, 0)
 	// Folder operations (FR-13.3) are repository-level, keyed by folder path.
 	folderRows := make([]testrepo.PendingChange, 0)
 	// Imported Test creates (FR-10), keyed by a temporary "NEW-N" Test key.
@@ -129,6 +131,10 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		}
 		if c.EntityType == "precondition_edit" {
 			preconditionEditRows = append(preconditionEditRows, c)
+			continue
+		}
+		if c.EntityType == "precondition_delete" {
+			preconditionDeleteRows = append(preconditionDeleteRows, c)
 			continue
 		}
 		if c.EntityType == "folder_create" || c.EntityType == "folder_rename" || c.EntityType == "folder_delete" {
@@ -467,6 +473,7 @@ testLoop:
 
 	e.commitMemberships(ctx, profileID, membershipRows, &result)
 	e.commitPreconditionEdits(ctx, profileID, preconditionEditRows, &result)
+	e.commitPreconditionDeletes(ctx, profileID, preconditionDeleteRows, &result)
 	e.commitFolders(ctx, profileID, projectKey, folderRows, &result)
 	e.commitTestCreates(ctx, profileID, projectKey, testCreateRows, &result)
 	e.commitReviews(ctx, profileID, reviewRows, &result)
@@ -757,6 +764,29 @@ func (e *Engine) commitPreconditionEdits(ctx context.Context, profileID string, 
 			continue
 		}
 		result.Succeeded = append(result.Succeeded, key)
+	}
+}
+
+// commitPreconditionDeletes deletes Preconditions in Jira (FR-13.4), reported
+// under the Precondition key. The local row is dropped only after Jira confirms
+// the delete so a failure leaves it pending for retry.
+func (e *Engine) commitPreconditionDeletes(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	for _, c := range rows {
+		if err := e.client.DeletePrecondition(ctx, c.EntityKey); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{
+				TestKey: c.EntityKey,
+				Error:   "delete precondition: " + sanitizeError(err.Error()),
+			})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{
+				TestKey: c.EntityKey,
+				Error:   "Jira deleted precondition but local cleanup failed: " + err.Error(),
+			})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, c.EntityKey)
 	}
 }
 

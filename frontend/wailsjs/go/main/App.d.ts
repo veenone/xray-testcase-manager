@@ -35,6 +35,8 @@ export function CreateFolder(arg1:string,arg2:string,arg3:string):Promise<testre
 
 export function CreatePrecondition(arg1:string,arg2:string):Promise<string>;
 
+export function CreatePreconditionDetailed(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+
 export function CreateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<profile.Profile>;
 
 export function CreateSavedView(arg1:string,arg2:string,arg3:string):Promise<testrepo.SavedView>;
@@ -44,6 +46,8 @@ export function DeallocateTests(arg1:string,arg2:string,arg3:Array<string>):Prom
 export function DeleteContainer(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteFolder(arg1:string,arg2:string):Promise<void>;
+
+export function DeletePrecondition(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteProfile(arg1:string):Promise<void>;
 
@@ -123,6 +127,8 @@ export function ListMatchingKeys(arg1:string,arg2:testrepo.Query):Promise<Array<
 
 export function ListPendingChanges(arg1:string):Promise<Array<testrepo.PendingChange>>;
 
+export function ListPreconditionsWithUsage(arg1:string):Promise<Array<testrepo.PreconditionUsage>>;
+
 export function ListProfiles():Promise<Array<profile.Profile>>;
 
 export function ListSavedViews(arg1:string):Promise<Array<testrepo.SavedView>>;
@@ -132,6 +138,8 @@ export function ListStatuses(arg1:string):Promise<Array<string>>;
 export function ListSyncLog(arg1:string,arg2:number):Promise<Array<testrepo.SyncLogEntry>>;
 
 export function ListTests(arg1:string,arg2:testrepo.Query):Promise<testrepo.Page>;
+
+export function ListTestsForPrecondition(arg1:string,arg2:string):Promise<Array<testrepo.PreconditionTest>>;
 
 export function MoveTestToFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 

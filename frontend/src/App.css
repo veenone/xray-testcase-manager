@@ -246,6 +246,14 @@
 .btn-ghost:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.08);
 }
+.btn-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
 
 /* Sync progress bar */
 .syncbar {
@@ -1219,6 +1227,11 @@ i.sankey-node-l2 {
 }
 .status-filter {
   width: 180px;
+  background: var(--surface);
+}
+.status-filter option {
+  background: var(--surface);
+  color: var(--text);
 }
 .saved-views {
   display: flex;
@@ -1477,6 +1490,11 @@ tr.row-selected {
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   background: var(--surface);
+  color: var(--text);
+}
+.groupby-select option {
+  background: var(--surface);
+  color: var(--text);
 }
 .browse-sidebar-empty {
   padding: 4px 12px;
@@ -1592,13 +1610,37 @@ tr.row-selected {
 
 /* Detail drawer */
 .detail {
+  /* width is set inline (resizeable, persisted); these bound the drag range. */
   width: 440px;
+  min-width: 320px;
+  max-width: 900px;
   flex-shrink: 0;
   background: var(--surface);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+/* Draggable divider on the detail panel's left edge — drag to widen / narrow. */
+.detail-resizer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  margin-left: -3px;
+  cursor: col-resize;
+  z-index: 5;
+}
+.detail-resizer:hover {
+  background: var(--accent);
+  opacity: 0.35;
+}
+.confirm-message {
+  font-size: 13px;
+  color: var(--text-strong);
+  line-height: 1.5;
 }
 .detail-head {
   display: flex;
@@ -1748,6 +1790,219 @@ tr.row-selected {
   border-color: var(--accent);
   background: var(--surface);
   outline: none;
+}
+
+/* Dedicated Preconditions management view (FR-13.4) — master list + detail.
+   Mirrors the Browse layout: a full-height left rail + detail that fill the
+   viewport and scroll internally, rather than a content-height card stack. */
+.content-preconditions {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  padding: 16px;
+  background: var(--surface-2);
+}
+.precond-view {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 18px;
+  width: 100%;
+  max-width: none;
+  min-height: 0; /* let the columns own their own scroll */
+}
+.precond-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.precond-list-head {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.precond-search {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.precond-search:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.precond-new {
+  flex-shrink: 0;
+}
+.precond-empty {
+  padding: 16px;
+}
+.precond-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+.precond-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-left: 3px solid transparent;
+  background: transparent;
+  padding: 9px 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+.precond-item:hover {
+  background: var(--surface-2);
+}
+.precond-item-active {
+  background: var(--surface-2);
+  border-left-color: var(--accent);
+}
+.precond-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.precond-item-key {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.precond-item-summary {
+  font-size: 13px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.precond-item-meta {
+  font-size: 11px;
+  margin-top: 2px;
+}
+.pre-type-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-3, var(--surface-2));
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.pre-type-manual {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+.pre-type-generic {
+  color: #7c3aed;
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+}
+.pre-type-cucumber {
+  color: #15803d;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+:root[data-theme="dark"] .pre-type-manual,
+:root[data-theme="dark"] .pre-type-generic,
+:root[data-theme="dark"] .pre-type-cucumber {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.precond-detail {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 16px 18px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.precond-detail-empty {
+  padding: 24px 4px;
+}
+.precond-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.precond-detail-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.precond-detail-key {
+  font-size: 15px;
+  font-weight: 600;
+}
+.pending-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--warning-bg, #fef3c7);
+  color: var(--warning-text, #92400e);
+}
+.precond-field {
+  display: block;
+  margin-bottom: 12px;
+}
+.precond-field > span {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.precond-desc {
+  resize: vertical;
+  font-family: inherit;
+}
+.precond-tests-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 8px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 14px;
+}
+.precond-tests-head h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.precond-tests {
+  width: 100%;
+}
+
+@media (max-width: 860px) {
+  .precond-view {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Profile form and modal */

@@ -54,6 +54,7 @@ import { BulkMoveModal } from "./components/BulkMoveModal";
 import { BulkPreconditionsModal } from "./components/BulkPreconditionsModal";
 import { Dashboard } from "./components/Dashboard";
 import { ContainersView } from "./components/ContainersView";
+import { PreconditionsView } from "./components/PreconditionsView";
 import { DiagnosticsModal } from "./components/DiagnosticsModal";
 import { SyncHistoryModal } from "./components/SyncHistoryModal";
 import { ImportTestsModal } from "./components/ImportTestsModal";
@@ -120,7 +121,9 @@ function App() {
   const [showBulkPreconditions, setShowBulkPreconditions] = useState(false);
   const [showBulkReview, setShowBulkReview] = useState(false);
 
-  const [view, setView] = useState<"browse" | "dashboard" | "plans">("browse");
+  const [view, setView] = useState<
+    "browse" | "preconditions" | "dashboard" | "plans"
+  >("browse");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -438,6 +441,7 @@ function App() {
     "menu:new-profile": () => setShowForm(true),
     "menu:import": () => setShowImport(true),
     "menu:view-browse": () => setView("browse"),
+    "menu:view-preconditions": () => setView("preconditions"),
     "menu:view-dashboard": () => setView("dashboard"),
     "menu:view-plans": () => setView("plans"),
     "menu:sync-history": () => setShowSyncHistory(true),
@@ -808,6 +812,12 @@ function App() {
             Browse
           </button>
           <button
+            className={`view-tab${view === "preconditions" ? " view-tab-active" : ""}`}
+            onClick={() => setView("preconditions")}
+          >
+            Preconditions
+          </button>
+          <button
             className={`view-tab${view === "dashboard" ? " view-tab-active" : ""}`}
             onClick={() => setView("dashboard")}
           >
@@ -957,7 +967,18 @@ function App() {
         </div>
       )}
 
-      {view === "dashboard" ? (
+      {view === "preconditions" ? (
+        <main className="content content-preconditions">
+          <PreconditionsView
+            profileId={activeId}
+            refreshKey={refreshKey}
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              reloadPending();
+            }}
+          />
+        </main>
+      ) : view === "dashboard" ? (
         <main className="content content-dashboard">
           <Dashboard profileId={activeId} refreshKey={refreshKey} />
         </main>

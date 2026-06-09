@@ -41,6 +41,7 @@ import type {
 } from "../api";
 
 import { usePrompt } from "./usePrompt";
+import { useConfirm } from "./useConfirm";
 import { MarkdownField } from "./MarkdownField";
 
 const REVIEWER_KEY = "xtm.reviewer";
@@ -67,6 +68,38 @@ export function TestDetail({
   onEdited,
 }: Props) {
   const { prompt, promptUI } = usePrompt();
+  const { confirm, confirmUI } = useConfirm();
+
+  // Resizeable panel width (FR-11) — drag the left edge to widen for long
+  // descriptions / steps; the width persists across sessions.
+  const [width, setWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem("xtm.detailWidth"));
+    return saved >= 320 && saved <= 900 ? saved : 440;
+  });
+  useEffect(() => {
+    localStorage.setItem("xtm.detailWidth", String(width));
+  }, [width]);
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    // The panel is anchored to the right, so dragging left (negative delta)
+    // widens it.
+    const onMove = (ev: MouseEvent) =>
+      setWidth(Math.min(900, Math.max(320, startW - (ev.clientX - startX))));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   const [test, setTest] = useState<TestCase | null>(null);
   const [meta, setMeta] = useState<TestMeta | null>(null);
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
@@ -263,6 +296,14 @@ export function TestDetail({
   // deallocateContainer removes this test from a Test Set / Plan / Execution
   // (FR-3.4–3.6) and refreshes the membership list.
   async function deallocateContainer(containerKey: string) {
+    if (
+      !(await confirm({
+        title: "Remove from container",
+        message: `Remove ${testKey} from ${containerKey}? The membership change is committed to Jira on commit.`,
+        confirmLabel: "Remove",
+      }))
+    )
+      return;
     setSaveError("");
     try {
       await DeallocateTests(profileId, containerKey, [testKey]);
@@ -302,7 +343,15 @@ export function TestDetail({
     }
   }
 
-  function removePrecondition(key: string) {
+  async function removePrecondition(key: string) {
+    if (
+      !(await confirm({
+        title: "Unlink precondition",
+        message: `Unlink ${key} from ${testKey}? The precondition itself isn't deleted; the association is removed on commit.`,
+        confirmLabel: "Unlink",
+      }))
+    )
+      return;
     applyPreconditions(
       preconditions.map((p) => p.key).filter((k) => k !== key),
     );
@@ -423,7 +472,12 @@ export function TestDetail({
     pendingForTest.some((p) => p.field === field);
 
   return (
-    <aside className="detail">
+    <aside className="detail" style={{ width }}>
+      <div
+        className="detail-resizer"
+        onMouseDown={startResize}
+        title="Drag to resize"
+      />
       <div className="detail-head">
         <div className="detail-head-id">
           <span className="mono detail-key">{testKey}</span>
@@ -775,6 +829,7 @@ export function TestDetail({
                   pendingForTest={pendingForTest}
                   isFirst={i === 0}
                   isLast={i === steps.length - 1}
+                  confirm={confirm}
                   onMove={(dir) => moveStep(i, dir)}
                   onLocalChange={(field, value) => {
                     setSteps((prev) =>
@@ -804,6 +859,7 @@ export function TestDetail({
         </div>
       )}
       {promptUI}
+      {confirmUI}
     </aside>
   );
 }
@@ -817,6 +873,11 @@ interface StepRowProps {
   pendingForTest: PendingChange[];
   isFirst: boolean;
   isLast: boolean;
+  confirm: (opts: {
+    title: string;
+    message?: string;
+    confirmLabel?: string;
+  }) => Promise<boolean>;
   onMove: (dir: "up" | "down") => void;
   onLocalChange: (field: StepField, value: string) => void;
   onLocalDelete: (xrayId: string) => void;
@@ -834,6 +895,7 @@ function StepRow({
   pendingForTest,
   isFirst,
   isLast,
+  confirm,
   onMove,
   onLocalChange,
   onLocalDelete,
@@ -853,12 +915,14 @@ function StepRow({
   );
 
   async function deleteStep() {
-    const prompt = isNew
-      ? "Discard this new step? It hasn't been sent to Jira yet."
-      : "Delete this step? It will be removed from Jira on commit.";
-    if (!window.confirm(prompt)) {
-      return;
-    }
+    const ok = await confirm({
+      title: isNew ? "Discard step" : "Delete step",
+      message: isNew
+        ? "Discard this new step? It hasn't been sent to Jira yet."
+        : "Delete this step? It will be removed from Jira on commit.",
+      confirmLabel: isNew ? "Discard" : "Delete",
+    });
+    if (!ok) return;
     setSaveError("");
     try {
       await DeleteTestStep(profileId, testKey, step.xrayId);

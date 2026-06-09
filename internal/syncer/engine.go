@@ -85,12 +85,15 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 	// best-effort and never blocks the Test pull.
 	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
 
+	// Preconditions and containers are best-effort, like folders: a Xray REST
+	// quirk (an absent issue type, a pagination cap, a permissions gap) is
+	// logged but must never fail the whole sync — the Tests are already in.
 	if err := e.syncPreconditions(ctx, profileID, projectKey); err != nil {
-		return err
+		log.Printf("xtm: precondition sync failed (continuing): %v", err)
 	}
 
 	if err := e.syncContainers(ctx, profileID, projectKey); err != nil {
-		return err
+		log.Printf("xtm: container sync failed (continuing): %v", err)
 	}
 
 	if err := e.syncCustomFields(ctx, profileID, projectKey); err != nil {

@@ -58,6 +58,10 @@ export function CreatePrecondition(arg1, arg2) {
   return window['go']['main']['App']['CreatePrecondition'](arg1, arg2);
 }
 
+export function CreatePreconditionDetailed(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreatePreconditionDetailed'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateProfile(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['CreateProfile'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -76,6 +80,10 @@ export function DeleteContainer(arg1, arg2) {
 
 export function DeleteFolder(arg1, arg2) {
   return window['go']['main']['App']['DeleteFolder'](arg1, arg2);
+}
+
+export function DeletePrecondition(arg1, arg2) {
+  return window['go']['main']['App']['DeletePrecondition'](arg1, arg2);
 }
 
 export function DeleteProfile(arg1) {
@@ -234,6 +242,10 @@ export function ListPendingChanges(arg1) {
   return window['go']['main']['App']['ListPendingChanges'](arg1);
 }
 
+export function ListPreconditionsWithUsage(arg1) {
+  return window['go']['main']['App']['ListPreconditionsWithUsage'](arg1);
+}
+
 export function ListProfiles() {
   return window['go']['main']['App']['ListProfiles']();
 }
@@ -252,6 +264,10 @@ export function ListSyncLog(arg1, arg2) {
 
 export function ListTests(arg1, arg2) {
   return window['go']['main']['App']['ListTests'](arg1, arg2);
+}
+
+export function ListTestsForPrecondition(arg1, arg2) {
+  return window['go']['main']['App']['ListTestsForPrecondition'](arg1, arg2);
 }
 
 export function MoveTestToFolder(arg1, arg2, arg3) {

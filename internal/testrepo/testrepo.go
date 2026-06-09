@@ -3193,6 +3193,28 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 		if err := rewritePreconditionSets(tx, profileID, entityKey, ""); err != nil {
 			return err
 		}
+	case entityPreconditionDelete:
+		// Restore the deleted Precondition and its Test links from the snapshot.
+		var snap preconditionDeleteSnapshot
+		if err := json.Unmarshal([]byte(beforeVal), &snap); err != nil {
+			return fmt.Errorf("decode precondition snapshot: %w", err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO precondition (profile_id, jira_key, summary, type, description)
+			   VALUES (?, ?, ?, ?, ?)`,
+			profileID, entityKey, snap.Summary, snap.Type, snap.Description,
+		); err != nil {
+			return fmt.Errorf("restore precondition: %w", err)
+		}
+		for _, tk := range snap.Tests {
+			if _, err := tx.Exec(
+				`INSERT OR IGNORE INTO test_precondition (profile_id, test_key, precondition_key)
+				   VALUES (?, ?, ?)`,
+				profileID, tk, entityKey,
+			); err != nil {
+				return fmt.Errorf("restore precondition link: %w", err)
+			}
+		}
 	case entityContainerEdit:
 		// entity_key is the Container key; revert the summary.
 		if _, err := tx.Exec(
@@ -3694,9 +3716,10 @@ const (
 	entityContainerAdd     = "test_container_add"
 	entityContainerEdit    = "container_edit"
 	entityContainerDelete  = "container_delete"
-	entityPreconditionSet  = "precondition_set"
-	entityPreconditionEdit = "precondition_edit"
-	entityPreconditionAdd  = "precondition_add"
+	entityPreconditionSet    = "precondition_set"
+	entityPreconditionEdit   = "precondition_edit"
+	entityPreconditionAdd    = "precondition_add"
+	entityPreconditionDelete = "precondition_delete"
 	entityCustomField      = "custom_field"
 	entityFolderCreate     = "folder_create"
 	entityFolderRename     = "folder_rename"
@@ -3712,6 +3735,7 @@ const (
 var preconditionFields = map[string]string{
 	"summary":     "summary",
 	"description": "description",
+	"type":        "type",
 }
 
 // stepEntityKey encodes a step's parent Test plus its Xray step ID into a

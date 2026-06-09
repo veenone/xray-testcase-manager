@@ -723,6 +723,42 @@ export namespace testrepo {
 	        this.description = source["description"];
 	    }
 	}
+	export class PreconditionTest {
+	    key: string;
+	    summary: string;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreconditionTest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.summary = source["summary"];
+	        this.status = source["status"];
+	    }
+	}
+	export class PreconditionUsage {
+	    key: string;
+	    summary: string;
+	    type: string;
+	    description: string;
+	    testCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreconditionUsage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.summary = source["summary"];
+	        this.type = source["type"];
+	        this.description = source["description"];
+	        this.testCount = source["testCount"];
+	    }
+	}
 	export class Query {
 	    search: string;
 	    status: string;

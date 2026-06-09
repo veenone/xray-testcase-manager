@@ -8,6 +8,11 @@ interface Props {
   existingKeys: string[];
   onDone: () => void;
   onCancel: () => void;
+  // When provided, picked test keys are passed to onAdd instead of being
+  // allocated to a container — lets the Preconditions view reuse this picker to
+  // link tests to a Precondition. targetLabel customises the heading.
+  onAdd?: (keys: string[]) => Promise<void>;
+  targetLabel?: string;
 }
 
 // AddTestsModal searches the test cache and adds the chosen tests to a
@@ -19,6 +24,8 @@ export function AddTestsModal({
   existingKeys,
   onDone,
   onCancel,
+  onAdd,
+  targetLabel,
 }: Props) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<TestCase[]>([]);
@@ -75,7 +82,8 @@ export function AddTestsModal({
     setBusy(true);
     setError("");
     try {
-      await AllocateTests(profileId, containerKey, [...picked]);
+      if (onAdd) await onAdd([...picked]);
+      else await AllocateTests(profileId, containerKey, [...picked]);
       onDone();
     } catch (e) {
       setError(errMsg(e));
@@ -87,7 +95,7 @@ export function AddTestsModal({
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal pending-modal" onClick={(e) => e.stopPropagation()}>
         <div className="pending-head">
-          <h2>Add tests to {containerKey}</h2>
+          <h2>Add tests to {targetLabel ?? containerKey}</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>

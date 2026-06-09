@@ -97,6 +97,7 @@ func appMenu(app *App) *menu.Menu {
 
 	view := m.AddSubmenu("View")
 	view.AddText("Browse", nil, emit("menu:view-browse"))
+	view.AddText("Preconditions", nil, emit("menu:view-preconditions"))
 	view.AddText("Dashboard", nil, emit("menu:view-dashboard"))
 	view.AddText("Containers", nil, emit("menu:view-plans"))
 

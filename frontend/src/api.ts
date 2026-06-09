@@ -33,7 +33,11 @@ export {
   SetTestPreconditions,
   EditPreconditionField,
   CreatePrecondition,
+  CreatePreconditionDetailed,
   BulkAssociatePreconditions,
+  ListPreconditionsWithUsage,
+  ListTestsForPrecondition,
+  DeletePrecondition,
   GetTestContainers,
   ListContainers,
   AllocateTests,
@@ -195,6 +199,24 @@ export interface Precondition {
   summary: string;
   type: string;
   description: string;
+}
+
+// PreconditionUsage mirrors testrepo.PreconditionUsage — a Precondition plus
+// how many Tests reference it, for the dedicated management view (FR-13.4).
+export interface PreconditionUsage {
+  key: string;
+  summary: string;
+  type: string;
+  description: string;
+  testCount: number;
+}
+
+// PreconditionTest mirrors testrepo.PreconditionTest — one Test linked to a
+// Precondition, with its summary and workflow status.
+export interface PreconditionTest {
+  key: string;
+  summary: string;
+  status: string;
 }
 
 // Container mirrors testrepo.Container — a Test Set, Test Plan or Test

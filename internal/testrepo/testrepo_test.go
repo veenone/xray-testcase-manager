@@ -352,7 +352,7 @@ func TestDiscardPreconditionEditRevertsValue(t *testing.T) {
 
 func TestEditPreconditionFieldRejectsUnknownField(t *testing.T) {
 	repo := seedTestWithPreconditions(t)
-	if err := repo.EditPreconditionField("p1", "QA-P-1", "type", "Manual"); err == nil {
+	if err := repo.EditPreconditionField("p1", "QA-P-1", "bogus", "value"); err == nil {
 		t.Error("editing a non-whitelisted precondition field should error")
 	}
 }

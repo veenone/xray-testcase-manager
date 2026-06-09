@@ -611,6 +611,49 @@ func (a *App) BulkAssociatePreconditions(profileID string, testKeys, precondKeys
 	return a.repo.BulkAssociatePreconditions(profileID, testKeys, precondKeys, add)
 }
 
+// --- Precondition management view (FR-13.4) ---
+
+// ListPreconditionsWithUsage returns every cached Precondition with the count
+// of Tests referencing it — the rows the dedicated management view lists.
+func (a *App) ListPreconditionsWithUsage(profileID string) ([]testrepo.PreconditionUsage, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListPreconditionsWithUsage(profileID)
+}
+
+// ListTestsForPrecondition returns the Tests linked to one Precondition, each
+// with its summary and status, for the management view's detail pane.
+func (a *App) ListTestsForPrecondition(profileID, preconditionKey string) ([]testrepo.PreconditionTest, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListTestsForPrecondition(profileID, preconditionKey)
+}
+
+// CreatePreconditionDetailed creates a new Precondition locally with a type and
+// description and queues it for creation in Jira on commit (FR-13.4 / 13.5),
+// returning its temporary key. Project key comes from the profile.
+func (a *App) CreatePreconditionDetailed(profileID, summary, ptype, description string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return "", err
+	}
+	return a.repo.CreatePrecondition(profileID, p.ProjectKey, summary, ptype, description)
+}
+
+// DeletePrecondition removes a Precondition and its Test links and queues the
+// deletion for commit (FR-13.4).
+func (a *App) DeletePrecondition(profileID, preconditionKey string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.DeletePrecondition(profileID, preconditionKey)
+}
+
 // --- Local editing & change tracking (FR-2 / FR-1.5 / FR-12.6) ---
 
 // EditTestField applies a local edit to a Test field and queues a pending

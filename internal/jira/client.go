@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,14 @@ type Client struct {
 	baseURL string
 	token   string
 	http    *http.Client
+
+	// precondTypeOnce lazily resolves and caches the Precondition issue type
+	// for this instance (its name varies / may be localised), so the JQL search
+	// and the create call both target the right type.
+	precondTypeOnce sync.Once
+	precondTypeID   string
+	precondTypeName string
+	precondTypeErr  error
 }
 
 // User is the subset of /rest/api/2/myself the app needs to confirm a connection.
@@ -27,6 +36,21 @@ type User struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Email       string `json:"emailAddress"`
+}
+
+// HTTPError carries the HTTP status of a failed Jira request so callers can
+// treat specific statuses as soft failures — e.g. a 400 from an issue-type
+// search the instance/project doesn't support (no "Precondition" type)
+// shouldn't abort the whole sync.
+type HTTPError struct {
+	Method string
+	Path   string
+	Code   int
+	Status string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("jira: %s %s -> %s", e.Method, e.Path, e.Status)
 }
 
 // NewClient builds a client for the given Jira base URL authenticated with a
@@ -70,7 +94,7 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("jira: GET %s -> %s", path, resp.Status)
+		return &HTTPError{Method: http.MethodGet, Path: path, Code: resp.StatusCode, Status: resp.Status}
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }

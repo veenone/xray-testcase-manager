@@ -3,6 +3,7 @@ package jira
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -91,7 +92,7 @@ func (c *Client) searchContainers(ctx context.Context, projectKey, kind string) 
 	if err != nil {
 		return nil, err
 	}
-	jql := fmt.Sprintf(`project = %s AND issuetype = "%s" ORDER BY key ASC`, projectKey, issueType)
+	jql := fmt.Sprintf(`project = "%s" AND issuetype = "%s" ORDER BY key ASC`, projectKey, issueType)
 
 	out := []Container{}
 	startAt := 0
@@ -118,6 +119,13 @@ func (c *Client) searchContainers(ctx context.Context, projectKey, kind string) 
 			} `json:"issues"`
 		}
 		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
+			var he *HTTPError
+			if errors.As(err, &he) && he.Code == http.StatusBadRequest {
+				// This instance/project has no such container issue type —
+				// treat as none rather than aborting the sync.
+				log.Printf("xtm: %s search rejected (issue type %q absent?): %v", kind, issueType, err)
+				return out, nil
+			}
 			return nil, err
 		}
 		for _, iss := range resp.Issues {
@@ -145,18 +153,54 @@ const throttleContainers = 150 * time.Millisecond
 // consolidates run status from executions locally).
 //
 // Maps to GET /rest/raven/2.0/api/{testset|testplan|testexec}/{key}/test, which
-// returns a bare array of {id, key, rank, status} objects.
+// returns a bare array of {id, key, rank, status} objects. Xray caps each
+// response (default 200), returning a 400 otherwise, so the call is paged.
 func (c *Client) listContainerTests(ctx context.Context, kind, containerKey string) ([]ContainerLink, error) {
 	segment, err := containerPathSegment(kind)
 	if err != nil {
 		return nil, err
 	}
-	body, err := c.getBytes(ctx, fmt.Sprintf("/rest/raven/2.0/api/%s/%s/test", segment, containerKey))
-	if err != nil {
-		return nil, err
+	out := []ContainerLink{}
+	seen := map[string]bool{}
+	for page := 1; page <= ravenMaxPages; page++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		path := fmt.Sprintf("/rest/raven/2.0/api/%s/%s/test?page=%d&limit=%d",
+			segment, containerKey, page, ravenPageLimit)
+		body, err := c.getBytes(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+		links, err := parseContainerTests(kind, containerKey, body)
+		if err != nil {
+			return nil, err
+		}
+		added := 0
+		for _, l := range links {
+			if seen[l.TestKey] {
+				continue
+			}
+			seen[l.TestKey] = true
+			out = append(out, l)
+			added++
+		}
+		// Stop on a short page, an empty page, or a page that added nothing new
+		// (an instance that ignores the page param won't loop forever).
+		if len(links) < ravenPageLimit || added == 0 {
+			break
+		}
+		time.Sleep(throttleContainers)
 	}
-	return parseContainerTests(kind, containerKey, body)
+	return out, nil
 }
+
+// Xray paginates its raven "/test" association endpoints with page (1-based) and
+// limit (max 200). ravenMaxPages bounds the walk defensively.
+const (
+	ravenPageLimit = 200
+	ravenMaxPages  = 500
+)
 
 // parseContainerTests pulls Test keys (and, for executions, run status) out of a
 // container's tests response, tolerating a bare array or a {"tests":[…]} wrapper
