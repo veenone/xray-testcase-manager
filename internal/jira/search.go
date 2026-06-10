@@ -3,6 +3,7 @@ package jira
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -115,19 +116,76 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 	return tests, resp.Total, nil
 }
 
-// CreateTest creates a new Test issue and returns its key (FR-10). Demo URLs
-// short-circuit to a no-op, returning an empty key (reconciled on next sync).
-// The real-Jira call is a best-effort no-op pending verification.
-//
-// TODO(xtm): POST /rest/api/2/issue with issuetype Test and the mapped fields,
-// then return the new key — verify on a live instance.
+// resolveTestType finds the plain "Test" issue type id on this instance and
+// caches it. Matching is exact on the letters-only name (see normalizeTypeName)
+// so "Test Set" / "Test Plan" / "Test Execution" are not mistaken for it.
+// Returns an empty id (no error) when the instance has no plain Test type.
+func (c *Client) resolveTestType(ctx context.Context) (id, name string, err error) {
+	c.testTypeOnce.Do(func() {
+		var types []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		if e := c.get(ctx, "/rest/api/2/issuetype", &types); e != nil {
+			c.testTypeErr = e
+			return
+		}
+		for _, t := range types {
+			if normalizeTypeName(t.Name) == "test" {
+				c.testTypeID, c.testTypeName = t.ID, t.Name
+				return
+			}
+		}
+	})
+	return c.testTypeID, c.testTypeName, c.testTypeErr
+}
+
+// CreateTest creates a new Xray Test issue and returns its key (FR-1). Demo URLs
+// short-circuit to a no-op (the local NEW-N key is kept). Priority is sent only
+// when non-empty; labels and components are sent as Jira expects them.
 func (c *Client) CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error) {
-	_ = ctx
-	_ = components
 	if isDemoURL(c.baseURL) {
 		return "", nil
 	}
-	return "", nil
+	typeID, _, err := c.resolveTestType(ctx)
+	if err != nil {
+		return "", fmt.Errorf("resolve Test issue type: %w", err)
+	}
+	if typeID == "" {
+		return "", fmt.Errorf("this Jira instance has no plain Test issue type")
+	}
+	fields := map[string]any{
+		"project":   map[string]string{"key": projectKey},
+		"issuetype": map[string]string{"id": typeID},
+		"summary":   summary,
+	}
+	if strings.TrimSpace(description) != "" {
+		fields["description"] = description
+	}
+	if strings.TrimSpace(priority) != "" {
+		fields["priority"] = map[string]string{"name": priority}
+	}
+	if len(labels) > 0 {
+		fields["labels"] = labels
+	}
+	if len(components) > 0 {
+		comps := make([]map[string]string, 0, len(components))
+		for _, name := range components {
+			if s := strings.TrimSpace(name); s != "" {
+				comps = append(comps, map[string]string{"name": s})
+			}
+		}
+		if len(comps) > 0 {
+			fields["components"] = comps
+		}
+	}
+	var resp struct {
+		Key string `json:"key"`
+	}
+	if err := c.writeJSONReturning(ctx, http.MethodPost, "/rest/api/2/issue", map[string]any{"fields": fields}, &resp); err != nil {
+		return "", err
+	}
+	return resp.Key, nil
 }
 
 // incrementalSinceClause builds the JQL fragment for an updated-since filter.

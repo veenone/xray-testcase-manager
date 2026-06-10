@@ -8,6 +8,7 @@ interface Props {
   onCreate?: (parentPath: string) => void;
   onRename?: (path: string, currentName: string) => void;
   onDelete?: (path: string) => void;
+  onNewTest?: (folderId: string) => void;
   // readOnly hides the per-folder create/rename/delete actions — for reusing
   // the tree purely as a navigation/filter control (e.g. in the add-tests
   // modal).
@@ -53,6 +54,7 @@ export function FolderTree({
   onCreate,
   onRename,
   onDelete,
+  onNewTest,
   readOnly = false,
 }: Props) {
   // Index folders by parentId so each node can find its children in O(1).
@@ -105,6 +107,7 @@ export function FolderTree({
           onCreate={onCreate}
           onRename={onRename}
           onDelete={onDelete}
+          onNewTest={onNewTest}
           readOnly={readOnly}
         />
       ))}
@@ -120,6 +123,7 @@ interface NodeProps {
   onCreate?: (parentPath: string) => void;
   onRename?: (path: string, currentName: string) => void;
   onDelete?: (path: string) => void;
+  onNewTest?: (folderId: string) => void;
   readOnly?: boolean;
 }
 
@@ -131,6 +135,7 @@ function FolderNode({
   onCreate,
   onRename,
   onDelete,
+  onNewTest,
   readOnly = false,
 }: NodeProps) {
   const [open, setOpen] = useState(true);
@@ -164,6 +169,18 @@ function FolderNode({
         {count && <span className="folder-count">{count}</span>}
         {!readOnly && (
           <span className="folder-actions">
+            {onNewTest && (
+              <button
+                className="folder-action"
+                title="New test in this folder"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNewTest(folder.id);
+                }}
+              >
+                ⊕
+              </button>
+            )}
             <button
               className="folder-action"
               title="New subfolder"
@@ -209,6 +226,7 @@ function FolderNode({
               onCreate={onCreate}
               onRename={onRename}
               onDelete={onDelete}
+              onNewTest={onNewTest}
               readOnly={readOnly}
             />
           ))}

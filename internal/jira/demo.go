@@ -105,6 +105,21 @@ var demoPriorities = []string{
 	"Critical",
 }
 
+// demoPriorityList is the demo instance's distinct priority names — what
+// ListPriorities returns for a demo profile (FR-1).
+func demoPriorityList() []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, p := range demoPriorities {
+		if _, dup := seen[p]; dup {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
 var demoLabels = []string{
 	"smoke", "regression", "p1", "p2", "p3",
 	"api", "ui", "manual", "automated", "flaky",

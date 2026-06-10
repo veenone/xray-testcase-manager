@@ -28,6 +28,11 @@ type Progress struct {
 	Fetched int    `json:"fetched"`
 	Total   int    `json:"total"`
 	Done    bool   `json:"done"`
+	// TestsDone marks the end of the user-visible Test pull, before the
+	// best-effort folder / precondition / container / custom-field tail work.
+	// The UI releases the Sync button here so it doesn't look stuck while that
+	// background tail finishes (Done still fires when everything completes).
+	TestsDone bool `json:"testsDone"`
 }
 
 // Engine runs a pull sync for one profile.
@@ -76,6 +81,13 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 		if fetched < total {
 			time.Sleep(throttle)
 		}
+	}
+
+	// The user-visible Test pull is complete; everything below is best-effort
+	// tail work (folders, preconditions, containers, custom fields). Signal it so
+	// the UI can release the Sync button while the tail finishes in the background.
+	if onProgress != nil {
+		onProgress(Progress{Fetched: fetched, Total: total, TestsDone: true})
 	}
 
 	// Folders sync AFTER the Tests are in the store. Folder membership stamps

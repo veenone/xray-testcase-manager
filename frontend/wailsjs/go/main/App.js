@@ -70,6 +70,10 @@ export function CreateSavedView(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateSavedView'](arg1, arg2, arg3);
 }
 
+export function CreateTest(arg1, arg2) {
+  return window['go']['main']['App']['CreateTest'](arg1, arg2);
+}
+
 export function DeallocateTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeallocateTests'](arg1, arg2, arg3);
 }
@@ -244,6 +248,10 @@ export function ListPendingChanges(arg1) {
 
 export function ListPreconditionsWithUsage(arg1) {
   return window['go']['main']['App']['ListPreconditionsWithUsage'](arg1);
+}
+
+export function ListPriorities(arg1) {
+  return window['go']['main']['App']['ListPriorities'](arg1);
 }
 
 export function ListProfiles() {

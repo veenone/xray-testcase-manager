@@ -184,9 +184,18 @@ func (r *Repository) ImportTests(profileID string, records [][]string, mapping I
 
 // insertImportedTest creates one pending Test from an import row.
 func insertImportedTest(tx *sql.Tx, profileID string, p testCreatePayload) error {
+	_, err := insertLocalTest(tx, profileID, p, "import-test-local")
+	return err
+}
+
+// insertLocalTest writes a brand-new local Test (temp "NEW-N" key) plus its
+// steps, the test_create pending row, and an audit entry with the given action.
+// Shared by CSV import (FR-10) and interactive create (FR-1). Returns the temp
+// key.
+func insertLocalTest(tx *sql.Tx, profileID string, p testCreatePayload, auditAction string) (string, error) {
 	tempKey, err := nextTempTestKey(tx, profileID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.Exec(
 		`INSERT INTO test_case
@@ -195,7 +204,7 @@ func insertImportedTest(tx *sql.Tx, profileID string, p testCreatePayload) error
 		profileID, tempKey, p.Summary, p.Description, p.Priority, p.Labels,
 		encodeComponents(strings.Split(p.Components, ",")), p.Folder,
 	); err != nil {
-		return fmt.Errorf("insert imported test: %w", err)
+		return "", fmt.Errorf("insert local test: %w", err)
 	}
 	for i, s := range p.Steps {
 		if _, err := tx.Exec(
@@ -203,18 +212,21 @@ func insertImportedTest(tx *sql.Tx, profileID string, p testCreatePayload) error
 			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			profileID, tempKey, fmt.Sprintf("imp-%d", i+1), i+1, s.Action, s.Data, s.Expected,
 		); err != nil {
-			return fmt.Errorf("insert imported step: %w", err)
+			return "", fmt.Errorf("insert local step: %w", err)
 		}
 	}
 	encoded, _ := json.Marshal(p)
 	if err := upsertPendingChange(
 		tx, profileID, entityTestCreate, tempKey, "test", "", string(encoded), "",
 	); err != nil {
-		return err
+		return "", err
 	}
-	return writeAudit(
-		tx, profileID, entityTestCreate, tempKey, "import-test-local", "test", "", p.Summary, "",
-	)
+	if err := writeAudit(
+		tx, profileID, entityTestCreate, tempKey, auditAction, "test", "", p.Summary, "",
+	); err != nil {
+		return "", err
+	}
+	return tempKey, nil
 }
 
 // nextTempTestKey returns a Test key of the form "NEW-N" not already used in
@@ -263,6 +275,27 @@ func (r *Repository) RenameTest(profileID, oldKey, newKey string) error {
 		); err != nil {
 			return fmt.Errorf("rename test in %s: %w", stmt.table, err)
 		}
+	}
+	// Rewrite still-pending changes that key off the Test so they commit against
+	// the real key — folder/field edits (test_case), precondition sets, reviews
+	// and comments key by the bare Test key; step rows key by "<testKey>:<xrayID>".
+	// The test_create row is intentionally left alone: it is committed by id and
+	// then deleted, so its key is immaterial.
+	if _, err := tx.Exec(
+		`UPDATE pending_change SET entity_key = ?
+		 WHERE profile_id = ? AND entity_key = ?
+		   AND entity_type IN ('test_case','precondition_set','test_review','issue_comment')`,
+		newKey, profileID, oldKey,
+	); err != nil {
+		return fmt.Errorf("rewrite test pending rows: %w", err)
+	}
+	if _, err := tx.Exec(
+		`UPDATE pending_change SET entity_key = ? || substr(entity_key, ?)
+		 WHERE profile_id = ? AND entity_key LIKE ?
+		   AND entity_type IN ('test_step','test_step_delete','test_step_add','test_step_order')`,
+		newKey, len(oldKey)+1, profileID, oldKey+":%",
+	); err != nil {
+		return fmt.Errorf("rewrite test step pending rows: %w", err)
 	}
 	return tx.Commit()
 }

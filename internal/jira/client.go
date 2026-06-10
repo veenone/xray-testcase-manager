@@ -29,6 +29,13 @@ type Client struct {
 	precondTypeID   string
 	precondTypeName string
 	precondTypeErr  error
+
+	// testTypeOnce lazily resolves and caches the plain "Test" issue type id for
+	// this instance, used when creating new Tests (FR-1).
+	testTypeOnce sync.Once
+	testTypeID   string
+	testTypeName string
+	testTypeErr  error
 }
 
 // User is the subset of /rest/api/2/myself the app needs to confirm a connection.

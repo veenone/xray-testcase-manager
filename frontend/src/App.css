@@ -222,6 +222,7 @@
   padding: 5px 12px;
   cursor: pointer;
   color: var(--text);
+  white-space: nowrap;
 }
 .btn:hover:not(:disabled) {
   background: var(--row-hover);
@@ -253,6 +254,22 @@
 }
 .btn-danger:hover:not(:disabled) {
   background: #b91c1c;
+}
+
+/* Bottom status bar — sync progress / state lives here so the header isn't
+   crowded by the variable-width progress bar (FR-1). */
+.app-statusbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 14px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.app-statusbar .sync-info {
+  color: var(--text-muted) !important;
 }
 
 /* Sync progress bar */
@@ -2835,4 +2852,100 @@ tr.row-checked:hover {
   border: none;
   border-top: 1px solid var(--border);
   margin: 10px 0;
+}
+
+/* Uncommitted (NEW-*) test banner in the detail panel (FR-1). */
+.detail-uncommitted-banner {
+  margin: 0 12px 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* New Test panel (FR-1) — reuses .detail; these add the form-only bits. */
+.new-test-panel .ntp-badge {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent, #4338ca);
+}
+.new-test-panel .ntp-row {
+  display: flex;
+  gap: 10px;
+}
+.new-test-panel .ntp-col {
+  flex: 1;
+  min-width: 0;
+}
+.new-test-panel .ntp-section {
+  margin-top: 14px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+}
+.new-test-panel .ntp-section-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: inherit;
+}
+.new-test-panel .ntp-section-body {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+.new-test-panel .ntp-step {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 7px;
+  margin-bottom: 8px;
+}
+.new-test-panel .ntp-step-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.new-test-panel .ntp-step .detail-input {
+  margin-bottom: 5px;
+}
+.new-test-panel .ntp-step-del {
+  padding: 0 6px;
+  line-height: 1.4;
+}
+.new-test-panel .ntp-pc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.new-test-panel .ntp-pc-key {
+  font-family: "Consolas", "SF Mono", "Menlo", monospace;
+  color: var(--accent, #4338ca);
+}
+.new-test-panel .ntp-pc-sum {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.new-test-panel .ntp-add {
+  width: 100%;
+}
+.new-test-panel .ntp-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border, #e2e8f0);
 }

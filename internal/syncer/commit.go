@@ -14,10 +14,20 @@ import (
 
 // CommitResult reports the outcome of pushing pending changes to Jira,
 // per-Test. Succeeded, Conflicted and Failed are disjoint sets of Test keys.
+// Created maps each newly-created Test's temporary "NEW-N" key to the real Jira
+// key it was assigned, so the UI can re-point an open detail view (FR-1).
 type CommitResult struct {
 	Succeeded  []string       `json:"succeeded"`
 	Conflicted []Conflict     `json:"conflicted"`
 	Failed     []FailedCommit `json:"failed"`
+	Created    []CreatedTest  `json:"created"`
+}
+
+// CreatedTest records that a locally-created Test (TempKey, "NEW-N") was created
+// in Jira under Key during this commit (FR-1).
+type CreatedTest struct {
+	TempKey string `json:"tempKey"`
+	Key     string `json:"key"`
 }
 
 // Conflict means the remote `updated` has moved since the user's earliest
@@ -76,6 +86,7 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		Succeeded:  []string{},
 		Conflicted: []Conflict{},
 		Failed:     []FailedCommit{},
+		Created:    []CreatedTest{},
 	}
 
 	changes, err := e.repo.ListPendingChanges(profileID)
@@ -110,6 +121,26 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		changes = filterChangesByID(changes, only)
 	}
 
+	// Create new Tests next (FR-1 interactive create, FR-10 import): a brand-new
+	// Test gets its real key here, and RenameTest rewrites the still-pending
+	// folder / precondition / step rows that referenced its "NEW-N" placeholder —
+	// so attaching a folder or preconditions to a just-created Test in the same
+	// commit targets the created issue. Re-read so later passes see the real keys.
+	var newTestRows []testrepo.PendingChange
+	for _, c := range changes {
+		if c.EntityType == "test_create" {
+			newTestRows = append(newTestRows, c)
+		}
+	}
+	if len(newTestRows) > 0 {
+		e.commitTestCreates(ctx, profileID, projectKey, newTestRows, &result)
+		changes, err = e.repo.ListPendingChanges(profileID)
+		if err != nil {
+			return result, err
+		}
+		changes = filterChangesByID(changes, only)
+	}
+
 	// Group by parent Test key, preserving discovery order so the commit
 	// run is deterministic. Step entity_keys are "<testKey>:<xrayID>" — we
 	// strip the suffix to put step changes under the same Test bucket as
@@ -126,8 +157,6 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 	preconditionDeleteRows := make([]testrepo.PendingChange, 0)
 	// Folder operations (FR-13.3) are repository-level, keyed by folder path.
 	folderRows := make([]testrepo.PendingChange, 0)
-	// Imported Test creates (FR-10), keyed by a temporary "NEW-N" Test key.
-	testCreateRows := make([]testrepo.PendingChange, 0)
 	// Test reviews commit as a Jira comment on the Test, keyed by Test key.
 	reviewRows := make([]testrepo.PendingChange, 0)
 	// Free-text comments (FR-4.4) also post as Jira comments.
@@ -153,10 +182,6 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		}
 		if c.EntityType == "folder_create" || c.EntityType == "folder_rename" || c.EntityType == "folder_delete" {
 			folderRows = append(folderRows, c)
-			continue
-		}
-		if c.EntityType == "test_create" {
-			testCreateRows = append(testCreateRows, c)
 			continue
 		}
 		if c.EntityType == "test_review" {
@@ -489,7 +514,6 @@ testLoop:
 	e.commitPreconditionEdits(ctx, profileID, preconditionEditRows, &result)
 	e.commitPreconditionDeletes(ctx, profileID, preconditionDeleteRows, &result)
 	e.commitFolders(ctx, profileID, projectKey, folderRows, &result)
-	e.commitTestCreates(ctx, profileID, projectKey, testCreateRows, &result)
 	e.commitReviews(ctx, profileID, reviewRows, &result)
 	e.commitComments(ctx, profileID, commentRows, &result)
 	e.commitRuns(ctx, profileID, runRows, &result)
@@ -619,13 +643,16 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 			continue
 		}
 		key := c.EntityKey
-		if realKey != "" {
+		if realKey != "" && realKey != c.EntityKey {
 			if rErr := e.repo.RenameTest(profileID, c.EntityKey, realKey); rErr != nil {
 				// Remote create succeeded; a cache-rename hiccup must not fail
 				// the commit.
 				_ = rErr
 			}
 			key = realKey
+			// Record the temp→real mapping so the UI can re-point an open detail
+			// view from the placeholder key to the created issue (FR-1).
+			result.Created = append(result.Created, CreatedTest{TempKey: c.EntityKey, Key: realKey})
 		}
 		// Create the imported Test's steps (FR-10.7).
 		stepErr := ""

@@ -42,6 +42,7 @@ import type {
 import { ProfileForm } from "./components/ProfileForm";
 import { TestTable } from "./components/TestTable";
 import { TestDetail } from "./components/TestDetail";
+import { NewTestPanel } from "./components/NewTestPanel";
 import { FolderTree } from "./components/FolderTree";
 import { ContainerList } from "./components/ContainerList";
 import { ComponentList } from "./components/ComponentList";
@@ -86,7 +87,12 @@ function App() {
   const [syncState, setSyncState] = useState<SyncState | null>(null);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [syncError, setSyncError] = useState("");
+  // syncing drives the Sync button label/disabled state; it is released as soon
+  // as the Test pull finishes (testsDone) so the button doesn't look stuck while
+  // the best-effort tail work runs. syncRunningRef tracks the whole backend Sync
+  // call, so a concurrent sync can't be started while the tail is still going.
   const [syncing, setSyncing] = useState(false);
+  const syncRunningRef = useRef(false);
 
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>("");
@@ -103,6 +109,8 @@ function App() {
   const [selectedComponent, setSelectedComponent] = useState<string>("");
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [showNewTest, setShowNewTest] = useState(false);
+  const [newTestFolder, setNewTestFolder] = useState<string>("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [detailVersion, setDetailVersion] = useState(0);
 
@@ -194,9 +202,25 @@ function App() {
       .finally(() => setLoadingProfiles(false));
   }, [health]);
 
-  // Subscribe to sync progress events for the lifetime of the app.
+  // Subscribe to sync progress events for the lifetime of the app. The engine
+  // emits a terminal Progress{done:true} when it finishes — clear the syncing
+  // state on it directly (not only in the SyncProfile promise's finally) so the
+  // Sync button never sticks on "Syncing…" if the event and the promise
+  // resolution race.
   useEffect(() => {
-    return EventsOn("sync:progress", (p: SyncProgress) => setProgress(p));
+    return EventsOn("sync:progress", (p: SyncProgress) => {
+      if (p.done) {
+        // Everything (incl. the best-effort tail) finished.
+        setProgress(null);
+        setSyncing(false);
+      } else if (p.testsDone) {
+        // Test pull done — release the button; the tail (folders / preconditions
+        // / containers) keeps running in the background, shown in the status bar.
+        setSyncing(false);
+      } else {
+        setProgress(p);
+      }
+    });
   }, []);
 
   // Pending changes grouped by parent Test key — drives the dirty markers
@@ -395,7 +419,8 @@ function App() {
   }
 
   async function doSync(full: boolean) {
-    if (!activeId || syncing) return;
+    if (!activeId || syncRunningRef.current) return;
+    syncRunningRef.current = true;
     setSyncing(true);
     setSyncError("");
     setProgress({ phase: "", fetched: 0, total: 0, done: false });
@@ -406,6 +431,7 @@ function App() {
     } catch (e) {
       setSyncError(errMsg(e));
     } finally {
+      syncRunningRef.current = false;
       setSyncing(false);
       setProgress(null);
     }
@@ -419,7 +445,7 @@ function App() {
   // the Test Repository folder membership (skipped on routine resyncs) is
   // refreshed. It can be slow on large projects, so confirm first.
   function runFullSync() {
-    if (!activeId || syncing) return;
+    if (!activeId || syncRunningRef.current) return;
     if (
       !window.confirm(
         "Full resync re-pulls every test and re-maps Test Repository folders. " +
@@ -573,6 +599,22 @@ function App() {
     reloadPending();
   }
 
+  // openNewTest launches the create panel, pre-filling a folder when one is
+  // passed (per-folder action) or when a folder is the active browse filter.
+  function openNewTest(folderId: string) {
+    setSelectedKey(null);
+    setNewTestFolder(folderId);
+    setShowNewTest(true);
+  }
+
+  // handleTestCreated closes the panel, refreshes pending + list, and opens the
+  // freshly-created (still uncommitted) Test in the detail panel.
+  function handleTestCreated(tempKey: string) {
+    setShowNewTest(false);
+    setSelectedKey(tempKey);
+    handleEdited(); // refreshes the pending list and the table
+  }
+
   // Called when the user discards a pending change from the modal. The
   // backend reverts test_case to before_val, so the detail panel needs to
   // re-fetch too.
@@ -588,6 +630,19 @@ function App() {
     }
   }
 
+  // applyCreatedRemap re-points an open detail view from a just-committed
+  // "NEW-N" placeholder to the real Jira key the backend assigned (FR-1), so the
+  // panel shows the actual ticket instead of a key that no longer exists.
+  function applyCreatedRemap(result: CommitResult) {
+    const created = result.created ?? [];
+    if (created.length === 0) return;
+    setSelectedKey((cur) => {
+      if (!cur) return cur;
+      const match = created.find((c) => c.tempKey === cur);
+      return match ? match.key : cur;
+    });
+  }
+
   // Called when the user clicks "Commit" in the pending modal. Pushes all
   // pending changes to Jira; per-Test results land in lastCommitResult.
   // Committed pending rows are deleted by the backend; failures stay.
@@ -598,6 +653,7 @@ function App() {
     try {
       const result = await CommitPendingChanges(activeId);
       setLastCommitResult(result);
+      applyCreatedRemap(result);
       setRefreshKey((k) => k + 1);
       setDetailVersion((v) => v + 1);
       reloadPending();
@@ -622,6 +678,7 @@ function App() {
     try {
       const result = await CommitPendingChangesByIDs(activeId, ids);
       setLastCommitResult(result);
+      applyCreatedRemap(result);
       setRefreshKey((k) => k + 1);
       setDetailVersion((v) => v + 1);
       reloadPending();
@@ -832,19 +889,6 @@ function App() {
         </nav>
 
         <div className="topbar-zone topbar-right">
-          {progress && !progress.done && <SyncBar progress={progress} />}
-          {syncError && (
-            <span className="error-text">Sync failed: {syncError}</span>
-          )}
-          {!progress && !syncError && syncState && (
-            <span className="muted sync-info">
-              {syncState.testCount.toLocaleString()} tests
-              {syncState.lastSyncedAt
-                ? ` · ${new Date(syncState.lastSyncedAt).toLocaleDateString()}`
-                : " · never synced"}
-            </span>
-          )}
-
           {pendingChanges.length > 0 && (
             <button
               className="btn-pending"
@@ -855,6 +899,18 @@ function App() {
                 ●
               </span>
               {pendingChanges.length} pending
+            </button>
+          )}
+
+          {view === "browse" && (
+            <button
+              className="btn btn-primary"
+              onClick={() =>
+                openNewTest(groupBy === "folder" ? selectedFolder : "")
+              }
+              title="Create a new test case"
+            >
+              ＋ New Test
             </button>
           )}
 
@@ -1038,6 +1094,7 @@ function App() {
                   onCreate={createFolder}
                   onRename={renameFolder}
                   onDelete={deleteFolder}
+                  onNewTest={(folderId) => openNewTest(folderId)}
                 />
               ) : (
                 <div className="browse-sidebar-empty">
@@ -1089,16 +1146,26 @@ function App() {
             onToggleSelectPage={toggleSelectPage}
             onSelectAllMatching={selectAllMatching}
           />
-          {selectedKey && (
-            <TestDetail
+          {showNewTest ? (
+            <NewTestPanel
               profileId={activeId}
-              testKey={selectedKey}
-              version={detailVersion}
-              pendingForTest={pendingByTestKey.get(selectedKey) ?? []}
               folders={folders}
-              onClose={() => setSelectedKey(null)}
-              onEdited={handleEdited}
+              initialFolderId={newTestFolder}
+              onCreated={handleTestCreated}
+              onCancel={() => setShowNewTest(false)}
             />
+          ) : (
+            selectedKey && (
+              <TestDetail
+                profileId={activeId}
+                testKey={selectedKey}
+                version={detailVersion}
+                pendingForTest={pendingByTestKey.get(selectedKey) ?? []}
+                folders={folders}
+                onClose={() => setSelectedKey(null)}
+                onEdited={handleEdited}
+              />
+            )
           )}
         </main>
       )}
@@ -1273,6 +1340,25 @@ function App() {
           onCancel={() => setShowBulkReview(false)}
         />
       )}
+
+      <footer className="app-statusbar">
+        {progress && !progress.done ? (
+          <SyncBar progress={progress} />
+        ) : syncError ? (
+          <span className="error-text">Sync failed: {syncError}</span>
+        ) : syncState ? (
+          <span className="muted sync-info">
+            {syncState.testCount.toLocaleString()} tests
+            {syncState.lastSyncedAt
+              ? ` · last synced ${new Date(
+                  syncState.lastSyncedAt,
+                ).toLocaleString()}`
+              : " · never synced"}
+          </span>
+        ) : (
+          <span className="muted sync-info">&nbsp;</span>
+        )}
+      </footer>
 
       {promptUI}
     </div>

@@ -41,6 +41,8 @@ export function CreateProfile(arg1:string,arg2:string,arg3:string,arg4:string,ar
 
 export function CreateSavedView(arg1:string,arg2:string,arg3:string):Promise<testrepo.SavedView>;
 
+export function CreateTest(arg1:string,arg2:testrepo.TestDraft):Promise<string>;
+
 export function DeallocateTests(arg1:string,arg2:string,arg3:Array<string>):Promise<testrepo.DeallocateResult>;
 
 export function DeleteContainer(arg1:string,arg2:string):Promise<void>;
@@ -128,6 +130,8 @@ export function ListMatchingKeys(arg1:string,arg2:testrepo.Query):Promise<Array<
 export function ListPendingChanges(arg1:string):Promise<Array<testrepo.PendingChange>>;
 
 export function ListPreconditionsWithUsage(arg1:string):Promise<Array<testrepo.PreconditionUsage>>;
+
+export function ListPriorities(arg1:string):Promise<Array<string>>;
 
 export function ListProfiles():Promise<Array<profile.Profile>>;
 

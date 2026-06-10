@@ -2107,6 +2107,29 @@ func (r *Repository) ListTestStatuses(profileID string) ([]string, error) {
 	return out, rows.Err()
 }
 
+// ListTestPriorities returns the distinct non-empty priorities present on a
+// profile's synced Tests, alphabetically. Unioned with the Jira priority scheme
+// by App.ListPriorities so the New Test form offers valid values (FR-1).
+func (r *Repository) ListTestPriorities(profileID string) ([]string, error) {
+	rows, err := r.db.Query(
+		`SELECT DISTINCT priority FROM test_case
+		 WHERE profile_id = ? AND priority <> '' ORDER BY priority`,
+		profileID)
+	if err != nil {
+		return nil, fmt.Errorf("list test priorities: %w", err)
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // GetTest returns one Test by its Jira key, or ErrNotFound.
 func (r *Repository) GetTest(profileID, key string) (TestCase, error) {
 	row := r.db.QueryRow(
@@ -3724,28 +3747,28 @@ func applyBulkOperation(op BulkEdit, current string) (string, error) {
 // Entity types for pending_change / audit_log rows. New ones get added
 // here so the switch/lookup code stays grep-friendly.
 const (
-	entityTestCase         = "test_case"
-	entityTestStep         = "test_step"
-	entityTestStepDelete   = "test_step_delete"
-	entityTestStepAdd      = "test_step_add"
-	entityTestStepOrder    = "test_step_order"
-	entityMembershipAdd    = "test_membership_add"
-	entityMembershipRemove = "test_membership_remove"
-	entityContainerAdd     = "test_container_add"
-	entityContainerEdit    = "container_edit"
-	entityContainerDelete  = "container_delete"
+	entityTestCase           = "test_case"
+	entityTestStep           = "test_step"
+	entityTestStepDelete     = "test_step_delete"
+	entityTestStepAdd        = "test_step_add"
+	entityTestStepOrder      = "test_step_order"
+	entityMembershipAdd      = "test_membership_add"
+	entityMembershipRemove   = "test_membership_remove"
+	entityContainerAdd       = "test_container_add"
+	entityContainerEdit      = "container_edit"
+	entityContainerDelete    = "container_delete"
 	entityPreconditionSet    = "precondition_set"
 	entityPreconditionEdit   = "precondition_edit"
 	entityPreconditionAdd    = "precondition_add"
 	entityPreconditionDelete = "precondition_delete"
-	entityCustomField      = "custom_field"
-	entityFolderCreate     = "folder_create"
-	entityFolderRename     = "folder_rename"
-	entityFolderDelete     = "folder_delete"
-	entityTestCreate       = "test_create"
-	entityTestReview       = "test_review"
-	entityIssueComment     = "issue_comment"
-	entityTestRun          = "test_run"
+	entityCustomField        = "custom_field"
+	entityFolderCreate       = "folder_create"
+	entityFolderRename       = "folder_rename"
+	entityFolderDelete       = "folder_delete"
+	entityTestCreate         = "test_create"
+	entityTestReview         = "test_review"
+	entityIssueComment       = "issue_comment"
+	entityTestRun            = "test_run"
 )
 
 // preconditionFields whitelists which Precondition columns can be edited via

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   GetTest,
   GetTestPreconditions,
@@ -132,11 +132,19 @@ export function TestDetail({
   const [priority, setPriority] = useState("");
   const [labels, setLabels] = useState("");
 
+  // Tracks the previously-shown key so we can detect a just-committed new Test
+  // (its key flips from a "NEW-N" placeholder to the real Jira key) and force a
+  // fresh pull from Jira — the local cache still holds temporary step IDs (FR-1).
+  const prevKeyRef = useRef<string>("");
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
     setSaveError("");
+    const justCommitted =
+      prevKeyRef.current.startsWith("NEW-") && !testKey.startsWith("NEW-");
+    prevKeyRef.current = testKey;
     Promise.all([
       GetTest(profileId, testKey),
       GetTestPreconditions(profileId, testKey),
@@ -172,7 +180,7 @@ export function TestDetail({
         setStepsLoading(true);
         setStepsError("");
         setJiraStepInfo(null);
-        GetTestSteps(profileId, testKey, false)
+        GetTestSteps(profileId, testKey, justCommitted)
           .then((s) => {
             if (cancelled) return;
             setSteps(s ?? []);
@@ -194,7 +202,7 @@ export function TestDetail({
           });
         // Custom fields load lazily too — definitions come from sync, values
         // on first open. Failure is non-blocking.
-        GetTestCustomFields(profileId, testKey, false)
+        GetTestCustomFields(profileId, testKey, justCommitted)
           .then((cf) => {
             if (!cancelled) setCustomFields(cf ?? []);
           })
@@ -496,6 +504,13 @@ export function TestDetail({
           ✕
         </button>
       </div>
+
+      {testKey.startsWith("NEW-") && (
+        <div className="detail-uncommitted-banner">
+          Uncommitted — this test is local only and will be created in Jira when
+          you commit.
+        </div>
+      )}
 
       {loading && <div className="muted detail-body">Loading…</div>}
       {error && <div className="error-text detail-body">{error}</div>}

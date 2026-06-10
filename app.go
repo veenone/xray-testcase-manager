@@ -40,8 +40,11 @@ type App struct {
 
 	// statusCache holds the per-profile workflow status list fetched from Jira,
 	// for the session — workflow config rarely changes, so one fetch is enough.
-	statusMu    sync.Mutex
-	statusCache map[string][]string
+	// priorityCache does the same for the Jira priority scheme (FR-1); both are
+	// guarded by statusMu.
+	statusMu      sync.Mutex
+	statusCache   map[string][]string
+	priorityCache map[string][]string
 }
 
 // HealthInfo reports whether the backend initialised successfully. The
@@ -56,7 +59,7 @@ type HealthInfo struct {
 
 // NewApp creates a new App application struct.
 func NewApp() *App {
-	return &App{statusCache: map[string][]string{}}
+	return &App{statusCache: map[string][]string{}, priorityCache: map[string][]string{}}
 }
 
 // startup wires the service layer. Failures are captured into startupErr
@@ -775,6 +778,10 @@ func (a *App) GetTestTransitions(profileID, testKey string) ([]jira.Transition, 
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
+	if isLocalTestKey(testKey) {
+		// Uncommitted local Test — no Jira issue yet, so no transitions.
+		return []jira.Transition{}, nil
+	}
 	test, err := a.repo.GetTest(profileID, testKey)
 	if err != nil {
 		return nil, err
@@ -852,6 +859,11 @@ func (a *App) GetTestSteps(profileID, testKey string, forceRefresh bool) ([]test
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
+	if isLocalTestKey(testKey) {
+		// Uncommitted local Test — its steps live only in the local store; never
+		// fetch from Jira (the placeholder key would 400).
+		return a.repo.ListTestSteps(profileID, testKey)
+	}
 	if !forceRefresh {
 		cached, err := a.repo.ListTestSteps(profileID, testKey)
 		if err != nil {
@@ -907,6 +919,10 @@ func (a *App) CheckJiraTestSteps(profileID, testKey string) (JiraStepInfo, error
 	if err := a.requireStore(); err != nil {
 		return JiraStepInfo{}, err
 	}
+	if isLocalTestKey(testKey) {
+		// Uncommitted local Test — nothing in Jira to compare against.
+		return JiraStepInfo{}, nil
+	}
 	p, err := a.profiles.Get(profileID)
 	if err != nil {
 		return JiraStepInfo{}, err
@@ -938,6 +954,11 @@ func (a *App) CheckJiraTestSteps(profileID, testKey string) (JiraStepInfo, error
 func (a *App) GetTestCustomFields(profileID, testKey string, forceRefresh bool) ([]testrepo.CustomFieldValue, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
+	}
+	if isLocalTestKey(testKey) {
+		// Uncommitted local Test — serve whatever is cached locally; never fetch
+		// from Jira (the placeholder key would 400).
+		return a.repo.ListTestCustomFields(profileID, testKey)
 	}
 	if !forceRefresh {
 		has, err := a.repo.HasCustomFieldValues(profileID, testKey)
@@ -1464,6 +1485,19 @@ func (a *App) ImportTests(profileID, contentB64 string, isXlsx bool, mapping tes
 	return a.repo.ImportTests(profileID, records, mapping, dryRun)
 }
 
+// CreateTest queues a brand-new Test locally (temp NEW-N key) with optional
+// steps, folder and precondition links, pushed to Jira on commit (FR-1).
+// Returns the temp key so the frontend can open the new Test in the detail panel.
+func (a *App) CreateTest(profileID string, draft testrepo.TestDraft) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(draft.Summary) == "" {
+		return "", fmt.Errorf("a summary is required to create a test")
+	}
+	return a.repo.CreateTest(profileID, draft)
+}
+
 // decodeImport base64-decodes an uploaded file and parses it into rows.
 func decodeImport(contentB64 string, isXlsx bool) ([][]string, error) {
 	data, err := base64.StdEncoding.DecodeString(contentB64)
@@ -1601,6 +1635,59 @@ func (a *App) workflowStatuses(profileID string) []string {
 	return statuses
 }
 
+// ListPriorities returns the priorities for the New Test form (FR-1): the Jira
+// instance's configured priority names (in scheme order, cached per profile for
+// the session) unioned with the priorities actually present on synced Tests — so
+// the dropdown is authoritative (Jira rejects an unknown priority at create)
+// yet never empty.
+func (a *App) ListPriorities(profileID string) ([]string, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	synced, err := a.repo.ListTestPriorities(profileID)
+	if err != nil {
+		return nil, err
+	}
+	return mergeStatuses(a.jiraPriorities(profileID), synced), nil
+}
+
+// jiraPriorities returns the Jira priority scheme, cached per profile for the
+// session. A fetch failure yields nil (synced priorities still fill the list)
+// and is not cached, so a later call can retry.
+func (a *App) jiraPriorities(profileID string) []string {
+	a.statusMu.Lock()
+	cached, ok := a.priorityCache[profileID]
+	a.statusMu.Unlock()
+	if ok {
+		return cached
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return nil
+	}
+	priorities, err := jira.NewClient(p.JiraURL, token).ListPriorities(a.ctx, p.ProjectKey)
+	if err != nil || len(priorities) == 0 {
+		return nil
+	}
+	a.statusMu.Lock()
+	a.priorityCache[profileID] = priorities
+	a.statusMu.Unlock()
+	return priorities
+}
+
+// isLocalTestKey reports whether a Test key is a not-yet-committed local
+// placeholder (the "NEW-N" keys minted by import / interactive create, FR-1).
+// Such Tests don't exist in Jira yet, so per-Test Jira fetches (steps, custom
+// fields, transitions, metadata) must serve local data or empty rather than
+// calling Jira, which would 400 on the unknown key.
+func isLocalTestKey(key string) bool {
+	return strings.HasPrefix(key, "NEW-")
+}
+
 // mergeStatuses returns the workflow statuses in order, then any synced statuses
 // not already listed (sorted) — leading with the authoritative workflow order
 // while still surfacing anything unexpected in the data.
@@ -1641,6 +1728,10 @@ func (a *App) GetTest(profileID, key string) (testrepo.TestCase, error) {
 func (a *App) GetTestMeta(profileID, testKey string) (jira.TestMeta, error) {
 	if err := a.requireStore(); err != nil {
 		return jira.TestMeta{}, err
+	}
+	if isLocalTestKey(testKey) {
+		// Uncommitted local Test — no Jira issue metadata yet.
+		return jira.TestMeta{}, nil
 	}
 	p, err := a.profiles.Get(profileID)
 	if err != nil {

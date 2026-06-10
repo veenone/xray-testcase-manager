@@ -55,8 +55,10 @@ export {
   ListMatchingKeys,
   ListComponents,
   ListStatuses,
+  ListPriorities,
   PreviewImport,
   ImportTests,
+  CreateTest,
   ExportTests,
   ExportImportTemplate,
   CreateSavedView,
@@ -355,6 +357,10 @@ export interface SyncProgress {
   fetched: number;
   total: number;
   done: boolean;
+  // testsDone marks the end of the user-visible Test pull, before the best-effort
+  // folder / precondition / container tail work — the UI releases the Sync button
+  // here so it doesn't look stuck while that finishes.
+  testsDone?: boolean;
 }
 
 // CommitResult mirrors syncer.CommitResult — per-Test outcome of pushing
@@ -363,6 +369,16 @@ export interface CommitResult {
   succeeded: string[];
   conflicted: Conflict[];
   failed: FailedCommit[];
+  // created maps each newly-created Test's temporary "NEW-N" key to the real
+  // Jira key it was assigned (FR-1). Optional so error-path literals can omit it.
+  created?: CreatedTest[];
+}
+
+// CreatedTest mirrors syncer.CreatedTest — a locally-created Test's temp key and
+// the real Jira key it received on commit.
+export interface CreatedTest {
+  tempKey: string;
+  key: string;
 }
 
 // Conflict means the remote `updated` has advanced since the user's earliest
@@ -477,6 +493,26 @@ export interface ImportResult {
   created: number;
   skipped: number;
   errors: ImportError[];
+}
+
+// StepDraft mirrors testrepo.StepDraft — one step in the New Test form (FR-1).
+export interface StepDraft {
+  action: string;
+  data: string;
+  expected: string;
+}
+
+// TestDraft mirrors testrepo.TestDraft — the New Test form payload (FR-1).
+// labels is space-separated, components comma-separated, matching import.
+export interface TestDraft {
+  summary: string;
+  description: string;
+  priority: string;
+  labels: string;
+  components: string;
+  folderId: string;
+  steps: StepDraft[];
+  precondKeys: string[];
 }
 
 // Review mirrors testrepo.Review — a Test's review state. An empty verdict
