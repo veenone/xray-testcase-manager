@@ -51,35 +51,51 @@ type ContainerLink struct {
 // for the containers, then /rest/raven/2.0/api/{testset,testplan,testexec}/
 // {key}/test for memberships (the testexec variant returns run status) — once
 // the response shapes can be verified on a live instance.
-func (c *Client) ListContainers(ctx context.Context, projectKey string) ([]Container, []ContainerLink, error) {
+// onProgress (optional) is called once per container as its Test memberships
+// are read — the slow part of a container sync — so the UI can show progress.
+func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Container, []ContainerLink, error) {
 	if isDemoURL(c.baseURL) {
 		return demoContainersAndLinks(projectKey)
 	}
 
+	// Gather every container across the three kinds first, so the membership pass
+	// below has a known total for progress reporting.
+	type kindContainer struct {
+		kind string
+		key  string
+	}
 	containers := []Container{}
-	links := []ContainerLink{}
+	all := []kindContainer{}
 	for _, kind := range []string{KindTestSet, KindTestPlan, KindTestExec} {
 		found, err := c.searchContainers(ctx, projectKey, kind)
 		if err != nil {
 			return nil, nil, fmt.Errorf("search %s issues: %w", kind, err)
 		}
 		containers = append(containers, found...)
-
-		// Pull each container's Test memberships. Best-effort per container so a
-		// single inaccessible container can't abort the whole sync.
 		for _, ct := range found {
-			if err := ctx.Err(); err != nil {
-				return nil, nil, err
-			}
-			ls, err := c.listContainerTests(ctx, kind, ct.Key)
-			if err != nil {
-				log.Printf("xtm: container %s members: %v", ct.Key, err)
-				continue
-			}
-			links = append(links, ls...)
-			time.Sleep(150 * time.Millisecond)
+			all = append(all, kindContainer{kind: kind, key: ct.Key})
 		}
 		log.Printf("xtm: containers %s: %d found for %s", kind, len(found), projectKey)
+	}
+
+	// Pull each container's Test memberships. Best-effort per container so a
+	// single inaccessible container can't abort the whole sync.
+	links := []ContainerLink{}
+	total := len(all)
+	for i, kc := range all {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		ls, err := c.listContainerTests(ctx, kc.kind, kc.key)
+		if err != nil {
+			log.Printf("xtm: container %s members: %v", kc.key, err)
+		} else {
+			links = append(links, ls...)
+		}
+		if onProgress != nil {
+			onProgress(i+1, total)
+		}
+		time.Sleep(150 * time.Millisecond)
 	}
 	return containers, links, nil
 }

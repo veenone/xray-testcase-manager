@@ -61,7 +61,7 @@ func TestListPreconditionsResolvesTypeAndPaginates(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	pres, links, err := newTestClient(srv).ListPreconditions(context.Background(), "PROJ")
+	pres, links, err := newTestClient(srv).ListPreconditions(context.Background(), "PROJ", nil)
 	if err != nil {
 		t.Fatalf("ListPreconditions: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestListPreconditionsNoTypeIsSoft(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	pres, links, err := newTestClient(srv).ListPreconditions(context.Background(), "PROJ")
+	pres, links, err := newTestClient(srv).ListPreconditions(context.Background(), "PROJ", nil)
 	if err != nil {
 		t.Fatalf("expected soft success, got %v", err)
 	}

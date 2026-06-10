@@ -61,6 +61,22 @@ func (r *Repository) SetTestRunStatus(profileID, execKey, testKey, status string
 	return tx.Commit()
 }
 
+// BulkSetTestRunStatus applies one run result to several Tests in an execution
+// (FR-3 bulk), queuing each via SetTestRunStatus. A Test already at that status
+// is a silent success; a Test not in the execution is reported as failed. Each
+// runs in its own transaction so one failure doesn't block the rest.
+func (r *Repository) BulkSetTestRunStatus(profileID, execKey string, testKeys []string, status string) BulkEditResult {
+	result := BulkEditResult{Succeeded: []string{}, Failed: []BulkFailure{}}
+	for _, key := range testKeys {
+		if err := r.SetTestRunStatus(profileID, execKey, key, status); err != nil {
+			result.Failed = append(result.Failed, BulkFailure{TestKey: key, Error: err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, key)
+	}
+	return result
+}
+
 func runKey(execKey, testKey string) string { return execKey + ":" + testKey }
 
 // splitRunKey parses a test_run entity_key "<execKey>:<testKey>". Issue keys

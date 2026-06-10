@@ -28,11 +28,20 @@ type Progress struct {
 	Fetched int    `json:"fetched"`
 	Total   int    `json:"total"`
 	Done    bool   `json:"done"`
-	// TestsDone marks the end of the user-visible Test pull, before the
-	// best-effort folder / precondition / container / custom-field tail work.
-	// The UI releases the Sync button here so it doesn't look stuck while that
-	// background tail finishes (Done still fires when everything completes).
-	TestsDone bool `json:"testsDone"`
+	// Stage is a human-readable label for the running phase ("Fetching tests",
+	// "Mapping folder membership", "Syncing containers", …) so the UI can show
+	// the user which step a sync is on — including the best-effort tail work
+	// (folders / preconditions / containers / custom fields) that is otherwise
+	// silent. The Sync button stays disabled until the whole sync completes.
+	Stage string `json:"stage"`
+}
+
+// emitStage sends a label-only progress event for a sync stage that has no item
+// count, so the UI shows what's running.
+func emitStage(onProgress func(Progress), stage string) {
+	if onProgress != nil {
+		onProgress(Progress{Stage: stage})
+	}
 }
 
 // Engine runs a pull sync for one profile.
@@ -72,7 +81,7 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 		fetched += len(tests)
 
 		if onProgress != nil {
-			onProgress(Progress{Fetched: fetched, Total: total})
+			onProgress(Progress{Stage: "Fetching tests", Fetched: fetched, Total: total})
 		}
 
 		if len(tests) == 0 {
@@ -83,31 +92,28 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 		}
 	}
 
-	// The user-visible Test pull is complete; everything below is best-effort
-	// tail work (folders, preconditions, containers, custom fields). Signal it so
-	// the UI can release the Sync button while the tail finishes in the background.
-	if onProgress != nil {
-		onProgress(Progress{Fetched: fetched, Total: total, TestsDone: true})
-	}
-
 	// Folders sync AFTER the Tests are in the store. Folder membership stamps
 	// folder_id onto existing test_case rows, so running it before the Test pull
 	// (as it used to) left the first sync's folders empty — the rows didn't exist
 	// yet. The tree refreshes every sync; the per-folder membership walk is
 	// best-effort and never blocks the Test pull.
+	emitStage(onProgress, "Loading folders")
 	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
 
 	// Preconditions and containers are best-effort, like folders: a Xray REST
 	// quirk (an absent issue type, a pagination cap, a permissions gap) is
 	// logged but must never fail the whole sync — the Tests are already in.
-	if err := e.syncPreconditions(ctx, profileID, projectKey); err != nil {
+	emitStage(onProgress, "Syncing preconditions")
+	if err := e.syncPreconditions(ctx, profileID, projectKey, onProgress); err != nil {
 		log.Printf("xtm: precondition sync failed (continuing): %v", err)
 	}
 
-	if err := e.syncContainers(ctx, profileID, projectKey); err != nil {
+	emitStage(onProgress, "Syncing containers")
+	if err := e.syncContainers(ctx, profileID, projectKey, onProgress); err != nil {
 		log.Printf("xtm: container sync failed (continuing): %v", err)
 	}
 
+	emitStage(onProgress, "Syncing custom fields")
 	if err := e.syncCustomFields(ctx, profileID, projectKey); err != nil {
 		return err
 	}
@@ -190,7 +196,7 @@ func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey
 			}
 		}
 		if onProgress != nil {
-			onProgress(Progress{Phase: "folders", Fetched: i + 1, Total: total})
+			onProgress(Progress{Phase: "folders", Stage: "Mapping folder membership", Fetched: i + 1, Total: total})
 		}
 		time.Sleep(throttle)
 	}
@@ -206,8 +212,12 @@ func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey
 // Test-to-Precondition links. An empty result is tolerated — the real-Jira
 // implementation is currently a no-op pending live verification (FR-13.4),
 // but demo mode populates them.
-func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey string) error {
-	preconditions, links, err := e.client.ListPreconditions(ctx, projectKey)
+func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
+	preconditions, links, err := e.client.ListPreconditions(ctx, projectKey, func(done, total int) {
+		if onProgress != nil {
+			onProgress(Progress{Phase: "preconditions", Stage: "Syncing preconditions", Fetched: done, Total: total})
+		}
+	})
 	if err != nil {
 		return fmt.Errorf("list preconditions: %w", err)
 	}
@@ -233,8 +243,12 @@ func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey st
 // Executions and reconciles their Test memberships (FR-1.3). An empty result
 // is tolerated — the real-Jira implementation is currently a no-op pending
 // live verification, but demo mode populates them.
-func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey string) error {
-	containers, links, err := e.client.ListContainers(ctx, projectKey)
+func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
+	containers, links, err := e.client.ListContainers(ctx, projectKey, func(done, total int) {
+		if onProgress != nil {
+			onProgress(Progress{Phase: "containers", Stage: "Syncing containers", Fetched: done, Total: total})
+		}
+	})
 	if err != nil {
 		return fmt.Errorf("list containers: %w", err)
 	}

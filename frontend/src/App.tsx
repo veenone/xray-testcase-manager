@@ -83,6 +83,8 @@ function App() {
   const { prompt, promptUI } = usePrompt();
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  // When set, the profile modal opens in edit mode for this profile (FR-5).
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
 
   const [syncState, setSyncState] = useState<SyncState | null>(null);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
@@ -202,20 +204,16 @@ function App() {
       .finally(() => setLoadingProfiles(false));
   }, [health]);
 
-  // Subscribe to sync progress events for the lifetime of the app. The engine
-  // emits a terminal Progress{done:true} when it finishes — clear the syncing
-  // state on it directly (not only in the SyncProfile promise's finally) so the
-  // Sync button never sticks on "Syncing…" if the event and the promise
-  // resolution race.
+  // Subscribe to sync progress events for the lifetime of the app. The Sync
+  // button stays disabled for the WHOLE sync (tests + folders + preconditions +
+  // containers + custom fields); the engine emits a terminal Progress{done:true}
+  // when everything is finished, which clears the syncing state here directly
+  // (not only in the SyncProfile promise's finally) so the button never sticks.
+  // Each non-terminal event carries a stage label shown in the status bar.
   useEffect(() => {
     return EventsOn("sync:progress", (p: SyncProgress) => {
       if (p.done) {
-        // Everything (incl. the best-effort tail) finished.
         setProgress(null);
-        setSyncing(false);
-      } else if (p.testsDone) {
-        // Test pull done — release the button; the tail (folders / preconditions
-        // / containers) keeps running in the background, shown in the status bar.
         setSyncing(false);
       } else {
         setProgress(p);
@@ -582,11 +580,31 @@ function App() {
     }
   }
 
+  // handleCreated handles both a newly-created profile and an edited one: it
+  // replaces the existing entry when the id is already known, otherwise appends.
+  // After an edit, the cached data may have been cleared (project/URL change),
+  // so the views are refreshed.
   function handleCreated(p: Profile) {
-    setProfiles((prev) => [...prev, p]);
+    setProfiles((prev) =>
+      prev.some((x) => x.id === p.id)
+        ? prev.map((x) => (x.id === p.id ? p : x))
+        : [...prev, p],
+    );
     setActiveId(p.id);
     setShowForm(false);
+    setEditingProfile(null);
     setSelectedKey(null);
+    setRefreshKey((k) => k + 1);
+    setDetailVersion((v) => v + 1);
+    reloadPending();
+  }
+
+  // editActiveProfile opens the profile modal in edit mode for the active
+  // profile — e.g. to correct a wrong project key (FR-5).
+  function editActiveProfile() {
+    if (!activeProfile) return;
+    setEditingProfile(activeProfile);
+    setShowForm(true);
   }
 
   // Called by TestDetail after a successful inline edit. Refreshes the
@@ -826,6 +844,12 @@ function App() {
                 title: "Auto-select this profile when the app starts",
               },
               {
+                key: "edit",
+                label: "Edit profile…",
+                onClick: editActiveProfile,
+                title: "Edit name, Jira URL, project key, or scope",
+              },
+              {
                 key: "scope",
                 label: activeProfile?.scopeJql ? "Edit scope ●" : "Set scope…",
                 onClick: editScope,
@@ -1043,6 +1067,7 @@ function App() {
           <ContainersView
             profileId={activeId}
             refreshKey={refreshKey}
+            isDemo={isDemo}
             onChanged={() => {
               setRefreshKey((k) => k + 1);
               reloadPending();
@@ -1171,11 +1196,22 @@ function App() {
       )}
 
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setShowForm(false);
+            setEditingProfile(null);
+          }}
+        >
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <ProfileForm
+              profile={editingProfile ?? undefined}
+              profiles={profiles}
               onCreated={handleCreated}
-              onCancel={() => setShowForm(false)}
+              onCancel={() => {
+                setShowForm(false);
+                setEditingProfile(null);
+              }}
             />
           </div>
         </div>
@@ -1366,19 +1402,25 @@ function App() {
 }
 
 function SyncBar({ progress }: { progress: SyncProgress }) {
-  const pct =
-    progress.total > 0
-      ? Math.round((progress.fetched / progress.total) * 100)
-      : 0;
-  const label = progress.phase === "folders" ? "Folders" : "Tests";
+  const hasCount = progress.total > 0;
+  const pct = hasCount
+    ? Math.round((progress.fetched / progress.total) * 100)
+    : 0;
+  // Prefer the explicit stage label; fall back to a phase-derived label.
+  const stage =
+    progress.stage || (progress.phase === "folders" ? "Folders" : "Syncing");
   return (
     <div className="syncbar">
-      <div className="syncbar-track">
-        <div className="syncbar-fill" style={{ width: `${pct}%` }} />
-      </div>
+      {hasCount && (
+        <div className="syncbar-track">
+          <div className="syncbar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
       <span className="muted">
-        {label}: {progress.fetched.toLocaleString()} /{" "}
-        {progress.total > 0 ? progress.total.toLocaleString() : "…"}
+        {stage}
+        {hasCount
+          ? `: ${progress.fetched.toLocaleString()} / ${progress.total.toLocaleString()}`
+          : "…"}
       </span>
     </div>
   );

@@ -30,12 +30,20 @@ export function BulkReviewTests(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['BulkReviewTests'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function BulkSetTestRunStatus(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BulkSetTestRunStatus'](arg1, arg2, arg3, arg4);
+}
+
 export function BulkTransitionTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkTransitionTests'](arg1, arg2, arg3);
 }
 
 export function CheckJiraTestSteps(arg1, arg2) {
   return window['go']['main']['App']['CheckJiraTestSteps'](arg1, arg2);
+}
+
+export function CleanSampleData(arg1) {
+  return window['go']['main']['App']['CleanSampleData'](arg1);
 }
 
 export function CommitPendingChanges(arg1) {
@@ -64,6 +72,10 @@ export function CreatePreconditionDetailed(arg1, arg2, arg3, arg4) {
 
 export function CreateProfile(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['CreateProfile'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['CreateProfileReusingToken'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function CreateSavedView(arg1, arg2, arg3) {
@@ -348,6 +360,10 @@ export function TestConnection(arg1, arg2) {
 
 export function TransitionTest(arg1, arg2, arg3) {
   return window['go']['main']['App']['TransitionTest'](arg1, arg2, arg3);
+}
+
+export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['UpdateProfile'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function UpdateProfileScope(arg1, arg2) {

@@ -1,18 +1,45 @@
 import { useState } from "react";
-import { CreateProfile, TestConnection, errMsg } from "../api";
+import {
+  CreateProfile,
+  CreateProfileReusingToken,
+  UpdateProfile,
+  TestConnection,
+  errMsg,
+} from "../api";
 import type { Profile } from "../api";
 
 interface Props {
   onCreated: (p: Profile) => void;
   onCancel?: () => void;
+  // When set, the form edits this profile instead of creating a new one (FR-5).
+  profile?: Profile;
+  // Existing profiles — drives the "reuse token" option when creating (FR-5).
+  profiles?: Profile[];
 }
 
-export function ProfileForm({ onCreated, onCancel }: Props) {
-  const [name, setName] = useState("");
-  const [jiraUrl, setJiraUrl] = useState("");
-  const [projectKey, setProjectKey] = useState("");
-  const [scopeJql, setScopeJql] = useState("");
+// projectKeyError validates a Jira project key, rejecting trailing slashes,
+// spaces, and other special characters. Jira keys are letters/digits starting
+// with a letter (we accept any case and upper-case on input).
+function projectKeyError(key: string): string {
+  const k = key.trim();
+  if (k === "") return "";
+  if (!/^[A-Z][A-Z0-9]+$/.test(k)) {
+    return "Project key must be 2+ letters/digits starting with a letter — no spaces, slashes, or special characters.";
+  }
+  return "";
+}
+
+export function ProfileForm({ onCreated, onCancel, profile, profiles }: Props) {
+  const isEdit = !!profile;
+  const others = (profiles ?? []).filter((p) => p.id !== profile?.id);
+  const [name, setName] = useState(profile?.name ?? "");
+  const [jiraUrl, setJiraUrl] = useState(profile?.jiraUrl ?? "");
+  const [projectKey, setProjectKey] = useState(profile?.projectKey ?? "");
+  const [scopeJql, setScopeJql] = useState(profile?.scopeJql ?? "");
   const [token, setToken] = useState("");
+  // Reuse a stored PAT from an existing profile (create only). "" = enter a new
+  // token below.
+  const [reuseFrom, setReuseFrom] = useState("");
 
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState("");
@@ -20,12 +47,23 @@ export function ProfileForm({ onCreated, onCancel }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const keyError = projectKeyError(projectKey);
+  // A token is needed for create unless reusing one from another profile; on
+  // edit a blank token keeps the stored PAT.
+  const tokenSatisfied = isEdit || reuseFrom !== "" || token.trim() !== "";
   const canTest = jiraUrl.trim() !== "" && token.trim() !== "";
   const canSave =
     name.trim() !== "" &&
     jiraUrl.trim() !== "" &&
     projectKey.trim() !== "" &&
-    token.trim() !== "";
+    keyError === "" &&
+    tokenSatisfied;
+
+  // Warn when an edit changes the project/URL — the cached data will be cleared.
+  const willClearCache =
+    isEdit &&
+    (projectKey.trim() !== profile!.projectKey ||
+      jiraUrl.trim() !== profile!.jiraUrl);
 
   async function test() {
     setTesting(true);
@@ -46,13 +84,34 @@ export function ProfileForm({ onCreated, onCancel }: Props) {
     setSaving(true);
     setError("");
     try {
-      const p = await CreateProfile(
-        name.trim(),
-        jiraUrl.trim(),
-        projectKey.trim(),
-        scopeJql.trim(),
-        token.trim(),
-      );
+      const key = projectKey.trim().toUpperCase();
+      let p: Profile;
+      if (isEdit) {
+        p = await UpdateProfile(
+          profile!.id,
+          name.trim(),
+          jiraUrl.trim(),
+          key,
+          scopeJql.trim(),
+          token.trim(),
+        );
+      } else if (reuseFrom !== "") {
+        p = await CreateProfileReusingToken(
+          name.trim(),
+          jiraUrl.trim(),
+          key,
+          scopeJql.trim(),
+          reuseFrom,
+        );
+      } else {
+        p = await CreateProfile(
+          name.trim(),
+          jiraUrl.trim(),
+          key,
+          scopeJql.trim(),
+          token.trim(),
+        );
+      }
       onCreated(p);
     } catch (e) {
       setError(errMsg(e));
@@ -63,7 +122,7 @@ export function ProfileForm({ onCreated, onCancel }: Props) {
 
   return (
     <div className="profile-form">
-      <h2>New profile</h2>
+      <h2>{isEdit ? "Edit profile" : "New profile"}</h2>
       <label>
         Profile name
         <input
@@ -84,9 +143,11 @@ export function ProfileForm({ onCreated, onCancel }: Props) {
         Project key
         <input
           value={projectKey}
-          onChange={(e) => setProjectKey(e.target.value)}
+          onChange={(e) => setProjectKey(e.target.value.toUpperCase())}
           placeholder="QA"
+          spellCheck={false}
         />
+        {keyError && <span className="field-error">{keyError}</span>}
       </label>
       <label>
         Scope JQL (optional)
@@ -96,15 +157,45 @@ export function ProfileForm({ onCreated, onCancel }: Props) {
           placeholder="e.g. labels = smoke — narrows which tests sync"
         />
       </label>
-      <label>
-        Personal Access Token
-        <input
-          type="password"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder="Jira PAT — stored in Windows Credential Manager"
-        />
-      </label>
+      {!isEdit && others.length > 0 && (
+        <label>
+          Personal Access Token
+          <select
+            value={reuseFrom}
+            onChange={(e) => setReuseFrom(e.target.value)}
+          >
+            <option value="">Enter a new token…</option>
+            {others.map((p) => (
+              <option key={p.id} value={p.id}>
+                Reuse token from: {p.name} ({p.projectKey})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {(isEdit || reuseFrom === "") && (
+        <label>
+          {others.length > 0 && !isEdit ? "New token" : "Personal Access Token"}
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder={
+              isEdit
+                ? "Leave blank to keep the current token"
+                : "Jira PAT — stored in Windows Credential Manager"
+            }
+          />
+        </label>
+      )}
+
+      {willClearCache && (
+        <div className="form-warning">
+          Changing the project key or Jira URL will clear this profile's cached
+          data — re-sync afterwards to pull the new project.
+        </div>
+      )}
 
       <div className="form-actions">
         <button className="btn" onClick={test} disabled={!canTest || testing}>
@@ -130,7 +221,7 @@ export function ProfileForm({ onCreated, onCancel }: Props) {
           onClick={save}
           disabled={!canSave || saving}
         >
-          {saving ? "Saving…" : "Create profile"}
+          {saving ? "Saving…" : isEdit ? "Save changes" : "Create profile"}
         </button>
       </div>
     </div>

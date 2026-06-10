@@ -2107,29 +2107,6 @@ func (r *Repository) ListTestStatuses(profileID string) ([]string, error) {
 	return out, rows.Err()
 }
 
-// ListTestPriorities returns the distinct non-empty priorities present on a
-// profile's synced Tests, alphabetically. Unioned with the Jira priority scheme
-// by App.ListPriorities so the New Test form offers valid values (FR-1).
-func (r *Repository) ListTestPriorities(profileID string) ([]string, error) {
-	rows, err := r.db.Query(
-		`SELECT DISTINCT priority FROM test_case
-		 WHERE profile_id = ? AND priority <> '' ORDER BY priority`,
-		profileID)
-	if err != nil {
-		return nil, fmt.Errorf("list test priorities: %w", err)
-	}
-	defer rows.Close()
-	out := []string{}
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, rows.Err()
-}
-
 // GetTest returns one Test by its Jira key, or ErrNotFound.
 func (r *Repository) GetTest(profileID, key string) (TestCase, error) {
 	row := r.db.QueryRow(

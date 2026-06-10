@@ -14,6 +14,8 @@ export {
   SetTheme,
   ListProfiles,
   CreateProfile,
+  CreateProfileReusingToken,
+  UpdateProfile,
   SyncProfileFull,
   UpdateProfileScope,
   ExportProfile,
@@ -43,10 +45,12 @@ export {
   AllocateTests,
   DeallocateTests,
   SetTestRunStatus,
+  BulkSetTestRunStatus,
   CreateContainerAndAllocate,
   EditContainer,
   DeleteContainer,
   SeedSampleContainers,
+  CleanSampleData,
   GetContainerBoard,
   ExportPytest,
   MoveTestToFolder,
@@ -351,16 +355,15 @@ export interface AuditEntry {
 
 // SyncProgress mirrors the Go syncer.Progress payload emitted on "sync:progress".
 // phase is "" / "tests" for the Test pull or "folders" for the Test Repository
-// membership pass.
+// membership pass. stage is a human-readable label for the running step.
 export interface SyncProgress {
   phase: string;
   fetched: number;
   total: number;
   done: boolean;
-  // testsDone marks the end of the user-visible Test pull, before the best-effort
-  // folder / precondition / container tail work — the UI releases the Sync button
-  // here so it doesn't look stuck while that finishes.
-  testsDone?: boolean;
+  // stage is a human-readable label for the running sync step ("Fetching tests",
+  // "Mapping folder membership", "Syncing containers", …), shown in the status bar.
+  stage?: string;
 }
 
 // CommitResult mirrors syncer.CommitResult — per-Test outcome of pushing

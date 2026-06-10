@@ -30,10 +30,22 @@ func TestListPrioritiesScopedToTestIssueType(t *testing.T) {
 			if q.Get("expand") != "projects.issuetypes.fields" {
 				t.Errorf("createmeta expand = %q", q.Get("expand"))
 			}
+			// Include a second issue type (Bug) carrying the GLOBAL priority list.
+			// Some instances ignore the issuetypeIds filter and return every type;
+			// ListPriorities must read ONLY the Test type's priorities, never Bug's.
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"projects": []map[string]any{
 					{"key": "QA", "issuetypes": []map[string]any{
-						{"name": "Test", "fields": map[string]any{
+						{"id": "1", "name": "Bug", "fields": map[string]any{
+							"priority": map[string]any{"allowedValues": []map[string]any{
+								{"name": "Highest"},
+								{"name": "High"},
+								{"name": "Medium"},
+								{"name": "Low"},
+								{"name": "Lowest"},
+							}},
+						}},
+						{"id": "5", "name": "Test", "fields": map[string]any{
 							"priority": map[string]any{"allowedValues": []map[string]any{
 								{"name": "Blocker"},
 								{"name": "High"},

@@ -252,6 +252,65 @@ func (a *App) CreateProfile(name, jiraURL, projectKey, scopeJQL, token string) (
 	return p, nil
 }
 
+// CreateProfileReusingToken creates a new profile that reuses the Personal
+// Access Token already stored for an existing profile (FR-5) — convenient when
+// several projects share one Jira instance. The token is copied within the OS
+// credential manager and never exposed to the frontend.
+func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, sourceProfileID string) (profile.Profile, error) {
+	if err := a.requireStore(); err != nil {
+		return profile.Profile{}, err
+	}
+	token, err := a.creds.Load(sourceProfileID)
+	if err != nil {
+		return profile.Profile{}, fmt.Errorf("read token from the selected profile: %w", err)
+	}
+	if strings.TrimSpace(token) == "" {
+		return profile.Profile{}, fmt.Errorf("the selected profile has no stored token to reuse")
+	}
+	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL)
+	if err != nil {
+		return profile.Profile{}, err
+	}
+	if err := a.creds.Save(p.ID, token); err != nil {
+		_ = a.profiles.Delete(p.ID) // don't leave a credential-less profile behind
+		return profile.Profile{}, fmt.Errorf("save credentials: %w", err)
+	}
+	return p, nil
+}
+
+// UpdateProfile edits an existing profile (FR-5) — e.g. to fix a wrong project
+// key. If the project key or Jira URL changes, the locally cached data (which
+// belongs to the old project) is purged so the next sync pulls the correct
+// project cleanly, and the per-session status/priority caches are dropped. A
+// non-empty token replaces the stored PAT; an empty token leaves it unchanged.
+func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, token string) (profile.Profile, error) {
+	if err := a.requireStore(); err != nil {
+		return profile.Profile{}, err
+	}
+	old, err := a.profiles.Get(id)
+	if err != nil {
+		return profile.Profile{}, err
+	}
+	if err := a.profiles.Update(id, name, jiraURL, projectKey, scopeJQL); err != nil {
+		return profile.Profile{}, err
+	}
+	if strings.TrimSpace(token) != "" {
+		if err := a.creds.Save(id, token); err != nil {
+			return profile.Profile{}, fmt.Errorf("save credentials: %w", err)
+		}
+	}
+	if old.ProjectKey != projectKey || old.JiraURL != jiraURL {
+		if err := a.repo.PurgeProfile(id); err != nil {
+			return profile.Profile{}, fmt.Errorf("clear cached data for the new project: %w", err)
+		}
+		a.statusMu.Lock()
+		delete(a.statusCache, id)
+		delete(a.priorityCache, id)
+		a.statusMu.Unlock()
+	}
+	return a.profiles.Get(id)
+}
+
 // UpdateProfileScope changes a profile's JQL scope override (FR-5.4). It takes
 // effect on the next sync.
 func (a *App) UpdateProfileScope(id, scopeJQL string) error {
@@ -1219,6 +1278,21 @@ func (a *App) SeedSampleContainers(profileID string) (testrepo.SeedResult, error
 	return a.repo.SeedSampleContainers(profileID, p.ProjectKey)
 }
 
+// CleanSampleData removes the sample Test Sets / Plans / Executions previously
+// created by SeedSampleContainers for this profile's project (FR-5), so the
+// project can start fresh without affecting real synced data. Returns the number
+// of sample containers removed.
+func (a *App) CleanSampleData(profileID string) (int, error) {
+	if err := a.requireStore(); err != nil {
+		return 0, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return 0, err
+	}
+	return a.repo.CleanSampleContainers(profileID, p.ProjectKey)
+}
+
 // GetTraceabilitySankey returns the Plan -> Execution -> run-status traceability
 // flow for the dashboard (FR-9), optionally narrowed to one Test Plan and/or one
 // Test Execution (pass "" for either to include all).
@@ -1321,6 +1395,15 @@ func (a *App) SetTestRunStatus(profileID, execKey, testKey, status string) error
 		return err
 	}
 	return a.repo.SetTestRunStatus(profileID, execKey, testKey, status)
+}
+
+// BulkSetTestRunStatus applies one run result to several Tests in a Test
+// Execution at once (FR-3 bulk), queued for commit to Xray like single updates.
+func (a *App) BulkSetTestRunStatus(profileID, execKey string, testKeys []string, status string) (testrepo.BulkEditResult, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.BulkEditResult{}, err
+	}
+	return a.repo.BulkSetTestRunStatus(profileID, execKey, testKeys, status), nil
 }
 
 // EditContainer renames a Test Set / Plan / Execution and queues the change
@@ -1635,20 +1718,20 @@ func (a *App) workflowStatuses(profileID string) []string {
 	return statuses
 }
 
-// ListPriorities returns the priorities for the New Test form (FR-1): the Jira
-// instance's configured priority names (in scheme order, cached per profile for
-// the session) unioned with the priorities actually present on synced Tests — so
-// the dropdown is authoritative (Jira rejects an unknown priority at create)
-// yet never empty.
+// ListPriorities returns the priority names valid for the Test issue type in the
+// profile's project (FR-1), resolved from Jira createmeta and cached per profile
+// for the session. These are exactly the values Jira accepts when creating a
+// Test — not the global priority scheme.
 func (a *App) ListPriorities(profileID string) ([]string, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
-	synced, err := a.repo.ListTestPriorities(profileID)
-	if err != nil {
-		return nil, err
-	}
-	return mergeStatuses(a.jiraPriorities(profileID), synced), nil
+	// Return ONLY the Test issue type's allowed priorities (from createmeta).
+	// We deliberately do NOT union these with the priorities present on synced
+	// Tests: that union re-introduced out-of-scheme / legacy values and made the
+	// dropdown look like the global priority list. The New Test form must offer
+	// exactly what Jira accepts when creating a Test.
+	return a.jiraPriorities(profileID), nil
 }
 
 // jiraPriorities returns the Jira priority scheme, cached per profile for the

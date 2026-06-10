@@ -40,6 +40,8 @@ func (c *Client) ListPriorities(ctx context.Context, projectKey string) ([]strin
 	var resp struct {
 		Projects []struct {
 			IssueTypes []struct {
+				ID     string `json:"id"`
+				Name   string `json:"name"`
 				Fields struct {
 					Priority struct {
 						AllowedValues []struct {
@@ -54,10 +56,19 @@ func (c *Client) ListPriorities(ctx context.Context, projectKey string) ([]strin
 		return nil, err
 	}
 
+	// Read ONLY the Test issue type's priority scheme. We must not union across
+	// issue types: some Jira instances ignore the issuetype filter on createmeta
+	// and return every type, and unioning their allowedValues surfaces the whole
+	// global priority list — exactly the bug this guards against. Match the Test
+	// type by its resolved id, falling back to the normalized name.
 	seen := map[string]struct{}{}
 	out := []string{}
 	for _, pr := range resp.Projects {
 		for _, it := range pr.IssueTypes {
+			isTest := (typeID != "" && it.ID == typeID) || normalizeTypeName(it.Name) == "test"
+			if !isTest {
+				continue
+			}
 			for _, av := range it.Fields.Priority.AllowedValues {
 				name := strings.TrimSpace(av.Name)
 				if name == "" {

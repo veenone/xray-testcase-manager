@@ -3,11 +3,13 @@ import {
   ListContainers,
   GetContainerBoard,
   SeedSampleContainers,
+  CleanSampleData,
   CreateContainerAndAllocate,
   EditContainer,
   DeleteContainer,
   DeallocateTests,
   SetTestRunStatus,
+  BulkSetTestRunStatus,
   ExportPytest,
   errMsg,
 } from "../api";
@@ -20,6 +22,9 @@ interface Props {
   profileId: string;
   refreshKey: number;
   onChanged: () => void;
+  // Sample-data generation is a demo aid — only offered for demo profiles so a
+  // user can't seed fake containers into a real project (FR-5).
+  isDemo: boolean;
 }
 
 const KINDS: Array<{ value: string; label: string }> = [
@@ -35,7 +40,12 @@ const RUN_STATUSES = ["TODO", "EXECUTING", "PASS", "FAIL", "ABORTED", "BLOCKED"]
 // CRUD): pick a kind and a container, see its member Tests with run status, and
 // create / rename / delete. Computed from the local store; recomputes when the
 // profile changes or a sync/commit bumps refreshKey.
-export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
+export function ContainersView({
+  profileId,
+  refreshKey,
+  onChanged,
+  isDemo,
+}: Props) {
   const [kind, setKind] = useState("testplan");
   const [containers, setContainers] = useState<Container[]>([]);
   const [selected, setSelected] = useState("");
@@ -43,6 +53,10 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [seeding, setSeeding] = useState(false);
+  // Bulk execution-result selection: the set of Test keys checked in the board
+  // (Test Execution only).
+  const [selectedRuns, setSelectedRuns] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("PASS");
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -50,8 +64,9 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
   const { prompt, promptUI } = usePrompt();
 
   // Member tables can be long (an Execution may hold hundreds of tests), so the
-  // board is paged client-side.
-  const BOARD_PAGE_SIZE = 50;
+  // board is paged client-side. The page size is user-selectable; default 25.
+  const [pageSize, setPageSize] = useState(25);
+  const PAGE_SIZE_OPTIONS = [10, 15, 25, 50, 100, 200];
 
   // removeTest unassigns a single Test from the selected container (FR-3.4–3.6),
   // queued for commit.
@@ -107,6 +122,64 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
       setError(errMsg(e));
     } finally {
       setSeeding(false);
+    }
+  }
+
+  // cleanSample removes the sample containers a previous seed created, so a real
+  // project can start fresh. Real synced data is untouched (FR-5).
+  async function cleanSample() {
+    if (
+      !window.confirm(
+        "Remove all sample Test Sets / Plans / Executions created by 'Regenerate sample data'? " +
+          "Real synced containers are not affected.",
+      )
+    )
+      return;
+    setError("");
+    try {
+      const removed = await CleanSampleData(profileId);
+      window.alert(
+        removed > 0
+          ? `Removed ${removed} sample container${removed === 1 ? "" : "s"}.`
+          : "No sample data found for this project.",
+      );
+      setSelected("");
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
+  // toggleRun / toggleRunAll manage the bulk execution-result selection.
+  function toggleRun(testKey: string) {
+    setSelectedRuns((prev) => {
+      const next = new Set(prev);
+      if (next.has(testKey)) next.delete(testKey);
+      else next.add(testKey);
+      return next;
+    });
+  }
+
+  // applyBulkRunStatus sets one result on every selected Test in the execution.
+  async function applyBulkRunStatus() {
+    if (!selected || selectedRuns.size === 0) return;
+    setError("");
+    try {
+      const res = await BulkSetTestRunStatus(
+        profileId,
+        selected,
+        [...selectedRuns],
+        bulkStatus,
+      );
+      if (res.failed && res.failed.length > 0) {
+        setError(
+          `Set ${res.succeeded.length}, failed ${res.failed.length}: ${res.failed[0].error}`,
+        );
+      }
+      setSelectedRuns(new Set());
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
     }
   }
 
@@ -206,6 +279,7 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
     let cancelled = false;
     setError("");
     setBoardPage(0);
+    setSelectedRuns(new Set());
     GetContainerBoard(profileId, selected)
       .then((b) => {
         if (!cancelled) setBoard(b);
@@ -222,12 +296,12 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
   const allRows = board?.rows ?? [];
   const boardTotalPages = Math.max(
     1,
-    Math.ceil(allRows.length / BOARD_PAGE_SIZE),
+    Math.ceil(allRows.length / pageSize),
   );
   const safePage = Math.min(boardPage, boardTotalPages - 1);
   const pageRows = allRows.slice(
-    safePage * BOARD_PAGE_SIZE,
-    (safePage + 1) * BOARD_PAGE_SIZE,
+    safePage * pageSize,
+    (safePage + 1) * pageSize,
   );
 
   return (
@@ -303,12 +377,29 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
                 danger: true,
               },
               { key: "d", divider: true },
+              // Regenerating sample data is a demo-only aid — hidden for real
+              // projects so fake containers can't be seeded into them (FR-5).
+              ...(isDemo
+                ? [
+                    {
+                      key: "seed",
+                      label: seeding
+                        ? "Generating…"
+                        : "Regenerate sample data",
+                      onClick: seed,
+                      disabled: seeding,
+                      title:
+                        "Regenerate sample sets / plans / executions from synced tests",
+                    },
+                  ]
+                : []),
               {
-                key: "seed",
-                label: seeding ? "Generating…" : "Regenerate sample data",
-                onClick: seed,
-                disabled: seeding,
-                title: "Regenerate sample sets / plans / executions from synced tests",
+                key: "clean",
+                label: "Clean sample data…",
+                onClick: cleanSample,
+                danger: true,
+                title:
+                  "Remove sample containers created by 'Regenerate sample data' (real data untouched)",
               },
             ]}
           />
@@ -384,10 +475,58 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
         </div>
       )}
 
+      {kind === "testexec" && selectedRuns.size > 0 && (
+        <div className="board-bulk">
+          <span className="bulk-count">{selectedRuns.size} selected</span>
+          <span className="muted">Set result:</span>
+          <select
+            className="run-select"
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+          >
+            {RUN_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-primary" onClick={applyBulkRunStatus}>
+            Apply to selected
+          </button>
+          <button className="btn" onClick={() => setSelectedRuns(new Set())}>
+            Clear
+          </button>
+        </div>
+      )}
+
       {board && containers.length > 0 && (
         <table className="board-table">
           <thead>
             <tr>
+              {kind === "testexec" && (
+                <th className="board-check-col">
+                  <input
+                    type="checkbox"
+                    checked={
+                      pageRows.length > 0 &&
+                      pageRows.every((r) => selectedRuns.has(r.testKey))
+                    }
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSelectedRuns((prev) => {
+                        const next = new Set(prev);
+                        pageRows.forEach((r) =>
+                          checked
+                            ? next.add(r.testKey)
+                            : next.delete(r.testKey),
+                        );
+                        return next;
+                      });
+                    }}
+                    title="Select all on this page"
+                  />
+                </th>
+              )}
               <th>Test</th>
               <th>Summary</th>
               <th>Status</th>
@@ -398,14 +537,26 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
           <tbody>
             {board.rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={kind === "testexec" ? 6 : 5} className="muted">
                   This {kindLabel.toLowerCase()} has no tests yet — use “+ Add
                   tests”.
                 </td>
               </tr>
             ) : (
               pageRows.map((r) => (
-                <tr key={r.testKey}>
+                <tr
+                  key={r.testKey}
+                  className={selectedRuns.has(r.testKey) ? "board-row-sel" : ""}
+                >
+                  {kind === "testexec" && (
+                    <td className="board-check-col">
+                      <input
+                        type="checkbox"
+                        checked={selectedRuns.has(r.testKey)}
+                        onChange={() => toggleRun(r.testKey)}
+                      />
+                    </td>
+                  )}
                   <td className="mono">{r.testKey}</td>
                   <td>{r.summary}</td>
                   <td>{r.status || "—"}</td>
@@ -450,32 +601,51 @@ export function ContainersView({ profileId, refreshKey, onChanged }: Props) {
         </table>
       )}
 
-      {board && allRows.length > BOARD_PAGE_SIZE && (
+      {board && allRows.length > 0 && (
         <div className="board-pager">
-          <button
-            className="btn"
-            disabled={safePage === 0}
-            onClick={() => setBoardPage((p) => Math.max(0, p - 1))}
-          >
-            ‹ Prev
-          </button>
-          <span className="muted">
-            {(safePage * BOARD_PAGE_SIZE + 1).toLocaleString()}–
+          <label className="board-pagesize">
+            <span className="muted">Rows per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setBoardPage(0);
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="muted board-pager-range">
+            {(safePage * pageSize + 1).toLocaleString()}–
             {Math.min(
-              (safePage + 1) * BOARD_PAGE_SIZE,
+              (safePage + 1) * pageSize,
               allRows.length,
             ).toLocaleString()}{" "}
-            of {allRows.length.toLocaleString()}
+            of {allRows.length.toLocaleString()} · page {safePage + 1} of{" "}
+            {boardTotalPages}
           </span>
-          <button
-            className="btn"
-            disabled={safePage >= boardTotalPages - 1}
-            onClick={() =>
-              setBoardPage((p) => Math.min(boardTotalPages - 1, p + 1))
-            }
-          >
-            Next ›
-          </button>
+          <span className="board-pager-nav">
+            <button
+              className="btn"
+              disabled={safePage === 0}
+              onClick={() => setBoardPage((p) => Math.max(0, p - 1))}
+            >
+              ‹ Prev
+            </button>
+            <button
+              className="btn"
+              disabled={safePage >= boardTotalPages - 1}
+              onClick={() =>
+                setBoardPage((p) => Math.min(boardTotalPages - 1, p + 1))
+              }
+            >
+              Next ›
+            </button>
+          </span>
         </div>
       )}
 

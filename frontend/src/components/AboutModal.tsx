@@ -2,39 +2,22 @@ import { useEffect, useState } from "react";
 
 import { GetDiagnostics, BrowserOpenURL } from "../api";
 import type { Diagnostics } from "../api";
+import appIcon from "../assets/images/appicon.png";
 
 const DOCS_URL = "https://docs.getxray.app/display/XRAY/REST+API";
 
-// LogoMark is a small emblem for the app: a checkmark (tests passing) over faint
-// horizontal "scan" lines (the X-ray motif), on an accent-gradient tile. Drawn
-// with currentColor-free theme variables so it reads in both light and dark.
+// LogoMark shows the application's own icon (the same image used for the window
+// / executable), so the About dialog matches the app's identity everywhere.
 function LogoMark() {
   return (
-    <svg
+    <img
       className="about-logo"
-      viewBox="0 0 44 44"
-      width="44"
-      height="44"
+      src={appIcon}
+      width={44}
+      height={44}
+      alt=""
       aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id="xtm-logo" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--accent)" />
-          <stop offset="1" stopColor="var(--accent-hover)" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="40" height="40" rx="11" fill="url(#xtm-logo)" />
-      <g stroke="#fff" strokeLinecap="round">
-        <line x1="11" y1="16" x2="33" y2="16" strokeWidth="1.5" opacity="0.22" />
-        <line x1="11" y1="28" x2="33" y2="28" strokeWidth="1.5" opacity="0.22" />
-        <path
-          d="M14 22.5 l5 5 l11 -12.5"
-          fill="none"
-          strokeWidth="3.4"
-          strokeLinejoin="round"
-        />
-      </g>
-    </svg>
+    />
   );
 }
 

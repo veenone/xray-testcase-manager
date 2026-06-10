@@ -21,9 +21,13 @@ export function BulkMoveToFolder(arg1:string,arg2:Array<string>,arg3:string):Pro
 
 export function BulkReviewTests(arg1:string,arg2:Array<string>,arg3:string,arg4:string,arg5:string):Promise<testrepo.BulkEditResult>;
 
+export function BulkSetTestRunStatus(arg1:string,arg2:string,arg3:Array<string>,arg4:string):Promise<testrepo.BulkEditResult>;
+
 export function BulkTransitionTests(arg1:string,arg2:Array<string>,arg3:string):Promise<main.BulkTransitionResult>;
 
 export function CheckJiraTestSteps(arg1:string,arg2:string):Promise<main.JiraStepInfo>;
+
+export function CleanSampleData(arg1:string):Promise<number>;
 
 export function CommitPendingChanges(arg1:string):Promise<syncer.CommitResult>;
 
@@ -38,6 +42,8 @@ export function CreatePrecondition(arg1:string,arg2:string):Promise<string>;
 export function CreatePreconditionDetailed(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function CreateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<profile.Profile>;
+
+export function CreateProfileReusingToken(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<profile.Profile>;
 
 export function CreateSavedView(arg1:string,arg2:string,arg3:string):Promise<testrepo.SavedView>;
 
@@ -180,6 +186,8 @@ export function SyncProfileFull(arg1:string):Promise<void>;
 export function TestConnection(arg1:string,arg2:string):Promise<string>;
 
 export function TransitionTest(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function UpdateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<profile.Profile>;
 
 export function UpdateProfileScope(arg1:string,arg2:string):Promise<void>;
 

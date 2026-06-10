@@ -83,7 +83,9 @@ func normalizeTypeName(s string) string {
 // NOTE(xtm): the precondition *type* lives in an instance-specific custom field
 // that JQL search can't address by name, so Type is left empty for live Jira
 // pending verification on a real Xray Server 8.4.0 instance; demo populates it.
-func (c *Client) ListPreconditions(ctx context.Context, projectKey string) ([]Precondition, map[string][]string, error) {
+// onProgress (optional) is called once per precondition as its associated Tests
+// are read — the slow part of a precondition sync — so the UI can show progress.
+func (c *Client) ListPreconditions(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Precondition, map[string][]string, error) {
 	if isDemoURL(c.baseURL) {
 		return demoPreconditionsAndLinks(projectKey)
 	}
@@ -106,17 +108,21 @@ func (c *Client) ListPreconditions(ctx context.Context, projectKey string) ([]Pr
 	// associated tests. Best-effort per precondition so one inaccessible
 	// precondition can't abort the whole sync.
 	links := map[string][]string{}
-	for _, p := range preconditions {
+	total := len(preconditions)
+	for i, p := range preconditions {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
 		testKeys, err := c.listPreconditionTests(ctx, p.Key)
 		if err != nil {
 			log.Printf("xtm: precondition %s tests: %v", p.Key, err)
-			continue
+		} else {
+			for _, tk := range testKeys {
+				links[tk] = append(links[tk], p.Key)
+			}
 		}
-		for _, tk := range testKeys {
-			links[tk] = append(links[tk], p.Key)
+		if onProgress != nil {
+			onProgress(i+1, total)
 		}
 		time.Sleep(throttlePreconditions)
 	}

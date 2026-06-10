@@ -93,6 +93,22 @@ func (m *Manager) Create(name, jiraURL, projectKey, scopeJQL string) (Profile, e
 	return p, nil
 }
 
+// Update changes a profile's editable fields — name, Jira URL, project key, and
+// JQL scope (FR-5) — e.g. to correct a wrong project key. Returns ErrNotFound
+// if the id doesn't exist. Credentials are managed separately.
+func (m *Manager) Update(id, name, jiraURL, projectKey, scopeJQL string) error {
+	res, err := m.db.Exec(
+		`UPDATE profiles SET name = ?, jira_url = ?, project_key = ?, scope_jql = ? WHERE id = ?`,
+		name, jiraURL, projectKey, scopeJQL, id)
+	if err != nil {
+		return fmt.Errorf("update profile: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // UpdateScope changes a profile's JQL scope override (FR-5.4).
 func (m *Manager) UpdateScope(id, scopeJQL string) error {
 	res, err := m.db.Exec(
