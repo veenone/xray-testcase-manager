@@ -1,4 +1,5 @@
 import type { PendingChange, CommitResult } from "../api";
+import { useConfirm } from "./useConfirm";
 
 interface Props {
   changes: PendingChange[];
@@ -27,6 +28,8 @@ export function PendingChangesModal({
   committing,
   lastResult,
 }: Props) {
+  const { confirm, confirmUI } = useConfirm();
+
   // commitItem commits only this one row. The backend re-bases the Test's other
   // pending edits onto the new remote version afterward, so committing a single
   // item doesn't make the rest conflict.
@@ -35,17 +38,17 @@ export function PendingChangesModal({
   }
 
   // discardAll confirms first — it reverts every uncommitted edit and can't be
-  // undone.
-  function discardAll() {
-    if (
-      window.confirm(
-        `Discard all ${changes.length} pending change${
-          changes.length === 1 ? "" : "s"
-        }? This reverts every uncommitted edit and cannot be undone.`,
-      )
-    ) {
-      onDiscardAll();
-    }
+  // undone. Uses the in-app themed confirm, not the bare window.confirm().
+  async function discardAll() {
+    const ok = await confirm({
+      title: "Discard all pending changes?",
+      message: `This reverts all ${changes.length} uncommitted edit${
+        changes.length === 1 ? "" : "s"
+      } and cannot be undone.`,
+      confirmLabel: "Discard all",
+      danger: true,
+    });
+    if (ok) onDiscardAll();
   }
 
   const hasResult =
@@ -55,6 +58,7 @@ export function PendingChangesModal({
       lastResult.failed.length > 0);
 
   return (
+    <>
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal pending-modal"
@@ -270,6 +274,8 @@ export function PendingChangesModal({
         </div>
       </div>
     </div>
+    {confirmUI}
+    </>
   );
 }
 

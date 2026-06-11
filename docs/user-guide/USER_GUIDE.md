@@ -223,7 +223,7 @@ for commit like any other edit.
 
 ### New Test
 
-Click **＋ New Test** (top-right, Browse view). The New Test panel collects the
+Click **New Test** (top-right, Browse view). The New Test panel collects the
 summary, folder, steps, and fields. The new test gets a temporary key locally
 and is created in Jira on the next commit.
 
