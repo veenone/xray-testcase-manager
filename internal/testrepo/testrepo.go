@@ -194,6 +194,7 @@ type Statistics struct {
 	ByComponent    []Bucket `json:"byComponent"`
 	UpdatedTrend   []Bucket `json:"updatedTrend"`
 	ByRunStatus    []Bucket `json:"byRunStatus"`
+	ByCoverage     []Bucket `json:"byCoverage"`
 }
 
 // Bucket is one (label, count) pair in a distribution — also used for the
@@ -2176,6 +2177,7 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 		ByComponent:  []Bucket{},
 		UpdatedTrend: []Bucket{},
 		ByRunStatus:  []Bucket{},
+		ByCoverage:   []Bucket{},
 	}
 
 	rows, err := r.db.Query(
@@ -2235,7 +2237,31 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 	if err := r.addContainerStats(profileID, &stats); err != nil {
 		return stats, err
 	}
+	if err := r.addRequirementCoverage(profileID, &stats); err != nil {
+		return stats, err
+	}
 	return stats, nil
+}
+
+// addRequirementCoverage tallies requirements by their derived coverage status
+// for the dashboard panel, in the same canonical order as the coverage view
+// (worst-first). Buckets with no requirements are omitted.
+func (r *Repository) addRequirementCoverage(profileID string, stats *Statistics) error {
+	reqs, err := r.ListRequirementsWithCoverage(profileID)
+	if err != nil {
+		return err
+	}
+	counts := map[string]int{}
+	for _, req := range reqs {
+		counts[req.Coverage]++
+	}
+	order := []string{CoverageFailed, CoverageNotRun, CoveragePassed, CoverageUncovered}
+	for _, c := range order {
+		if counts[c] > 0 {
+			stats.ByCoverage = append(stats.ByCoverage, Bucket{Label: c, Count: counts[c]})
+		}
+	}
+	return nil
 }
 
 // addContainerStats fills the Test Set / Plan / Execution counts and the

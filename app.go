@@ -1719,6 +1719,41 @@ func (a *App) ExportTests(profileID string, q testrepo.Query) (string, error) {
 	return path, nil
 }
 
+// ExportRequirementAudit writes the requirement coverage / sign-off audit to a
+// user-chosen CSV or XLSX file. The format follows the saved file's extension.
+// Returns the saved path, or "" if cancelled.
+func (a *App) ExportRequirementAudit(profileID string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export requirement audit",
+		DefaultFilename: "requirement-audit.csv",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "CSV", Pattern: "*.csv"},
+			{DisplayName: "Excel", Pattern: "*.xlsx"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	format := "csv"
+	if strings.HasSuffix(strings.ToLower(path), ".xlsx") {
+		format = "xlsx"
+	}
+	data, err := a.repo.ExportRequirementAudit(profileID, format)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "", fmt.Errorf("write export: %w", err)
+	}
+	return path, nil
+}
+
 // ExportImportTemplate writes a starter CSV import template to a user-chosen
 // file (FR-10.3). Returns the saved path, or "" if cancelled.
 func (a *App) ExportImportTemplate() (string, error) {

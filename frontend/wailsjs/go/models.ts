@@ -1026,6 +1026,7 @@ export namespace testrepo {
 	    byComponent: Bucket[];
 	    updatedTrend: Bucket[];
 	    byRunStatus: Bucket[];
+	    byCoverage: Bucket[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Statistics(source);
@@ -1048,6 +1049,7 @@ export namespace testrepo {
 	        this.byComponent = this.convertValues(source["byComponent"], Bucket);
 	        this.updatedTrend = this.convertValues(source["updatedTrend"], Bucket);
 	        this.byRunStatus = this.convertValues(source["byRunStatus"], Bucket);
+	        this.byCoverage = this.convertValues(source["byCoverage"], Bucket);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

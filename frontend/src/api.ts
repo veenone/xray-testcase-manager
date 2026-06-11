@@ -75,6 +75,7 @@ export {
   CreateTest,
   ExportTests,
   ExportImportTemplate,
+  ExportRequirementAudit,
   CreateSavedView,
   ListSavedViews,
   DeleteSavedView,
@@ -517,6 +518,7 @@ export interface Statistics {
   byComponent: Bucket[];
   updatedTrend: Bucket[];
   byRunStatus: Bucket[];
+  byCoverage: Bucket[];
 }
 
 // Import types (FR-10) mirror the testrepo shapes.

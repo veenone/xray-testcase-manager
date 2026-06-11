@@ -2003,6 +2003,15 @@ tr.row-selected {
   justify-content: space-between;
   margin-bottom: 8px;
 }
+.reqs-list-actions {
+  display: flex;
+  gap: 6px;
+}
+.reqs-notice {
+  margin: 0 0 8px;
+  font-size: 12px;
+  word-break: break-all;
+}
 .reqs-list-title {
   font-size: 13px;
   font-weight: 700;

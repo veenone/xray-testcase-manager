@@ -4,6 +4,7 @@ import {
   ListTestsForRequirement,
   EditRequirementField,
   DeleteRequirement,
+  ExportRequirementAudit,
   errMsg,
 } from "../api";
 import type { RequirementCoverage, RequirementTest } from "../api";
@@ -41,6 +42,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   const [editingSummary, setEditingSummary] = useState(false);
   const [draftSummary, setDraftSummary] = useState("");
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!profileId) return;
@@ -111,6 +113,20 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
 
   const sel = list.find((r) => r.key === selected) ?? null;
 
+  async function exportAudit() {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const path = await ExportRequirementAudit(profileId);
+      if (path) setNotice(`Saved audit to ${path}`);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function startEdit() {
     if (!sel) return;
     setDraftSummary(sel.summary);
@@ -165,14 +181,25 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
       <div className="reqs-list">
         <div className="reqs-list-head">
           <span className="reqs-list-title">Requirements</span>
-          <button
-            className="btn reqs-sources-btn"
-            onClick={() => setShowSources(true)}
-            title="Configure which projects requirements are pulled from"
-          >
-            Sources…
-          </button>
+          <span className="reqs-list-actions">
+            <button
+              className="btn"
+              onClick={exportAudit}
+              disabled={busy || list.length === 0}
+              title="Export the coverage / sign-off audit (CSV or XLSX)"
+            >
+              Export audit…
+            </button>
+            <button
+              className="btn reqs-sources-btn"
+              onClick={() => setShowSources(true)}
+              title="Configure which projects requirements are pulled from"
+            >
+              Sources…
+            </button>
+          </span>
         </div>
+        {notice && <p className="reqs-notice muted">{notice}</p>}
         <input
           className="search reqs-filter"
           placeholder="Filter by key or summary…"

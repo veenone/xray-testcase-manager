@@ -184,6 +184,17 @@ export function Dashboard({ profileId, refreshKey }: Props) {
         />
       )}
 
+      {stats.byCoverage.length > 0 && (
+        <BarPanel
+          title="Requirement coverage"
+          subtitle={`${stats.byCoverage
+            .reduce((n, b) => n + b.count, 0)
+            .toLocaleString()} requirements`}
+          buckets={stats.byCoverage}
+          covColors
+        />
+      )}
+
       {stats.testExecutions > 0 && (
         <div className="stat-panel sankey-panel">
           <div className="sankey-head">
@@ -284,14 +295,21 @@ function BarPanel({
   buckets,
   empty,
   runColors,
+  covColors,
 }: {
   title: string;
   subtitle?: string;
   buckets: Bucket[];
   empty?: string;
   runColors?: boolean;
+  covColors?: boolean;
 }) {
   const max = buckets.reduce((m, b) => Math.max(m, b.count), 0) || 1;
+  const fillClass = (label: string) => {
+    if (runColors) return `stat-bar-fill run-${label.toLowerCase()}`;
+    if (covColors) return `stat-bar-fill cov-${label.toLowerCase()}`;
+    return "stat-bar-fill";
+  };
   return (
     <div className="stat-panel">
       <h4>
@@ -309,11 +327,7 @@ function BarPanel({
               </span>
               <span className="stat-bar-track">
                 <span
-                  className={
-                    runColors
-                      ? `stat-bar-fill run-${b.label.toLowerCase()}`
-                      : "stat-bar-fill"
-                  }
+                  className={fillClass(b.label)}
                   style={{ width: `${(b.count / max) * 100}%` }}
                 />
               </span>
