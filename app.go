@@ -745,6 +745,15 @@ func (a *App) GetTestRequirements(profileID, testKey string) ([]testrepo.Require
 	return a.repo.GetTestRequirements(profileID, testKey)
 }
 
+// SetTestRequirements replaces the set of requirements a Test covers and queues
+// the link changes for commit (FR-13 traceability).
+func (a *App) SetTestRequirements(profileID, testKey string, requirementKeys []string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.SetTestRequirements(profileID, testKey, requirementKeys)
+}
+
 // ListRequirementSources returns the configured requirement sources for a
 // profile.
 func (a *App) ListRequirementSources(profileID string) ([]testrepo.RequirementSource, error) {

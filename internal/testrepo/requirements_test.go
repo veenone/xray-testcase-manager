@@ -97,6 +97,57 @@ func TestListTestsForRequirementAndReverse(t *testing.T) {
 	}
 }
 
+func TestSetTestRequirementsQueuesAndDiscardRestores(t *testing.T) {
+	repo := seedReqRepo(t)
+	// QA-1 currently covers PRD-10 (from the seed). Re-cover it with PRD-11 only.
+	if err := repo.SetTestRequirements("p1", "QA-1", []string{"PRD-11"}); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	reqs, _ := repo.GetTestRequirements("p1", "QA-1")
+	if len(reqs) != 1 || reqs[0].Key != "PRD-11" {
+		t.Fatalf("QA-1 requirements = %+v, want [PRD-11]", reqs)
+	}
+	changes, _ := repo.ListPendingChanges("p1")
+	var rs int
+	for _, c := range changes {
+		if c.EntityType == "requirement_set" && c.EntityKey == "QA-1" {
+			rs++
+		}
+	}
+	if rs != 1 {
+		t.Fatalf("want one requirement_set for QA-1, got %d (all: %+v)", rs, changes)
+	}
+
+	// Discard restores the original link (PRD-10, with its link id).
+	var id int64
+	for _, c := range changes {
+		if c.EntityType == "requirement_set" {
+			id = c.ID
+		}
+	}
+	if err := repo.DiscardPendingChange("p1", id); err != nil {
+		t.Fatalf("discard: %v", err)
+	}
+	reqs, _ = repo.GetTestRequirements("p1", "QA-1")
+	if len(reqs) != 1 || reqs[0].Key != "PRD-10" {
+		t.Errorf("QA-1 requirements after discard = %+v, want [PRD-10]", reqs)
+	}
+}
+
+func TestSetTestRequirementsSameSetIsNoop(t *testing.T) {
+	repo := seedReqRepo(t)
+	if err := repo.SetTestRequirements("p1", "QA-1", []string{"PRD-10"}); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	changes, _ := repo.ListPendingChanges("p1")
+	for _, c := range changes {
+		if c.EntityType == "requirement_set" {
+			t.Errorf("setting the same requirement set should not queue a change: %+v", c)
+		}
+	}
+}
+
 func TestRequirementSourceCRUD(t *testing.T) {
 	repo := newRepo(t)
 

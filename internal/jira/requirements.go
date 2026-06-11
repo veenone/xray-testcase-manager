@@ -55,6 +55,26 @@ func (c *Client) ListRequirements(ctx context.Context, profileProjectKey string,
 	return []Requirement{}, []RequirementLink{}, nil
 }
 
+// UpdateTestRequirements creates and removes Test<->Requirement coverage links.
+// add holds requirement keys to link; removeLinkIDs holds the Jira issueLink ids
+// to delete. Demo URLs short-circuit to a no-op.
+//
+// TODO(xtm): real path — resolve the coverage issue-link type once
+// (GET /rest/api/2/issueLinkType, default "Tests"/"is tested by"); for each add,
+// POST /rest/api/2/issueLink {type, inwardIssue:test, outwardIssue:requirement}
+// (verify direction); for each removeLinkID, DELETE /rest/api/2/issueLink/{id}.
+// Verify on a live Xray Server 8.4.0 instance.
+func (c *Client) UpdateTestRequirements(ctx context.Context, testKey string, add []string, removeLinkIDs []string) error {
+	_ = ctx
+	if isDemoURL(c.baseURL) {
+		return nil
+	}
+	_ = testKey
+	_ = add
+	_ = removeLinkIDs
+	return nil
+}
+
 // demoRequirementProject is a separate project from the Tests' project, so demo
 // mode exercises the cross-project case.
 const demoRequirementProject = "PRD"

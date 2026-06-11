@@ -3,6 +3,8 @@ import {
   GetTest,
   GetTestPreconditions,
   GetTestRequirements,
+  SetTestRequirements,
+  ListRequirementsWithCoverage,
   ListAllPreconditions,
   SetTestPreconditions,
   EditPreconditionField,
@@ -31,6 +33,7 @@ import type {
   TestCase,
   Precondition,
   Requirement,
+  RequirementCoverage,
   ContainerMembership,
   PendingChange,
   Transition,
@@ -108,6 +111,9 @@ export function TestDetail({
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [allPreconditions, setAllPreconditions] = useState<Precondition[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [allRequirements, setAllRequirements] = useState<RequirementCoverage[]>(
+    [],
+  );
   const [containers, setContainers] = useState<ContainerMembership[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldValue[]>([]);
   const [review, setReview] = useState<Review | null>(null);
@@ -155,8 +161,9 @@ export function TestDetail({
       ListAllPreconditions(profileId),
       GetTestReview(profileId, testKey),
       GetTestRequirements(profileId, testKey),
+      ListRequirementsWithCoverage(profileId),
     ])
-      .then(([t, pre, cons, allPre, rev, reqs]) => {
+      .then(([t, pre, cons, allPre, rev, reqs, allReqs]) => {
         if (cancelled) return;
         setTest(t);
         setSummary(t.summary);
@@ -168,6 +175,7 @@ export function TestDetail({
         setAllPreconditions(allPre ?? []);
         setReview(rev);
         setRequirements(reqs ?? []);
+        setAllRequirements(allReqs ?? []);
         setReviewNote(rev?.note ?? "");
         // Transitions load alongside but can fail without blocking the
         // rest of the detail panel — workflow may not be set up yet, or
@@ -341,6 +349,37 @@ export function TestDetail({
     } catch (e) {
       setSaveError(`Move failed: ${errMsg(e)}`);
     }
+  }
+
+  // applyRequirements replaces the test's covered-requirement set and refreshes
+  // the displayed list. The link changes commit as Jira issue links.
+  async function applyRequirements(nextKeys: string[]) {
+    setSaveError("");
+    try {
+      await SetTestRequirements(profileId, testKey, nextKeys);
+      const refreshed = await GetTestRequirements(profileId, testKey);
+      setRequirements(refreshed ?? []);
+      onEdited();
+    } catch (e) {
+      setSaveError(`Requirement update failed: ${errMsg(e)}`);
+    }
+  }
+
+  function addRequirement(key: string) {
+    if (!key || requirements.some((r) => r.key === key)) return;
+    applyRequirements([...requirements.map((r) => r.key), key]);
+  }
+
+  async function removeRequirement(key: string) {
+    if (
+      !(await confirm({
+        title: "Unlink requirement",
+        message: `Unlink ${key} from ${testKey}? The requirement isn't deleted; the coverage link is removed on commit.`,
+        confirmLabel: "Unlink",
+      }))
+    )
+      return;
+    applyRequirements(requirements.map((r) => r.key).filter((k) => k !== key));
   }
 
   // applyPreconditions replaces the test's precondition set, then refreshes the
@@ -784,7 +823,9 @@ export function TestDetail({
             );
           })()}
 
-          <h4>Requirements</h4>
+          <h4>
+            Requirements {isDirty("requirements") && <DirtyDot />}
+          </h4>
           {requirements.length === 0 ? (
             <p className="muted">Not linked to any requirement.</p>
           ) : (
@@ -799,10 +840,33 @@ export function TestDetail({
                       {rq.status}
                     </span>
                   )}
+                  <button
+                    className="btn btn-ghost pre-remove"
+                    onClick={() => removeRequirement(rq.key)}
+                    title="Unlink this requirement"
+                  >
+                    ✕
+                  </button>
                 </li>
               ))}
             </ul>
           )}
+          <select
+            className="detail-input detail-input-inline pre-add"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) addRequirement(e.target.value);
+            }}
+          >
+            <option value="">+ Link requirement…</option>
+            {allRequirements
+              .filter((r) => !requirements.some((lr) => lr.key === r.key))
+              .map((r) => (
+                <option key={r.key} value={r.key}>
+                  {r.key} — {r.summary}
+                </option>
+              ))}
+          </select>
 
           <h4>
             Description {isDirty("description") && <DirtyDot />}

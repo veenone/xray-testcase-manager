@@ -163,6 +163,8 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 	commentRows := make([]testrepo.PendingChange, 0)
 	// Test-run result updates, keyed by "<execKey>:<testKey>".
 	runRows := make([]testrepo.PendingChange, 0)
+	// Requirement coverage-link changes, keyed by test key.
+	requirementRows := make([]testrepo.PendingChange, 0)
 	for _, c := range changes {
 		if c.EntityType == "test_membership_add" ||
 			c.EntityType == "test_membership_remove" ||
@@ -190,6 +192,10 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		}
 		if c.EntityType == "issue_comment" {
 			commentRows = append(commentRows, c)
+			continue
+		}
+		if c.EntityType == "requirement_set" {
+			requirementRows = append(requirementRows, c)
 			continue
 		}
 		if c.EntityType == "test_run" {
@@ -517,6 +523,7 @@ testLoop:
 	e.commitReviews(ctx, profileID, reviewRows, &result)
 	e.commitComments(ctx, profileID, commentRows, &result)
 	e.commitRuns(ctx, profileID, runRows, &result)
+	e.commitRequirements(ctx, profileID, requirementRows, &result)
 
 	return result, nil
 }
@@ -536,6 +543,57 @@ func (e *Engine) commitRuns(ctx context.Context, profileID string, rows []testre
 		}
 		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "Xray accepted the result but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, testKey)
+	}
+}
+
+// commitRequirements pushes Test coverage-link changes: it diffs each
+// requirement_set row's before (links, with ids) against its after (the new key
+// set) and creates/removes the Jira issue links. Keyed by Test key.
+func (e *Engine) commitRequirements(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	for _, c := range rows {
+		testKey := c.EntityKey
+		var before []struct {
+			Key    string `json:"key"`
+			LinkID string `json:"linkId"`
+		}
+		var after []string
+		if err := json.Unmarshal([]byte(c.BeforeVal), &before); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "malformed requirement snapshot: " + err.Error()})
+			continue
+		}
+		if err := json.Unmarshal([]byte(c.AfterVal), &after); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "malformed requirement set: " + err.Error()})
+			continue
+		}
+
+		afterSet := make(map[string]bool, len(after))
+		for _, k := range after {
+			afterSet[k] = true
+		}
+		beforeSet := make(map[string]bool, len(before))
+		removeLinkIDs := []string{}
+		for _, l := range before {
+			beforeSet[l.Key] = true
+			if !afterSet[l.Key] {
+				removeLinkIDs = append(removeLinkIDs, l.LinkID)
+			}
+		}
+		add := []string{}
+		for _, k := range after {
+			if !beforeSet[k] {
+				add = append(add, k)
+			}
+		}
+
+		if err := e.client.UpdateTestRequirements(ctx, testKey, add, removeLinkIDs); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "update requirement links: " + sanitizeError(err.Error())})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "Jira updated links but local cleanup failed: " + err.Error()})
 			continue
 		}
 		result.Succeeded = append(result.Succeeded, testKey)

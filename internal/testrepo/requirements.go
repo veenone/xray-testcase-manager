@@ -1,9 +1,20 @@
 package testrepo
 
 import (
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// reqLinkSnap is one Test->Requirement link in a requirement_set before
+// snapshot. The link_id is kept so a removed link can be deleted in Jira (and
+// restored on discard).
+type reqLinkSnap struct {
+	Key    string `json:"key"`
+	LinkID string `json:"linkId"`
+}
 
 // Requirement is a cached requirement issue linked to Tests for coverage. It may
 // live in a different project than the profile's Test project.
@@ -105,6 +116,94 @@ func (r *Repository) ReplaceAllRequirementLinks(profileID string, links []Requir
 		); err != nil {
 			return fmt.Errorf("insert requirement link %s->%s: %w", l.TestKey, l.RequirementKey, err)
 		}
+	}
+	return tx.Commit()
+}
+
+// --- Linking (Phase 2) ---
+
+// SetTestRequirements replaces the set of requirements a Test covers and queues
+// the change for commit (creating/removing Jira issue links). Setting the same
+// set is a no-op. The before snapshot keeps each prior link's id so a removed
+// link can be deleted in Jira and restored on discard.
+func (r *Repository) SetTestRequirements(profileID, testKey string, reqKeys []string) error {
+	newSet := uniqueSorted(reqKeys)
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var baseVersion string
+	err = tx.QueryRow(
+		`SELECT updated_at FROM test_case WHERE profile_id = ? AND jira_key = ?`,
+		profileID, testKey,
+	).Scan(&baseVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read test: %w", err)
+	}
+
+	curRows, err := tx.Query(
+		`SELECT requirement_key, link_id FROM test_requirement
+		 WHERE profile_id = ? AND test_key = ? ORDER BY requirement_key`,
+		profileID, testKey)
+	if err != nil {
+		return fmt.Errorf("read current links: %w", err)
+	}
+	cur := []reqLinkSnap{}
+	curKeys := []string{}
+	linkByKey := map[string]string{}
+	for curRows.Next() {
+		var k, id string
+		if err := curRows.Scan(&k, &id); err != nil {
+			_ = curRows.Close()
+			return err
+		}
+		cur = append(cur, reqLinkSnap{Key: k, LinkID: id})
+		curKeys = append(curKeys, k)
+		linkByKey[k] = id
+	}
+	_ = curRows.Close()
+	if err := curRows.Err(); err != nil {
+		return err
+	}
+	if equalOrder(curKeys, newSet) {
+		return nil
+	}
+
+	if _, err := tx.Exec(
+		`DELETE FROM test_requirement WHERE profile_id = ? AND test_key = ?`,
+		profileID, testKey,
+	); err != nil {
+		return fmt.Errorf("clear requirement links: %w", err)
+	}
+	for _, k := range newSet {
+		if _, err := tx.Exec(
+			`INSERT INTO test_requirement (profile_id, test_key, requirement_key, link_id)
+			 VALUES (?, ?, ?, ?)`,
+			profileID, testKey, k, linkByKey[k], // empty link_id for a new link
+		); err != nil {
+			return fmt.Errorf("insert requirement link: %w", err)
+		}
+	}
+
+	beforeJSON, _ := json.Marshal(cur)
+	afterJSON, _ := json.Marshal(newSet)
+	if err := upsertPendingChange(
+		tx, profileID, entityRequirementSet, testKey, "requirements",
+		string(beforeJSON), string(afterJSON), baseVersion,
+	); err != nil {
+		return err
+	}
+	if err := writeAudit(
+		tx, profileID, entityRequirementSet, testKey,
+		"set-requirements-local", "requirements", string(beforeJSON), string(afterJSON), "",
+	); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

@@ -233,7 +233,8 @@ function App() {
       if (
         p.entityType === "test_case" ||
         p.entityType === "test_step_order" ||
-        p.entityType === "precondition_set"
+        p.entityType === "precondition_set" ||
+        p.entityType === "requirement_set"
       ) {
         // Test-level changes keyed by the bare Test key.
         testKey = p.entityKey;

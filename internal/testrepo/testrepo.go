@@ -3075,6 +3075,31 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 	case entityIssueComment:
 		// A queued comment has no local cache state — discarding it just drops
 		// the pending row (handled after the switch).
+	case entityRequirementSet:
+		// entity_key is the test key; restore the original requirement links
+		// (with their Jira link ids) from the before snapshot.
+		var snap []struct {
+			Key    string `json:"key"`
+			LinkID string `json:"linkId"`
+		}
+		if err := json.Unmarshal([]byte(beforeVal), &snap); err != nil {
+			return fmt.Errorf("decode requirement snapshot: %w", err)
+		}
+		if _, err := tx.Exec(
+			`DELETE FROM test_requirement WHERE profile_id = ? AND test_key = ?`,
+			profileID, entityKey,
+		); err != nil {
+			return fmt.Errorf("clear requirement links: %w", err)
+		}
+		for _, l := range snap {
+			if _, err := tx.Exec(
+				`INSERT INTO test_requirement (profile_id, test_key, requirement_key, link_id)
+				 VALUES (?, ?, ?, ?)`,
+				profileID, entityKey, l.Key, l.LinkID,
+			); err != nil {
+				return fmt.Errorf("restore requirement link: %w", err)
+			}
+		}
 	case entityTestRun:
 		// Revert the Test's run status in the execution (entity_key is
 		// "<execKey>:<testKey>").
@@ -3746,6 +3771,7 @@ const (
 	entityTestReview         = "test_review"
 	entityIssueComment       = "issue_comment"
 	entityTestRun            = "test_run"
+	entityRequirementSet     = "requirement_set"
 )
 
 // preconditionFields whitelists which Precondition columns can be edited via

@@ -295,6 +295,19 @@ function describeChange(c: PendingChange): {
         before: keyCountSummary(c.beforeVal, "precondition"),
         after: keyCountSummary(c.afterVal, "precondition"),
       };
+    case "requirement_set": {
+      let beforeN = 0;
+      try {
+        beforeN = (JSON.parse(c.beforeVal) as unknown[]).length;
+      } catch {
+        beforeN = 0;
+      }
+      return {
+        field: "requirements",
+        before: `${beforeN} linked`,
+        after: keyCountSummary(c.afterVal, "requirement"),
+      };
+    }
     case "precondition_add":
       return {
         field: "new precondition",

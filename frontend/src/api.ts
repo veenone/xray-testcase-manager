@@ -43,6 +43,7 @@ export {
   ListRequirementsWithCoverage,
   ListTestsForRequirement,
   GetTestRequirements,
+  SetTestRequirements,
   ListRequirementSources,
   SetRequirementSource,
   RemoveRequirementSource,

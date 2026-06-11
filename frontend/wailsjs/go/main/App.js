@@ -358,6 +358,10 @@ export function SetTestPreconditions(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetTestPreconditions'](arg1, arg2, arg3);
 }
 
+export function SetTestRequirements(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetTestRequirements'](arg1, arg2, arg3);
+}
+
 export function SetTestReview(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SetTestReview'](arg1, arg2, arg3, arg4, arg5);
 }
