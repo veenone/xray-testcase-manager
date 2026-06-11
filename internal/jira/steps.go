@@ -121,21 +121,39 @@ func (c *Client) DeleteTestStep(ctx context.Context, key, stepID string) error {
 	return c.delete(ctx, fmt.Sprintf("/rest/raven/2.0/api/test/%s/steps/%s", key, stepID))
 }
 
-// MoveTestStep repositions a step to a 1-based index (FR-2.5). Demo URLs
+// MoveTestStep repositions a step to a 1-based index (FR-2.5). The step's
+// current content (action/data/expected) is sent alongside the index: Xray's
+// v2.0 step PUT rejects a body with no "fields" — it reads a fieldless step as a
+// request to create a new (empty) one and 400s ("Step fields must be provided to
+// create a new test step"). Resending the existing content is idempotent (any
+// field edits in the same commit are pushed before the reorder). Demo URLs
 // short-circuit to a no-op.
 //
-// Maps to PUT /rest/raven/2.0/api/test/{key}/steps/{stepId} with just an
-// "index" field. NOTE(xtm): Xray Server/DC's step PUT is assumed to accept a
-// bare index and reflow the other steps; the commit path PUTs steps in target
-// order so the final sequence is deterministic regardless of reflow semantics.
-func (c *Client) MoveTestStep(ctx context.Context, key, stepID string, index int) error {
+// Maps to PUT /rest/raven/2.0/api/test/{key}/steps/{stepId}. NOTE(xtm): the
+// commit path PUTs steps in target order so the final sequence is deterministic
+// regardless of Xray's index-reflow semantics.
+func (c *Client) MoveTestStep(ctx context.Context, key, stepID string, index int, action, data, expected string) error {
 	if isDemoURL(c.baseURL) {
 		return nil
+	}
+	stepFields := map[string]string{}
+	if strings.TrimSpace(action) != "" {
+		stepFields[stepFieldAction] = action
+	}
+	if strings.TrimSpace(data) != "" {
+		stepFields[stepFieldData] = data
+	}
+	if strings.TrimSpace(expected) != "" {
+		stepFields[stepFieldResult] = expected
+	}
+	body := map[string]any{"index": index}
+	if len(stepFields) > 0 {
+		body["fields"] = stepFields
 	}
 	return c.put(
 		ctx,
 		fmt.Sprintf("/rest/raven/2.0/api/test/%s/steps/%s", key, stepID),
-		map[string]any{"index": index},
+		body,
 	)
 }
 

@@ -483,6 +483,17 @@ testLoop:
 				})
 				continue testLoop
 			}
+			// Xray's step PUT 400s unless the body carries the step's content
+			// fields, so look up each step's cached action/data/expected to send
+			// with the reorder. By now the cache holds the real ids (new steps
+			// were renamed above), keyed the same way the order list is after
+			// idMap mapping.
+			stepContent := map[string]testrepo.Step{}
+			if cs, err := e.repo.ListTestSteps(profileID, testKey); err == nil {
+				for _, s := range cs {
+					stepContent[s.XrayID] = s
+				}
+			}
 			pos := 0
 			for _, id := range order {
 				if _, gone := deleted[id]; gone {
@@ -492,7 +503,8 @@ testLoop:
 					id = real
 				}
 				pos++
-				if err := e.client.MoveTestStep(ctx, testKey, id, pos); err != nil {
+				sc := stepContent[id]
+				if err := e.client.MoveTestStep(ctx, testKey, id, pos, sc.Action, sc.Data, sc.Expected); err != nil {
 					result.Failed = append(result.Failed, FailedCommit{
 						TestKey: testKey,
 						Error:   fmt.Sprintf("reorder step %s: %s", id, sanitizeError(err.Error())),

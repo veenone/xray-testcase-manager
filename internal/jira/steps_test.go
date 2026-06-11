@@ -1,9 +1,53 @@
 package jira
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// TestMoveTestStepSendsFieldsAndIndex guards against the reorder 400 ("Step
+// fields must be provided to create a new test step"): Xray's step PUT rejects a
+// body that carries only an index, so the reorder must include the step's
+// content fields alongside the new position.
+func TestMoveTestStepSendsFieldsAndIndex(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/rest/raven/2.0/api/test/QA-1/steps/42" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	err := newTestClient(srv).MoveTestStep(
+		context.Background(), "QA-1", "42", 3, "Click login", "creds", "Logged in")
+	if err != nil {
+		t.Fatalf("MoveTestStep: %v", err)
+	}
+
+	fields, ok := gotBody["fields"].(map[string]any)
+	if !ok {
+		t.Fatalf("PUT body missing \"fields\"; got %v", gotBody)
+	}
+	if fields["Action"] != "Click login" ||
+		fields["Data"] != "creds" ||
+		fields["Expected Result"] != "Logged in" {
+		t.Errorf("fields = %v, want Action/Data/Expected Result populated", fields)
+	}
+	if gotBody["index"] != float64(3) {
+		t.Errorf("index = %v, want 3", gotBody["index"])
+	}
+}
 
 // TestParseStepsResponse_Array covers the normal Xray Server/DC shape: a bare
 // array whose step content fields are {"raw": …} objects.
