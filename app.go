@@ -716,6 +716,61 @@ func (a *App) DeletePrecondition(profileID, preconditionKey string) error {
 	return a.repo.DeletePrecondition(profileID, preconditionKey)
 }
 
+// --- Requirements & coverage ---
+
+// ListRequirementsWithCoverage returns every cached requirement with a derived
+// coverage status from its covering Tests' run results.
+func (a *App) ListRequirementsWithCoverage(profileID string) ([]testrepo.RequirementCoverage, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListRequirementsWithCoverage(profileID)
+}
+
+// ListTestsForRequirement returns the Tests covering a requirement with each
+// Test's consolidated run status.
+func (a *App) ListTestsForRequirement(profileID, requirementKey string) ([]testrepo.RequirementTest, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListTestsForRequirement(profileID, requirementKey)
+}
+
+// GetTestRequirements returns the requirements a Test covers (for the detail
+// panel).
+func (a *App) GetTestRequirements(profileID, testKey string) ([]testrepo.Requirement, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.GetTestRequirements(profileID, testKey)
+}
+
+// ListRequirementSources returns the configured requirement sources for a
+// profile.
+func (a *App) ListRequirementSources(profileID string) ([]testrepo.RequirementSource, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListRequirementSources(profileID)
+}
+
+// SetRequirementSource adds or updates a requirement source (a project to browse
+// requirements from). Takes effect on the next sync.
+func (a *App) SetRequirementSource(profileID, projectKey, issueTypes, scopeJQL string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.SetRequirementSource(profileID, projectKey, issueTypes, scopeJQL)
+}
+
+// RemoveRequirementSource deletes a requirement source.
+func (a *App) RemoveRequirementSource(profileID, projectKey string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.RemoveRequirementSource(profileID, projectKey)
+}
+
 // --- Local editing & change tracking (FR-2 / FR-1.5 / FR-12.6) ---
 
 // EditTestField applies a local edit to a Test field and queues a pending

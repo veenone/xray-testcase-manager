@@ -202,6 +202,10 @@ export function GetTestPreconditions(arg1, arg2) {
   return window['go']['main']['App']['GetTestPreconditions'](arg1, arg2);
 }
 
+export function GetTestRequirements(arg1, arg2) {
+  return window['go']['main']['App']['GetTestRequirements'](arg1, arg2);
+}
+
 export function GetTestReview(arg1, arg2) {
   return window['go']['main']['App']['GetTestReview'](arg1, arg2);
 }
@@ -270,6 +274,14 @@ export function ListProfiles() {
   return window['go']['main']['App']['ListProfiles']();
 }
 
+export function ListRequirementSources(arg1) {
+  return window['go']['main']['App']['ListRequirementSources'](arg1);
+}
+
+export function ListRequirementsWithCoverage(arg1) {
+  return window['go']['main']['App']['ListRequirementsWithCoverage'](arg1);
+}
+
 export function ListSavedViews(arg1) {
   return window['go']['main']['App']['ListSavedViews'](arg1);
 }
@@ -290,6 +302,10 @@ export function ListTestsForPrecondition(arg1, arg2) {
   return window['go']['main']['App']['ListTestsForPrecondition'](arg1, arg2);
 }
 
+export function ListTestsForRequirement(arg1, arg2) {
+  return window['go']['main']['App']['ListTestsForRequirement'](arg1, arg2);
+}
+
 export function MoveTestToFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveTestToFolder'](arg1, arg2, arg3);
 }
@@ -300,6 +316,10 @@ export function PreviewImport(arg1, arg2) {
 
 export function ReadLog(arg1) {
   return window['go']['main']['App']['ReadLog'](arg1);
+}
+
+export function RemoveRequirementSource(arg1, arg2) {
+  return window['go']['main']['App']['RemoveRequirementSource'](arg1, arg2);
 }
 
 export function RenameFolder(arg1, arg2, arg3) {
@@ -328,6 +348,10 @@ export function SeedSampleContainers(arg1) {
 
 export function SetDefaultProfile(arg1) {
   return window['go']['main']['App']['SetDefaultProfile'](arg1);
+}
+
+export function SetRequirementSource(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetRequirementSource'](arg1, arg2, arg3, arg4);
 }
 
 export function SetTestPreconditions(arg1, arg2, arg3) {

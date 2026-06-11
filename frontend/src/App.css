@@ -1863,6 +1863,156 @@ tr.row-selected {
   padding: 16px;
   background: var(--surface-2);
 }
+
+/* Requirements / coverage view */
+.content-requirements {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  padding: 16px;
+  background: var(--surface-2);
+}
+.reqs {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  gap: 18px;
+  width: 100%;
+  min-height: 0;
+}
+.reqs-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.reqs-filter {
+  margin-bottom: 8px;
+}
+.reqs-coverage-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.cov-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.cov-pill-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.reqs-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+}
+.reqs-item {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.reqs-item:hover {
+  border-color: var(--accent);
+}
+.reqs-item-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.reqs-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.reqs-key {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.reqs-item-summary {
+  font-size: 13px;
+  color: var(--text);
+  margin: 3px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reqs-item-meta {
+  font-size: 11px;
+}
+.reqs-empty {
+  padding: 14px 4px;
+}
+.reqs-detail {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  overflow: auto;
+  min-height: 0;
+}
+.reqs-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.reqs-detail-key {
+  font-size: 13px;
+  font-weight: 600;
+}
+.reqs-detail-cov {
+  margin-left: auto;
+}
+.reqs-detail-summary {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 14px;
+}
+.req-kind {
+  background: #0e7490;
+}
+
+/* Coverage badges (shared) */
+.cov-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.cov-passed,
+.cov-pill.cov-passed {
+  background: #d1fae5;
+  color: #047857;
+}
+.cov-failed,
+.cov-pill.cov-failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.cov-notrun,
+.cov-pill.cov-notrun {
+  background: #fef3c7;
+  color: #b45309;
+}
+.cov-uncovered,
+.cov-pill.cov-uncovered {
+  background: #e5e7eb;
+  color: #4b5563;
+}
 .precond-view {
   flex: 1;
   display: grid;

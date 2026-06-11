@@ -56,6 +56,7 @@ import { BulkPreconditionsModal } from "./components/BulkPreconditionsModal";
 import { Dashboard } from "./components/Dashboard";
 import { ContainersView } from "./components/ContainersView";
 import { PreconditionsView } from "./components/PreconditionsView";
+import { RequirementsView } from "./components/RequirementsView";
 import { DiagnosticsModal } from "./components/DiagnosticsModal";
 import { SyncHistoryModal } from "./components/SyncHistoryModal";
 import { ImportTestsModal } from "./components/ImportTestsModal";
@@ -132,7 +133,7 @@ function App() {
   const [showBulkReview, setShowBulkReview] = useState(false);
 
   const [view, setView] = useState<
-    "browse" | "preconditions" | "dashboard" | "plans"
+    "browse" | "preconditions" | "requirements" | "dashboard" | "plans"
   >("browse");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
@@ -466,6 +467,7 @@ function App() {
     "menu:import": () => setShowImport(true),
     "menu:view-browse": () => setView("browse"),
     "menu:view-preconditions": () => setView("preconditions"),
+    "menu:view-requirements": () => setView("requirements"),
     "menu:view-dashboard": () => setView("dashboard"),
     "menu:view-plans": () => setView("plans"),
     "menu:sync-history": () => setShowSyncHistory(true),
@@ -899,6 +901,12 @@ function App() {
             Preconditions
           </button>
           <button
+            className={`view-tab${view === "requirements" ? " view-tab-active" : ""}`}
+            onClick={() => setView("requirements")}
+          >
+            Requirements
+          </button>
+          <button
             className={`view-tab${view === "dashboard" ? " view-tab-active" : ""}`}
             onClick={() => setView("dashboard")}
           >
@@ -1057,6 +1065,10 @@ function App() {
               reloadPending();
             }}
           />
+        </main>
+      ) : view === "requirements" ? (
+        <main className="content content-requirements">
+          <RequirementsView profileId={activeId} refreshKey={refreshKey} />
         </main>
       ) : view === "dashboard" ? (
         <main className="content content-dashboard">

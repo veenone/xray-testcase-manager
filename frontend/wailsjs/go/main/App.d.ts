@@ -107,6 +107,8 @@ export function GetTestMeta(arg1:string,arg2:string):Promise<jira.TestMeta>;
 
 export function GetTestPreconditions(arg1:string,arg2:string):Promise<Array<testrepo.Precondition>>;
 
+export function GetTestRequirements(arg1:string,arg2:string):Promise<Array<testrepo.Requirement>>;
+
 export function GetTestReview(arg1:string,arg2:string):Promise<testrepo.Review>;
 
 export function GetTestSteps(arg1:string,arg2:string,arg3:boolean):Promise<Array<testrepo.Step>>;
@@ -141,6 +143,10 @@ export function ListPriorities(arg1:string):Promise<Array<string>>;
 
 export function ListProfiles():Promise<Array<profile.Profile>>;
 
+export function ListRequirementSources(arg1:string):Promise<Array<testrepo.RequirementSource>>;
+
+export function ListRequirementsWithCoverage(arg1:string):Promise<Array<testrepo.RequirementCoverage>>;
+
 export function ListSavedViews(arg1:string):Promise<Array<testrepo.SavedView>>;
 
 export function ListStatuses(arg1:string):Promise<Array<string>>;
@@ -151,11 +157,15 @@ export function ListTests(arg1:string,arg2:testrepo.Query):Promise<testrepo.Page
 
 export function ListTestsForPrecondition(arg1:string,arg2:string):Promise<Array<testrepo.PreconditionTest>>;
 
+export function ListTestsForRequirement(arg1:string,arg2:string):Promise<Array<testrepo.RequirementTest>>;
+
 export function MoveTestToFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function PreviewImport(arg1:string,arg2:boolean):Promise<testrepo.ImportPreview>;
 
 export function ReadLog(arg1:number):Promise<string>;
+
+export function RemoveRequirementSource(arg1:string,arg2:string):Promise<void>;
 
 export function RenameFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -170,6 +180,8 @@ export function RunStatuses():Promise<Array<string>>;
 export function SeedSampleContainers(arg1:string):Promise<testrepo.SeedResult>;
 
 export function SetDefaultProfile(arg1:string):Promise<void>;
+
+export function SetRequirementSource(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SetTestPreconditions(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 

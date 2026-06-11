@@ -40,6 +40,12 @@ export {
   ListPreconditionsWithUsage,
   ListTestsForPrecondition,
   DeletePrecondition,
+  ListRequirementsWithCoverage,
+  ListTestsForRequirement,
+  GetTestRequirements,
+  ListRequirementSources,
+  SetRequirementSource,
+  RemoveRequirementSource,
   GetTestContainers,
   ListContainers,
   AllocateTests,
@@ -223,6 +229,46 @@ export interface PreconditionTest {
   key: string;
   summary: string;
   status: string;
+}
+
+// Requirement mirrors testrepo.Requirement — a requirement issue (possibly in
+// another project) covered by Tests.
+export interface Requirement {
+  key: string;
+  projectKey: string;
+  issueType: string;
+  summary: string;
+  status: string;
+  updated: string;
+}
+
+// RequirementCoverage mirrors testrepo.RequirementCoverage — a requirement plus
+// its derived coverage (PASSED | FAILED | NOTRUN | UNCOVERED).
+export interface RequirementCoverage {
+  key: string;
+  projectKey: string;
+  issueType: string;
+  summary: string;
+  status: string;
+  testCount: number;
+  coverage: string;
+}
+
+// RequirementTest mirrors testrepo.RequirementTest — one Test covering a
+// requirement, with its consolidated run status.
+export interface RequirementTest {
+  key: string;
+  summary: string;
+  status: string;
+  runStatus: string;
+}
+
+// RequirementSource mirrors testrepo.RequirementSource — a project to browse
+// requirements from.
+export interface RequirementSource {
+  projectKey: string;
+  issueTypes: string;
+  scopeJql: string;
 }
 
 // Container mirrors testrepo.Container — a Test Set, Test Plan or Test
