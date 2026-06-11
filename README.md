@@ -53,14 +53,15 @@ Releases ship two Windows artifacts plus checksums:
 | Artifact | Use |
 | --- | --- |
 | `xray-test-manager-<ver>-windows-amd64.exe` | Portable — run directly, no install |
-| `xray-test-manager-<ver>-windows-amd64-installer.exe` | NSIS installer (Start-menu entry, uninstaller) |
-| `SHA256SUMS.txt` | Integrity check for both |
+| `xray-test-manager-<ver>-windows-amd64-installer.exe` | Inno Setup installer (Start-menu entry, uninstaller) |
+| `xray-test-manager-<ver>-user-guide.zip` | User guide (markdown + screenshots) |
+| `SHA256SUMS.txt` | Integrity check for the above |
 
 **Build locally** (`scripts/release.ps1` builds, version-stamps, bundles into
 `dist/`, and writes checksums):
 
 ```powershell
-# Stamp + build the portable exe and the installer (needs NSIS / makensis)
+# Stamp + build the portable exe and the installer (needs Inno Setup / ISCC.exe)
 ./scripts/release.ps1 -Version 0.2.0
 
 # Portable exe only (skip the installer)

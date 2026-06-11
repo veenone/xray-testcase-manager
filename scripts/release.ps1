@@ -5,19 +5,22 @@
 .DESCRIPTION
   Produces, under dist/:
     - a portable single-file executable        xray-test-manager-<ver>-windows-amd64.exe
-    - an NSIS installer (unless -NoInstaller)  xray-test-manager-<ver>-windows-amd64-installer.exe
+    - an Inno Setup installer (unless          xray-test-manager-<ver>-windows-amd64-installer.exe
+      -NoInstaller)
     - the user guide bundle                    xray-test-manager-<ver>-user-guide.zip
     - SHA256SUMS.txt for all of the above
 
   The version is stamped into wails.json (info.productVersion), which Wails bakes
-  into the .exe version resource and the installer.
+  into the .exe version resource; the same version is passed to the Inno Setup
+  compiler for the installer.
 
 .PARAMETER Version
   Semver to release, e.g. 0.2.0. If omitted, the current wails.json
   info.productVersion is used.
 
 .PARAMETER NoInstaller
-  Build only the portable .exe (skips NSIS - useful when makensis isn't installed).
+  Build only the portable .exe (skips the Inno Setup installer - useful when
+  ISCC.exe isn't installed).
 
 .EXAMPLE
   ./scripts/release.ps1 -Version 0.2.0
@@ -66,10 +69,10 @@ if (-not (Test-Path $wailsExe)) {
 }
 
 # --- Build -------------------------------------------------------------------
+# Build the portable exe only; the installer is built from it with Inno Setup
+# below (we no longer pass -nsis).
 Step "Building (windows/amd64, production)"
-$buildArgs = @("build", "-platform", "windows/amd64", "-clean", "-trimpath")
-if (-not $NoInstaller) { $buildArgs += "-nsis" }
-& $wailsExe @buildArgs
+& $wailsExe build -platform windows/amd64 -clean -trimpath
 if ($LASTEXITCODE -ne 0) { throw "wails build failed (exit $LASTEXITCODE)." }
 
 # --- Stage dist/ -------------------------------------------------------------
@@ -83,12 +86,48 @@ if (-not (Test-Path $portableSrc)) { throw "Expected build output not found: $po
 $portable = Join-Path $dist "xray-test-manager-$Version-windows-amd64.exe"
 Copy-Item $portableSrc $portable -Force
 
+# --- Installer (Inno Setup) --------------------------------------------------
+# Compile build\windows\installer\installer.iss with ISCC, which packages the
+# portable exe (built above) into an installer written straight into dist/.
 if (-not $NoInstaller) {
-  $installerSrc = Get-ChildItem (Join-Path $root "build\bin") -Filter "*installer.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($installerSrc) {
-    Copy-Item $installerSrc.FullName (Join-Path $dist "xray-test-manager-$Version-windows-amd64-installer.exe") -Force
+  Step "Building installer (Inno Setup)"
+
+  # Locate the Inno Setup compiler (ISCC.exe): PATH first, then the default
+  # install location.
+  $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+  if (-not $iscc) {
+    foreach ($p in @(
+        (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
+        (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe"))) {
+      if ($p -and (Test-Path $p)) { $iscc = $p; break }
+    }
+  }
+
+  if (-not $iscc) {
+    Write-Warning "Inno Setup (ISCC.exe) not found - skipping installer. Install it (choco install innosetup) or pass -NoInstaller."
   } else {
-    Write-Warning "No installer produced - is NSIS (makensis) installed? Run with -NoInstaller to skip."
+    # Best-effort: fetch the Evergreen WebView2 bootstrapper so the installer can
+    # install the runtime when it's missing. If the download fails, the installer
+    # still builds and relies on WebView2 already being present.
+    $wv2 = Join-Path $root "build\windows\installer\tmp\MicrosoftEdgeWebview2Setup.exe"
+    if (-not (Test-Path $wv2)) {
+      New-Item -ItemType Directory -Force -Path (Split-Path $wv2) | Out-Null
+      try {
+        Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $wv2 -UseBasicParsing
+      } catch {
+        Write-Warning "Could not download the WebView2 bootstrapper ($($_.Exception.Message)); the installer will rely on WebView2 already being present."
+      }
+    }
+
+    $iss = Join-Path $root "build\windows\installer\installer.iss"
+    $isccArgs = @(
+      "/DAppVersion=$Version",
+      "/DSourceDir=$(Join-Path $root 'build\bin')",
+      "/DOutputDir=$dist"
+    )
+    if (Test-Path $wv2) { $isccArgs += "/DWebView2Bootstrapper=$wv2" }
+    & $iscc @isccArgs $iss
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed (exit $LASTEXITCODE)." }
   }
 }
 
