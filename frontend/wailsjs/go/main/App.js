@@ -110,6 +110,10 @@ export function DeleteProfile(arg1) {
   return window['go']['main']['App']['DeleteProfile'](arg1);
 }
 
+export function DeleteRequirement(arg1, arg2) {
+  return window['go']['main']['App']['DeleteRequirement'](arg1, arg2);
+}
+
 export function DeleteSavedView(arg1, arg2) {
   return window['go']['main']['App']['DeleteSavedView'](arg1, arg2);
 }
@@ -128,6 +132,10 @@ export function EditContainer(arg1, arg2, arg3) {
 
 export function EditPreconditionField(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['EditPreconditionField'](arg1, arg2, arg3, arg4);
+}
+
+export function EditRequirementField(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['EditRequirementField'](arg1, arg2, arg3, arg4);
 }
 
 export function EditTestCustomField(arg1, arg2, arg3, arg4) {

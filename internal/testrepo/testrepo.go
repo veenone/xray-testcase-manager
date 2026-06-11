@@ -3075,6 +3075,40 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 	case entityIssueComment:
 		// A queued comment has no local cache state — discarding it just drops
 		// the pending row (handled after the switch).
+	case entityRequirementEdit:
+		// Revert the requirement field to the before value.
+		col, ok := requirementEditFields[field]
+		if !ok {
+			return fmt.Errorf("unknown requirement field %q", field)
+		}
+		if _, err := tx.Exec(
+			fmt.Sprintf(`UPDATE requirement SET %s = ? WHERE profile_id = ? AND jira_key = ?`, col),
+			beforeVal, profileID, entityKey,
+		); err != nil {
+			return fmt.Errorf("revert requirement field: %w", err)
+		}
+	case entityRequirementDelete:
+		// Restore the deleted requirement and its Test links from the snapshot.
+		var snap requirementDeleteSnapshot
+		if err := json.Unmarshal([]byte(beforeVal), &snap); err != nil {
+			return fmt.Errorf("decode requirement snapshot: %w", err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO requirement (profile_id, jira_key, project_key, issue_type, summary, status, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			profileID, entityKey, snap.ProjectKey, snap.IssueType, snap.Summary, snap.Status, snap.Updated,
+		); err != nil {
+			return fmt.Errorf("restore requirement: %w", err)
+		}
+		for _, l := range snap.Links {
+			if _, err := tx.Exec(
+				`INSERT OR IGNORE INTO test_requirement (profile_id, test_key, requirement_key, link_id)
+				 VALUES (?, ?, ?, ?)`,
+				profileID, l.Key, entityKey, l.LinkID,
+			); err != nil {
+				return fmt.Errorf("restore requirement link: %w", err)
+			}
+		}
 	case entityRequirementSet:
 		// entity_key is the test key; restore the original requirement links
 		// (with their Jira link ids) from the before snapshot.
@@ -3772,6 +3806,8 @@ const (
 	entityIssueComment       = "issue_comment"
 	entityTestRun            = "test_run"
 	entityRequirementSet     = "requirement_set"
+	entityRequirementEdit    = "requirement_edit"
+	entityRequirementDelete  = "requirement_delete"
 )
 
 // preconditionFields whitelists which Precondition columns can be edited via

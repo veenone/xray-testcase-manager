@@ -764,6 +764,26 @@ func (a *App) BulkAssociateRequirements(profileID string, testKeys, requirementK
 	return a.repo.BulkAssociateRequirements(profileID, testKeys, requirementKeys, add)
 }
 
+// EditRequirementField applies a local edit to a requirement field (summary)
+// and queues a pending change for commit. The requirement may live in another
+// project; the edit lands there at commit time.
+func (a *App) EditRequirementField(profileID, requirementKey, field, newValue string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.EditRequirementField(profileID, requirementKey, field, newValue)
+}
+
+// DeleteRequirement removes a requirement and its coverage links locally and
+// queues the deletion for commit (a permission-sensitive, often cross-project
+// Jira issue delete).
+func (a *App) DeleteRequirement(profileID, requirementKey string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.DeleteRequirement(profileID, requirementKey)
+}
+
 // ListRequirementSources returns the configured requirement sources for a
 // profile.
 func (a *App) ListRequirementSources(profileID string) ([]testrepo.RequirementSource, error) {

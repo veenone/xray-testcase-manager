@@ -1980,6 +1980,20 @@ tr.row-selected {
   font-weight: 600;
   margin: 0 0 14px;
 }
+.reqs-detail-actions {
+  display: flex;
+  gap: 6px;
+}
+.reqs-detail-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 14px;
+}
+.reqs-summary-input {
+  flex: 1;
+  min-width: 0;
+}
 .req-kind {
   background: #0e7490;
 }

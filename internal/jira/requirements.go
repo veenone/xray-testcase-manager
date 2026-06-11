@@ -75,6 +75,18 @@ func (c *Client) UpdateTestRequirements(ctx context.Context, testKey string, add
 	return nil
 }
 
+// DeleteRequirement deletes a requirement issue (often cross-project). Demo URLs
+// short-circuit to a no-op.
+//
+// Maps to DELETE /rest/api/2/issue/{key}. NOTE(xtm): deletion is
+// permission-sensitive, especially across projects; verify on a live instance.
+func (c *Client) DeleteRequirement(ctx context.Context, requirementKey string) error {
+	if isDemoURL(c.baseURL) {
+		return nil
+	}
+	return c.delete(ctx, fmt.Sprintf("/rest/api/2/issue/%s", requirementKey))
+}
+
 // demoRequirementProject is a separate project from the Tests' project, so demo
 // mode exercises the cross-project case.
 const demoRequirementProject = "PRD"

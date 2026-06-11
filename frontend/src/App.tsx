@@ -1077,7 +1077,14 @@ function App() {
         </main>
       ) : view === "requirements" ? (
         <main className="content content-requirements">
-          <RequirementsView profileId={activeId} refreshKey={refreshKey} />
+          <RequirementsView
+            profileId={activeId}
+            refreshKey={refreshKey}
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              reloadPending();
+            }}
+          />
         </main>
       ) : view === "dashboard" ? (
         <main className="content content-dashboard">

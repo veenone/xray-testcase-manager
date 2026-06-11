@@ -45,6 +45,8 @@ export {
   GetTestRequirements,
   SetTestRequirements,
   BulkAssociateRequirements,
+  EditRequirementField,
+  DeleteRequirement,
   ListRequirementSources,
   SetRequirementSource,
   RemoveRequirementSource,

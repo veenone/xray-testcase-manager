@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ListRequirementsWithCoverage,
   ListTestsForRequirement,
+  EditRequirementField,
+  DeleteRequirement,
   errMsg,
 } from "../api";
 import type { RequirementCoverage, RequirementTest } from "../api";
@@ -10,6 +12,7 @@ import { RequirementSourcesModal } from "./RequirementSourcesModal";
 interface Props {
   profileId: string;
   refreshKey: number;
+  onChanged?: () => void;
 }
 
 const COVERAGE_ORDER = ["FAILED", "NOTRUN", "PASSED", "UNCOVERED"];
@@ -26,7 +29,7 @@ const COVERAGE_LABEL: Record<string, string> = {
 // detail pane on the right listing the Tests that cover the selected
 // requirement with their run result. Read-only; recomputes when the profile
 // changes or a sync/commit bumps refreshKey.
-export function RequirementsView({ profileId, refreshKey }: Props) {
+export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   const [list, setList] = useState<RequirementCoverage[]>([]);
   const [selected, setSelected] = useState("");
   const [tests, setTests] = useState<RequirementTest[]>([]);
@@ -35,6 +38,9 @@ export function RequirementsView({ profileId, refreshKey }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showSources, setShowSources] = useState(false);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [draftSummary, setDraftSummary] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!profileId) return;
@@ -82,6 +88,10 @@ export function RequirementsView({ profileId, refreshKey }: Props) {
     };
   }, [profileId, selected, refreshKey]);
 
+  useEffect(() => {
+    setEditingSummary(false);
+  }, [selected]);
+
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const r of list) c[r.coverage] = (c[r.coverage] ?? 0) + 1;
@@ -100,6 +110,55 @@ export function RequirementsView({ profileId, refreshKey }: Props) {
   }, [list, filter, covFilter]);
 
   const sel = list.find((r) => r.key === selected) ?? null;
+
+  function startEdit() {
+    if (!sel) return;
+    setDraftSummary(sel.summary);
+    setEditingSummary(true);
+  }
+
+  async function saveSummary() {
+    if (!sel) return;
+    const next = draftSummary.trim();
+    if (!next || next === sel.summary) {
+      setEditingSummary(false);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await EditRequirementField(profileId, sel.key, "summary", next);
+      setEditingSummary(false);
+      onChanged?.();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteReq() {
+    if (!sel) return;
+    if (
+      !window.confirm(
+        `Delete requirement ${sel.key}? This removes it and its ${sel.testCount} coverage link${
+          sel.testCount === 1 ? "" : "s"
+        }, and queues the issue for deletion in Jira on the next commit.`,
+      )
+    )
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      await DeleteRequirement(profileId, sel.key);
+      setSelected("");
+      onChanged?.();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="reqs">
@@ -183,10 +242,56 @@ export function RequirementsView({ profileId, refreshKey }: Props) {
               >
                 {COVERAGE_LABEL[sel.coverage]}
               </span>
+              <span className="reqs-detail-actions">
+                {!editingSummary && (
+                  <button
+                    className="btn"
+                    onClick={startEdit}
+                    disabled={busy}
+                    title="Edit the requirement summary"
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  className="btn btn-danger"
+                  onClick={deleteReq}
+                  disabled={busy}
+                  title="Delete this requirement (queued for commit)"
+                >
+                  Delete
+                </button>
+              </span>
             </div>
-            <h2 className="reqs-detail-summary">
-              {sel.summary || "(no summary)"}
-            </h2>
+            {editingSummary ? (
+              <div className="reqs-detail-edit">
+                <input
+                  className="search reqs-summary-input"
+                  value={draftSummary}
+                  autoFocus
+                  disabled={busy}
+                  onChange={(e) => setDraftSummary(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveSummary();
+                    if (e.key === "Escape") setEditingSummary(false);
+                  }}
+                />
+                <button className="btn" onClick={saveSummary} disabled={busy}>
+                  Save
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => setEditingSummary(false)}
+                  disabled={busy}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <h2 className="reqs-detail-summary">
+                {sel.summary || "(no summary)"}
+              </h2>
+            )}
 
             <h4>
               Covering tests ({tests.length})

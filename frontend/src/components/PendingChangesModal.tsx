@@ -320,6 +320,18 @@ function describeChange(c: PendingChange): {
         before: c.beforeVal,
         after: c.afterVal,
       };
+    case "requirement_edit":
+      return {
+        field: `requirement:${c.field}`,
+        before: c.beforeVal,
+        after: c.afterVal,
+      };
+    case "requirement_delete":
+      return {
+        field: "delete requirement",
+        before: stepActionLike(c.beforeVal, "summary"),
+        after: "",
+      };
     case "custom_field":
       return { field: "custom field", before: c.beforeVal, after: c.afterVal };
     case "test_create":

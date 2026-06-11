@@ -165,6 +165,10 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 	runRows := make([]testrepo.PendingChange, 0)
 	// Requirement coverage-link changes, keyed by test key.
 	requirementRows := make([]testrepo.PendingChange, 0)
+	// Requirement field edits, keyed by the requirement's own issue key.
+	requirementEditRows := make([]testrepo.PendingChange, 0)
+	// Requirement deletes, keyed by the requirement's own issue key.
+	requirementDeleteRows := make([]testrepo.PendingChange, 0)
 	for _, c := range changes {
 		if c.EntityType == "test_membership_add" ||
 			c.EntityType == "test_membership_remove" ||
@@ -196,6 +200,14 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		}
 		if c.EntityType == "requirement_set" {
 			requirementRows = append(requirementRows, c)
+			continue
+		}
+		if c.EntityType == "requirement_edit" {
+			requirementEditRows = append(requirementEditRows, c)
+			continue
+		}
+		if c.EntityType == "requirement_delete" {
+			requirementDeleteRows = append(requirementDeleteRows, c)
 			continue
 		}
 		if c.EntityType == "test_run" {
@@ -524,6 +536,8 @@ testLoop:
 	e.commitComments(ctx, profileID, commentRows, &result)
 	e.commitRuns(ctx, profileID, runRows, &result)
 	e.commitRequirements(ctx, profileID, requirementRows, &result)
+	e.commitRequirementEdits(ctx, profileID, requirementEditRows, &result)
+	e.commitRequirementDeletes(ctx, profileID, requirementDeleteRows, &result)
 
 	return result, nil
 }
@@ -597,6 +611,56 @@ func (e *Engine) commitRequirements(ctx context.Context, profileID string, rows 
 			continue
 		}
 		result.Succeeded = append(result.Succeeded, testKey)
+	}
+}
+
+// commitRequirementEdits pushes requirement field edits, grouping a
+// requirement's pending field changes into one issue update. Reported under the
+// requirement's own issue key (which may be in another project).
+func (e *Engine) commitRequirementEdits(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	byRequirement := make(map[string][]testrepo.PendingChange)
+	order := make([]string, 0)
+	for _, c := range rows {
+		if _, seen := byRequirement[c.EntityKey]; !seen {
+			order = append(order, c.EntityKey)
+		}
+		byRequirement[c.EntityKey] = append(byRequirement[c.EntityKey], c)
+	}
+
+	for _, key := range order {
+		group := byRequirement[key]
+		updates := make(map[string]string, len(group))
+		ids := make([]int64, len(group))
+		for i, c := range group {
+			updates[c.Field] = c.AfterVal
+			ids[i] = c.ID
+		}
+		if err := e.client.UpdateIssue(ctx, key, jira.FieldsForJira(updates)); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: key, Error: "update requirement: " + sanitizeError(err.Error())})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, ids); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: key, Error: "Jira accepted requirement update but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, key)
+	}
+}
+
+// commitRequirementDeletes deletes requirement issues in Jira, reported under
+// the requirement's own issue key. The local row is dropped only after Jira
+// confirms the delete so a failure leaves it pending for retry.
+func (e *Engine) commitRequirementDeletes(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	for _, c := range rows {
+		if err := e.client.DeleteRequirement(ctx, c.EntityKey); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "delete requirement: " + sanitizeError(err.Error())})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "Jira deleted requirement but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, c.EntityKey)
 	}
 }
 

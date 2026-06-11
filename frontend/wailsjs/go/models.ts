@@ -808,6 +808,86 @@ export namespace testrepo {
 	        this.offset = source["offset"];
 	    }
 	}
+	export class Requirement {
+	    key: string;
+	    projectKey: string;
+	    issueType: string;
+	    summary: string;
+	    status: string;
+	    updated: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Requirement(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.projectKey = source["projectKey"];
+	        this.issueType = source["issueType"];
+	        this.summary = source["summary"];
+	        this.status = source["status"];
+	        this.updated = source["updated"];
+	    }
+	}
+	export class RequirementCoverage {
+	    key: string;
+	    projectKey: string;
+	    issueType: string;
+	    summary: string;
+	    status: string;
+	    testCount: number;
+	    coverage: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RequirementCoverage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.projectKey = source["projectKey"];
+	        this.issueType = source["issueType"];
+	        this.summary = source["summary"];
+	        this.status = source["status"];
+	        this.testCount = source["testCount"];
+	        this.coverage = source["coverage"];
+	    }
+	}
+	export class RequirementSource {
+	    projectKey: string;
+	    issueTypes: string;
+	    scopeJql: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RequirementSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.projectKey = source["projectKey"];
+	        this.issueTypes = source["issueTypes"];
+	        this.scopeJql = source["scopeJql"];
+	    }
+	}
+	export class RequirementTest {
+	    key: string;
+	    summary: string;
+	    status: string;
+	    runStatus: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RequirementTest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.summary = source["summary"];
+	        this.status = source["status"];
+	        this.runStatus = source["runStatus"];
+	    }
+	}
 	export class Review {
 	    verdict: string;
 	    reviewer: string;

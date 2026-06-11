@@ -61,6 +61,8 @@ export function DeletePrecondition(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteProfile(arg1:string):Promise<void>;
 
+export function DeleteRequirement(arg1:string,arg2:string):Promise<void>;
+
 export function DeleteSavedView(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteTestStep(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -70,6 +72,8 @@ export function DiscardPendingChange(arg1:string,arg2:number):Promise<void>;
 export function EditContainer(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function EditPreconditionField(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function EditRequirementField(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function EditTestCustomField(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
