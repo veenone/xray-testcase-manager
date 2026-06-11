@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 16
+const schemaVersion = 17
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -195,6 +195,40 @@ CREATE TABLE IF NOT EXISTS test_review (
 	reviewed_at TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, test_key)
 );
+
+-- Requirement issues linked to Tests for coverage/traceability. A requirement
+-- may live in a different project than the profile's Test project, so it carries
+-- its own project_key.
+CREATE TABLE IF NOT EXISTS requirement (
+	profile_id  TEXT NOT NULL,
+	jira_key    TEXT NOT NULL,
+	project_key TEXT NOT NULL DEFAULT '',
+	issue_type  TEXT NOT NULL DEFAULT '',
+	summary     TEXT NOT NULL DEFAULT '',
+	status      TEXT NOT NULL DEFAULT '',
+	updated_at  TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (profile_id, jira_key)
+);
+
+-- Test <-> Requirement coverage links (the Jira issue link). link_id is Jira's
+-- issueLink id, kept so a link can be removed precisely.
+CREATE TABLE IF NOT EXISTS test_requirement (
+	profile_id      TEXT NOT NULL,
+	test_key        TEXT NOT NULL,
+	requirement_key TEXT NOT NULL,
+	link_id         TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (profile_id, test_key, requirement_key)
+);
+
+-- Where to look for requirements to browse/manage (besides those already linked
+-- to synced Tests, which are fetched by key regardless of project).
+CREATE TABLE IF NOT EXISTS requirement_source (
+	profile_id  TEXT NOT NULL,
+	project_key TEXT NOT NULL,
+	issue_types TEXT NOT NULL DEFAULT '',
+	scope_jql   TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (profile_id, project_key)
+);
 `
 
 // indexSchema is applied *after* applyMigrations so every column referenced
@@ -206,6 +240,8 @@ CREATE INDEX IF NOT EXISTS idx_test_case_status        ON test_case(profile_id, 
 CREATE INDEX IF NOT EXISTS idx_test_case_updated       ON test_case(profile_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_test_case_folder        ON test_case(profile_id, folder_id);
 CREATE INDEX IF NOT EXISTS idx_test_precondition_test  ON test_precondition(profile_id, test_key);
+CREATE INDEX IF NOT EXISTS idx_test_requirement_test   ON test_requirement(profile_id, test_key);
+CREATE INDEX IF NOT EXISTS idx_test_requirement_req    ON test_requirement(profile_id, requirement_key);
 CREATE INDEX IF NOT EXISTS idx_pending_change_profile  ON pending_change(profile_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_profile_time  ON audit_log(profile_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_test_step_test          ON test_step(profile_id, test_key, idx);
