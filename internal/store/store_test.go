@@ -78,3 +78,24 @@ func TestOpenIsIdempotent(t *testing.T) {
 	}
 	_ = second.Close()
 }
+
+func TestDuplicateTablesExist(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "dup.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer st.Close()
+	db := st.DB()
+	for _, table := range []string{"duplicate_ignore", "duplicate_step_scan"} {
+		var name string
+		err := db.QueryRow(
+			`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table,
+		).Scan(&name)
+		if err != nil {
+			t.Errorf("table %s missing: %v", table, err)
+		}
+	}
+	if store.SchemaVersion() < 17 {
+		t.Errorf("schemaVersion = %d, want >= 17", store.SchemaVersion())
+	}
+}

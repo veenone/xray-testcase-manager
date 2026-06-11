@@ -2,7 +2,14 @@ package jira
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // Requirement is a requirement issue (possibly in another project) that Tests
@@ -31,19 +38,17 @@ type RequirementSourceSpec struct {
 }
 
 // ListRequirements returns requirement issues plus their Test coverage links.
-// Demo URLs generate a deterministic cross-project set so the coverage view has
-// data; the real call short-circuits to empty until verified on a live
-// instance.
+// Demo URLs generate a deterministic cross-project set. The live path JQL-searches
+// each configured requirement source for its issues, and harvests coverage links
+// from each requirement's `issuelinks`: any linked issue whose key belongs to the
+// Test project (profileProjectKey) is treated as a covering Test — a robust
+// heuristic that avoids depending on the exact coverage link-type name/direction.
 //
-// TODO(xtm): real path — (1) for each configured source, JQL-search
-// `project = X AND issuetype in (...) AND (scope) ORDER BY key`; (2) resolve the
-// coverage issue-link type once (GET /rest/api/2/issueLinkType, default
-// "Tests"/"is tested by"); (3) read each synced Test's `issuelinks` field to
-// collect linked requirement keys (any project) and batch-fetch those issues by
-// key via /rest/api/2/search?jql=key in (...). Verify the link direction and
-// response shapes on a live Xray Server 8.4.0 instance.
+// NOTE(xtm): only requirements in a configured source are fetched (and their
+// links to synced Tests). Requirements linked to a Test but in a project with no
+// configured source are not yet collected (that would require reading every
+// Test's issuelinks). Verify the issuelinks shape on a live Xray Server 8.4.0.
 func (c *Client) ListRequirements(ctx context.Context, profileProjectKey string, sources []RequirementSourceSpec, onProgress func(done, total int)) ([]Requirement, []RequirementLink, error) {
-	_ = ctx
 	if isDemoURL(c.baseURL) {
 		reqs, links := demoRequirements(profileProjectKey)
 		if onProgress != nil {
@@ -51,8 +56,150 @@ func (c *Client) ListRequirements(ctx context.Context, profileProjectKey string,
 		}
 		return reqs, links, nil
 	}
-	_ = sources
-	return []Requirement{}, []RequirementLink{}, nil
+
+	seen := map[string]struct{}{}
+	reqs := []Requirement{}
+	links := []RequirementLink{}
+	total := len(sources)
+	for i, src := range sources {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		rs, ls, err := c.searchRequirements(ctx, src, profileProjectKey)
+		if err != nil {
+			// Best-effort per source: one bad source (permissions, bad scope JQL)
+			// must not drop the others.
+			log.Printf("xtm: requirement source %s: %v", src.ProjectKey, err)
+		} else {
+			for _, r := range rs {
+				if _, dup := seen[r.Key]; dup {
+					continue
+				}
+				seen[r.Key] = struct{}{}
+				reqs = append(reqs, r)
+			}
+			links = append(links, ls...)
+		}
+		if onProgress != nil {
+			onProgress(i+1, total)
+		}
+	}
+	return reqs, links, nil
+}
+
+// requirementJQL builds the search for one source: project, optional issue-type
+// filter, optional scope, ordered by key.
+func requirementJQL(spec RequirementSourceSpec) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, `project = "%s"`, spec.ProjectKey)
+	if len(spec.IssueTypes) > 0 {
+		quoted := make([]string, len(spec.IssueTypes))
+		for i, t := range spec.IssueTypes {
+			quoted[i] = `"` + strings.TrimSpace(t) + `"`
+		}
+		fmt.Fprintf(&b, " AND issuetype in (%s)", strings.Join(quoted, ", "))
+	}
+	if s := strings.TrimSpace(spec.ScopeJQL); s != "" {
+		fmt.Fprintf(&b, " AND (%s)", s)
+	}
+	b.WriteString(" ORDER BY key ASC")
+	return b.String()
+}
+
+// searchRequirements pages one source's requirement issues and extracts coverage
+// links to Tests (issues whose key is in testProjectKey) from their issuelinks.
+func (c *Client) searchRequirements(ctx context.Context, spec RequirementSourceSpec, testProjectKey string) ([]Requirement, []RequirementLink, error) {
+	jql := requirementJQL(spec)
+	testPrefix := testProjectKey + "-"
+	reqs := []Requirement{}
+	links := []RequirementLink{}
+	startAt := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		q := url.Values{}
+		q.Set("jql", jql)
+		q.Set("startAt", strconv.Itoa(startAt))
+		q.Set("maxResults", "100")
+		q.Set("fields", "summary,status,issuetype,project,issuelinks")
+
+		var resp struct {
+			Total  int `json:"total"`
+			Issues []struct {
+				Key    string `json:"key"`
+				Fields struct {
+					Summary string `json:"summary"`
+					Status  *struct {
+						Name string `json:"name"`
+					} `json:"status"`
+					IssueType *struct {
+						Name string `json:"name"`
+					} `json:"issuetype"`
+					Project *struct {
+						Key string `json:"key"`
+					} `json:"project"`
+					IssueLinks []struct {
+						ID          string `json:"id"`
+						InwardIssue *struct {
+							Key string `json:"key"`
+						} `json:"inwardIssue"`
+						OutwardIssue *struct {
+							Key string `json:"key"`
+						} `json:"outwardIssue"`
+					} `json:"issuelinks"`
+				} `json:"fields"`
+			} `json:"issues"`
+		}
+		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
+			var he *HTTPError
+			if errors.As(err, &he) && he.Code == http.StatusBadRequest {
+				// Bad scope JQL or unknown issue type for this project — treat as
+				// no results rather than aborting.
+				log.Printf("xtm: requirement search rejected for %s: %v", spec.ProjectKey, err)
+				return reqs, links, nil
+			}
+			return nil, nil, err
+		}
+
+		for _, iss := range resp.Issues {
+			req := Requirement{Key: iss.Key, Summary: iss.Fields.Summary, ProjectKey: spec.ProjectKey}
+			if iss.Fields.Project != nil && iss.Fields.Project.Key != "" {
+				req.ProjectKey = iss.Fields.Project.Key
+			}
+			if iss.Fields.IssueType != nil {
+				req.IssueType = iss.Fields.IssueType.Name
+			}
+			if iss.Fields.Status != nil {
+				req.Status = iss.Fields.Status.Name
+			}
+			reqs = append(reqs, req)
+
+			for _, lk := range iss.Fields.IssueLinks {
+				testKey := ""
+				if lk.InwardIssue != nil && strings.HasPrefix(lk.InwardIssue.Key, testPrefix) {
+					testKey = lk.InwardIssue.Key
+				}
+				if lk.OutwardIssue != nil && strings.HasPrefix(lk.OutwardIssue.Key, testPrefix) {
+					testKey = lk.OutwardIssue.Key
+				}
+				if testKey != "" {
+					links = append(links, RequirementLink{
+						TestKey:        testKey,
+						RequirementKey: req.Key,
+						LinkID:         lk.ID,
+					})
+				}
+			}
+		}
+
+		startAt += len(resp.Issues)
+		if len(resp.Issues) == 0 || startAt >= resp.Total {
+			break
+		}
+		time.Sleep(throttleContainers)
+	}
+	return reqs, links, nil
 }
 
 // UpdateTestRequirements creates and removes Test<->Requirement coverage links.

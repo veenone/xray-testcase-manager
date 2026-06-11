@@ -3,6 +3,7 @@ import type { PendingChange, CommitResult } from "../api";
 interface Props {
   changes: PendingChange[];
   onDiscard: (id: number) => Promise<void> | void;
+  onDiscardAll: () => Promise<void> | void;
   onCommit: () => Promise<void> | void;
   onCommitIds: (ids: number[]) => Promise<void> | void;
   onJumpTo: (testKey: string) => void;
@@ -16,6 +17,7 @@ interface Props {
 export function PendingChangesModal({
   changes,
   onDiscard,
+  onDiscardAll,
   onCommit,
   onCommitIds,
   onJumpTo,
@@ -30,6 +32,20 @@ export function PendingChangesModal({
   // item doesn't make the rest conflict.
   function commitItem(c: PendingChange) {
     onCommitIds([c.id]);
+  }
+
+  // discardAll confirms first — it reverts every uncommitted edit and can't be
+  // undone.
+  function discardAll() {
+    if (
+      window.confirm(
+        `Discard all ${changes.length} pending change${
+          changes.length === 1 ? "" : "s"
+        }? This reverts every uncommitted edit and cannot be undone.`,
+      )
+    ) {
+      onDiscardAll();
+    }
   }
 
   const hasResult =
@@ -232,6 +248,14 @@ export function PendingChangesModal({
             Successful commits leave this list; failures and conflicts stay
             and can be retried or discarded.
           </p>
+          <button
+            className="btn btn-danger"
+            onClick={discardAll}
+            disabled={committing || changes.length === 0}
+            title="Revert every pending change"
+          >
+            Discard all
+          </button>
           <button
             className="btn btn-primary"
             onClick={onCommit}

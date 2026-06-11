@@ -2791,6 +2791,19 @@ func (r *Repository) AddTestStep(profileID, testKey, action, data, expected stri
 	return s, nil
 }
 
+// CloneTestSteps appends copies of sourceSteps onto a Test, queuing each as a
+// local step-add (the same path as AddTestStep) so the clones commit to Xray
+// like any hand-added step. Steps are appended in source order, after any steps
+// the Test already has. Returns the Test's full step list after the clone.
+func (r *Repository) CloneTestSteps(profileID, targetKey string, sourceSteps []Step) ([]Step, error) {
+	for _, s := range sourceSteps {
+		if _, err := r.AddTestStep(profileID, targetKey, s.Action, s.Data, s.Expected); err != nil {
+			return nil, err
+		}
+	}
+	return r.ListTestSteps(profileID, targetKey)
+}
+
 // nextTempStepID returns a step xray_id of the form "new-N" not already used
 // by another step on this Test. New steps need a placeholder id until Xray
 // assigns the real one at commit time.
@@ -3382,6 +3395,43 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 		return err
 	}
 	return tx.Commit()
+}
+
+// DiscardAllPendingChanges reverts every pending change for a profile, reusing
+// the per-row discard so each entity type's revert semantics (field rollbacks,
+// removing locally-added steps/memberships, restoring deletions) apply exactly
+// as for a single discard. Returns the number discarded; on the first failure it
+// stops and returns how many were undone so the user can see partial progress.
+func (r *Repository) DiscardAllPendingChanges(profileID string) (int, error) {
+	rows, err := r.db.Query(
+		`SELECT id FROM pending_change WHERE profile_id = ? ORDER BY id`,
+		profileID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("list pending changes: %w", err)
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	discarded := 0
+	for _, id := range ids {
+		if err := r.DiscardPendingChange(profileID, id); err != nil {
+			return discarded, fmt.Errorf("discard change %d: %w", id, err)
+		}
+		discarded++
+	}
+	return discarded, nil
 }
 
 // TransitionTest queues a workflow transition on a Test (FR-4.2). The

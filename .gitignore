@@ -25,3 +25,12 @@ Thumbs.db
 # Tooling artifacts
 .playwright-mcp/
 .superpowers/
+.gstack/
+
+docs/dist/
+docs/.env
+docs/Makefile
+docs/user_doc_config.yml
+
+# Generated user-guide build output
+docs/user-guide/dist/

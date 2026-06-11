@@ -31,6 +31,8 @@ export function CheckJiraTestSteps(arg1:string,arg2:string):Promise<main.JiraSte
 
 export function CleanSampleData(arg1:string):Promise<number>;
 
+export function CloneTestSteps(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<Array<testrepo.Step>>;
+
 export function CommitPendingChanges(arg1:string):Promise<syncer.CommitResult>;
 
 export function CommitPendingChangesByIDs(arg1:string,arg2:Array<number>):Promise<syncer.CommitResult>;
@@ -67,6 +69,8 @@ export function DeleteSavedView(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteTestStep(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function DiscardAllPendingChanges(arg1:string):Promise<number>;
+
 export function DiscardPendingChange(arg1:string,arg2:number):Promise<void>;
 
 export function EditContainer(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -80,6 +84,8 @@ export function EditTestCustomField(arg1:string,arg2:string,arg3:string,arg4:str
 export function EditTestField(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function EditTestStepField(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
+
+export function ExcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
 
 export function ExportDiagnostics():Promise<string>;
 
@@ -99,7 +105,7 @@ export function GetContainerBoard(arg1:string,arg2:string):Promise<testrepo.Test
 
 export function GetDiagnostics():Promise<main.Diagnostics>;
 
-export function GetRequirementTraceability(arg1:string):Promise<testrepo.Sankey>;
+export function GetRequirementTraceability(arg1:string,arg2:string):Promise<testrepo.Sankey>;
 
 export function GetSettings():Promise<settings.Settings>;
 
@@ -187,6 +193,10 @@ export function ResolveConflictOverride(arg1:string,arg2:string,arg3:string):Pro
 
 export function RunStatuses():Promise<Array<string>>;
 
+export function ScanDuplicateGroupSteps(arg1:string,arg2:string):Promise<testrepo.DuplicateGroup>;
+
+export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;
+
 export function SeedSampleContainers(arg1:string):Promise<testrepo.SeedResult>;
 
 export function SetDefaultProfile(arg1:string):Promise<void>;
@@ -210,6 +220,8 @@ export function SyncProfileFull(arg1:string):Promise<void>;
 export function TestConnection(arg1:string,arg2:string):Promise<string>;
 
 export function TransitionTest(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function UnexcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
 
 export function UpdateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<profile.Profile>;
 

@@ -13,9 +13,8 @@ const HEIGHT = 320;
 const LABEL_PAD = 9;
 
 // Semantic palette keyed by node id, so colours stay stable regardless of the
-// display label. Coverage / result / review all share the pass-green /
-// fail-red / amber / grey vocabulary so a thread reads consistently across the
-// three columns.
+// display label. Coverage and result share the pass-green / fail-red / amber /
+// grey vocabulary so a thread reads consistently across the columns.
 const NODE_COLORS: Record<string, string> = {
   "cov:PASSED": "#16a34a",
   "cov:FAILED": "#dc2626",
@@ -25,19 +24,18 @@ const NODE_COLORS: Record<string, string> = {
   "res:FAIL": "#dc2626",
   "res:__norun__": "#d97706",
   "res:__notest__": "#cbd5e1",
-  "rev:approved": "#16a34a",
-  "rev:rejected": "#dc2626",
-  "rev:pending": "#d97706",
-  "rev:__unreviewed__": "#64748b",
-  "rev:__notest__": "#cbd5e1",
 };
 function nodeColor(id: string): string {
   if (NODE_COLORS[id]) return NODE_COLORS[id];
+  if (id.startsWith("req:")) return "#6366f1"; // requirement node
+  if (id.startsWith("plan:")) return "#0891b2"; // Test plan bucket
   if (id.startsWith("res:")) return "#6366f1"; // other Xray statuses (TODO, …)
   return "#64748b";
 }
 
-const COLUMNS = ["Requirement coverage", "Test result", "Review sign-off"];
+// The flow is always four layers: requirement → coverage status → Test plan →
+// run result.
+const COLUMNS = ["Requirement", "Coverage", "Test plan", "Test result"];
 
 interface Placed {
   id: string;
@@ -57,10 +55,10 @@ interface PlacedLink {
   ty: number;
 }
 
-// RequirementSankey hand-renders the requirement sign-off traceability flow:
-// requirement coverage → covering Test run result → Test review sign-off. Node
-// counts are small (status buckets), so every node is labelled and the whole
-// flow fits without scrolling. Hovering a node traces its threads.
+// RequirementSankey hand-renders the requirement traceability flow: requirement
+// → coverage status → Test plan → covering Test run result. Node counts are
+// small (requirements + status buckets), so every node is labelled and the flow
+// fits without scrolling. Hovering a node traces its threads.
 export function RequirementSankey({ data }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -91,18 +89,23 @@ export function RequirementSankey({ data }: Props) {
       ) : (
         <>
           <div className="sankey-cols">
-            <span
-              className="sankey-col-head"
-              style={{ left: 0, width: layout.colX[0] - 4, textAlign: "right" }}
-            >
-              {COLUMNS[0]}
-            </span>
-            <span className="sankey-col-head" style={{ left: layout.colX[1] }}>
-              {COLUMNS[1]}
-            </span>
-            <span className="sankey-col-head" style={{ left: layout.colX[2] }}>
-              {COLUMNS[2]}
-            </span>
+            {layout.colX.map((_, i) => (
+              <span
+                key={i}
+                className="sankey-col-head"
+                style={
+                  i === 0
+                    ? {
+                        left: 0,
+                        width: layout.colX[0] - 4,
+                        textAlign: "right",
+                      }
+                    : { left: layout.colX[i] }
+                }
+              >
+                {COLUMNS[i]}
+              </span>
+            ))}
           </div>
           <Diagram layout={layout} hoverId={hoverId} setHoverId={setHoverId} />
         </>
@@ -132,7 +135,7 @@ function Diagram({
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       role="img"
-      aria-label="Requirement traceability from coverage through test results to review sign-off"
+      aria-label="Requirement traceability from coverage through Test plan to run results"
     >
       <g className={`sankey-links${hoverId ? " has-hover" : ""}`}>
         {links.map((lk, i) => {
@@ -191,7 +194,8 @@ function Diagram({
 
 function buildLayout(data: Sankey, width: number) {
   if (!data || data.nodes.length === 0 || width <= 0) return null;
-  const layers = [0, 1, 2];
+  const maxLayer = data.nodes.reduce((m, n) => Math.max(m, n.layer), 0);
+  const layers = Array.from({ length: maxLayer + 1 }, (_, i) => i);
   const byLayer = layers.map((L) => data.nodes.filter((n) => n.layer === L));
   if (byLayer.some((col) => col.length === 0)) return null;
 
@@ -204,8 +208,11 @@ function buildLayout(data: Sankey, width: number) {
   const gutterR = clamp(Math.round(width * 0.16), 120, 190);
   const leftX = gutterL;
   const rightX = width - gutterR - NODE_W;
-  const midX = Math.round(leftX + (rightX - leftX) * 0.5);
-  const colX = [leftX, midX, rightX];
+  // Distribute N columns evenly between the left and right gutters.
+  const n = layers.length;
+  const colX = layers.map((_, i) =>
+    n <= 1 ? leftX : Math.round(leftX + ((rightX - leftX) * i) / (n - 1)),
+  );
 
   const busiest = Math.max(...byLayer.map((col) => col.length));
   const avail = HEIGHT - PAD_Y * 2 - (busiest - 1) * GAP;

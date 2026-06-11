@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 17
+const schemaVersion = 18
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -229,6 +229,21 @@ CREATE TABLE IF NOT EXISTS requirement_source (
 	scope_jql   TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, project_key)
 );
+
+CREATE TABLE IF NOT EXISTS duplicate_ignore (
+	profile_id TEXT NOT NULL,
+	test_key   TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	PRIMARY KEY (profile_id, test_key)
+);
+
+CREATE TABLE IF NOT EXISTS duplicate_step_scan (
+	profile_id  TEXT NOT NULL,
+	test_key    TEXT NOT NULL,
+	fingerprint TEXT NOT NULL,
+	scanned_at  TEXT NOT NULL,
+	PRIMARY KEY (profile_id, test_key)
+);
 `
 
 // indexSchema is applied *after* applyMigrations so every column referenced
@@ -248,6 +263,8 @@ CREATE INDEX IF NOT EXISTS idx_test_step_test          ON test_step(profile_id, 
 CREATE INDEX IF NOT EXISTS idx_test_container_kind     ON test_container(profile_id, kind);
 CREATE INDEX IF NOT EXISTS idx_test_container_test_key ON test_container_test(profile_id, test_key);
 CREATE INDEX IF NOT EXISTS idx_sync_log_profile_time   ON sync_log(profile_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_duplicate_ignore_profile   ON duplicate_ignore(profile_id);
+CREATE INDEX IF NOT EXISTS idx_duplicate_step_scan_profile ON duplicate_step_scan(profile_id);
 `
 
 // Store wraps the SQLite connection for one local database file.

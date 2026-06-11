@@ -5,14 +5,18 @@ import (
 	"strings"
 )
 
-// GetRequirementTraceability builds a requirement sign-off traceability flow:
-// requirement coverage -> covering Test run result -> Test review sign-off. The
+// GetRequirementTraceability builds a four-layer requirement traceability flow:
+// requirement -> coverage status -> Test plan -> covering Test run result. The
 // flow unit is a coverage link (a requirement<->Test pair); each uncovered
-// requirement contributes one synthetic thread ("No test" / "No review") so it
+// requirement contributes one synthetic thread ("No plan" / "No test") so it
 // still appears in the diagram. Because every link is counted once per layer,
-// all three layers sum to the same total and the diagram balances. Computed
-// entirely from the local store, so it tracks the cache without a Jira call.
-func (r *Repository) GetRequirementTraceability(profileID string) (Sankey, error) {
+// the layers sum to the same total and the diagram balances. Computed entirely
+// from the local store, so it tracks the cache without a Jira call.
+//
+// The requirement is always the labelled first node ("KEY — summary"). reqFilter
+// narrows the flow to a single requirement (by key); an empty reqFilter shows
+// every requirement as its own first-layer node.
+func (r *Repository) GetRequirementTraceability(profileID, reqFilter string) (Sankey, error) {
 	out := Sankey{Nodes: []SankeyNode{}, Links: []SankeyLink{}}
 
 	reqs, err := r.ListRequirementsWithCoverage(profileID)
@@ -27,16 +31,24 @@ func (r *Repository) GetRequirementTraceability(profileID string) (Sankey, error
 	if err != nil {
 		return out, err
 	}
-	reviews, err := r.allReviews(profileID)
+	plansByTest, err := r.testPlanMemberships(profileID)
+	if err != nil {
+		return out, err
+	}
+	summaryByKey, err := r.containerSummaries(profileID)
 	if err != nil {
 		return out, err
 	}
 
+	reqFilter = strings.TrimSpace(reqFilter)
+	filtered := reqFilter != ""
+
 	value := map[string]int{}
 	label := map[string]string{}
 	layer := map[string]int{}
-	covResult := map[[2]string]int{}
-	resultReview := map[[2]string]int{}
+	reqCov := map[[2]string]int{}
+	covPlan := map[[2]string]int{}
+	planResult := map[[2]string]int{}
 
 	note := func(id, lbl string, lyr int) {
 		value[id]++
@@ -44,26 +56,38 @@ func (r *Repository) GetRequirementTraceability(profileID string) (Sankey, error
 		layer[id] = lyr
 	}
 
-	link := func(covID, resID, revID, covLbl, resLbl, revLbl string) {
-		note(covID, covLbl, 0)
-		note(resID, resLbl, 1)
-		note(revID, revLbl, 2)
-		covResult[[2]string{covID, resID}]++
-		resultReview[[2]string{resID, revID}]++
+	// addThread records one coverage link across all four layers: requirement
+	// (0) -> coverage (1) -> Test plan (2) -> run result (3).
+	addThread := func(reqID, reqLbl, covID, covLbl, planID, planLbl, resID, resLbl string) {
+		note(reqID, reqLbl, 0)
+		note(covID, covLbl, 1)
+		note(planID, planLbl, 2)
+		note(resID, resLbl, 3)
+		reqCov[[2]string{reqID, covID}]++
+		covPlan[[2]string{covID, planID}]++
+		planResult[[2]string{planID, resID}]++
 	}
 
 	for _, rq := range reqs {
+		if filtered && rq.Key != reqFilter {
+			continue
+		}
+		reqID := "req:" + rq.Key
+		reqLbl := rq.Key
+		if s := strings.TrimSpace(rq.Summary); s != "" {
+			reqLbl = rq.Key + " — " + truncateRunes(s, 48)
+		}
 		covID := "cov:" + rq.Coverage
 		covLbl := requirementCoverageLabel(rq.Coverage)
 		tests := testsByReq[rq.Key]
 		if len(tests) == 0 {
-			link(covID, "res:__notest__", "rev:__notest__", covLbl, "No test", "No review")
+			addThread(reqID, reqLbl, covID, covLbl, "plan:__none__", "No plan", "res:__notest__", "No test")
 			continue
 		}
 		for _, tk := range tests {
+			planID, planLbl := planBucket(plansByTest[tk], summaryByKey)
 			resID, resLbl := runResultNode(runByTest[tk])
-			revID, revLbl := reviewNode(reviews[tk].Verdict)
-			link(covID, resID, revID, covLbl, resLbl, revLbl)
+			addThread(reqID, reqLbl, covID, covLbl, planID, planLbl, resID, resLbl)
 		}
 	}
 
@@ -79,9 +103,19 @@ func (r *Repository) GetRequirementTraceability(profileID string) (Sankey, error
 		}
 		return out.Nodes[i].ID < out.Nodes[j].ID
 	})
-	out.Links = append(out.Links, flatten(covResult)...)
-	out.Links = append(out.Links, flatten(resultReview)...)
+	out.Links = append(out.Links, flatten(reqCov)...)
+	out.Links = append(out.Links, flatten(covPlan)...)
+	out.Links = append(out.Links, flatten(planResult)...)
 	return out, nil
+}
+
+// truncateRunes shortens s to at most n runes, appending an ellipsis.
+func truncateRunes(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n-1]) + "…"
 }
 
 func requirementCoverageLabel(coverage string) string {
@@ -98,7 +132,7 @@ func requirementCoverageLabel(coverage string) string {
 	return coverage
 }
 
-// runResultNode maps a Test's consolidated run status to a layer-1 node. Pass
+// runResultNode maps a Test's consolidated run status to a run-result node. Pass
 // and fail are normalised; an empty status means the Test is in no execution;
 // any other Xray status keeps its own bucket.
 func runResultNode(status string) (id, label string) {
@@ -111,20 +145,5 @@ func runResultNode(status string) (id, label string) {
 		return "res:FAIL", "Fail"
 	default:
 		return "res:" + strings.ToUpper(status), status
-	}
-}
-
-// reviewNode maps a Test's review verdict to a layer-2 sign-off node. Anything
-// without a recorded verdict is "Unreviewed".
-func reviewNode(verdict string) (id, label string) {
-	switch strings.ToLower(strings.TrimSpace(verdict)) {
-	case "approved":
-		return "rev:approved", "Approved"
-	case "rejected":
-		return "rev:rejected", "Rejected"
-	case "pending":
-		return "rev:pending", "Pending"
-	default:
-		return "rev:__unreviewed__", "Unreviewed"
 	}
 }

@@ -9,6 +9,7 @@ import {
 } from "../api";
 import type { RequirementCoverage, RequirementTest } from "../api";
 import { RequirementSourcesModal } from "./RequirementSourcesModal";
+import { Pager } from "./Pager";
 
 interface Props {
   profileId: string;
@@ -110,6 +111,32 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
           r.summary.toLowerCase().includes(f)),
     );
   }, [list, filter, covFilter]);
+
+  // Pagination of the (filtered) requirement list.
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(15);
+  useEffect(() => {
+    setPage(0);
+  }, [filter, covFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageItems = filtered.slice(
+    safePage * pageSize,
+    (safePage + 1) * pageSize,
+  );
+
+  // Pagination of the covering-tests table in the detail pane.
+  const [testsPage, setTestsPage] = useState(0);
+  const [testsPageSize, setTestsPageSize] = useState(15);
+  useEffect(() => {
+    setTestsPage(0);
+  }, [selected]);
+  const testsTotalPages = Math.max(1, Math.ceil(tests.length / testsPageSize));
+  const testsSafePage = Math.min(testsPage, testsTotalPages - 1);
+  const pageTests = tests.slice(
+    testsSafePage * testsPageSize,
+    (testsSafePage + 1) * testsPageSize,
+  );
 
   const sel = list.find((r) => r.key === selected) ?? null;
 
@@ -227,29 +254,52 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               : "No requirements match the filter."}
           </p>
         ) : (
-          <ul className="reqs-items">
-            {filtered.map((r) => (
-              <li
-                key={r.key}
-                className={`reqs-item${r.key === selected ? " reqs-item-selected" : ""}`}
-                onClick={() => setSelected(r.key)}
-              >
-                <div className="reqs-item-top">
-                  <span className="mono reqs-key">{r.key}</span>
-                  <span className={`cov-badge cov-${r.coverage.toLowerCase()}`}>
-                    {COVERAGE_LABEL[r.coverage]}
-                  </span>
-                </div>
-                <div className="reqs-item-summary">
-                  {r.summary || "(no summary)"}
-                </div>
-                <div className="reqs-item-meta muted">
-                  {r.issueType} · {r.testCount} test
-                  {r.testCount === 1 ? "" : "s"}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="reqs-items">
+              {pageItems.map((r) => (
+                <li
+                  key={r.key}
+                  className={`reqs-item${r.key === selected ? " reqs-item-selected" : ""}`}
+                  onClick={() => setSelected(r.key)}
+                >
+                  <div className="reqs-item-top">
+                    <span className="mono reqs-key">{r.key}</span>
+                    {r.issueType && (
+                      <span
+                        className={`kind-badge req-kind req-kind-${r.issueType.toLowerCase()}`}
+                      >
+                        {r.issueType}
+                      </span>
+                    )}
+                    <span
+                      className={`cov-badge cov-${r.coverage.toLowerCase()}`}
+                    >
+                      {COVERAGE_LABEL[r.coverage]}
+                    </span>
+                  </div>
+                  <div className="reqs-item-summary">
+                    {r.summary || "(no summary)"}
+                  </div>
+                  <div className="reqs-item-meta muted">
+                    {r.testCount} test{r.testCount === 1 ? "" : "s"}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {filtered.length > 0 && (
+              <Pager
+                compact
+                page={safePage}
+                pageSize={pageSize}
+                total={filtered.length}
+                onPage={setPage}
+                onPageSize={(n) => {
+                  setPageSize(n);
+                  setPage(0);
+                }}
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -326,36 +376,50 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
             {tests.length === 0 ? (
               <p className="muted">No tests cover this requirement.</p>
             ) : (
-              <table className="board-table">
-                <thead>
-                  <tr>
-                    <th>Test</th>
-                    <th>Summary</th>
-                    <th>Status</th>
-                    <th>Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tests.map((t) => (
-                    <tr key={t.key}>
-                      <td className="mono">{t.key}</td>
-                      <td>{t.summary}</td>
-                      <td>{t.status || "—"}</td>
-                      <td>
-                        {t.runStatus ? (
-                          <span
-                            className={`run-badge run-${t.runStatus.toLowerCase()}`}
-                          >
-                            {t.runStatus}
-                          </span>
-                        ) : (
-                          <span className="muted">not run</span>
-                        )}
-                      </td>
+              <>
+                <table className="board-table">
+                  <thead>
+                    <tr>
+                      <th>Test</th>
+                      <th>Summary</th>
+                      <th>Status</th>
+                      <th>Result</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {pageTests.map((t) => (
+                      <tr key={t.key}>
+                        <td className="mono">{t.key}</td>
+                        <td>{t.summary}</td>
+                        <td>{t.status || "—"}</td>
+                        <td>
+                          {t.runStatus ? (
+                            <span
+                              className={`run-badge run-${t.runStatus.toLowerCase()}`}
+                            >
+                              {t.runStatus}
+                            </span>
+                          ) : (
+                            <span className="muted">not run</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {tests.length > testsPageSize && (
+                  <Pager
+                    page={testsSafePage}
+                    pageSize={testsPageSize}
+                    total={tests.length}
+                    onPage={setTestsPage}
+                    onPageSize={(n) => {
+                      setTestsPageSize(n);
+                      setTestsPage(0);
+                    }}
+                  />
+                )}
+              </>
             )}
           </>
         )}

@@ -6,7 +6,8 @@
   Produces, under dist/:
     - a portable single-file executable        xray-test-manager-<ver>-windows-amd64.exe
     - an NSIS installer (unless -NoInstaller)  xray-test-manager-<ver>-windows-amd64-installer.exe
-    - SHA256SUMS.txt for both
+    - the user guide bundle                    xray-test-manager-<ver>-user-guide.zip
+    - SHA256SUMS.txt for all of the above
 
   The version is stamped into wails.json (info.productVersion), which Wails bakes
   into the .exe version resource and the installer.
@@ -46,7 +47,10 @@ if ($Version) {
   } else {
     throw "wails.json has no info.productVersion to stamp; add an info block first."
   }
-  Set-Content -Path $wailsJsonPath -Value $wailsJson -NoNewline -Encoding utf8
+  # Write UTF-8 WITHOUT a BOM. Windows PowerShell 5.1's `Set-Content -Encoding utf8`
+  # prepends a BOM (EF BB BF), which Wails' JSON parser rejects with
+  # "invalid character 'ï' looking for beginning of value".
+  [System.IO.File]::WriteAllText($wailsJsonPath, $wailsJson, (New-Object System.Text.UTF8Encoding($false)))
   Write-Host "Stamped wails.json productVersion = $Version"
 } else {
   if ($wailsJson -match '"productVersion"\s*:\s*"([^"]*)"') { $Version = $Matches[1] }
@@ -86,6 +90,30 @@ if (-not $NoInstaller) {
   } else {
     Write-Warning "No installer produced - is NSIS (makensis) installed? Run with -NoInstaller to skip."
   }
+}
+
+# --- User guide --------------------------------------------------------------
+# Bundle docs/user-guide (the markdown + screenshots) into a versioned zip so it
+# ships alongside the binaries. The generated docs/user-guide/dist build output
+# and the images/.gitkeep placeholder are deliberately excluded.
+Step "Bundling user guide"
+$guideSrc = Join-Path $root "docs\user-guide"
+if (Test-Path (Join-Path $guideSrc "USER_GUIDE.md")) {
+  $guideStage = Join-Path $env:TEMP "xtm-user-guide-$Version"
+  if (Test-Path $guideStage) { Remove-Item $guideStage -Recurse -Force }
+  $guideInner = Join-Path $guideStage "Xray-Test-Manager-User-Guide"
+  New-Item -ItemType Directory -Force -Path $guideInner | Out-Null
+  Copy-Item (Join-Path $guideSrc "USER_GUIDE.md") $guideInner -Force
+  Copy-Item (Join-Path $guideSrc "images") (Join-Path $guideInner "images") -Recurse -Force
+  Remove-Item (Join-Path $guideInner "images\.gitkeep") -Force -ErrorAction SilentlyContinue
+  $guideZip = Join-Path $dist "xray-test-manager-$Version-user-guide.zip"
+  if (Test-Path $guideZip) { Remove-Item $guideZip -Force }
+  # Compress the folder itself so the archive root is Xray-Test-Manager-User-Guide/.
+  Compress-Archive -Path $guideInner -DestinationPath $guideZip -Force
+  Remove-Item $guideStage -Recurse -Force
+  Write-Host "Bundled user guide -> $(Split-Path $guideZip -Leaf)"
+} else {
+  Write-Warning "User guide not found at $guideSrc - skipping guide bundle."
 }
 
 # --- Checksums ---------------------------------------------------------------

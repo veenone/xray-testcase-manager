@@ -1,0 +1,74 @@
+# Screenshot capture guide
+
+**The figures in `images/` are already captured** from a live demo profile
+(`wails dev` + the headless `browse` tool). This file documents how they were
+made and how to refresh or re-shoot any of them — the filenames are the contract
+with [`USER_GUIDE.md`](USER_GUIDE.md), so keep them identical and a replacement
+renders automatically.
+
+Figure 29 (commit conflict) is intentionally omitted — a conflict can't be
+staged on demo data, so the guide explains it in text instead.
+
+## How to capture
+
+1. **Run the app on a demo profile** so every screen has rich data and no Jira is
+   needed: create a profile with **Jira URL `demo`** (any project key + token),
+   then **Sync** once. A yellow `DEMO` chip confirms you are in demo mode.
+2. Use Windows **Snipping Tool** (`Win+Shift+S`) to capture. Prefer **window**
+   or a tight **rectangular** crop over full-screen.
+3. Save as **PNG** into `docs/user-guide/images/` with the filename in the table.
+4. Recommended width **1280–1600 px**; enable a light theme unless the figure is
+   specifically the dark-theme shot (Fig 33).
+5. Avoid real secrets — demo data is safe; if you capture a live profile, blur
+   the URL/keys.
+
+## Conventions
+
+- Keep the same theme across figures (Light) except Fig 33.
+- For "menu open" shots, click the menu so the dropdown is visible in the frame.
+- For annotated figures (Fig 3, Fig 4) you may add numbered callouts in an image
+  editor after capturing; the captions already describe the regions.
+
+## Shot list
+
+| # | File | View / how to get there | State to set up |
+| --- | --- | --- | --- |
+| 1 | `01-first-launch.png` | First launch with **no profiles** (or delete the DB to reset) | The connect/onboarding screen with the empty profile form |
+| 2 | `02-profile-form.png` | Connect screen or **Profile → New profile…** | Form filled with a demo profile (Name, URL `demo`, project key, token) |
+| 3 | `03-main-window.png` | **Browse** tab after sync | Full window; a folder selected, grid populated. (Optionally annotate the 4 regions.) |
+| 4 | `04-topbar.png` | Any view | Tight crop of the **top bar** only |
+| 5 | `05-browse-sidebar.png` | Browse | Left sidebar with **Group by: Folder** and the folder tree; hover a folder to show its row actions |
+| 6 | `06-test-grid.png` | Browse | The grid + toolbar (search, status filter, review filter, Saved views, Export, Columns) |
+| 7 | `07-columns-panel.png` | Browse → **Columns** | The Columns panel open, showing toggles and reorder controls |
+| 8 | `08-test-detail.png` | Browse → click a test | Detail panel open on the **fields** section |
+| 9 | `09-test-steps.png` | Test detail → steps | The step table with a few steps visible |
+| 10 | `10-custom-fields.png` | Test detail → custom fields | Custom-field values visible |
+| 11 | `11-detail-links.png` | Test detail | The **preconditions** and **requirement coverage** sections of a test |
+| 12 | `12-new-test.png` | Browse → **＋ New Test** | The New Test panel, partially filled |
+| 13 | `13-import-tests.png` | **More → Import tests…** | The import modal (column-mapping step if possible) |
+| 14 | `14-bulk-toolbar.png` | Browse → tick 2–3 rows | The bulk toolbar visible above the grid |
+| 15 | `15-bulk-edit.png` | Bulk toolbar → **Bulk edit…** | The Bulk edit dialog open |
+| 16 | `16-preconditions.png` | **Preconditions** tab | Card list (left) + a selected precondition's detail (right) |
+| 17 | `17-precondition-create.png` | Preconditions → **+ New** | The New precondition dialog |
+| 18 | `18-requirements.png` | **Requirements** tab | Card list with coverage pills + a selected requirement's covering-tests detail |
+| 19 | `19-requirement-sources.png` | Requirements → **Sources…** | The Requirement Sources dialog (with the add-source fields) |
+| 20 | `20-duplicates.png` | **Duplicates** tab | A duplicate group selected, list + detail visible |
+| 21 | `21-duplicates-compare.png` | Duplicates → **Compare steps** | The side-by-side step comparison modal |
+| 22 | `22-containers.png` | **Containers** tab | Kind = Test Plan, a plan selected, members listed |
+| 23 | `23-execution-runstatus.png` | Containers → kind **Test Execution** | A run-result dropdown open (or the bulk "set result" bar) |
+| 24 | `24-pytest.png` | Containers → Actions → **Generate pytest…** | The menu open, or the generated file/path confirmation |
+| 25 | `25-dashboard.png` | **Dashboard** tab | Summary cards + breakdowns near the top |
+| 26 | `26-requirement-sankey.png` | Dashboard → requirement traceability panel | The 4-column Sankey with the **All requirements** filter visible |
+| 27 | `27-execution-sankey.png` | Dashboard → execution traceability panel | The Plan → Execution → status Sankey |
+| 28 | `28-pending-changes.png` | Make an edit, then click the **N pending** badge | The Pending Changes dialog listing queued edits |
+| 30 | `30-sync-progress.png` | Click **Sync** | Capture mid-sync so the status bar shows a phase + counts |
+| 31 | `31-sync-history.png` | **More → Sync history** | The sync history list |
+| 32 | `32-profile-menu.png` | Click **Profile** (top-left) | The Profile menu dropdown open |
+| 33 | `33-dark-theme.png` | **More → Theme: Dark**, any view | Any representative view in dark theme |
+| 34 | `34-diagnostics.png` | **More → Diagnostics** | The Diagnostics dialog |
+| 35 | `35-about.png` | **About** (native menu / More) | The About dialog showing the version |
+| 36 | `36-clone-steps.png` | Test detail → Steps → **Clone from…** | The clone-steps picker with a source test selected |
+
+To refresh a shot: run `wails dev`, open `http://localhost:34115/` in the
+`browse` tool, switch to the **Demo Project (DEMO)** profile, sync once, then
+navigate to the relevant view and `browse screenshot <path>`.

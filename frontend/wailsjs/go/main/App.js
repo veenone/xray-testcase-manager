@@ -50,6 +50,10 @@ export function CleanSampleData(arg1) {
   return window['go']['main']['App']['CleanSampleData'](arg1);
 }
 
+export function CloneTestSteps(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CloneTestSteps'](arg1, arg2, arg3, arg4);
+}
+
 export function CommitPendingChanges(arg1) {
   return window['go']['main']['App']['CommitPendingChanges'](arg1);
 }
@@ -122,6 +126,10 @@ export function DeleteTestStep(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeleteTestStep'](arg1, arg2, arg3);
 }
 
+export function DiscardAllPendingChanges(arg1) {
+  return window['go']['main']['App']['DiscardAllPendingChanges'](arg1);
+}
+
 export function DiscardPendingChange(arg1, arg2) {
   return window['go']['main']['App']['DiscardPendingChange'](arg1, arg2);
 }
@@ -148,6 +156,10 @@ export function EditTestField(arg1, arg2, arg3, arg4) {
 
 export function EditTestStepField(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['EditTestStepField'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function ExcludeFromDuplicates(arg1, arg2) {
+  return window['go']['main']['App']['ExcludeFromDuplicates'](arg1, arg2);
 }
 
 export function ExportDiagnostics() {
@@ -186,8 +198,8 @@ export function GetDiagnostics() {
   return window['go']['main']['App']['GetDiagnostics']();
 }
 
-export function GetRequirementTraceability(arg1) {
-  return window['go']['main']['App']['GetRequirementTraceability'](arg1);
+export function GetRequirementTraceability(arg1, arg2) {
+  return window['go']['main']['App']['GetRequirementTraceability'](arg1, arg2);
 }
 
 export function GetSettings() {
@@ -362,6 +374,14 @@ export function RunStatuses() {
   return window['go']['main']['App']['RunStatuses']();
 }
 
+export function ScanDuplicateGroupSteps(arg1, arg2) {
+  return window['go']['main']['App']['ScanDuplicateGroupSteps'](arg1, arg2);
+}
+
+export function ScanDuplicates(arg1) {
+  return window['go']['main']['App']['ScanDuplicates'](arg1);
+}
+
 export function SeedSampleContainers(arg1) {
   return window['go']['main']['App']['SeedSampleContainers'](arg1);
 }
@@ -408,6 +428,10 @@ export function TestConnection(arg1, arg2) {
 
 export function TransitionTest(arg1, arg2, arg3) {
   return window['go']['main']['App']['TransitionTest'](arg1, arg2, arg3);
+}
+
+export function UnexcludeFromDuplicates(arg1, arg2) {
+  return window['go']['main']['App']['UnexcludeFromDuplicates'](arg1, arg2);
 }
 
 export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6) {

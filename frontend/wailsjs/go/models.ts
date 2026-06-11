@@ -524,6 +524,105 @@ export namespace testrepo {
 	        this.notMembers = source["notMembers"];
 	    }
 	}
+	export class DuplicateMember {
+	    key: string;
+	    summary: string;
+	    status: string;
+	    folderId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DuplicateMember(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.summary = source["summary"];
+	        this.status = source["status"];
+	        this.folderId = source["folderId"];
+	    }
+	}
+	export class DuplicateGroup {
+	    normalizedSummary: string;
+	    displaySummary: string;
+	    stepsVerdict: string;
+	    members: DuplicateMember[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DuplicateGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.normalizedSummary = source["normalizedSummary"];
+	        this.displaySummary = source["displaySummary"];
+	        this.stepsVerdict = source["stepsVerdict"];
+	        this.members = this.convertValues(source["members"], DuplicateMember);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class DuplicateReport {
+	    groups: DuplicateGroup[];
+	    groupCount: number;
+	    testCount: number;
+	    stepsIdentical: number;
+	    stepsDiffer: number;
+	    stepsUnscanned: number;
+	    excluded: number;
+	    scannedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DuplicateReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groups = this.convertValues(source["groups"], DuplicateGroup);
+	        this.groupCount = source["groupCount"];
+	        this.testCount = source["testCount"];
+	        this.stepsIdentical = source["stepsIdentical"];
+	        this.stepsDiffer = source["stepsDiffer"];
+	        this.stepsUnscanned = source["stepsUnscanned"];
+	        this.excluded = source["excluded"];
+	        this.scannedAt = source["scannedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Folder {
 	    id: string;
 	    parentId: string;

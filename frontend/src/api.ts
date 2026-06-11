@@ -83,6 +83,7 @@ export {
   GetTestMeta,
   EditTestField,
   DiscardPendingChange,
+  DiscardAllPendingChanges,
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
   ListPendingChanges,
@@ -105,10 +106,15 @@ export {
   EditTestStepField,
   DeleteTestStep,
   AddTestStep,
+  CloneTestSteps,
   ReorderTestSteps,
   GetStatistics,
   GetTraceabilitySankey,
   GetRequirementTraceability,
+  ScanDuplicates,
+  ScanDuplicateGroupSteps,
+  ExcludeFromDuplicates,
+  UnexcludeFromDuplicates,
 } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
 
@@ -520,6 +526,32 @@ export interface Statistics {
   updatedTrend: Bucket[];
   byRunStatus: Bucket[];
   byCoverage: Bucket[];
+}
+
+// Duplicate management (mirrors testrepo shapes).
+export interface DuplicateMember {
+  key: string;
+  summary: string;
+  status: string;
+  folderId: string;
+}
+
+export interface DuplicateGroup {
+  normalizedSummary: string;
+  displaySummary: string;
+  stepsVerdict: "identical" | "differ" | "unscanned";
+  members: DuplicateMember[];
+}
+
+export interface DuplicateReport {
+  groups: DuplicateGroup[];
+  groupCount: number;
+  testCount: number;
+  stepsIdentical: number;
+  stepsDiffer: number;
+  stepsUnscanned: number;
+  excluded: number;
+  scannedAt: string;
 }
 
 // Import types (FR-10) mirror the testrepo shapes.

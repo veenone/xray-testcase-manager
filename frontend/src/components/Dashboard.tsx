@@ -3,26 +3,37 @@ import {
   GetStatistics,
   GetTraceabilitySankey,
   GetRequirementTraceability,
+  ListRequirementsWithCoverage,
   ListContainers,
   errMsg,
 } from "../api";
-import type { Statistics, Bucket, Sankey, Container } from "../api";
+import type {
+  Statistics,
+  Bucket,
+  Sankey,
+  Container,
+  RequirementCoverage,
+} from "../api";
 import { SankeyChart } from "./SankeyChart";
 import { RequirementSankey } from "./RequirementSankey";
+import { DuplicatesCard } from "./DuplicatesCard";
 
 interface Props {
   profileId: string;
   refreshKey: number;
+  onOpenDuplicates?: () => void;
 }
 
 // Dashboard renders the per-profile statistics view (FR-9), computed entirely
 // from the local store. It recomputes whenever the profile changes or a sync /
 // commit bumps refreshKey, so the numbers track the cache without a Jira call.
-export function Dashboard({ profileId, refreshKey }: Props) {
+export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
   const [stats, setStats] = useState<Statistics | null>(null);
   const [sankey, setSankey] = useState<Sankey | null>(null);
   const [reqSankey, setReqSankey] = useState<Sankey | null>(null);
   const [reqSankeyErr, setReqSankeyErr] = useState("");
+  const [reqSankeyFilter, setReqSankeyFilter] = useState("");
+  const [reqOptions, setReqOptions] = useState<RequirementCoverage[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -94,12 +105,13 @@ export function Dashboard({ profileId, refreshKey }: Props) {
     };
   }, [profileId, refreshKey, planFilter, execFilter]);
 
-  // Requirement traceability is independent of the plan/exec filters.
+  // Requirement traceability is independent of the plan/exec filters, but can be
+  // narrowed to a single requirement.
   useEffect(() => {
     if (!profileId) return;
     let cancelled = false;
     setReqSankeyErr("");
-    GetRequirementTraceability(profileId)
+    GetRequirementTraceability(profileId, reqSankeyFilter)
       .then((sk) => {
         if (!cancelled) setReqSankey(sk);
       })
@@ -107,6 +119,22 @@ export function Dashboard({ profileId, refreshKey }: Props) {
         if (cancelled) return;
         setReqSankeyErr(errMsg(e));
         console.error("requirement traceability:", errMsg(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, refreshKey, reqSankeyFilter]);
+
+  // The requirement list drives the Sankey filter dropdown.
+  useEffect(() => {
+    if (!profileId) return;
+    let cancelled = false;
+    ListRequirementsWithCoverage(profileId)
+      .then((rs) => {
+        if (!cancelled) setReqOptions(rs ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setReqOptions([]);
       });
     return () => {
       cancelled = true;
@@ -135,6 +163,11 @@ export function Dashboard({ profileId, refreshKey }: Props) {
 
   return (
     <div className="dashboard">
+      <DuplicatesCard
+        profileId={profileId}
+        refreshKey={refreshKey}
+        onOpen={() => onOpenDuplicates?.()}
+      />
       <div className="stat-tiles">
         <Tile label="Total tests" value={stats.total.toLocaleString()} />
         <Tile
@@ -218,27 +251,48 @@ export function Dashboard({ profileId, refreshKey }: Props) {
         />
       )}
 
-      {stats.byCoverage.length > 0 && (
-        <div className="stat-panel sankey-panel">
-          <div className="sankey-head">
-            <h4>
-              Requirement sign-off
-              <span className="stat-panel-sub">
-                how requirement coverage flows through test results to review
-                sign-off
-              </span>
-            </h4>
-          </div>
-          {reqSankeyErr ? (
-            <p className="error-text sankey-empty">
-              Couldn&apos;t build the requirement traceability flow:{" "}
-              {reqSankeyErr}
-            </p>
-          ) : (
-            <RequirementSankey data={reqSankey ?? { nodes: [], links: [] }} />
+      <div className="stat-panel sankey-panel">
+        <div className="sankey-head">
+          <h4>
+            Requirement traceability
+            <span className="stat-panel-sub">
+              how each requirement flows through coverage and Test plans to run
+              results
+            </span>
+          </h4>
+          {reqOptions.length > 0 && (
+            <label className="sankey-filter">
+              <span className="muted">Requirement</span>
+              <select
+                value={reqSankeyFilter}
+                onChange={(e) => setReqSankeyFilter(e.target.value)}
+              >
+                <option value="">All requirements</option>
+                {reqOptions.map((r) => (
+                  <option key={r.key} value={r.key}>
+                    {r.key}
+                    {r.summary ? ` — ${r.summary}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
         </div>
-      )}
+        {reqSankeyErr ? (
+          <p className="error-text sankey-empty">
+            Couldn&apos;t build the requirement traceability flow:{" "}
+            {reqSankeyErr}
+          </p>
+        ) : stats.byCoverage.length === 0 ? (
+          <p className="muted sankey-empty">
+            No requirement coverage yet. Add a requirement source (Requirements
+            tab → Sources), link requirements to tests, then sync — the flow
+            from requirement → coverage → Test plan → test result appears here.
+          </p>
+        ) : (
+          <RequirementSankey data={reqSankey ?? { nodes: [], links: [] }} />
+        )}
+      </div>
 
       {stats.testExecutions > 0 && (
         <div className="stat-panel sankey-panel">

@@ -25,6 +25,7 @@ import {
   EditTestStepField,
   DeleteTestStep,
   AddTestStep,
+  CloneTestSteps,
   ReorderTestSteps,
   MoveTestToFolder,
   errMsg,
@@ -48,6 +49,7 @@ import type {
 import { usePrompt } from "./usePrompt";
 import { useConfirm } from "./useConfirm";
 import { MarkdownField } from "./MarkdownField";
+import { CloneStepsModal } from "./CloneStepsModal";
 import { formatDateTime } from "../dates";
 
 const REVIEWER_KEY = "xtm.reviewer";
@@ -125,6 +127,7 @@ export function TestDetail({
   const [steps, setSteps] = useState<Step[]>([]);
   const [stepsLoading, setStepsLoading] = useState(false);
   const [stepsError, setStepsError] = useState("");
+  const [showCloneSteps, setShowCloneSteps] = useState(false);
   // What Jira itself reports about this Test's steps — used to warn when the
   // panel is empty but Jira actually has steps (a load/shape problem), so the
   // user doesn't add a blank step that Xray rejects.
@@ -895,6 +898,14 @@ export function TestDetail({
             >
               {stepsLoading ? "Loading…" : "Refresh"}
             </button>
+            <button
+              className="link-btn steps-clone"
+              onClick={() => setShowCloneSteps(true)}
+              disabled={stepsLoading}
+              title="Append a copy of another test's steps to this one"
+            >
+              Clone from…
+            </button>
           </h4>
           {stepsError && <div className="error-text">{stepsError}</div>}
           {!stepsError &&
@@ -962,6 +973,25 @@ export function TestDetail({
             commit them to Jira. Reordering steps lands in a later update.
           </p>
         </div>
+      )}
+      {showCloneSteps && (
+        <CloneStepsModal
+          profileId={profileId}
+          targetLabel={testKey}
+          excludeKey={testKey}
+          onCancel={() => setShowCloneSteps(false)}
+          onConfirm={async (sourceKey, stepIds) => {
+            const newSteps = await CloneTestSteps(
+              profileId,
+              testKey,
+              sourceKey,
+              stepIds,
+            );
+            setSteps(newSteps ?? []);
+            setShowCloneSteps(false);
+            onEdited();
+          }}
+        />
       )}
       {promptUI}
       {confirmUI}

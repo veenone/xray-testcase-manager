@@ -1556,6 +1556,63 @@ func TestAddTestStepAppendsStepAndQueuesAdd(t *testing.T) {
 	}
 }
 
+func TestCloneTestStepsAppendsSourceStepsAndQueuesAdds(t *testing.T) {
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-1", ID: "1", Summary: "source", Status: "Open"},
+		{Key: "QA-2", ID: "2", Summary: "target", Status: "Open"},
+	}); err != nil {
+		t.Fatalf("seed tests: %v", err)
+	}
+	if err := repo.SetTestSteps("p1", "QA-1", []testrepo.Step{
+		{XrayID: "s1", Index: 1, Action: "log in", Expected: "home"},
+		{XrayID: "s2", Index: 2, Action: "open cart", Data: "id=5", Expected: "cart"},
+	}); err != nil {
+		t.Fatalf("seed source steps: %v", err)
+	}
+	// QA-2 starts with one of its own steps; the clone appends after it.
+	if err := repo.SetTestSteps("p1", "QA-2", []testrepo.Step{
+		{XrayID: "t1", Index: 1, Action: "existing", Expected: "ok"},
+	}); err != nil {
+		t.Fatalf("seed target step: %v", err)
+	}
+
+	src, _ := repo.ListTestSteps("p1", "QA-1")
+	got, err := repo.CloneTestSteps("p1", "QA-2", src)
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("target steps = %d, want 3 (existing + 2 cloned)", len(got))
+	}
+	if got[0].Action != "existing" || got[1].Action != "log in" || got[2].Action != "open cart" {
+		t.Errorf("step order = [%q,%q,%q], want [existing, log in, open cart]",
+			got[0].Action, got[1].Action, got[2].Action)
+	}
+	if got[1].Index != 2 || got[2].Index != 3 {
+		t.Errorf("appended indices = %d,%d, want 2,3", got[1].Index, got[2].Index)
+	}
+	if got[2].Data != "id=5" || got[2].Expected != "cart" {
+		t.Errorf("cloned step data/expected = %q/%q, want id=5/cart", got[2].Data, got[2].Expected)
+	}
+
+	// Each cloned step is queued as a step-add against the target (QA-2).
+	changes, _ := repo.ListPendingChanges("p1")
+	adds := 0
+	for _, c := range changes {
+		if c.EntityType == "test_step_add" {
+			adds++
+			if !strings.HasPrefix(c.EntityKey, "QA-2:") {
+				t.Errorf("clone pending change keyed %q, want QA-2:*", c.EntityKey)
+			}
+		}
+	}
+	if adds != 2 {
+		t.Errorf("step-add pending changes = %d, want 2", adds)
+	}
+}
+
 func TestEditNewStepFoldsIntoAddInsteadOfNewPending(t *testing.T) {
 	repo := seedTestWithSteps(t)
 	added, err := repo.AddTestStep("p1", "QA-1", "", "", "")

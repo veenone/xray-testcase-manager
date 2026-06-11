@@ -108,24 +108,48 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
           )}
 
           <div className="src-add">
-            <input
-              className="detail-input"
-              placeholder="Project key (e.g. PRD)"
-              value={projectKey}
-              onChange={(e) => setProjectKey(e.target.value)}
-            />
-            <input
-              className="detail-input"
-              placeholder="Issue types — space-separated (e.g. Story Epic)"
-              value={issueTypes}
-              onChange={(e) => setIssueTypes(e.target.value)}
-            />
-            <input
-              className="detail-input"
-              placeholder="Scope JQL (optional)"
-              value={scopeJql}
-              onChange={(e) => setScopeJql(e.target.value)}
-            />
+            <label className="src-field">
+              <span className="src-field-label">Project key</span>
+              <span className="src-field-help">
+                The Jira project to pull requirement issues from (e.g. PRD). Use
+                the project's key, not its name.
+              </span>
+              <input
+                className="detail-input"
+                placeholder="e.g. PRD"
+                value={projectKey}
+                onChange={(e) => setProjectKey(e.target.value)}
+              />
+            </label>
+            <label className="src-field">
+              <span className="src-field-label">Issue types</span>
+              <span className="src-field-help">
+                Which Jira issue types in this project count as requirements —
+                space-separated (e.g. <code>Story Epic</code>). These are the
+                issues that will appear in the Requirements view and can be
+                linked to tests. Leave blank to include any issue type.
+              </span>
+              <input
+                className="detail-input"
+                placeholder="e.g. Story Epic"
+                value={issueTypes}
+                onChange={(e) => setIssueTypes(e.target.value)}
+              />
+            </label>
+            <label className="src-field">
+              <span className="src-field-label">Scope JQL (optional)</span>
+              <span className="src-field-help">
+                Optional JQL to narrow which issues are pulled from this project
+                (e.g. <code>fixVersion = "2.0"</code>). It is combined with the
+                issue types above; leave blank to pull all of them.
+              </span>
+              <input
+                className="detail-input"
+                placeholder="e.g. fixVersion = &quot;2.0&quot;"
+                value={scopeJql}
+                onChange={(e) => setScopeJql(e.target.value)}
+              />
+            </label>
           </div>
           {error && <div className="error-text">{error}</div>}
         </div>

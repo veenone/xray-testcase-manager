@@ -12,6 +12,7 @@ import type { PreconditionUsage, PreconditionTest } from "../api";
 import { Menu } from "./Menu";
 import { AddTestsModal } from "./AddTestsModal";
 import { MarkdownField } from "./MarkdownField";
+import { Pager } from "./Pager";
 
 interface Props {
   profileId: string;
@@ -63,6 +64,19 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
     );
   }, [list, filter]);
 
+  // Pagination of the precondition master list.
+  const [listPage, setListPage] = useState(0);
+  const [listPageSize, setListPageSize] = useState(15);
+  useEffect(() => {
+    setListPage(0);
+  }, [filter]);
+  const listTotalPages = Math.max(1, Math.ceil(filtered.length / listPageSize));
+  const listSafePage = Math.min(listPage, listTotalPages - 1);
+  const pageList = filtered.slice(
+    listSafePage * listPageSize,
+    (listSafePage + 1) * listPageSize,
+  );
+
   // Load the master list whenever the profile changes or data refreshes,
   // keeping the current selection if it still exists.
   useEffect(() => {
@@ -90,6 +104,19 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
       cancelled = true;
     };
   }, [profileId, refreshKey]);
+
+  // Pagination of the "Used by" tests list.
+  const [testsPage, setTestsPage] = useState(0);
+  const [testsPageSize, setTestsPageSize] = useState(15);
+  useEffect(() => {
+    setTestsPage(0);
+  }, [selected]);
+  const testsTotalPages = Math.max(1, Math.ceil(tests.length / testsPageSize));
+  const testsSafePage = Math.min(testsPage, testsTotalPages - 1);
+  const pageTests = tests.slice(
+    testsSafePage * testsPageSize,
+    (testsSafePage + 1) * testsPageSize,
+  );
 
   // Load the selected Precondition's linked tests.
   useEffect(() => {
@@ -187,29 +214,46 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
         ) : filtered.length === 0 ? (
           <p className="muted precond-empty">No preconditions match.</p>
         ) : (
-          <ul className="precond-items">
-            {filtered.map((p) => (
-              <li key={p.key}>
-                <button
-                  className={`precond-item${p.key === selected ? " precond-item-active" : ""}`}
-                  onClick={() => setSelected(p.key)}
-                >
-                  <div className="precond-item-top">
-                    <span className="mono precond-item-key">{p.key}</span>
-                    <span className={`pre-type-badge pre-type-${p.type.toLowerCase()}`}>
-                      {p.type || "—"}
-                    </span>
-                  </div>
-                  <div className="precond-item-summary">
-                    {p.summary || "(untitled)"}
-                  </div>
-                  <div className="precond-item-meta muted">
-                    {p.testCount} test{p.testCount === 1 ? "" : "s"}
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="precond-items">
+              {pageList.map((p) => (
+                <li key={p.key}>
+                  <button
+                    className={`precond-item${p.key === selected ? " precond-item-active" : ""}`}
+                    onClick={() => setSelected(p.key)}
+                  >
+                    <div className="precond-item-top">
+                      <span className="mono precond-item-key">{p.key}</span>
+                      <span
+                        className={`pre-type-badge pre-type-${p.type.toLowerCase()}`}
+                      >
+                        {p.type || "—"}
+                      </span>
+                    </div>
+                    <div className="precond-item-summary">
+                      {p.summary || "(untitled)"}
+                    </div>
+                    <div className="precond-item-meta muted">
+                      {p.testCount} test{p.testCount === 1 ? "" : "s"}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {filtered.length > 0 && (
+              <Pager
+                compact
+                page={listSafePage}
+                pageSize={listPageSize}
+                total={filtered.length}
+                onPage={setListPage}
+                onPageSize={(n) => {
+                  setListPageSize(n);
+                  setListPage(0);
+                }}
+              />
+            )}
+          </>
         )}
       </aside>
 
@@ -308,34 +352,48 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
                 No tests reference this precondition yet.
               </p>
             ) : (
-              <table className="board-table precond-tests">
-                <thead>
-                  <tr>
-                    <th>Test</th>
-                    <th>Summary</th>
-                    <th>Status</th>
-                    <th aria-label="Remove" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {tests.map((t) => (
-                    <tr key={t.key}>
-                      <td className="mono">{t.key}</td>
-                      <td>{t.summary}</td>
-                      <td>{t.status || "—"}</td>
-                      <td className="board-remove-cell">
-                        <button
-                          className="btn btn-ghost board-remove"
-                          onClick={() => removeTest(t.key)}
-                          title="Unlink from this precondition"
-                        >
-                          ✕
-                        </button>
-                      </td>
+              <>
+                <table className="board-table precond-tests">
+                  <thead>
+                    <tr>
+                      <th>Test</th>
+                      <th>Summary</th>
+                      <th>Status</th>
+                      <th aria-label="Remove" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {pageTests.map((t) => (
+                      <tr key={t.key}>
+                        <td className="mono">{t.key}</td>
+                        <td>{t.summary}</td>
+                        <td>{t.status || "—"}</td>
+                        <td className="board-remove-cell">
+                          <button
+                            className="btn btn-ghost board-remove"
+                            onClick={() => removeTest(t.key)}
+                            title="Unlink from this precondition"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {tests.length > testsPageSize && (
+                  <Pager
+                    page={testsSafePage}
+                    pageSize={testsPageSize}
+                    total={tests.length}
+                    onPage={setTestsPage}
+                    onPageSize={(n) => {
+                      setTestsPageSize(n);
+                      setTestsPage(0);
+                    }}
+                  />
+                )}
+              </>
             )}
           </>
         )}

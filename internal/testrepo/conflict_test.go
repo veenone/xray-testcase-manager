@@ -58,3 +58,46 @@ func TestDiscardTestChangesRevertsAndClears(t *testing.T) {
 		t.Errorf("summary = %q after discard, want reverted to Original", tc.Summary)
 	}
 }
+
+func TestDiscardAllPendingChangesRevertsEverything(t *testing.T) {
+	repo := seedConflictRepo(t)
+	// A field edit and a locally-added step span two revert paths.
+	if err := repo.EditTestField("p1", "QA-1", "summary", "Edited"); err != nil {
+		t.Fatalf("edit summary: %v", err)
+	}
+	if _, err := repo.AddTestStep("p1", "QA-1", "new step", "", "ok"); err != nil {
+		t.Fatalf("add step: %v", err)
+	}
+	if n := mustCount(t, repo); n != 2 {
+		t.Fatalf("want 2 pending before discard-all, got %d", n)
+	}
+
+	discarded, err := repo.DiscardAllPendingChanges("p1")
+	if err != nil {
+		t.Fatalf("discard all: %v", err)
+	}
+	if discarded != 2 {
+		t.Errorf("discarded = %d, want 2", discarded)
+	}
+
+	if n := mustCount(t, repo); n != 0 {
+		t.Errorf("want 0 pending after discard-all, got %d", n)
+	}
+	tc, _ := repo.GetTest("p1", "QA-1")
+	if tc.Summary != "Original" {
+		t.Errorf("summary = %q after discard-all, want reverted to Original", tc.Summary)
+	}
+	steps, _ := repo.ListTestSteps("p1", "QA-1")
+	if len(steps) != 0 {
+		t.Errorf("want the locally-added step gone after discard-all, got %d steps", len(steps))
+	}
+}
+
+func mustCount(t *testing.T, repo *testrepo.Repository) int {
+	t.Helper()
+	changes, err := repo.ListPendingChanges("p1")
+	if err != nil {
+		t.Fatalf("list pending: %v", err)
+	}
+	return len(changes)
+}

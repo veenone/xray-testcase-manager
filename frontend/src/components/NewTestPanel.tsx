@@ -8,6 +8,8 @@ import {
   errMsg,
 } from "../api";
 import type { Folder, Precondition, TestDraft, StepDraft } from "../api";
+import { CloneStepsModal } from "./CloneStepsModal";
+import { MarkdownField } from "./MarkdownField";
 
 interface Props {
   profileId: string;
@@ -42,6 +44,7 @@ export function NewTestPanel({
   const [precondKeys, setPrecondKeys] = useState<string[]>([]);
 
   const [stepsOpen, setStepsOpen] = useState(false);
+  const [showClone, setShowClone] = useState(false);
   const [preOpen, setPreOpen] = useState(false);
   const [componentOptions, setComponentOptions] = useState<string[]>([]);
   const [priorityOptions, setPriorityOptions] = useState<string[]>([]);
@@ -245,33 +248,49 @@ export function NewTestPanel({
                       ✕
                     </button>
                   </div>
-                  <input
+                  <MarkdownField
                     className="detail-input"
                     value={s.action}
-                    onChange={(e) => updateStep(i, "action", e.target.value)}
-                    placeholder="Action"
+                    onChange={(v) => updateStep(i, "action", v)}
+                    onCommit={() => {}}
+                    rows={2}
+                    placeholder="Action — markdown supported"
                   />
-                  <input
+                  <MarkdownField
                     className="detail-input"
                     value={s.data}
-                    onChange={(e) => updateStep(i, "data", e.target.value)}
-                    placeholder="Data"
+                    onChange={(v) => updateStep(i, "data", v)}
+                    onCommit={() => {}}
+                    multiline={false}
+                    placeholder="Data — markdown supported"
                   />
-                  <input
+                  <MarkdownField
                     className="detail-input"
                     value={s.expected}
-                    onChange={(e) => updateStep(i, "expected", e.target.value)}
-                    placeholder="Expected result"
+                    onChange={(v) => updateStep(i, "expected", v)}
+                    onCommit={() => {}}
+                    rows={2}
+                    placeholder="Expected result — markdown supported"
                   />
                 </div>
               ))}
-              <button
-                className="btn ntp-add"
-                onClick={() => setSteps((prev) => [...prev, blankStep()])}
-                type="button"
-              >
-                ＋ add step
-              </button>
+              <div className="ntp-step-actions">
+                <button
+                  className="btn ntp-add"
+                  onClick={() => setSteps((prev) => [...prev, blankStep()])}
+                  type="button"
+                >
+                  ＋ add step
+                </button>
+                <button
+                  className="btn ntp-clone"
+                  onClick={() => setShowClone(true)}
+                  type="button"
+                  title="Copy steps from an existing test"
+                >
+                  Clone from…
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -338,6 +357,22 @@ export function NewTestPanel({
           {saving ? "Creating…" : "Create →"}
         </button>
       </div>
+
+      {showClone && (
+        <CloneStepsModal
+          profileId={profileId}
+          targetLabel="the new test"
+          onCancel={() => setShowClone(false)}
+          onConfirm={(_sourceKey, _stepIds, cloned) => {
+            setSteps((prev) => [
+              ...prev,
+              ...cloned.map((s) => ({ ...s, _key: `s${stepCounter++}` })),
+            ]);
+            setStepsOpen(true);
+            setShowClone(false);
+          }}
+        />
+      )}
     </aside>
   );
 }

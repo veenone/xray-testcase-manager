@@ -65,6 +65,7 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.exe
+            dist/*.zip
             dist/SHA256SUMS.txt
 
       - name: Upload artifacts (manual runs)

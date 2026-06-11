@@ -729,11 +729,13 @@ func (a *App) ListRequirementsWithCoverage(profileID string) ([]testrepo.Require
 
 // GetRequirementTraceability builds the requirement sign-off traceability flow:
 // requirement coverage -> covering Test run result -> Test review sign-off.
-func (a *App) GetRequirementTraceability(profileID string) (testrepo.Sankey, error) {
+// reqFilter (a requirement key, or "" for all) narrows the flow to one
+// requirement, which then appears as a labelled first node.
+func (a *App) GetRequirementTraceability(profileID, reqFilter string) (testrepo.Sankey, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.Sankey{Nodes: []testrepo.SankeyNode{}, Links: []testrepo.SankeyLink{}}, err
 	}
-	return a.repo.GetRequirementTraceability(profileID)
+	return a.repo.GetRequirementTraceability(profileID, reqFilter)
 }
 
 // ListTestsForRequirement returns the Tests covering a requirement with each
@@ -839,6 +841,15 @@ func (a *App) DiscardPendingChange(profileID string, changeID int64) error {
 		return err
 	}
 	return a.repo.DiscardPendingChange(profileID, changeID)
+}
+
+// DiscardAllPendingChanges reverts every queued change for a profile and clears
+// the pending list — the "Discard all" action. Returns how many were discarded.
+func (a *App) DiscardAllPendingChanges(profileID string) (int, error) {
+	if err := a.requireStore(); err != nil {
+		return 0, err
+	}
+	return a.repo.DiscardAllPendingChanges(profileID)
 }
 
 // ResolveConflictOverride re-bases a Test's pending changes onto the remote
@@ -995,6 +1006,44 @@ func (a *App) AddTestStep(profileID, testKey, action, data, expected string) (te
 		return testrepo.Step{}, err
 	}
 	return a.repo.AddTestStep(profileID, testKey, action, data, expected)
+}
+
+// CloneTestSteps appends Steps of sourceKey onto targetKey, queuing each as a
+// local step-add for commit (FR-2.5) — a quick way to seed a Test from an
+// existing one. stepIDs selects which source steps to copy (a selective clone);
+// an empty stepIDs clones them all. The source's steps are loaded lazily
+// (fetched from Jira on a cache miss) so cloning works even before the source's
+// detail panel has been opened. Returns the target's full step list afterward.
+func (a *App) CloneTestSteps(profileID, targetKey, sourceKey string, stepIDs []string) ([]testrepo.Step, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(sourceKey) == "" || sourceKey == targetKey {
+		return nil, fmt.Errorf("pick a different test to clone steps from")
+	}
+	sourceSteps, err := a.GetTestSteps(profileID, sourceKey, false)
+	if err != nil {
+		return nil, fmt.Errorf("load steps from %s: %w", sourceKey, err)
+	}
+	// A non-empty stepIDs narrows the clone to the chosen steps, preserving their
+	// order in the source; empty means clone everything.
+	if len(stepIDs) > 0 {
+		want := make(map[string]bool, len(stepIDs))
+		for _, id := range stepIDs {
+			want[id] = true
+		}
+		filtered := make([]testrepo.Step, 0, len(stepIDs))
+		for _, s := range sourceSteps {
+			if want[s.XrayID] {
+				filtered = append(filtered, s)
+			}
+		}
+		sourceSteps = filtered
+	}
+	if len(sourceSteps) == 0 {
+		return nil, fmt.Errorf("no steps selected to clone from %s", sourceKey)
+	}
+	return a.repo.CloneTestSteps(profileID, targetKey, sourceSteps)
 }
 
 // ReorderTestSteps records a new ordering for a Test's steps (FR-2.5). The
@@ -1553,6 +1602,59 @@ func (a *App) GetStatistics(profileID string) (testrepo.Statistics, error) {
 		return testrepo.Statistics{}, err
 	}
 	return a.repo.GetStatistics(profileID)
+}
+
+// --- Duplicate management (FR — duplicate management) ---
+
+// ScanDuplicates returns the duplicate report for a profile (FR — duplicate
+// management): summary groups computed from the local cache, with step verdicts
+// from prior step scans. Instant, no Jira call.
+func (a *App) ScanDuplicates(profileID string) (testrepo.DuplicateReport, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.DuplicateReport{}, err
+	}
+	return a.repo.ScanDuplicates(profileID)
+}
+
+// ScanDuplicateGroupSteps fetches steps for one group's members (bounded), records
+// each fingerprint, and returns the recomputed group with its steps verdict.
+func (a *App) ScanDuplicateGroupSteps(profileID, normalizedSummary string) (testrepo.DuplicateGroup, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.DuplicateGroup{}, err
+	}
+	keys, err := a.repo.DuplicateGroupMemberKeys(profileID, normalizedSummary)
+	if err != nil {
+		return testrepo.DuplicateGroup{}, err
+	}
+	for _, key := range keys {
+		// Force a fresh pull so the verdict reflects current Jira step content;
+		// GetTestSteps caches into test_step and (in demo) is deterministic.
+		steps, err := a.GetTestSteps(profileID, key, true)
+		if err != nil {
+			// Best-effort: skip members we can't fetch; they stay unscanned.
+			continue
+		}
+		if err := a.repo.RecordStepScan(profileID, key, steps); err != nil {
+			return testrepo.DuplicateGroup{}, err
+		}
+	}
+	return a.repo.ScanDuplicateGroup(profileID, normalizedSummary)
+}
+
+// ExcludeFromDuplicates permanently ignores a Test in duplicate scans (local).
+func (a *App) ExcludeFromDuplicates(profileID, testKey string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.ExcludeFromDuplicates(profileID, testKey)
+}
+
+// UnexcludeFromDuplicates restores a previously-excluded Test.
+func (a *App) UnexcludeFromDuplicates(profileID, testKey string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.UnexcludeFromDuplicates(profileID, testKey)
 }
 
 // --- Test Repository moves (FR-13.3) ---

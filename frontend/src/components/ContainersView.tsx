@@ -64,8 +64,8 @@ export function ContainersView({
   const { prompt, promptUI } = usePrompt();
 
   // Member tables can be long (an Execution may hold hundreds of tests), so the
-  // board is paged client-side. The page size is user-selectable; default 25.
-  const [pageSize, setPageSize] = useState(25);
+  // board is paged client-side. The page size is user-selectable; default 15.
+  const [pageSize, setPageSize] = useState(15);
   const PAGE_SIZE_OPTIONS = [10, 15, 25, 50, 100, 200];
 
   // removeTest unassigns a single Test from the selected container (FR-3.4–3.6),

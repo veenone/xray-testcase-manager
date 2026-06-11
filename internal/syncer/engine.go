@@ -289,7 +289,6 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 // linked to synced Tests regardless of project). Best-effort like the other
 // secondary syncs.
 func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
-	_ = onProgress
 	sources, err := e.repo.ListRequirementSources(profileID)
 	if err != nil {
 		return err

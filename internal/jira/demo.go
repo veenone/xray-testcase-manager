@@ -2,6 +2,7 @@ package jira
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -275,11 +276,47 @@ func demoTransitionsForStatus(status string) []Transition {
 	return []Transition{}
 }
 
+// demoKeyIndex extracts the 0-based index encoded in a demo Test key
+// ("PROJ-<i+1>"), or -1 if it doesn't parse.
+func demoKeyIndex(testKey string) int {
+	dash := strings.LastIndex(testKey, "-")
+	if dash < 0 {
+		return -1
+	}
+	n, err := strconv.Atoi(testKey[dash+1:])
+	if err != nil {
+		return -1
+	}
+	return n - 1
+}
+
 // demoStepsForKey returns a deterministic three-step skeleton for any test
 // in demo mode (FR-2.5). The steps are generic on purpose — they exercise
 // the panel layout, not Jira fidelity. Real Xray returns whatever the
 // authors wrote.
 func demoStepsForKey(testKey string) []Step {
+	// Duplicate-cluster step overrides (see makeDemoTest). Match the numeric
+	// suffix so the override is project-key agnostic.
+	switch demoKeyIndex(testKey) {
+	case 0, 1:
+		// Cluster A — identical steps for both members.
+		return []Step{
+			{ID: "dup-a-1", Index: 1, Action: "Open the login page", Data: "", Expected: "Login form is shown"},
+			{ID: "dup-a-2", Index: 2, Action: "Submit valid credentials", Data: "user / pass", Expected: "User is logged in"},
+		}
+	case 2:
+		return []Step{
+			{ID: "dup-b-3", Index: 1, Action: "Open the cart", Data: "", Expected: "Cart is shown"},
+			{ID: "dup-b-3b", Index: 2, Action: "Click checkout", Data: "", Expected: "Checkout starts"},
+		}
+	case 3:
+		// Cluster B — same summary as index 2 but DIFFERENT steps.
+		return []Step{
+			{ID: "dup-b-4", Index: 1, Action: "Open the cart from the menu", Data: "", Expected: "Cart page loads"},
+			{ID: "dup-b-4b", Index: 2, Action: "Proceed to payment", Data: "visa", Expected: "Payment screen opens"},
+		}
+	}
+
 	return []Step{
 		{
 			ID:       testKey + "-s1",
@@ -464,6 +501,15 @@ func makeDemoTest(projectKey string, i int) Test {
 		Format("2006-01-02T15:04:05.000-0700")
 
 	summary := fmt.Sprintf("%s %s", feature, condition)
+	// Seed two deterministic duplicate clusters for the Duplicates view demo:
+	// indices 0,1 -> identical summary + identical steps; 2,3 -> identical
+	// summary + differing steps.
+	switch i {
+	case 0, 1:
+		summary = "Duplicate demo A — user can log in"
+	case 2, 3:
+		summary = "Duplicate demo B — user can check out"
+	}
 	description := fmt.Sprintf(
 		"Given a user is on the %s screen\n"+
 			"When they perform the action %s\n"+

@@ -23,6 +23,7 @@ import {
   ResolveConflictKeepRemote,
   ListPendingChanges,
   DiscardPendingChange,
+  DiscardAllPendingChanges,
   CommitPendingChanges,
   CommitPendingChangesByIDs,
   EventsOn,
@@ -58,6 +59,7 @@ import { Dashboard } from "./components/Dashboard";
 import { ContainersView } from "./components/ContainersView";
 import { PreconditionsView } from "./components/PreconditionsView";
 import { RequirementsView } from "./components/RequirementsView";
+import { DuplicatesView } from "./components/DuplicatesView";
 import { DiagnosticsModal } from "./components/DiagnosticsModal";
 import { SyncHistoryModal } from "./components/SyncHistoryModal";
 import { ImportTestsModal } from "./components/ImportTestsModal";
@@ -135,7 +137,12 @@ function App() {
   const [showBulkReview, setShowBulkReview] = useState(false);
 
   const [view, setView] = useState<
-    "browse" | "preconditions" | "requirements" | "dashboard" | "plans"
+    | "browse"
+    | "preconditions"
+    | "requirements"
+    | "duplicates"
+    | "dashboard"
+    | "plans"
   >("browse");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
@@ -473,6 +480,7 @@ function App() {
     "menu:view-requirements": () => setView("requirements"),
     "menu:view-dashboard": () => setView("dashboard"),
     "menu:view-plans": () => setView("plans"),
+    "menu:view-duplicates": () => setView("duplicates"),
     "menu:sync-history": () => setShowSyncHistory(true),
     "menu:diagnostics": () => setShowDiagnostics(true),
     "menu:about": () => setShowAbout(true),
@@ -650,6 +658,20 @@ function App() {
       reloadPending();
     } catch (e) {
       console.error("discard:", errMsg(e));
+    }
+  }
+
+  // handleDiscardAll reverts every pending change at once (the modal's
+  // "Discard all" action). The modal confirms first.
+  async function handleDiscardAll() {
+    if (!activeId) return;
+    try {
+      await DiscardAllPendingChanges(activeId);
+      setRefreshKey((k) => k + 1);
+      setDetailVersion((v) => v + 1);
+      reloadPending();
+    } catch (e) {
+      console.error("discard all:", errMsg(e));
     }
   }
 
@@ -910,6 +932,12 @@ function App() {
             Requirements
           </button>
           <button
+            className={`view-tab${view === "duplicates" ? " view-tab-active" : ""}`}
+            onClick={() => setView("duplicates")}
+          >
+            Duplicates
+          </button>
+          <button
             className={`view-tab${view === "dashboard" ? " view-tab-active" : ""}`}
             onClick={() => setView("dashboard")}
           >
@@ -1086,9 +1114,22 @@ function App() {
             }}
           />
         </main>
+      ) : view === "duplicates" ? (
+        <main className="content content-dashboard">
+          <DuplicatesView
+            profileId={activeId}
+            refreshKey={refreshKey}
+            folders={folders}
+            pendingByTestKey={pendingByTestKey}
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              reloadPending();
+            }}
+          />
+        </main>
       ) : view === "dashboard" ? (
         <main className="content content-dashboard">
-          <Dashboard profileId={activeId} refreshKey={refreshKey} />
+          <Dashboard profileId={activeId} refreshKey={refreshKey} onOpenDuplicates={() => setView("duplicates")} />
         </main>
       ) : view === "plans" ? (
         <main className="content content-dashboard">
@@ -1249,6 +1290,7 @@ function App() {
         <PendingChangesModal
           changes={pendingChanges}
           onDiscard={handleDiscard}
+          onDiscardAll={handleDiscardAll}
           onCommit={handleCommit}
           onCommitIds={handleCommitIds}
           onJumpTo={(key) => {
