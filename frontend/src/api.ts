@@ -44,6 +44,7 @@ export {
   ListTestsForRequirement,
   GetTestRequirements,
   SetTestRequirements,
+  BulkAssociateRequirements,
   ListRequirementSources,
   SetRequirementSource,
   RemoveRequirementSource,

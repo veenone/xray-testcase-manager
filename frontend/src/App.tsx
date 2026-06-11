@@ -53,6 +53,7 @@ import { BulkTransitionModal } from "./components/BulkTransitionModal";
 import { BulkAllocateModal } from "./components/BulkAllocateModal";
 import { BulkMoveModal } from "./components/BulkMoveModal";
 import { BulkPreconditionsModal } from "./components/BulkPreconditionsModal";
+import { BulkRequirementsModal } from "./components/BulkRequirementsModal";
 import { Dashboard } from "./components/Dashboard";
 import { ContainersView } from "./components/ContainersView";
 import { PreconditionsView } from "./components/PreconditionsView";
@@ -130,6 +131,7 @@ function App() {
   const [showBulkAllocate, setShowBulkAllocate] = useState(false);
   const [showBulkMove, setShowBulkMove] = useState(false);
   const [showBulkPreconditions, setShowBulkPreconditions] = useState(false);
+  const [showBulkRequirements, setShowBulkRequirements] = useState(false);
   const [showBulkReview, setShowBulkReview] = useState(false);
 
   const [view, setView] = useState<
@@ -1046,6 +1048,12 @@ function App() {
           </button>
           <button
             className="btn btn-primary"
+            onClick={() => setShowBulkRequirements(true)}
+          >
+            Requirements…
+          </button>
+          <button
+            className="btn btn-primary"
             onClick={() => setShowBulkReview(true)}
           >
             Review…
@@ -1372,6 +1380,21 @@ function App() {
             reloadPending();
             setShowBulkPreconditions(false);
           }}
+        />
+      )}
+
+      {showBulkRequirements && (
+        <BulkRequirementsModal
+          profileId={activeId}
+          testKeys={[...selectedSet]}
+          onComplete={() => {
+            setRefreshKey((k) => k + 1);
+            setDetailVersion((v) => v + 1);
+            reloadPending();
+            setSelectedSet(new Set());
+            setShowBulkRequirements(false);
+          }}
+          onCancel={() => setShowBulkRequirements(false)}
         />
       )}
 

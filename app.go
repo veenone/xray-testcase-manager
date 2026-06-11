@@ -754,6 +754,16 @@ func (a *App) SetTestRequirements(profileID, testKey string, requirementKeys []s
 	return a.repo.SetTestRequirements(profileID, testKey, requirementKeys)
 }
 
+// BulkAssociateRequirements adds or removes requirement links across many Tests
+// at once.
+func (a *App) BulkAssociateRequirements(profileID string, testKeys, requirementKeys []string, add bool) (testrepo.BulkEditResult, error) {
+	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	return a.repo.BulkAssociateRequirements(profileID, testKeys, requirementKeys, add)
+}
+
 // ListRequirementSources returns the configured requirement sources for a
 // profile.
 func (a *App) ListRequirementSources(profileID string) ([]testrepo.RequirementSource, error) {
