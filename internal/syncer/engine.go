@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"xray-test-manager/internal/jira"
@@ -111,6 +112,11 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 	emitStage(onProgress, "Syncing containers")
 	if err := e.syncContainers(ctx, profileID, projectKey, onProgress); err != nil {
 		log.Printf("xtm: container sync failed (continuing): %v", err)
+	}
+
+	emitStage(onProgress, "Syncing requirements")
+	if err := e.syncRequirements(ctx, profileID, projectKey, onProgress); err != nil {
+		log.Printf("xtm: requirement sync failed (continuing): %v", err)
 	}
 
 	emitStage(onProgress, "Syncing custom fields")
@@ -276,6 +282,56 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 		}
 	}
 	return e.repo.ReplaceAllContainerLinks(profileID, repoLinks)
+}
+
+// syncRequirements refreshes requirement issues and their Test coverage links
+// from the configured requirement sources (plus, in the real path, requirements
+// linked to synced Tests regardless of project). Best-effort like the other
+// secondary syncs.
+func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
+	_ = onProgress
+	sources, err := e.repo.ListRequirementSources(profileID)
+	if err != nil {
+		return err
+	}
+	specs := make([]jira.RequirementSourceSpec, len(sources))
+	for i, s := range sources {
+		specs[i] = jira.RequirementSourceSpec{
+			ProjectKey: s.ProjectKey,
+			IssueTypes: strings.Fields(s.IssueTypes),
+			ScopeJQL:   s.ScopeJQL,
+		}
+	}
+
+	reqs, links, err := e.client.ListRequirements(ctx, projectKey, specs, nil)
+	if err != nil {
+		return err
+	}
+
+	repoReqs := make([]testrepo.Requirement, len(reqs))
+	for i, rq := range reqs {
+		repoReqs[i] = testrepo.Requirement{
+			Key:        rq.Key,
+			ProjectKey: rq.ProjectKey,
+			IssueType:  rq.IssueType,
+			Summary:    rq.Summary,
+			Status:     rq.Status,
+			Updated:    rq.Updated,
+		}
+	}
+	if err := e.repo.ReplaceAllRequirements(profileID, repoReqs); err != nil {
+		return err
+	}
+
+	repoLinks := make([]testrepo.RequirementLink, len(links))
+	for i, l := range links {
+		repoLinks[i] = testrepo.RequirementLink{
+			TestKey:        l.TestKey,
+			RequirementKey: l.RequirementKey,
+			LinkID:         l.LinkID,
+		}
+	}
+	return e.repo.ReplaceAllRequirementLinks(profileID, repoLinks)
 }
 
 // syncCustomFields pulls the custom field definitions configured for the
