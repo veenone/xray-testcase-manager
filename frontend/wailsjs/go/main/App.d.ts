@@ -99,6 +99,8 @@ export function GetContainerBoard(arg1:string,arg2:string):Promise<testrepo.Test
 
 export function GetDiagnostics():Promise<main.Diagnostics>;
 
+export function GetRequirementTraceability(arg1:string):Promise<testrepo.Sankey>;
+
 export function GetSettings():Promise<settings.Settings>;
 
 export function GetStatistics(arg1:string):Promise<testrepo.Statistics>;

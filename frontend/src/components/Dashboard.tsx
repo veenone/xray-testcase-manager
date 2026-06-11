@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import {
   GetStatistics,
   GetTraceabilitySankey,
+  GetRequirementTraceability,
   ListContainers,
   errMsg,
 } from "../api";
 import type { Statistics, Bucket, Sankey, Container } from "../api";
 import { SankeyChart } from "./SankeyChart";
+import { RequirementSankey } from "./RequirementSankey";
 
 interface Props {
   profileId: string;
@@ -19,6 +21,8 @@ interface Props {
 export function Dashboard({ profileId, refreshKey }: Props) {
   const [stats, setStats] = useState<Statistics | null>(null);
   const [sankey, setSankey] = useState<Sankey | null>(null);
+  const [reqSankey, setReqSankey] = useState<Sankey | null>(null);
+  const [reqSankeyErr, setReqSankeyErr] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -89,6 +93,25 @@ export function Dashboard({ profileId, refreshKey }: Props) {
       cancelled = true;
     };
   }, [profileId, refreshKey, planFilter, execFilter]);
+
+  // Requirement traceability is independent of the plan/exec filters.
+  useEffect(() => {
+    if (!profileId) return;
+    let cancelled = false;
+    setReqSankeyErr("");
+    GetRequirementTraceability(profileId)
+      .then((sk) => {
+        if (!cancelled) setReqSankey(sk);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setReqSankeyErr(errMsg(e));
+        console.error("requirement traceability:", errMsg(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, refreshKey]);
 
   if (loading && !stats) {
     return <div className="dashboard muted">Loading…</div>;
@@ -193,6 +216,28 @@ export function Dashboard({ profileId, refreshKey }: Props) {
           buckets={stats.byCoverage}
           covColors
         />
+      )}
+
+      {stats.byCoverage.length > 0 && (
+        <div className="stat-panel sankey-panel">
+          <div className="sankey-head">
+            <h4>
+              Requirement sign-off
+              <span className="stat-panel-sub">
+                how requirement coverage flows through test results to review
+                sign-off
+              </span>
+            </h4>
+          </div>
+          {reqSankeyErr ? (
+            <p className="error-text sankey-empty">
+              Couldn&apos;t build the requirement traceability flow:{" "}
+              {reqSankeyErr}
+            </p>
+          ) : (
+            <RequirementSankey data={reqSankey ?? { nodes: [], links: [] }} />
+          )}
+        </div>
       )}
 
       {stats.testExecutions > 0 && (

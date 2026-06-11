@@ -108,6 +108,7 @@ export {
   ReorderTestSteps,
   GetStatistics,
   GetTraceabilitySankey,
+  GetRequirementTraceability,
 } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
 

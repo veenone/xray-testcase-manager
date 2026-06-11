@@ -186,6 +186,10 @@ export function GetDiagnostics() {
   return window['go']['main']['App']['GetDiagnostics']();
 }
 
+export function GetRequirementTraceability(arg1) {
+  return window['go']['main']['App']['GetRequirementTraceability'](arg1);
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }

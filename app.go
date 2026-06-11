@@ -727,6 +727,15 @@ func (a *App) ListRequirementsWithCoverage(profileID string) ([]testrepo.Require
 	return a.repo.ListRequirementsWithCoverage(profileID)
 }
 
+// GetRequirementTraceability builds the requirement sign-off traceability flow:
+// requirement coverage -> covering Test run result -> Test review sign-off.
+func (a *App) GetRequirementTraceability(profileID string) (testrepo.Sankey, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.Sankey{Nodes: []testrepo.SankeyNode{}, Links: []testrepo.SankeyLink{}}, err
+	}
+	return a.repo.GetRequirementTraceability(profileID)
+}
+
 // ListTestsForRequirement returns the Tests covering a requirement with each
 // Test's consolidated run status.
 func (a *App) ListTestsForRequirement(profileID, requirementKey string) ([]testrepo.RequirementTest, error) {
