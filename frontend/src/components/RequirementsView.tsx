@@ -5,6 +5,7 @@ import {
   errMsg,
 } from "../api";
 import type { RequirementCoverage, RequirementTest } from "../api";
+import { RequirementSourcesModal } from "./RequirementSourcesModal";
 
 interface Props {
   profileId: string;
@@ -33,6 +34,7 @@ export function RequirementsView({ profileId, refreshKey }: Props) {
   const [covFilter, setCovFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showSources, setShowSources] = useState(false);
 
   useEffect(() => {
     if (!profileId) return;
@@ -102,6 +104,16 @@ export function RequirementsView({ profileId, refreshKey }: Props) {
   return (
     <div className="reqs">
       <div className="reqs-list">
+        <div className="reqs-list-head">
+          <span className="reqs-list-title">Requirements</span>
+          <button
+            className="btn reqs-sources-btn"
+            onClick={() => setShowSources(true)}
+            title="Configure which projects requirements are pulled from"
+          >
+            Sources…
+          </button>
+        </div>
         <input
           className="search reqs-filter"
           placeholder="Filter by key or summary…"
@@ -216,6 +228,13 @@ export function RequirementsView({ profileId, refreshKey }: Props) {
           </>
         )}
       </div>
+
+      {showSources && (
+        <RequirementSourcesModal
+          profileId={profileId}
+          onClose={() => setShowSources(false)}
+        />
+      )}
     </div>
   );
 }

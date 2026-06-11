@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   GetTest,
   GetTestPreconditions,
+  GetTestRequirements,
   ListAllPreconditions,
   SetTestPreconditions,
   EditPreconditionField,
@@ -29,6 +30,7 @@ import {
 import type {
   TestCase,
   Precondition,
+  Requirement,
   ContainerMembership,
   PendingChange,
   Transition,
@@ -105,6 +107,7 @@ export function TestDetail({
   const [meta, setMeta] = useState<TestMeta | null>(null);
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [allPreconditions, setAllPreconditions] = useState<Precondition[]>([]);
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [containers, setContainers] = useState<ContainerMembership[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldValue[]>([]);
   const [review, setReview] = useState<Review | null>(null);
@@ -151,8 +154,9 @@ export function TestDetail({
       GetTestContainers(profileId, testKey),
       ListAllPreconditions(profileId),
       GetTestReview(profileId, testKey),
+      GetTestRequirements(profileId, testKey),
     ])
-      .then(([t, pre, cons, allPre, rev]) => {
+      .then(([t, pre, cons, allPre, rev, reqs]) => {
         if (cancelled) return;
         setTest(t);
         setSummary(t.summary);
@@ -163,6 +167,7 @@ export function TestDetail({
         setContainers(cons ?? []);
         setAllPreconditions(allPre ?? []);
         setReview(rev);
+        setRequirements(reqs ?? []);
         setReviewNote(rev?.note ?? "");
         // Transitions load alongside but can fail without blocking the
         // rest of the detail panel — workflow may not be set up yet, or
@@ -778,6 +783,26 @@ export function TestDetail({
               </>
             );
           })()}
+
+          <h4>Requirements</h4>
+          {requirements.length === 0 ? (
+            <p className="muted">Not linked to any requirement.</p>
+          ) : (
+            <ul className="pre-list req-link-list">
+              {requirements.map((rq) => (
+                <li key={rq.key}>
+                  <span className="mono">{rq.key}</span>
+                  <span className="muted req-link-project">{rq.projectKey}</span>
+                  <span className="req-link-summary">{rq.summary}</span>
+                  {rq.status && (
+                    <span className="status-pill req-link-status">
+                      {rq.status}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
 
           <h4>
             Description {isDirty("description") && <DirtyDot />}

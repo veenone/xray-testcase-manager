@@ -1983,6 +1983,77 @@ tr.row-selected {
 .req-kind {
   background: #0e7490;
 }
+.reqs-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.reqs-list-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.reqs-sources-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+/* Requirement sources modal */
+.src-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.src-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+.src-project {
+  font-weight: 600;
+}
+.src-jql {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+.src-remove {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 7px;
+}
+.src-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Requirements list in the test detail panel */
+.req-link-list li {
+  flex-wrap: wrap;
+}
+.req-link-project {
+  font-size: 11px;
+}
+.req-link-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.req-link-status {
+  font-size: 10px;
+}
 
 /* Coverage badges (shared) */
 .cov-badge {
