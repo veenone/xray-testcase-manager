@@ -408,6 +408,22 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		})
 	}
 
+	// Cross-project executions (auto-discovered, #4): two Test Executions that
+	// live in a DIFFERENT Jira project but run this project's tests — exactly the
+	// case the traceability Sankey's "cross-project only" filter surfaces. In live
+	// mode these come from Xray's per-test executions lookup; here they're seeded
+	// so the feature is exercisable offline.
+	const crossProject = "XRAYINT"
+	crossExecKeys := []string{crossProject + "-TE-1", crossProject + "-TE-2"}
+	for i, key := range crossExecKeys {
+		containers = append(containers, Container{
+			Key:     key,
+			Kind:    KindTestExec,
+			Summary: fmt.Sprintf("%s integration cycle %d", crossProject, i+1),
+			Status:  demoExecStatuses[i%len(demoExecStatuses)],
+		})
+	}
+
 	for i := 0; i < demoLinkedTests && i < demoTestCount; i++ {
 		testKey := fmt.Sprintf("%s-%d", projectKey, i+1)
 		feature := demoFeatures[i%len(demoFeatures)]
@@ -420,6 +436,14 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			TestKey:      testKey,
 			RunStatus:    demoRunStatuses[i%len(demoRunStatuses)],
 		})
+		// Every 7th linked test is also run in a cross-project execution.
+		if i%7 == 0 {
+			links = append(links, ContainerLink{
+				ContainerKey: crossExecKeys[(i/7)%len(crossExecKeys)],
+				TestKey:      testKey,
+				RunStatus:    demoRunStatuses[(i+2)%len(demoRunStatuses)],
+			})
+		}
 	}
 
 	return containers, links, nil
