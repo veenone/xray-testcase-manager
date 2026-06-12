@@ -3662,3 +3662,10 @@ tr.row-checked:hover {
 .pager-compact .board-pagesize { justify-content: flex-start; }
 .pager-compact .board-pager-range { flex: none; text-align: left; }
 .pager-compact .board-pager-nav { justify-content: flex-start; flex-wrap: wrap; }
+
+/* Dashboard per-view refresh (#7). */
+.dashboard-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}

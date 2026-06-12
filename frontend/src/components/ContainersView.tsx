@@ -11,6 +11,7 @@ import {
   SetTestRunStatus,
   BulkSetTestRunStatus,
   ExportPytest,
+  SyncContainers,
   errMsg,
 } from "../api";
 import type { Container, TestPlanBoard, Bucket } from "../api";
@@ -53,6 +54,7 @@ export function ContainersView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [seeding, setSeeding] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   // Bulk execution-result selection: the set of Test keys checked in the board
   // (Test Execution only).
   const [selectedRuns, setSelectedRuns] = useState<Set<string>>(new Set());
@@ -337,6 +339,25 @@ export function ContainersView({
           )}
         </label>
         <div className="board-head-actions">
+          <button
+            className="btn"
+            onClick={async () => {
+              setSyncing(true);
+              setError("");
+              try {
+                await SyncContainers(profileId);
+                onChanged();
+              } catch (e) {
+                setError(errMsg(e));
+              } finally {
+                setSyncing(false);
+              }
+            }}
+            disabled={syncing}
+            title="Refresh just the Test Sets / Plans / Executions from Jira (partial sync)"
+          >
+            {syncing ? "Syncing…" : "Sync"}
+          </button>
           <button className="btn btn-primary" onClick={newContainer} title={`New ${kindLabel}`}>
             + New
           </button>

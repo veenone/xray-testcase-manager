@@ -414,12 +414,20 @@ export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
 }
 
+export function SyncContainers(arg1) {
+  return window['go']['main']['App']['SyncContainers'](arg1);
+}
+
 export function SyncProfile(arg1) {
   return window['go']['main']['App']['SyncProfile'](arg1);
 }
 
 export function SyncProfileFull(arg1) {
   return window['go']['main']['App']['SyncProfileFull'](arg1);
+}
+
+export function SyncRequirements(arg1) {
+  return window['go']['main']['App']['SyncRequirements'](arg1);
 }
 
 export function TestConnection(arg1, arg2) {

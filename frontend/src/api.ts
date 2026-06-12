@@ -24,6 +24,8 @@ export {
   DeleteProfile,
   TestConnection,
   SyncProfile,
+  SyncRequirements,
+  SyncContainers,
   GetSyncState,
   ListSyncLog,
   ListFolders,

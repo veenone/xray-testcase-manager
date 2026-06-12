@@ -213,9 +213,13 @@ export function SetTestRunStatus(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function SetTheme(arg1:string):Promise<void>;
 
+export function SyncContainers(arg1:string):Promise<void>;
+
 export function SyncProfile(arg1:string):Promise<void>;
 
 export function SyncProfileFull(arg1:string):Promise<void>;
+
+export function SyncRequirements(arg1:string):Promise<void>;
 
 export function TestConnection(arg1:string,arg2:string):Promise<string>;
 

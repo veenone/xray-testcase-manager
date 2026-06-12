@@ -5,6 +5,7 @@ import {
   EditRequirementField,
   DeleteRequirement,
   ExportRequirementAudit,
+  SyncRequirements,
   errMsg,
 } from "../api";
 import type { RequirementCoverage, RequirementTest } from "../api";
@@ -144,6 +145,22 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
 
   const sel = list.find((r) => r.key === selected) ?? null;
 
+  const [syncing, setSyncing] = useState(false);
+  async function syncRequirements() {
+    setSyncing(true);
+    setError("");
+    setNotice("");
+    try {
+      await SyncRequirements(profileId);
+      onChanged?.();
+      setNotice("Requirements refreshed from Jira.");
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function exportAudit() {
     setBusy(true);
     setError("");
@@ -213,6 +230,14 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
         <div className="reqs-list-head">
           <span className="reqs-list-title">Requirements</span>
           <span className="reqs-list-actions">
+            <button
+              className="btn"
+              onClick={syncRequirements}
+              disabled={syncing}
+              title="Refresh just the requirements from Jira (partial sync)"
+            >
+              {syncing ? "Syncing…" : "Sync"}
+            </button>
             <button
               className="btn"
               onClick={exportAudit}

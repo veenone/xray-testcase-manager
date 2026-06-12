@@ -37,6 +37,8 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
   const [reqOptions, setReqOptions] = useState<RequirementCoverage[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  // Local refresh: recompute the dashboard from the cache without a full sync (#7).
+  const [nonce, setNonce] = useState(0);
 
   // Traceability filters (FR-9): narrow the flow to chosen Test Plans /
   // Executions (multi-select), and optionally to cross-project executions only.
@@ -65,7 +67,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey]);
+  }, [profileId, refreshKey, nonce]);
 
   // Filter options: the project's Test Plans and Test Executions.
   useEffect(() => {
@@ -86,7 +88,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey]);
+  }, [profileId, refreshKey, nonce]);
 
   // The Sankey re-fetches whenever the filters change (or the data refreshes).
   useEffect(() => {
@@ -106,7 +108,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey, planSel, execSel, crossProject]);
+  }, [profileId, refreshKey, planSel, execSel, crossProject, nonce]);
 
   // Requirement traceability is independent of the plan/exec filters, but can be
   // narrowed to a single requirement.
@@ -126,7 +128,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey, reqSel]);
+  }, [profileId, refreshKey, reqSel, nonce]);
 
   // The requirement list drives the Sankey filter dropdown.
   useEffect(() => {
@@ -142,7 +144,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey]);
+  }, [profileId, refreshKey, nonce]);
 
   if (loading && !stats) {
     return <div className="dashboard muted">Loading…</div>;
@@ -166,6 +168,15 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
 
   return (
     <div className="dashboard">
+      <div className="dashboard-head">
+        <button
+          className="btn"
+          onClick={() => setNonce((n) => n + 1)}
+          title="Recompute the dashboard from the local cache"
+        >
+          ↻ Refresh
+        </button>
+      </div>
       <DuplicatesCard
         profileId={profileId}
         refreshKey={refreshKey}

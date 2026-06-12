@@ -135,6 +135,18 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 
 // syncFolders refreshes the Test Repository folder tree and maps Tests to their
 // folder (FR-13.1). Membership comes from two sources: any Test keys embedded in
+// SyncRequirements pulls only the requirement coverage data — the per-view
+// partial sync behind the Requirements tab's refresh button (#7).
+func (e *Engine) SyncRequirements(ctx context.Context, profileID, projectKey string) error {
+	return e.syncRequirements(ctx, profileID, projectKey, func(Progress) {})
+}
+
+// SyncContainers pulls only the Test Sets / Plans / Executions — the per-view
+// partial sync behind the Containers tab's refresh button (#7).
+func (e *Engine) SyncContainers(ctx context.Context, profileID, projectKey string) error {
+	return e.syncContainers(ctx, profileID, projectKey, func(Progress) {})
+}
+
 // the tree response (applied on every sync, free), and — on a full sync only —
 // a per-folder walk for instances whose tree doesn't carry Test keys. It is
 // best-effort: every failure is logged and swallowed so a folder-API problem

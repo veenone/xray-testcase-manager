@@ -494,6 +494,39 @@ func (a *App) SyncProfile(profileID string) error {
 	return a.runSync(profileID, false)
 }
 
+// runPartialSync builds the Jira client + sync engine for a profile and runs a
+// single sub-phase (requirements / containers) — the per-view refresh actions
+// (#7). Unlike a full Sync it doesn't touch the watermark or sync history.
+func (a *App) runPartialSync(profileID string, fn func(*syncer.Engine, string) error) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return fmt.Errorf("load credentials: %w", err)
+	}
+	engine := syncer.New(jira.NewClient(p.JiraURL, token), a.repo)
+	return fn(engine, p.ProjectKey)
+}
+
+// SyncRequirements refreshes just the requirement coverage from Jira (#7).
+func (a *App) SyncRequirements(profileID string) error {
+	return a.runPartialSync(profileID, func(e *syncer.Engine, projectKey string) error {
+		return e.SyncRequirements(a.ctx, profileID, projectKey)
+	})
+}
+
+// SyncContainers refreshes just the Test Sets / Plans / Executions from Jira (#7).
+func (a *App) SyncContainers(profileID string) error {
+	return a.runPartialSync(profileID, func(e *syncer.Engine, projectKey string) error {
+		return e.SyncContainers(a.ctx, profileID, projectKey)
+	})
+}
+
 // SyncProfileFull forces a full re-sync, ignoring the stored watermark. Use it
 // to re-pull data the incremental path skips — notably the Test Repository
 // folder membership walk, which only runs on a full sync (it is one Jira call
