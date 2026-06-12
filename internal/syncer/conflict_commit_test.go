@@ -123,3 +123,85 @@ func TestCommitHoldsTrueConflict(t *testing.T) {
 		t.Fatalf("bad three-way: base=%q remote=%q mine=%q", f.Base, f.Remote, f.Mine)
 	}
 }
+
+// stepConflictServer mocks the `updated` pre-check (moved), the field fetch, and
+// the steps fetch (returned in remoteSteps order, content from remoteSteps).
+func stepConflictServer(remoteSteps string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/steps") && r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(remoteSteps))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/rest/api/2/issue/"):
+			if r.URL.Query().Get("fields") == "updated" {
+				_ = json.NewEncoder(w).Encode(map[string]any{"fields": map[string]any{"updated": conflictT1}})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": "QA-1", "fields": map[string]any{"summary": "QA-1", "updated": conflictT1}})
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+}
+
+func seedThreeSteps(t *testing.T) *testrepo.Repository {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "x.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	repo := testrepo.NewRepository(st)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{{Key: "QA-1", ID: "1", Updated: conflictT0}}); err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	if err := repo.SetTestSteps("p1", "QA-1", []testrepo.Step{
+		{XrayID: "10", Index: 1, Action: "a1"},
+		{XrayID: "11", Index: 2, Action: "a2"},
+		{XrayID: "12", Index: 3, Action: "a3"},
+	}); err != nil {
+		t.Fatalf("seed steps: %v", err)
+	}
+	return repo
+}
+
+func TestCommitHoldsStepReorderConflict(t *testing.T) {
+	repo := seedThreeSteps(t)
+	// I reorder to [12,10,11]; remote reordered to [11,10,12] — diverged.
+	if err := repo.ReorderTestSteps("p1", "QA-1", []string{"12", "10", "11"}); err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+	srv := stepConflictServer(`[{"id":"11","index":1,"action":"a2"},{"id":"10","index":2,"action":"a1"},{"id":"12","index":3,"action":"a3"}]`)
+	defer srv.Close()
+
+	res, err := syncer.New(jira.NewClient(srv.URL, "tok"), repo).CommitChanges(context.Background(), "p1", "QA")
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if len(res.Conflicted) != 1 || len(res.Conflicted[0].Fields) != 1 {
+		t.Fatalf("expected 1 step-order conflict, got %+v", res.Conflicted)
+	}
+	if res.Conflicted[0].Fields[0].Label != "Step order" {
+		t.Errorf("label = %q, want Step order", res.Conflicted[0].Fields[0].Label)
+	}
+}
+
+func TestCommitHoldsStepDeleteVsEditConflict(t *testing.T) {
+	repo := seedThreeSteps(t)
+	// I delete step 11; remote edited step 11's action.
+	if err := repo.DeleteTestStep("p1", "QA-1", "11"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	srv := stepConflictServer(`[{"id":"10","index":1,"action":"a1"},{"id":"11","index":2,"action":"EDITED UPSTREAM"},{"id":"12","index":3,"action":"a3"}]`)
+	defer srv.Close()
+
+	res, err := syncer.New(jira.NewClient(srv.URL, "tok"), repo).CommitChanges(context.Background(), "p1", "QA")
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if len(res.Conflicted) != 1 || len(res.Conflicted[0].Fields) != 1 {
+		t.Fatalf("expected 1 step-delete conflict, got %+v", res.Conflicted)
+	}
+	if !strings.Contains(res.Conflicted[0].Fields[0].Label, "deleted") {
+		t.Errorf("label = %q, want it to mention deleted", res.Conflicted[0].Fields[0].Label)
+	}
+}

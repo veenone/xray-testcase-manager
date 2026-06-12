@@ -157,3 +157,81 @@ func TestResolveConflictMergeKeepMine(t *testing.T) {
 		t.Errorf("base_version = %q, want T1 (rebased onto remote)", pc[0].BaseVersion)
 	}
 }
+
+func pendingIDByType(t *testing.T, repo *testrepo.Repository, etype string) int64 {
+	t.Helper()
+	pc, _ := repo.ListPendingChanges("p1")
+	for _, c := range pc {
+		if c.EntityType == etype {
+			return c.ID
+		}
+	}
+	t.Fatalf("no pending change of type %s", etype)
+	return 0
+}
+
+func seedSteppedTest(t *testing.T) *testrepo.Repository {
+	t.Helper()
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{{Key: "QA-1", ID: "1", Updated: "T0"}}); err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	if err := repo.SetTestSteps("p1", "QA-1", []testrepo.Step{
+		{XrayID: "10", Index: 1, Action: "a1"},
+		{XrayID: "11", Index: 2, Action: "a2"},
+		{XrayID: "12", Index: 3, Action: "a3"},
+	}); err != nil {
+		t.Fatalf("seed steps: %v", err)
+	}
+	return repo
+}
+
+func TestResolveConflictMergeStepOrderKeepTheirs(t *testing.T) {
+	repo := seedSteppedTest(t)
+	if err := repo.ReorderTestSteps("p1", "QA-1", []string{"12", "10", "11"}); err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+	id := pendingIDByType(t, repo, "test_step_order")
+	if err := repo.ResolveConflictMerge("p1", "QA-1", "T1", []testrepo.ConflictDecision{{
+		PendingID: id, EntityType: "test_step_order", EntityKey: "QA-1",
+		Field: "order", Choice: "theirs", RemoteValue: `["11","10","12"]`,
+	}}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	steps, _ := repo.ListTestSteps("p1", "QA-1")
+	got := []string{steps[0].XrayID, steps[1].XrayID, steps[2].XrayID}
+	if got[0] != "11" || got[1] != "10" || got[2] != "12" {
+		t.Errorf("order = %v, want [11 10 12] (remote)", got)
+	}
+	if pc, _ := repo.ListPendingChanges("p1"); len(pc) != 0 {
+		t.Errorf("want 0 pending after keep-theirs, got %d", len(pc))
+	}
+}
+
+func TestResolveConflictMergeStepDeleteKeepTheirs(t *testing.T) {
+	repo := seedSteppedTest(t)
+	if err := repo.DeleteTestStep("p1", "QA-1", "11"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	id := pendingIDByType(t, repo, "test_step_delete")
+	if err := repo.ResolveConflictMerge("p1", "QA-1", "T1", []testrepo.ConflictDecision{{
+		PendingID: id, EntityType: "test_step_delete", EntityKey: "QA-1:11",
+		Field: "step", Choice: "theirs",
+		RemoteValue: `{"xrayId":"11","index":2,"action":"EDITED","data":"","expected":"","calledTestKey":""}`,
+	}}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	steps, _ := repo.ListTestSteps("p1", "QA-1")
+	var found *testrepo.Step
+	for i := range steps {
+		if steps[i].XrayID == "11" {
+			found = &steps[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("step 11 should be restored (kept theirs), got %+v", steps)
+	}
+	if found.Action != "EDITED" {
+		t.Errorf("restored step action = %q, want EDITED (remote)", found.Action)
+	}
+}

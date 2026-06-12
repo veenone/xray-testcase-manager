@@ -1,6 +1,7 @@
 package testrepo
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -59,6 +60,34 @@ func (r *Repository) ResolveConflictMerge(profileID, testKey, remoteVersion stri
 				d.RemoteValue, profileID, testKey, xrayID,
 			); err != nil {
 				return fmt.Errorf("revert step %s to remote: %w", d.Field, err)
+			}
+		case entityTestStepDelete:
+			// Keep the remote step I tried to delete: re-insert it at its remote
+			// content (RemoteValue is the step snapshot).
+			var s Step
+			if err := json.Unmarshal([]byte(d.RemoteValue), &s); err == nil && s.XrayID != "" {
+				if _, err := tx.Exec(
+					`INSERT INTO test_step (profile_id, test_key, xray_id, idx, action, data, expected, called_test_key)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+					 ON CONFLICT(profile_id, test_key, xray_id) DO UPDATE SET
+					   idx = excluded.idx, action = excluded.action, data = excluded.data,
+					   expected = excluded.expected, called_test_key = excluded.called_test_key`,
+					profileID, testKey, s.XrayID, s.Index, s.Action, s.Data, s.Expected, s.CalledTestKey,
+				); err != nil {
+					return fmt.Errorf("restore deleted step to remote: %w", err)
+				}
+			}
+		case entityTestStepOrder:
+			var ids []string
+			if err := json.Unmarshal([]byte(d.RemoteValue), &ids); err == nil {
+				for i, xid := range ids {
+					if _, err := tx.Exec(
+						`UPDATE test_step SET idx = ? WHERE profile_id = ? AND test_key = ? AND xray_id = ?`,
+						i+1, profileID, testKey, xid,
+					); err != nil {
+						return fmt.Errorf("revert step order to remote: %w", err)
+					}
+				}
 			}
 		}
 		if _, err := tx.Exec(
