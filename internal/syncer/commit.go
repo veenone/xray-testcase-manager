@@ -35,9 +35,14 @@ type CreatedTest struct {
 // resolve — sync to pull in the remote change and either re-commit or
 // discard.
 type Conflict struct {
-	TestKey       string `json:"testKey"`
-	BaseVersion   string `json:"baseVersion"`
-	RemoteVersion string `json:"remoteVersion"`
+	TestKey       string          `json:"testKey"`
+	TestSummary   string          `json:"testSummary"`
+	BaseVersion   string          `json:"baseVersion"`
+	RemoteVersion string          `json:"remoteVersion"`
+	RemoteDeleted bool            `json:"remoteDeleted"`
+	// Fields lists the genuinely overlapping edits (three-way) to resolve. Empty
+	// when RemoteDeleted is set.
+	Fields []ConflictField `json:"fields"`
 }
 
 // FailedCommit is one Test whose pending changes could not be committed
@@ -228,7 +233,11 @@ testLoop:
 	for _, testKey := range order {
 		testChanges := byTest[testKey]
 
-		// Conflict pre-check.
+		// Conflict pre-check (FR-1.4) with per-field auto-merge: when the remote
+		// `updated` has advanced past our base, fetch the current remote values
+		// and classify each change. Non-overlapping edits (and edits someone else
+		// already made) merge silently; only genuinely overlapping fields hold the
+		// Test back for the user to resolve.
 		remoteUpdated, err := e.client.GetIssueUpdated(ctx, testKey)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{
@@ -240,12 +249,52 @@ testLoop:
 		if remoteUpdated != "" {
 			oldest := oldestBaseVersion(testChanges)
 			if oldest != "" && isRemoteAhead(remoteUpdated, oldest) {
-				result.Conflicted = append(result.Conflicted, Conflict{
-					TestKey:       testKey,
-					BaseVersion:   oldest,
-					RemoteVersion: remoteUpdated,
-				})
-				continue
+				scan, derr := e.detectConflicts(ctx, testKey, testChanges)
+				if derr != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   "conflict check failed: " + sanitizeError(derr.Error()),
+					})
+					continue
+				}
+				if scan.deleted {
+					result.Conflicted = append(result.Conflicted, Conflict{
+						TestKey:       testKey,
+						BaseVersion:   oldest,
+						RemoteVersion: remoteUpdated,
+						RemoteDeleted: true,
+					})
+					continue
+				}
+				// Drop edits that someone else already made identically.
+				if len(scan.dropIDs) > 0 {
+					_ = e.repo.CommitPendingChanges(profileID, scan.dropIDs)
+					testChanges = filterOutIDs(testChanges, scan.dropIDs)
+				}
+				if len(scan.conflicts) > 0 {
+					// Hold the whole Test back; the user resolves per field, then
+					// re-commits. The remaining (clean) edits go with it.
+					result.Conflicted = append(result.Conflicted, Conflict{
+						TestKey:       testKey,
+						TestSummary:   scan.testSummary,
+						BaseVersion:   oldest,
+						RemoteVersion: remoteUpdated,
+						Fields:        scan.conflicts,
+					})
+					continue
+				}
+				// No overlap: re-base the remaining clean edits onto the new
+				// remote and commit them normally.
+				if len(testChanges) == 0 {
+					continue
+				}
+				if rErr := e.repo.RebaseTestConflict(profileID, testKey, remoteUpdated); rErr != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   "rebase after auto-merge failed: " + rErr.Error(),
+					})
+					continue
+				}
 			}
 		}
 
@@ -1282,6 +1331,24 @@ func (e *Engine) applyTransition(ctx context.Context, testKey string, change *te
 		return fmt.Errorf("post transition: %s", sanitizeError(err.Error()))
 	}
 	return nil
+}
+
+// filterOutIDs returns the changes whose ID is not in drop.
+func filterOutIDs(changes []testrepo.PendingChange, drop []int64) []testrepo.PendingChange {
+	if len(drop) == 0 {
+		return changes
+	}
+	skip := make(map[int64]bool, len(drop))
+	for _, id := range drop {
+		skip[id] = true
+	}
+	out := make([]testrepo.PendingChange, 0, len(changes))
+	for _, c := range changes {
+		if !skip[c.ID] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // oldestBaseVersion returns the earliest base_version among a Test's pending

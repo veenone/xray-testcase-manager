@@ -21,6 +21,7 @@ import {
   SetTheme,
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
+  ResolveConflictMerge,
   ListPendingChanges,
   DiscardPendingChange,
   DiscardAllPendingChanges,
@@ -39,6 +40,7 @@ import type {
   Bucket,
   PendingChange,
   CommitResult,
+  ConflictDecision,
 } from "./api";
 import { ProfileForm } from "./components/ProfileForm";
 import { TestTable } from "./components/TestTable";
@@ -780,6 +782,27 @@ function App() {
     }
   }
 
+  // resolveConflictMerge applies per-field keep-mine / keep-theirs decisions for
+  // a conflicting Test, then re-commits so the merge takes effect.
+  async function resolveConflictMerge(
+    testKey: string,
+    remoteVersion: string,
+    decisions: ConflictDecision[],
+  ) {
+    if (!activeId) return;
+    try {
+      await ResolveConflictMerge(activeId, testKey, remoteVersion, decisions);
+    } catch (e) {
+      setLastCommitResult({
+        succeeded: [],
+        conflicted: [],
+        failed: [{ testKey, error: errMsg(e) }],
+      });
+      return;
+    }
+    await handleCommit();
+  }
+
   function closePendingModal() {
     setShowPending(false);
     setLastCommitResult(null);
@@ -1319,6 +1342,7 @@ function App() {
           }}
           onResolveOverride={resolveConflictOverride}
           onResolveKeepRemote={resolveConflictKeepRemote}
+          onResolveMerge={resolveConflictMerge}
           onClose={closePendingModal}
           committing={committing}
           lastResult={lastCommitResult}

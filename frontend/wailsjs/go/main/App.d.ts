@@ -193,6 +193,8 @@ export function ReorderTestSteps(arg1:string,arg2:string,arg3:Array<string>):Pro
 
 export function ResolveConflictKeepRemote(arg1:string,arg2:string):Promise<void>;
 
+export function ResolveConflictMerge(arg1:string,arg2:string,arg3:string,arg4:Array<testrepo.ConflictDecision>):Promise<void>;
+
 export function ResolveConflictOverride(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function RunStatuses():Promise<Array<string>>;

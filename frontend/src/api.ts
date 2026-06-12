@@ -88,6 +88,7 @@ export {
   DiscardAllPendingChanges,
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
+  ResolveConflictMerge,
   ListPendingChanges,
   ListAuditEntries,
   CommitPendingChanges,
@@ -462,11 +463,38 @@ export interface CreatedTest {
 }
 
 // Conflict means the remote `updated` has advanced since the user's earliest
-// pending edit on that Test — the PUT was held back so they can resolve.
+// pending edit on that Test, and at least one field overlaps — the Test was held
+// back so they can resolve. fields lists the genuinely overlapping edits (empty
+// when remoteDeleted).
 export interface Conflict {
   testKey: string;
+  testSummary: string;
   baseVersion: string;
   remoteVersion: string;
+  remoteDeleted: boolean;
+  fields: ConflictField[];
+}
+
+// ConflictField is one overlapping edit shown three-way in the resolution UI.
+export interface ConflictField {
+  pendingId: number;
+  entityType: string;
+  entityKey: string;
+  field: string;
+  label: string;
+  base: string;
+  remote: string;
+  mine: string;
+}
+
+// ConflictDecision is the user's per-field choice sent to ResolveConflictMerge.
+export interface ConflictDecision {
+  pendingId: number;
+  entityType: string;
+  entityKey: string;
+  field: string;
+  choice: "mine" | "theirs";
+  remoteValue: string;
 }
 
 export interface FailedCommit {

@@ -101,3 +101,59 @@ func mustCount(t *testing.T, repo *testrepo.Repository) int {
 	}
 	return len(changes)
 }
+
+func seedConflictEdit(t *testing.T) (*testrepo.Repository, int64) {
+	t.Helper()
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-1", ID: "1", Priority: "Medium", Updated: "T0"},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := repo.EditTestField("p1", "QA-1", "priority", "High"); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	pc, _ := repo.ListPendingChanges("p1")
+	if len(pc) != 1 {
+		t.Fatalf("want 1 pending change, got %d", len(pc))
+	}
+	return repo, pc[0].ID
+}
+
+func TestResolveConflictMergeKeepTheirs(t *testing.T) {
+	repo, id := seedConflictEdit(t)
+	if err := repo.ResolveConflictMerge("p1", "QA-1", "T1", []testrepo.ConflictDecision{{
+		PendingID: id, EntityType: "test_case", EntityKey: "QA-1",
+		Field: "priority", Choice: "theirs", RemoteValue: "Critical",
+	}}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	tc, _ := repo.GetTest("p1", "QA-1")
+	if tc.Priority != "Critical" {
+		t.Errorf("priority = %q, want Critical (kept theirs)", tc.Priority)
+	}
+	if pc, _ := repo.ListPendingChanges("p1"); len(pc) != 0 {
+		t.Errorf("want 0 pending after keep-theirs, got %d", len(pc))
+	}
+}
+
+func TestResolveConflictMergeKeepMine(t *testing.T) {
+	repo, id := seedConflictEdit(t)
+	if err := repo.ResolveConflictMerge("p1", "QA-1", "T1", []testrepo.ConflictDecision{{
+		PendingID: id, EntityType: "test_case", EntityKey: "QA-1",
+		Field: "priority", Choice: "mine", RemoteValue: "Critical",
+	}}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	tc, _ := repo.GetTest("p1", "QA-1")
+	if tc.Priority != "High" {
+		t.Errorf("priority = %q, want High (kept mine)", tc.Priority)
+	}
+	pc, _ := repo.ListPendingChanges("p1")
+	if len(pc) != 1 {
+		t.Fatalf("want 1 pending (kept mine), got %d", len(pc))
+	}
+	if pc[0].BaseVersion != "T1" {
+		t.Errorf("base_version = %q, want T1 (rebased onto remote)", pc[0].BaseVersion)
+	}
+}

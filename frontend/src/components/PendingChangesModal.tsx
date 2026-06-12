@@ -1,4 +1,9 @@
-import type { PendingChange, CommitResult } from "../api";
+import { useState } from "react";
+import type {
+  PendingChange,
+  CommitResult,
+  ConflictDecision,
+} from "../api";
 import { useConfirm } from "./useConfirm";
 
 interface Props {
@@ -10,6 +15,11 @@ interface Props {
   onJumpTo: (testKey: string) => void;
   onResolveOverride: (testKey: string, remoteVersion: string) => void;
   onResolveKeepRemote: (testKey: string) => void;
+  onResolveMerge: (
+    testKey: string,
+    remoteVersion: string,
+    decisions: ConflictDecision[],
+  ) => void;
   onClose: () => void;
   committing: boolean;
   lastResult: CommitResult | null;
@@ -24,11 +34,18 @@ export function PendingChangesModal({
   onJumpTo,
   onResolveOverride,
   onResolveKeepRemote,
+  onResolveMerge,
   onClose,
   committing,
   lastResult,
 }: Props) {
   const { confirm, confirmUI } = useConfirm();
+  // Per-field resolution choice, keyed by the pending-change id. Defaults to
+  // "mine" until the user picks otherwise.
+  const [choices, setChoices] = useState<Record<number, "mine" | "theirs">>({});
+  const choiceFor = (id: number): "mine" | "theirs" => choices[id] ?? "mine";
+  const setChoice = (id: number, v: "mine" | "theirs") =>
+    setChoices((prev) => ({ ...prev, [id]: v }));
 
   // commitItem commits only this one row. The backend re-bases the Test's other
   // pending edits onto the new remote version afterward, so committing a single
@@ -86,13 +103,14 @@ export function PendingChangesModal({
                     Conflict{lastResult!.conflicted.length === 1 ? "" : "s"} (
                     {lastResult!.conflicted.length})
                   </strong>{" "}
-                  — the remote test changed since you started editing. Choose
-                  per test whether your edits win or the remote does.
+                  — someone changed {lastResult!.conflicted.length === 1 ? "this test" : "these tests"} in
+                  Jira too. Non-overlapping edits were merged automatically; the
+                  fields below changed on both sides — pick which wins.
                 </p>
                 <ul className="conflict-list">
                   {lastResult!.conflicted.map((c, i) => (
-                    <li key={i} className="conflict-row">
-                      <div className="conflict-row-main">
+                    <li key={i} className="conflict-card">
+                      <div className="conflict-card-head">
                         <button
                           className="link-btn mono"
                           onClick={() => onJumpTo(c.testKey)}
@@ -100,33 +118,179 @@ export function PendingChangesModal({
                         >
                           {c.testKey}
                         </button>{" "}
-                        <span className="muted">
-                          yours from{" "}
-                          <code className="conflict-ts">{c.baseVersion}</code> ·
-                          remote now{" "}
-                          <code className="conflict-ts">{c.remoteVersion}</code>
-                        </span>
+                        {c.testSummary && (
+                          <span className="muted">{c.testSummary}</span>
+                        )}
                       </div>
-                      <div className="conflict-row-actions">
-                        <button
-                          className="btn"
-                          disabled={committing}
-                          onClick={() =>
-                            onResolveOverride(c.testKey, c.remoteVersion)
-                          }
-                          title="Re-base onto the remote version and push your edits over it"
-                        >
-                          Keep mine
-                        </button>
-                        <button
-                          className="btn"
-                          disabled={committing}
-                          onClick={() => onResolveKeepRemote(c.testKey)}
-                          title="Discard your edits and keep the remote version"
-                        >
-                          Keep remote
-                        </button>
-                      </div>
+
+                      {c.remoteDeleted ? (
+                        <div className="conflict-deleted">
+                          <span>
+                            This test was <strong>deleted in Jira</strong> — your
+                            local edits can&apos;t be pushed.
+                          </span>
+                          <button
+                            className="btn"
+                            disabled={committing}
+                            onClick={() => onResolveKeepRemote(c.testKey)}
+                          >
+                            Discard my changes
+                          </button>
+                        </div>
+                      ) : c.fields && c.fields.length > 0 ? (
+                        <>
+                          <div className="conflict-merge-bar">
+                            <span className="conflict-merge-quick">
+                              <button
+                                className="link-btn"
+                                onClick={() =>
+                                  c.fields.forEach((f) =>
+                                    setChoice(f.pendingId, "mine"),
+                                  )
+                                }
+                              >
+                                All mine
+                              </button>
+                              <button
+                                className="link-btn"
+                                onClick={() =>
+                                  c.fields.forEach((f) =>
+                                    setChoice(f.pendingId, "theirs"),
+                                  )
+                                }
+                              >
+                                All theirs
+                              </button>
+                            </span>
+                          </div>
+                          <table className="conflict-table">
+                            <thead>
+                              <tr>
+                                <th>Field</th>
+                                <th>Theirs (remote)</th>
+                                <th>Mine (local)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {c.fields.map((f) => (
+                                <tr key={f.pendingId}>
+                                  <td className="conflict-field-label">
+                                    {f.label}
+                                  </td>
+                                  <td
+                                    className={
+                                      choiceFor(f.pendingId) === "theirs"
+                                        ? "conflict-pick conflict-pick-on"
+                                        : "conflict-pick"
+                                    }
+                                  >
+                                    <label>
+                                      <input
+                                        type="radio"
+                                        name={`c-${f.pendingId}`}
+                                        checked={
+                                          choiceFor(f.pendingId) === "theirs"
+                                        }
+                                        onChange={() =>
+                                          setChoice(f.pendingId, "theirs")
+                                        }
+                                      />
+                                      <span className="conflict-val">
+                                        {f.remote || (
+                                          <em className="muted">(empty)</em>
+                                        )}
+                                      </span>
+                                    </label>
+                                  </td>
+                                  <td
+                                    className={
+                                      choiceFor(f.pendingId) === "mine"
+                                        ? "conflict-pick conflict-pick-on"
+                                        : "conflict-pick"
+                                    }
+                                  >
+                                    <label>
+                                      <input
+                                        type="radio"
+                                        name={`c-${f.pendingId}`}
+                                        checked={
+                                          choiceFor(f.pendingId) === "mine"
+                                        }
+                                        onChange={() =>
+                                          setChoice(f.pendingId, "mine")
+                                        }
+                                      />
+                                      <span className="conflict-val">
+                                        {f.mine || (
+                                          <em className="muted">(empty)</em>
+                                        )}
+                                      </span>
+                                    </label>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div className="conflict-row-actions">
+                            <button
+                              className="btn btn-primary"
+                              disabled={committing}
+                              onClick={() =>
+                                onResolveMerge(
+                                  c.testKey,
+                                  c.remoteVersion,
+                                  c.fields.map((f) => ({
+                                    pendingId: f.pendingId,
+                                    entityType: f.entityType,
+                                    entityKey: f.entityKey,
+                                    field: f.field,
+                                    choice: choiceFor(f.pendingId),
+                                    remoteValue: f.remote,
+                                  })),
+                                )
+                              }
+                              title="Apply your choices and re-commit"
+                            >
+                              Resolve &amp; re-commit
+                            </button>
+                            <button
+                              className="btn"
+                              disabled={committing}
+                              onClick={() => onResolveKeepRemote(c.testKey)}
+                              title="Discard all my edits for this test"
+                            >
+                              Discard mine
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="conflict-row-actions">
+                          <span className="muted">
+                            yours from{" "}
+                            <code className="conflict-ts">{c.baseVersion}</code> ·
+                            remote now{" "}
+                            <code className="conflict-ts">
+                              {c.remoteVersion}
+                            </code>
+                          </span>
+                          <button
+                            className="btn"
+                            disabled={committing}
+                            onClick={() =>
+                              onResolveOverride(c.testKey, c.remoteVersion)
+                            }
+                          >
+                            Keep mine
+                          </button>
+                          <button
+                            className="btn"
+                            disabled={committing}
+                            onClick={() => onResolveKeepRemote(c.testKey)}
+                          >
+                            Keep remote
+                          </button>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
