@@ -30,6 +30,39 @@ function projectKeyError(key: string): string {
   return "";
 }
 
+// normalizeJiraUrl trims surrounding whitespace and strips trailing slashes so
+// the stored base URL is clean (e.g. "https://jira.example.com/" or a pasted
+// ".../secure/Dashboard.jspa " is reduced to the bare origin/base). The backend
+// also TrimRights "/", but normalizing here keeps the stored value tidy and the
+// connection test honest.
+function normalizeJiraUrl(url: string): string {
+  return url.trim().replace(/[\s/]+$/, "");
+}
+
+// jiraUrlError validates the Jira base URL. Demo URLs (demo / mock) are allowed;
+// otherwise it must be a well-formed http(s) URL with a host and no spaces.
+function jiraUrlError(url: string): string {
+  const u = normalizeJiraUrl(url);
+  if (u === "") return "";
+  if (/^(demo|(demo|mock):.*)$/i.test(u)) return "";
+  if (/\s/.test(u)) {
+    return "The URL must not contain spaces.";
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(u);
+  } catch {
+    return "Enter a full base URL, e.g. https://jira.example.com (or 'demo').";
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return "The URL must start with http:// or https:// (or be 'demo').";
+  }
+  if (!parsed.hostname) {
+    return "The URL must include a host, e.g. https://jira.example.com.";
+  }
+  return "";
+}
+
 export function ProfileForm({ onCreated, onCancel, profile, profiles }: Props) {
   const isEdit = !!profile;
   const others = (profiles ?? []).filter((p) => p.id !== profile?.id);
@@ -49,13 +82,16 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles }: Props) {
   const [error, setError] = useState("");
 
   const keyError = projectKeyError(projectKey);
+  const urlError = jiraUrlError(jiraUrl);
   // A token is needed for create unless reusing one from another profile; on
   // edit a blank token keeps the stored PAT.
   const tokenSatisfied = isEdit || reuseFrom !== "" || token.trim() !== "";
-  const canTest = jiraUrl.trim() !== "" && token.trim() !== "";
+  const canTest =
+    jiraUrl.trim() !== "" && urlError === "" && token.trim() !== "";
   const canSave =
     name.trim() !== "" &&
     jiraUrl.trim() !== "" &&
+    urlError === "" &&
     projectKey.trim() !== "" &&
     keyError === "" &&
     tokenSatisfied;
@@ -64,14 +100,14 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles }: Props) {
   const willClearCache =
     isEdit &&
     (projectKey.trim() !== profile!.projectKey ||
-      jiraUrl.trim() !== profile!.jiraUrl);
+      normalizeJiraUrl(jiraUrl) !== profile!.jiraUrl);
 
   async function test() {
     setTesting(true);
     setTestResult("");
     setTestOk(false);
     try {
-      const user = await TestConnection(jiraUrl.trim(), token.trim());
+      const user = await TestConnection(normalizeJiraUrl(jiraUrl), token.trim());
       setTestResult(`Connected as ${user}`);
       setTestOk(true);
     } catch (e) {
@@ -91,7 +127,7 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles }: Props) {
         p = await UpdateProfile(
           profile!.id,
           name.trim(),
-          jiraUrl.trim(),
+          normalizeJiraUrl(jiraUrl),
           key,
           scopeJql.trim(),
           token.trim(),
@@ -99,7 +135,7 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles }: Props) {
       } else if (reuseFrom !== "") {
         p = await CreateProfileReusingToken(
           name.trim(),
-          jiraUrl.trim(),
+          normalizeJiraUrl(jiraUrl),
           key,
           scopeJql.trim(),
           reuseFrom,
@@ -107,7 +143,7 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles }: Props) {
       } else {
         p = await CreateProfile(
           name.trim(),
-          jiraUrl.trim(),
+          normalizeJiraUrl(jiraUrl),
           key,
           scopeJql.trim(),
           token.trim(),
@@ -137,8 +173,11 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles }: Props) {
         <input
           value={jiraUrl}
           onChange={(e) => setJiraUrl(e.target.value)}
+          onBlur={() => setJiraUrl(normalizeJiraUrl(jiraUrl))}
           placeholder="https://jira.example.com"
+          spellCheck={false}
         />
+        {urlError && <span className="field-error">{urlError}</span>}
       </label>
       <label>
         Project key

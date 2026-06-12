@@ -13,6 +13,10 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
   Jira Data Center keys like `RND_P_4TFINT_05` / `RND_I_XXXXX_XX` validate
   correctly. Previously the client-side check allowed only letters and digits and
   rejected valid keys. (RND_P_4TFINT_05-197)
+- **Create / Edit Profile** — the Jira base URL is now normalized (surrounding
+  whitespace and trailing slashes stripped) and validated as a well-formed
+  http(s) URL (or `demo`), so a pasted URL with a trailing `/` or stray
+  characters no longer slips through.
 
 ## [1.3.0] - 2026-06-12
 
