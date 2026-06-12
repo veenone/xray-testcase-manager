@@ -447,7 +447,7 @@ testLoop:
 		// still target the right remote step.
 		idMap := make(map[string]string, len(stepAdds))
 		for _, s := range stepAdds {
-			newID, err := e.client.CreateTestStep(ctx, testKey, s.Action, s.Data, s.Expected)
+			newID, err := e.createStep(ctx, profileID, testKey, s)
 			if err != nil {
 				result.Failed = append(result.Failed, FailedCommit{
 					TestKey: testKey,
@@ -794,26 +794,23 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 		// the step pending rows below, so a leftover reorder can't later PUT
 		// against the temporary "new-N" ids: that mismatch is what 500s when
 		// committing a new test whose steps were reorganised.
-		type draftStep struct{ xrayID, action, data, expected string }
-		var stepSrc []draftStep
+		var stepSrc []testrepo.Step
 		if cached, cErr := e.repo.ListTestSteps(profileID, key); cErr == nil && len(cached) > 0 {
-			for _, s := range cached {
-				stepSrc = append(stepSrc, draftStep{s.XrayID, s.Action, s.Data, s.Expected})
-			}
+			stepSrc = cached
 		} else {
 			for _, s := range p.Steps {
-				stepSrc = append(stepSrc, draftStep{"", s.Action, s.Data, s.Expected})
+				stepSrc = append(stepSrc, testrepo.Step{Action: s.Action, Data: s.Data, Expected: s.Expected})
 			}
 		}
 		stepErr := ""
 		for _, s := range stepSrc {
-			newID, sErr := e.client.CreateTestStep(ctx, key, s.action, s.data, s.expected)
+			newID, sErr := e.createStep(ctx, profileID, key, s)
 			if sErr != nil {
 				stepErr = sanitizeError(sErr.Error())
 				break
 			}
-			if newID != "" && s.xrayID != "" {
-				_ = e.repo.RenameTestStepID(profileID, key, s.xrayID, newID)
+			if newID != "" && s.XrayID != "" {
+				_ = e.repo.RenameTestStepID(profileID, key, s.XrayID, newID)
 			}
 		}
 		if stepErr != "" {
@@ -838,6 +835,20 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 		}
 		result.Succeeded = append(result.Succeeded, key)
 	}
+}
+
+// createStep pushes one new step to Jira — a "call test" step (resolving the
+// called Test's numeric id from the cache) or a normal manual step. Returns the
+// new step's id when Jira reports one.
+func (e *Engine) createStep(ctx context.Context, profileID, testKey string, s testrepo.Step) (string, error) {
+	if s.CalledTestKey != "" {
+		calledID := ""
+		if tc, err := e.repo.GetTest(profileID, s.CalledTestKey); err == nil {
+			calledID = tc.ID
+		}
+		return e.client.CreateCalledTestStep(ctx, testKey, s.CalledTestKey, calledID)
+	}
+	return e.client.CreateTestStep(ctx, testKey, s.Action, s.Data, s.Expected)
 }
 
 // stepPendingRowIDs returns the ids of step-level pending changes for a Test —

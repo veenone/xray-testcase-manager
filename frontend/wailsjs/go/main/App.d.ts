@@ -7,6 +7,8 @@ import {profile} from '../models';
 import {settings} from '../models';
 import {jira} from '../models';
 
+export function AddCalledTestStep(arg1:string,arg2:string,arg3:string):Promise<testrepo.Step>;
+
 export function AddTestComment(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function AddTestStep(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<testrepo.Step>;

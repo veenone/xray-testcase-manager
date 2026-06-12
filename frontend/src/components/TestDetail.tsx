@@ -25,6 +25,7 @@ import {
   EditTestStepField,
   DeleteTestStep,
   AddTestStep,
+  AddCalledTestStep,
   CloneTestSteps,
   ReorderTestSteps,
   MoveTestToFolder,
@@ -50,6 +51,7 @@ import { usePrompt } from "./usePrompt";
 import { useConfirm } from "./useConfirm";
 import { MarkdownField } from "./MarkdownField";
 import { CloneStepsModal } from "./CloneStepsModal";
+import { PickTestModal } from "./PickTestModal";
 import { formatDateTime } from "../dates";
 
 const REVIEWER_KEY = "xtm.reviewer";
@@ -128,6 +130,7 @@ export function TestDetail({
   const [stepsLoading, setStepsLoading] = useState(false);
   const [stepsError, setStepsError] = useState("");
   const [showCloneSteps, setShowCloneSteps] = useState(false);
+  const [showCallPicker, setShowCallPicker] = useState(false);
   // What Jira itself reports about this Test's steps — used to warn when the
   // panel is empty but Jira actually has steps (a load/shape problem), so the
   // user doesn't add a blank step that Xray rejects.
@@ -963,9 +966,18 @@ export function TestDetail({
             </ol>
           )}
           {!stepsError && !stepsLoading && (
-            <button className="link-btn steps-add" onClick={addStep}>
-              + Add step
-            </button>
+            <div className="steps-add-row">
+              <button className="link-btn steps-add" onClick={addStep}>
+                + Add step
+              </button>
+              <button
+                className="link-btn steps-add"
+                onClick={() => setShowCallPicker(true)}
+                title="Add a step that calls another test"
+              >
+                + Call test
+              </button>
+            </div>
           )}
 
           <p className="muted detail-note">
@@ -974,6 +986,21 @@ export function TestDetail({
           </p>
         </div>
       )}
+      {showCallPicker && (
+        <PickTestModal
+          profileId={profileId}
+          heading={`Call a test from ${testKey}`}
+          excludeKey={testKey}
+          onCancel={() => setShowCallPicker(false)}
+          onPick={async (calledKey) => {
+            const s = await AddCalledTestStep(profileId, testKey, calledKey);
+            setSteps((prev) => [...prev, s]);
+            setShowCallPicker(false);
+            onEdited();
+          }}
+        />
+      )}
+
       {showCloneSteps && (
         <CloneStepsModal
           profileId={profileId}
@@ -1098,6 +1125,47 @@ function StepRow({
     } catch (e) {
       setSaveError(errMsg(e));
     }
+  }
+
+  // A "call test" step invokes another test instead of holding manual content;
+  // it has no editable action/data/expected, just the called test + controls.
+  if (step.calledTestKey) {
+    return (
+      <li>
+        <div className="step-head step-call-head">
+          <span className="step-call-label">
+            ⮡ Calls <span className="mono">{step.calledTestKey}</span>
+            {isNew && <span className="step-new-badge">new</span>}
+          </span>
+          <div className="step-move">
+            <button
+              className="btn btn-ghost step-move-btn"
+              onClick={() => onMove("up")}
+              disabled={isFirst}
+              title="Move step up"
+            >
+              ▲
+            </button>
+            <button
+              className="btn btn-ghost step-move-btn"
+              onClick={() => onMove("down")}
+              disabled={isLast}
+              title="Move step down"
+            >
+              ▼
+            </button>
+          </div>
+          <button
+            className="btn btn-ghost step-delete"
+            onClick={deleteStep}
+            title={isNew ? "Discard this call" : "Delete this call"}
+          >
+            ✕
+          </button>
+        </div>
+        {saveError && <div className="error-text step-save-error">{saveError}</div>}
+      </li>
+    );
   }
 
   return (

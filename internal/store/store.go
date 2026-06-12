@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 18
+const schemaVersion = 19
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -119,13 +119,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE TABLE IF NOT EXISTS test_step (
-	profile_id TEXT NOT NULL,
-	test_key   TEXT NOT NULL,
-	xray_id    TEXT NOT NULL,
-	idx        INTEGER NOT NULL,
-	action     TEXT NOT NULL DEFAULT '',
-	data       TEXT NOT NULL DEFAULT '',
-	expected   TEXT NOT NULL DEFAULT '',
+	profile_id      TEXT NOT NULL,
+	test_key        TEXT NOT NULL,
+	xray_id         TEXT NOT NULL,
+	idx             INTEGER NOT NULL,
+	action          TEXT NOT NULL DEFAULT '',
+	data            TEXT NOT NULL DEFAULT '',
+	expected        TEXT NOT NULL DEFAULT '',
+	called_test_key TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, test_key, xray_id)
 );
 
@@ -387,6 +388,16 @@ func applyMigrations(db *sql.DB) error {
 			`ALTER TABLE test_folder ADD COLUMN xray_id TEXT NOT NULL DEFAULT ''`,
 		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("v16 add xray_id: %w", err)
+		}
+	}
+	// v19: add called_test_key to test_step for "call test" steps (a step that
+	// invokes another Test). Fresh installs get it from the CREATE above; this
+	// ALTER catches pre-v19 databases.
+	if current < 19 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_step ADD COLUMN called_test_key TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v19 add called_test_key: %w", err)
 		}
 	}
 	return nil

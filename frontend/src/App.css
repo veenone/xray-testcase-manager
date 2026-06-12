@@ -3669,3 +3669,22 @@ tr.row-checked:hover {
   justify-content: flex-end;
   margin-bottom: 8px;
 }
+
+/* "Call test" steps (#2). */
+.steps-add-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.step-call-head {
+  align-items: center;
+}
+.step-call-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+.step-call-label .mono {
+  font-weight: 600;
+  color: var(--accent);
+}

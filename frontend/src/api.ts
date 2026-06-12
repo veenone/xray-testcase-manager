@@ -108,6 +108,7 @@ export {
   EditTestStepField,
   DeleteTestStep,
   AddTestStep,
+  AddCalledTestStep,
   CloneTestSteps,
   ReorderTestSteps,
   GetStatistics,
@@ -378,6 +379,9 @@ export interface Step {
   action: string;
   data: string;
   expected: string;
+  // Set when the step calls another test (Xray "test call") instead of holding
+  // manual action/data/expected content.
+  calledTestKey: string;
 }
 
 // CustomFieldValue mirrors testrepo.CustomFieldValue — a Jira custom field on

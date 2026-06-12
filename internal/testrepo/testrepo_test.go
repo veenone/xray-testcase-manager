@@ -2353,3 +2353,32 @@ func seedTestForEditing(t *testing.T) *testrepo.Repository {
 	}
 	return repo
 }
+
+func TestAddCalledTestStepQueuesCallStep(t *testing.T) {
+	repo := seedTestWithSteps(t) // QA-1 with one manual step
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{{Key: "QA-9", ID: "99"}}); err != nil {
+		t.Fatalf("seed called test: %v", err)
+	}
+
+	s, err := repo.AddCalledTestStep("p1", "QA-1", "QA-9")
+	if err != nil {
+		t.Fatalf("add called step: %v", err)
+	}
+	if s.CalledTestKey != "QA-9" {
+		t.Errorf("CalledTestKey = %q, want QA-9", s.CalledTestKey)
+	}
+
+	steps, _ := repo.ListTestSteps("p1", "QA-1")
+	if len(steps) != 2 || steps[1].CalledTestKey != "QA-9" {
+		t.Fatalf("want a call step appended, got %+v", steps)
+	}
+
+	changes, _ := repo.ListPendingChanges("p1")
+	if len(changes) != 1 || changes[0].EntityType != "test_step_add" {
+		t.Errorf("want one test_step_add pending change, got %+v", changes)
+	}
+
+	if _, err := repo.AddCalledTestStep("p1", "QA-1", "QA-1"); err == nil {
+		t.Errorf("expected an error when a test calls itself")
+	}
+}

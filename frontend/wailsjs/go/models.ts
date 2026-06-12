@@ -1175,6 +1175,7 @@ export namespace testrepo {
 	    action: string;
 	    data: string;
 	    expected: string;
+	    calledTestKey: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Step(source);
@@ -1187,6 +1188,7 @@ export namespace testrepo {
 	        this.action = source["action"];
 	        this.data = source["data"];
 	        this.expected = source["expected"];
+	        this.calledTestKey = source["calledTestKey"];
 	    }
 	}
 	export class StepDraft {

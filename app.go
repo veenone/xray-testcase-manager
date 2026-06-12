@@ -1041,6 +1041,15 @@ func (a *App) AddTestStep(profileID, testKey, action, data, expected string) (te
 	return a.repo.AddTestStep(profileID, testKey, action, data, expected)
 }
 
+// AddCalledTestStep appends a "call test" step — a step that invokes another
+// Test (Xray test call) — to a Test, queued for commit (FR-2.5, #2).
+func (a *App) AddCalledTestStep(profileID, testKey, calledTestKey string) (testrepo.Step, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.Step{}, err
+	}
+	return a.repo.AddCalledTestStep(profileID, testKey, calledTestKey)
+}
+
 // CloneTestSteps appends Steps of sourceKey onto targetKey, queuing each as a
 // local step-add for commit (FR-2.5) — a quick way to seed a Test from an
 // existing one. stepIDs selects which source steps to copy (a selective clone);
@@ -1134,11 +1143,12 @@ func (a *App) GetTestSteps(profileID, testKey string, forceRefresh bool) ([]test
 	steps := make([]testrepo.Step, len(remote))
 	for i, s := range remote {
 		steps[i] = testrepo.Step{
-			XrayID:   s.ID,
-			Index:    s.Index,
-			Action:   s.Action,
-			Data:     s.Data,
-			Expected: s.Expected,
+			XrayID:        s.ID,
+			Index:         s.Index,
+			Action:        s.Action,
+			Data:          s.Data,
+			Expected:      s.Expected,
+			CalledTestKey: s.CalledTestKey,
 		}
 	}
 	if err := a.repo.SetTestSteps(profileID, testKey, steps); err != nil {
