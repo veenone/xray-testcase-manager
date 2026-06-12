@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [1.3.1] - 2026-06-12
+
+### Fixed
+- **Create / Edit Profile** — the Project Key field now accepts underscores, so
+  Jira Data Center keys like `RND_P_4TFINT_05` / `RND_I_XXXXX_XX` validate
+  correctly. Previously the client-side check allowed only letters and digits and
+  rejected valid keys. (RND_P_4TFINT_05-197)
+
 ## [1.3.0] - 2026-06-12
 
 ### Added
@@ -81,6 +89,7 @@ with on-commit sync, bulk operations, Test Sets/Plans/Executions, Test
 Repository folders, preconditions, CSV/XLSX import & export, pytest scaffold,
 statistics dashboard, diagnostics, light/dark themes, profile management).
 
+[1.3.1]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.3.1
 [1.3.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.3.0
 [1.2.1]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.2.1
 [1.2.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.2.0

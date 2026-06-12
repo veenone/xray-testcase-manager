@@ -18,13 +18,14 @@ interface Props {
 }
 
 // projectKeyError validates a Jira project key, rejecting trailing slashes,
-// spaces, and other special characters. Jira keys are letters/digits starting
-// with a letter (we accept any case and upper-case on input).
+// spaces, and other invalid characters. Jira DC project keys start with a letter
+// and contain letters, digits, and underscores (e.g. RND_P_4TFINT_05) — we
+// accept any case and upper-case on input.
 function projectKeyError(key: string): string {
   const k = key.trim();
   if (k === "") return "";
-  if (!/^[A-Z][A-Z0-9]+$/.test(k)) {
-    return "Project key must be 2+ letters/digits starting with a letter — no spaces, slashes, or special characters.";
+  if (!/^[A-Z][A-Z0-9_]+$/.test(k)) {
+    return "Project key must start with a letter and contain only letters, digits, and underscores — no spaces, slashes, or other special characters.";
   }
   return "";
 }
