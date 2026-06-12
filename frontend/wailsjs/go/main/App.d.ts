@@ -171,6 +171,8 @@ export function ListStatuses(arg1:string):Promise<Array<string>>;
 
 export function ListSyncLog(arg1:string,arg2:number):Promise<Array<testrepo.SyncLogEntry>>;
 
+export function ListTestCallLinks(arg1:string):Promise<Array<testrepo.TestCallLink>>;
+
 export function ListTests(arg1:string,arg2:testrepo.Query):Promise<testrepo.Page>;
 
 export function ListTestsForPrecondition(arg1:string,arg2:string):Promise<Array<testrepo.PreconditionTest>>;

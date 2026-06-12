@@ -330,6 +330,10 @@ export function ListSyncLog(arg1, arg2) {
   return window['go']['main']['App']['ListSyncLog'](arg1, arg2);
 }
 
+export function ListTestCallLinks(arg1) {
+  return window['go']['main']['App']['ListTestCallLinks'](arg1);
+}
+
 export function ListTests(arg1, arg2) {
   return window['go']['main']['App']['ListTests'](arg1, arg2);
 }

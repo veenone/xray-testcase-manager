@@ -3,6 +3,7 @@ import {
   ListTests,
   ListMatchingKeys,
   ListStatuses,
+  ListTestCallLinks,
   ExportTests,
   CreateSavedView,
   ListSavedViews,
@@ -112,7 +113,12 @@ function loadColumns(): ColState[] {
 }
 
 // renderCell returns the table cell for one column of one Test row.
-function renderCell(key: ColKey, t: TestCase, hasPending: boolean) {
+function renderCell(
+  key: ColKey,
+  t: TestCase,
+  hasPending: boolean,
+  callsOthers: boolean,
+) {
   switch (key) {
     case "key":
       return (
@@ -123,6 +129,14 @@ function renderCell(key: ColKey, t: TestCase, hasPending: boolean) {
             </span>
           )}
           {t.key}
+          {callsOthers && (
+            <span
+              className="row-calls-badge"
+              title="This test calls another test in its steps"
+            >
+              ⮡
+            </span>
+          )}
         </td>
       );
     case "summary":
@@ -205,6 +219,8 @@ export function TestTable({
   const [pageInput, setPageInput] = useState("");
 
   const [page, setPage] = useState<TestPage>({ tests: [], total: 0 });
+  // Keys of tests that call another test in their steps — drives the grid cue.
+  const [callerKeys, setCallerKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectingAll, setSelectingAll] = useState(false);
@@ -220,6 +236,23 @@ export function TestTable({
   useEffect(() => {
     localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(columns));
   }, [columns]);
+
+  // Which tests call another test — used to badge caller rows in the grid (#2).
+  useEffect(() => {
+    if (!profileId) return;
+    let cancelled = false;
+    ListTestCallLinks(profileId)
+      .then((links) => {
+        if (cancelled) return;
+        setCallerKeys(new Set((links ?? []).map((l) => l.callerKey)));
+      })
+      .catch(() => {
+        if (!cancelled) setCallerKeys(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, refreshKey]);
   const visibleColumns = columns.filter((c) => c.visible);
 
   function toggleColumn(key: ColKey) {
@@ -646,6 +679,7 @@ export function TestTable({
             {page.tests.map((t) => {
               const hasPending = pendingByTestKey.has(t.key);
               const isSelected = selectedSet.has(t.key);
+              const callsOthers = callerKeys.has(t.key);
               return (
                 <tr
                   key={t.key}
@@ -665,7 +699,9 @@ export function TestTable({
                       onChange={() => onToggleSelect(t.key)}
                     />
                   </td>
-                  {visibleColumns.map((c) => renderCell(c.key, t, hasPending))}
+                  {visibleColumns.map((c) =>
+                    renderCell(c.key, t, hasPending, callsOthers),
+                  )}
                 </tr>
               );
             })}

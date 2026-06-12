@@ -1245,6 +1245,28 @@ export namespace testrepo {
 	        this.testCount = source["testCount"];
 	    }
 	}
+	export class TestCallLink {
+	    callerKey: string;
+	    callerSummary: string;
+	    calledKey: string;
+	    calledSummary: string;
+	    calledExists: boolean;
+	    stepIndex: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TestCallLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.callerKey = source["callerKey"];
+	        this.callerSummary = source["callerSummary"];
+	        this.calledKey = source["calledKey"];
+	        this.calledSummary = source["calledSummary"];
+	        this.calledExists = source["calledExists"];
+	        this.stepIndex = source["stepIndex"];
+	    }
+	}
 	
 	export class TestDraft {
 	    summary: string;

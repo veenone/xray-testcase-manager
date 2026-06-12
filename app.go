@@ -1050,6 +1050,15 @@ func (a *App) AddCalledTestStep(profileID, testKey, calledTestKey string) (testr
 	return a.repo.AddCalledTestStep(profileID, testKey, calledTestKey)
 }
 
+// ListTestCallLinks returns every "call test" relationship in the cache —
+// which tests call which — for the Test Calls view and grid cue (#2 follow-up).
+func (a *App) ListTestCallLinks(profileID string) ([]testrepo.TestCallLink, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListTestCallLinks(profileID)
+}
+
 // CloneTestSteps appends Steps of sourceKey onto targetKey, queuing each as a
 // local step-add for commit (FR-2.5) — a quick way to seed a Test from an
 // existing one. stepIDs selects which source steps to copy (a selective clone);

@@ -60,6 +60,7 @@ import { ContainersView } from "./components/ContainersView";
 import { PreconditionsView } from "./components/PreconditionsView";
 import { RequirementsView } from "./components/RequirementsView";
 import { DuplicatesView } from "./components/DuplicatesView";
+import { TestCallsView } from "./components/TestCallsView";
 import { DiagnosticsModal } from "./components/DiagnosticsModal";
 import { SyncHistoryModal } from "./components/SyncHistoryModal";
 import { ImportTestsModal } from "./components/ImportTestsModal";
@@ -141,6 +142,7 @@ function App() {
     | "preconditions"
     | "requirements"
     | "duplicates"
+    | "testcalls"
     | "dashboard"
     | "plans"
   >("browse");
@@ -938,6 +940,12 @@ function App() {
             Duplicates
           </button>
           <button
+            className={`view-tab${view === "testcalls" ? " view-tab-active" : ""}`}
+            onClick={() => setView("testcalls")}
+          >
+            Test Calls
+          </button>
+          <button
             className={`view-tab${view === "dashboard" ? " view-tab-active" : ""}`}
             onClick={() => setView("dashboard")}
           >
@@ -1121,6 +1129,17 @@ function App() {
             refreshKey={refreshKey}
             folders={folders}
             pendingByTestKey={pendingByTestKey}
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              reloadPending();
+            }}
+          />
+        </main>
+      ) : view === "testcalls" ? (
+        <main className="content content-dashboard">
+          <TestCallsView
+            profileId={activeId}
+            refreshKey={refreshKey}
             onChanged={() => {
               setRefreshKey((k) => k + 1);
               reloadPending();

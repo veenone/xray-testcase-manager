@@ -3688,3 +3688,152 @@ tr.row-checked:hover {
   font-weight: 600;
   color: var(--accent);
 }
+
+/* Test Calls view (#2 follow-up) — caller -> called relationships. */
+.testcalls {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+.testcalls-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.testcalls-head h2 {
+  margin: 0;
+}
+.testcalls-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.testcalls-stat {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.testcalls-stat b {
+  color: var(--text);
+}
+.testcalls-stat-broken {
+  color: #b45309;
+  border-color: #f0c277;
+}
+.testcalls-stat-broken b {
+  color: #b45309;
+}
+.testcalls-stat-cycle {
+  color: #b91c1c;
+  border-color: #f0a9a9;
+}
+.testcalls-stat-cycle b {
+  color: #b91c1c;
+}
+.testcalls-empty {
+  margin-top: 24px;
+  max-width: 560px;
+}
+.testcalls-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.testcalls-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 10px 14px;
+}
+.testcalls-card-cycle {
+  border-color: #e88;
+  box-shadow: inset 3px 0 0 #dc2626;
+}
+.testcalls-caller {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.testcalls-key {
+  font-weight: 600;
+  color: var(--accent);
+}
+.testcalls-key-broken {
+  color: #b45309;
+  text-decoration: line-through;
+}
+.testcalls-summary {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.testcalls-callees {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 0 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.testcalls-callee {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+}
+.testcalls-arrow {
+  color: var(--accent);
+  font-weight: 700;
+}
+.testcalls-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: 600;
+}
+.testcalls-badge-broken {
+  background: #fef3c7;
+  color: #92400e;
+}
+.testcalls-badge-cycle {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Generic right slide-over for a TestDetail opened from a list view. */
+.detail-slideover {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: flex-end;
+}
+.detail-slideover > div {
+  height: 100vh;
+  display: flex;
+}
+.detail-slideover .detail {
+  height: 100vh;
+  max-height: 100vh;
+}
+
+/* Grid cue: a test that calls another test in its steps (#2). */
+.row-calls-badge {
+  margin-left: 6px;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 12px;
+}
