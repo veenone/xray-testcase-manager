@@ -100,6 +100,7 @@ func appMenu(app *App) *menu.Menu {
 	view.AddText("Preconditions", nil, emit("menu:view-preconditions"))
 	view.AddText("Requirements", nil, emit("menu:view-requirements"))
 	view.AddText("Duplicates", nil, emit("menu:view-duplicates"))
+	view.AddText("Test Calls", nil, emit("menu:view-testcalls"))
 	view.AddText("Dashboard", nil, emit("menu:view-dashboard"))
 	view.AddText("Containers", nil, emit("menu:view-plans"))
 

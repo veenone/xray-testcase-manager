@@ -483,6 +483,7 @@ function App() {
     "menu:view-dashboard": () => setView("dashboard"),
     "menu:view-plans": () => setView("plans"),
     "menu:view-duplicates": () => setView("duplicates"),
+    "menu:view-testcalls": () => setView("testcalls"),
     "menu:sync-history": () => setShowSyncHistory(true),
     "menu:diagnostics": () => setShowDiagnostics(true),
     "menu:about": () => setShowAbout(true),
