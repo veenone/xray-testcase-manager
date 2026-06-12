@@ -2069,6 +2069,33 @@ tr.row-selected {
 .req-kind {
   background: #0e7490;
 }
+/* Covering-test rows open the test detail in a right slide-over (#5). */
+.reqs-test-row {
+  cursor: pointer;
+}
+.reqs-test-row:hover {
+  background: var(--surface-2);
+}
+.reqs-test-row-active {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.reqs-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: flex-end;
+}
+.reqs-detail-overlay > div {
+  height: 100vh;
+  display: flex;
+}
+.reqs-detail-overlay .detail {
+  height: 100vh;
+  max-height: 100vh;
+}
 .reqs-list-head {
   display: flex;
   align-items: center;
