@@ -3837,3 +3837,41 @@ tr.row-checked:hover {
   font-weight: 700;
   font-size: 12px;
 }
+
+/* Test Calls: controls row, collapse toggle, call count. */
+.testcalls-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.testcalls-bulk {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.testcalls-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.testcalls-toggle:hover {
+  color: var(--text);
+}
+.testcalls-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 999px;
+  min-width: 20px;
+  text-align: center;
+  padding: 1px 7px;
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ListTestCallLinks, errMsg } from "../api";
 import type { TestCallLink } from "../api";
 import { TestDetail } from "./TestDetail";
+import { Pager } from "./Pager";
 
 interface Props {
   profileId: string;
@@ -79,6 +80,10 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
   const [error, setError] = useState("");
   const [detailKey, setDetailKey] = useState("");
   const [detailVersion, setDetailVersion] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  // Caller keys whose callee list is collapsed (default: all expanded).
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!profileId) return;
@@ -117,6 +122,25 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
     [links],
   );
   const callerCount = callers.length;
+
+  // Paginate the caller cards so a project with many linked tests stays usable.
+  const totalPages = Math.max(1, Math.ceil(callerCount / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageCallers = callers.slice(
+    safePage * pageSize,
+    safePage * pageSize + pageSize,
+  );
+
+  function toggle(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  const expandAll = () => setCollapsed(new Set());
+  const collapseAll = () => setCollapsed(new Set(callers.map(([k]) => k)));
 
   if (loading && links.length === 0) {
     return <div className="dashboard muted">Loading call relationships…</div>;
@@ -161,29 +185,67 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
           links appear here.
         </p>
       ) : (
-        <ul className="testcalls-list">
-          {callers.map(([callerKey, { summary, calls }]) => (
-            <li
-              key={callerKey}
-              className={`testcalls-card${cycles.has(callerKey) ? " testcalls-card-cycle" : ""}`}
-            >
-              <div className="testcalls-caller">
-                <button
-                  className="link-btn testcalls-key"
-                  onClick={() => setDetailKey(callerKey)}
-                  title="Open this test's detail"
+        <>
+          <div className="testcalls-controls">
+            <div className="testcalls-bulk">
+              <button className="btn" onClick={expandAll} title="Expand every caller">
+                Expand all
+              </button>
+              <button className="btn" onClick={collapseAll} title="Collapse every caller">
+                Collapse all
+              </button>
+            </div>
+            <Pager
+              page={safePage}
+              pageSize={pageSize}
+              total={callerCount}
+              onPage={setPage}
+              onPageSize={(n) => {
+                setPageSize(n);
+                setPage(0);
+              }}
+            />
+          </div>
+          <ul className="testcalls-list">
+            {pageCallers.map(([callerKey, { summary, calls }]) => {
+              const isCollapsed = collapsed.has(callerKey);
+              return (
+                <li
+                  key={callerKey}
+                  className={`testcalls-card${cycles.has(callerKey) ? " testcalls-card-cycle" : ""}`}
                 >
-                  <span className="mono">{callerKey}</span>
-                </button>
-                <span className="testcalls-summary">{summary}</span>
-                {cycles.has(callerKey) && (
-                  <span className="testcalls-badge testcalls-badge-cycle" title="This test is part of a call cycle">
-                    cycle
-                  </span>
-                )}
-              </div>
-              <ul className="testcalls-callees">
-                {calls.map((l) => (
+                  <div className="testcalls-caller">
+                    <button
+                      className="testcalls-toggle"
+                      onClick={() => toggle(callerKey)}
+                      aria-expanded={!isCollapsed}
+                      title={isCollapsed ? "Expand calls" : "Collapse calls"}
+                    >
+                      {isCollapsed ? "▸" : "▾"}
+                    </button>
+                    <button
+                      className="link-btn testcalls-key"
+                      onClick={() => setDetailKey(callerKey)}
+                      title="Open this test's detail"
+                    >
+                      <span className="mono">{callerKey}</span>
+                    </button>
+                    <span className="testcalls-summary">{summary}</span>
+                    <span
+                      className="testcalls-count"
+                      title={`${calls.length} call${calls.length === 1 ? "" : "s"}`}
+                    >
+                      {calls.length}
+                    </span>
+                    {cycles.has(callerKey) && (
+                      <span className="testcalls-badge testcalls-badge-cycle" title="This test is part of a call cycle">
+                        cycle
+                      </span>
+                    )}
+                  </div>
+                  {!isCollapsed && (
+                    <ul className="testcalls-callees">
+                      {calls.map((l) => (
                   <li key={`${l.calledKey}-${l.stepIndex}`} className="testcalls-callee">
                     <span className="testcalls-arrow" aria-hidden="true">
                       ⮡
@@ -215,12 +277,15 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
                         cycle
                       </span>
                     )}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
+                          </li>
+                        ))}
+                      </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
 
       {detailKey && (
