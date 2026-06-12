@@ -3,6 +3,7 @@ package testrepo
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // SankeyNode is one node in the traceability flow (FR-9). Layer 0 = Test Plan
@@ -34,10 +35,11 @@ type Sankey struct {
 // counted once per layer, all three layers sum to the same total, so the
 // diagram balances. Computed entirely from the local store.
 //
-// planFilter / execFilter narrow the flow: a plan filter restricts to runs of
-// Tests in that Plan (and collapses layer 0 to that single Plan); an execution
-// filter restricts to that one Execution. Either may be "" for "all".
-func (r *Repository) GetTraceabilitySankey(profileID, planFilter, execFilter string) (Sankey, error) {
+// planFilters / execFilters narrow the flow to runs of Tests in those Plans /
+// those Executions; either empty means "all". crossProjectOnly keeps only runs
+// whose Execution lives in a different Jira project than projectKey — surfacing
+// Test Plans in the current project that get executed cross-project (FR-9, #4).
+func (r *Repository) GetTraceabilitySankey(profileID, projectKey string, planFilters, execFilters []string, crossProjectOnly bool) (Sankey, error) {
 	out := Sankey{Nodes: []SankeyNode{}, Links: []SankeyLink{}}
 
 	plansByTest, err := r.testPlanMemberships(profileID)
@@ -55,15 +57,19 @@ func (r *Repository) GetTraceabilitySankey(profileID, planFilter, execFilter str
 		   ON c.profile_id = l.profile_id AND c.jira_key = l.container_key
 		 WHERE l.profile_id = ? AND c.kind = 'testexec'`
 	args := []any{profileID}
-	if execFilter != "" {
-		q += " AND l.container_key = ?"
-		args = append(args, execFilter)
+	if execs := nonEmptyKeys(execFilters); len(execs) > 0 {
+		q += " AND l.container_key IN (" + sqlPlaceholders(len(execs)) + ")"
+		for _, e := range execs {
+			args = append(args, e)
+		}
 	}
-	if planFilter != "" {
-		q += ` AND l.test_key IN (
-			SELECT test_key FROM test_container_test
-			WHERE profile_id = ? AND container_key = ?)`
-		args = append(args, profileID, planFilter)
+	if plans := nonEmptyKeys(planFilters); len(plans) > 0 {
+		q += " AND l.test_key IN (SELECT test_key FROM test_container_test" +
+			" WHERE profile_id = ? AND container_key IN (" + sqlPlaceholders(len(plans)) + "))"
+		args = append(args, profileID)
+		for _, p := range plans {
+			args = append(args, p)
+		}
 	}
 	execRows, err := r.db.Query(q, args...)
 	if err != nil {
@@ -89,12 +95,12 @@ func (r *Repository) GetTraceabilitySankey(profileID, planFilter, execFilter str
 			return out, err
 		}
 
-		var planID, planLabel string
-		if planFilter != "" {
-			planID, planLabel = "plan:"+planFilter, orKey(summaryByKey[planFilter], planFilter)
-		} else {
-			planID, planLabel = planBucket(plansByTest[testKey], summaryByKey)
+		// Keep only cross-project executions when asked: the Test Plan is in the
+		// current project but the Execution's key prefix is a different project.
+		if crossProjectOnly && projectKey != "" && projectKeyOf(execKey) == projectKey {
+			continue
 		}
+		planID, planLabel := planBucket(plansByTest[testKey], summaryByKey)
 		execID := "exec:" + execKey
 		execLabel := orKey(summaryByKey[execKey], execKey)
 		status := runStatus
@@ -206,4 +212,34 @@ func orKey(summary, key string) string {
 		return key
 	}
 	return key + " — " + summary
+}
+
+// nonEmptyKeys returns the trimmed, non-empty entries of keys.
+func nonEmptyKeys(keys []string) []string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if s := strings.TrimSpace(k); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// sqlPlaceholders returns "?, ?, …" with n placeholders for an IN clause.
+func sqlPlaceholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.Repeat("?, ", n-1) + "?"
+}
+
+// projectKeyOf returns the Jira project-key prefix of an issue key — everything
+// before the first dash, since project keys never contain "-". Handles both real
+// keys ("RND_P_4TFINT_05-123" -> "RND_P_4TFINT_05") and the demo container shape
+// ("DEMO-TE-1" -> "DEMO"); returns the whole key if there's no dash.
+func projectKeyOf(key string) string {
+	if i := strings.Index(key, "-"); i > 0 {
+		return key[:i]
+	}
+	return key
 }

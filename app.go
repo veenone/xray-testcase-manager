@@ -731,11 +731,11 @@ func (a *App) ListRequirementsWithCoverage(profileID string) ([]testrepo.Require
 // requirement coverage -> covering Test run result -> Test review sign-off.
 // reqFilter (a requirement key, or "" for all) narrows the flow to one
 // requirement, which then appears as a labelled first node.
-func (a *App) GetRequirementTraceability(profileID, reqFilter string) (testrepo.Sankey, error) {
+func (a *App) GetRequirementTraceability(profileID string, reqFilters []string) (testrepo.Sankey, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.Sankey{Nodes: []testrepo.SankeyNode{}, Links: []testrepo.SankeyLink{}}, err
 	}
-	return a.repo.GetRequirementTraceability(profileID, reqFilter)
+	return a.repo.GetRequirementTraceability(profileID, reqFilters)
 }
 
 // ListTestsForRequirement returns the Tests covering a requirement with each
@@ -1448,11 +1448,17 @@ func (a *App) CleanSampleData(profileID string) (int, error) {
 // GetTraceabilitySankey returns the Plan -> Execution -> run-status traceability
 // flow for the dashboard (FR-9), optionally narrowed to one Test Plan and/or one
 // Test Execution (pass "" for either to include all).
-func (a *App) GetTraceabilitySankey(profileID, planFilter, execFilter string) (testrepo.Sankey, error) {
+func (a *App) GetTraceabilitySankey(profileID string, planFilters, execFilters []string, crossProjectOnly bool) (testrepo.Sankey, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.Sankey{}, err
 	}
-	return a.repo.GetTraceabilitySankey(profileID, planFilter, execFilter)
+	// The cross-project filter compares each Execution's project key against the
+	// active profile's project.
+	projectKey := ""
+	if p, err := a.profiles.Get(profileID); err == nil {
+		projectKey = p.ProjectKey
+	}
+	return a.repo.GetTraceabilitySankey(profileID, projectKey, planFilters, execFilters, crossProjectOnly)
 }
 
 // --- pytest helper (FR-7.2) ---

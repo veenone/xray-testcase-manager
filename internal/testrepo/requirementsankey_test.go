@@ -7,7 +7,7 @@ import (
 func TestRequirementTraceabilityFlowBalances(t *testing.T) {
 	repo := seedReqRepo(t)
 
-	sk, err := repo.GetRequirementTraceability("p1", "")
+	sk, err := repo.GetRequirementTraceability("p1", nil)
 	if err != nil {
 		t.Fatalf("traceability: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestRequirementTraceabilityFlowBalances(t *testing.T) {
 func TestRequirementTraceabilityNodesAndLinks(t *testing.T) {
 	repo := seedReqRepo(t)
 
-	sk, err := repo.GetRequirementTraceability("p1", "")
+	sk, err := repo.GetRequirementTraceability("p1", nil)
 	if err != nil {
 		t.Fatalf("traceability: %v", err)
 	}

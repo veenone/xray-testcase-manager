@@ -13,10 +13,10 @@ import (
 // the layers sum to the same total and the diagram balances. Computed entirely
 // from the local store, so it tracks the cache without a Jira call.
 //
-// The requirement is always the labelled first node ("KEY — summary"). reqFilter
-// narrows the flow to a single requirement (by key); an empty reqFilter shows
-// every requirement as its own first-layer node.
-func (r *Repository) GetRequirementTraceability(profileID, reqFilter string) (Sankey, error) {
+// The requirement is always the labelled first node ("KEY — summary").
+// reqFilters narrows the flow to the listed requirement keys; an empty list
+// shows every requirement as its own first-layer node.
+func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []string) (Sankey, error) {
 	out := Sankey{Nodes: []SankeyNode{}, Links: []SankeyLink{}}
 
 	reqs, err := r.ListRequirementsWithCoverage(profileID)
@@ -40,8 +40,12 @@ func (r *Repository) GetRequirementTraceability(profileID, reqFilter string) (Sa
 		return out, err
 	}
 
-	reqFilter = strings.TrimSpace(reqFilter)
-	filtered := reqFilter != ""
+	filterSet := map[string]bool{}
+	for _, k := range reqFilters {
+		if s := strings.TrimSpace(k); s != "" {
+			filterSet[s] = true
+		}
+	}
 
 	value := map[string]int{}
 	label := map[string]string{}
@@ -69,7 +73,7 @@ func (r *Repository) GetRequirementTraceability(profileID, reqFilter string) (Sa
 	}
 
 	for _, rq := range reqs {
-		if filtered && rq.Key != reqFilter {
+		if len(filterSet) > 0 && !filterSet[rq.Key] {
 			continue
 		}
 		reqID := "req:" + rq.Key

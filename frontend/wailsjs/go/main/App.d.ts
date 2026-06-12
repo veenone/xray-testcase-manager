@@ -105,7 +105,7 @@ export function GetContainerBoard(arg1:string,arg2:string):Promise<testrepo.Test
 
 export function GetDiagnostics():Promise<main.Diagnostics>;
 
-export function GetRequirementTraceability(arg1:string,arg2:string):Promise<testrepo.Sankey>;
+export function GetRequirementTraceability(arg1:string,arg2:Array<string>):Promise<testrepo.Sankey>;
 
 export function GetSettings():Promise<settings.Settings>;
 
@@ -131,7 +131,7 @@ export function GetTestSteps(arg1:string,arg2:string,arg3:boolean):Promise<Array
 
 export function GetTestTransitions(arg1:string,arg2:string):Promise<Array<jira.Transition>>;
 
-export function GetTraceabilitySankey(arg1:string,arg2:string,arg3:string):Promise<testrepo.Sankey>;
+export function GetTraceabilitySankey(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:boolean):Promise<testrepo.Sankey>;
 
 export function Health():Promise<main.HealthInfo>;
 

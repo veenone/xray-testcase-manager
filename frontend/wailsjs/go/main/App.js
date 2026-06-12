@@ -250,8 +250,8 @@ export function GetTestTransitions(arg1, arg2) {
   return window['go']['main']['App']['GetTestTransitions'](arg1, arg2);
 }
 
-export function GetTraceabilitySankey(arg1, arg2, arg3) {
-  return window['go']['main']['App']['GetTraceabilitySankey'](arg1, arg2, arg3);
+export function GetTraceabilitySankey(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GetTraceabilitySankey'](arg1, arg2, arg3, arg4);
 }
 
 export function Health() {

@@ -30,7 +30,7 @@ func TestTraceabilitySankeyBalancesAcrossLayers(t *testing.T) {
 		t.Fatalf("seed links: %v", err)
 	}
 
-	s, err := repo.GetTraceabilitySankey("p1", "", "")
+	s, err := repo.GetTraceabilitySankey("p1", "QA", nil, nil, false)
 	if err != nil {
 		t.Fatalf("sankey: %v", err)
 	}
@@ -65,11 +65,60 @@ func TestTraceabilitySankeyBalancesAcrossLayers(t *testing.T) {
 
 func TestTraceabilitySankeyEmptyWhenNoExecutions(t *testing.T) {
 	repo := newRepo(t)
-	s, err := repo.GetTraceabilitySankey("p1", "", "")
+	s, err := repo.GetTraceabilitySankey("p1", "QA", nil, nil, false)
 	if err != nil {
 		t.Fatalf("sankey: %v", err)
 	}
 	if len(s.Nodes) != 0 || len(s.Links) != 0 {
 		t.Errorf("expected empty graph, got %d nodes / %d links", len(s.Nodes), len(s.Links))
+	}
+}
+
+func TestTraceabilitySankeyCrossProjectFilter(t *testing.T) {
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{{Key: "QA-1", ID: "1"}}); err != nil {
+		t.Fatalf("seed tests: %v", err)
+	}
+	if err := repo.UpsertContainers("p1", []testrepo.Container{
+		{Key: "QA-TP-1", Kind: "testplan", Summary: "Plan A"},
+		{Key: "QA-TE-1", Kind: "testexec", Summary: "Same project"},
+		{Key: "OTHER-TE-9", Kind: "testexec", Summary: "Other project"},
+	}); err != nil {
+		t.Fatalf("seed containers: %v", err)
+	}
+	if err := repo.ReplaceAllContainerLinks("p1", []testrepo.ContainerLink{
+		{ContainerKey: "QA-TP-1", TestKey: "QA-1"},
+		{ContainerKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "PASS"},
+		{ContainerKey: "OTHER-TE-9", TestKey: "QA-1", RunStatus: "FAIL"},
+	}); err != nil {
+		t.Fatalf("seed links: %v", err)
+	}
+
+	has := func(s testrepo.Sankey, id string) bool {
+		for _, n := range s.Nodes {
+			if n.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	all, err := repo.GetTraceabilitySankey("p1", "QA", nil, nil, false)
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	if !has(all, "exec:QA-TE-1") || !has(all, "exec:OTHER-TE-9") {
+		t.Fatalf("unfiltered should include both executions; nodes=%+v", all.Nodes)
+	}
+
+	cross, err := repo.GetTraceabilitySankey("p1", "QA", nil, nil, true)
+	if err != nil {
+		t.Fatalf("cross: %v", err)
+	}
+	if has(cross, "exec:QA-TE-1") {
+		t.Errorf("cross-project filter should drop the same-project exec QA-TE-1")
+	}
+	if !has(cross, "exec:OTHER-TE-9") {
+		t.Errorf("cross-project filter should keep OTHER-TE-9; nodes=%+v", cross.Nodes)
 	}
 }
