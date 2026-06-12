@@ -788,12 +788,32 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 			// view from the placeholder key to the created issue (FR-1).
 			result.Created = append(result.Created, CreatedTest{TempKey: c.EntityKey, Key: realKey})
 		}
-		// Create the imported Test's steps (FR-10.7).
+		// Create the new Test's steps (FR-10.7). Prefer the local cache, which
+		// reflects any reorder/edit made after the test was drafted — the create
+		// payload (p.Steps) can be stale. We capture each real step id and clear
+		// the step pending rows below, so a leftover reorder can't later PUT
+		// against the temporary "new-N" ids: that mismatch is what 500s when
+		// committing a new test whose steps were reorganised.
+		type draftStep struct{ xrayID, action, data, expected string }
+		var stepSrc []draftStep
+		if cached, cErr := e.repo.ListTestSteps(profileID, key); cErr == nil && len(cached) > 0 {
+			for _, s := range cached {
+				stepSrc = append(stepSrc, draftStep{s.XrayID, s.Action, s.Data, s.Expected})
+			}
+		} else {
+			for _, s := range p.Steps {
+				stepSrc = append(stepSrc, draftStep{"", s.Action, s.Data, s.Expected})
+			}
+		}
 		stepErr := ""
-		for _, s := range p.Steps {
-			if _, sErr := e.client.CreateTestStep(ctx, key, s.Action, s.Data, s.Expected); sErr != nil {
+		for _, s := range stepSrc {
+			newID, sErr := e.client.CreateTestStep(ctx, key, s.action, s.data, s.expected)
+			if sErr != nil {
 				stepErr = sanitizeError(sErr.Error())
 				break
+			}
+			if newID != "" && s.xrayID != "" {
+				_ = e.repo.RenameTestStepID(profileID, key, s.xrayID, newID)
 			}
 		}
 		if stepErr != "" {
@@ -802,12 +822,48 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 			result.Failed = append(result.Failed, FailedCommit{TestKey: key, Error: "create step: " + stepErr})
 			continue
 		}
-		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+		// Clear the test_create row PLUS any step-level pending rows for this Test:
+		// the create just materialised the steps in their final order, so those
+		// changes are done and must not re-run in the per-Test pass (where they'd
+		// target ids that don't exist remotely). Step rows can be keyed by the
+		// temp key (the bare reorder key isn't rekeyed by RenameTest) or the real
+		// key, so collect both.
+		toClear := append([]int64{c.ID}, e.stepPendingRowIDs(profileID, c.EntityKey)...)
+		if key != c.EntityKey {
+			toClear = append(toClear, e.stepPendingRowIDs(profileID, key)...)
+		}
+		if err := e.repo.CommitPendingChanges(profileID, toClear); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: key, Error: "Jira created test but local cleanup failed: " + err.Error()})
 			continue
 		}
 		result.Succeeded = append(result.Succeeded, key)
 	}
+}
+
+// stepPendingRowIDs returns the ids of step-level pending changes for a Test —
+// edits/adds/deletes keyed "<testKey>:<id>" and the reorder keyed "<testKey>".
+// Used after a brand-new Test's steps are created so those rows can be cleared
+// instead of re-run (they reference local "new-N" ids that don't exist in Jira).
+func (e *Engine) stepPendingRowIDs(profileID, testKey string) []int64 {
+	changes, err := e.repo.ListPendingChanges(profileID)
+	if err != nil {
+		return nil
+	}
+	prefix := testKey + ":"
+	var ids []int64
+	for _, c := range changes {
+		switch c.EntityType {
+		case "test_step_order":
+			if c.EntityKey == testKey {
+				ids = append(ids, c.ID)
+			}
+		case "test_step", "test_step_add", "test_step_delete":
+			if strings.HasPrefix(c.EntityKey, prefix) {
+				ids = append(ids, c.ID)
+			}
+		}
+	}
+	return ids
 }
 
 // commitFolders pushes Test Repository folder operations (FR-13.3), reported

@@ -70,25 +70,21 @@
 .topbar-left {
   flex: 1 1 auto;
 }
+/* The view tabs always take their own full-width, centered row (order: 3 pushes
+   them below the wrapped flex line), keeping Browse / Preconditions / … visually
+   separate from the New Test / More / Sync actions and the profile controls. */
 .topbar-center {
-  flex: 0 1 auto;
+  order: 3;
+  flex: 1 0 100%;
+  justify-content: center;
+}
+.view-tabs {
+  max-width: 100%;
+  overflow-x: auto;
 }
 .topbar-right {
   flex: 1 1 auto;
   justify-content: flex-end;
-}
-/* Narrow windows: give the tab bar its own full-width, centered row so it can
-   never sit on top of the profile dropdown (left) or the actions (right). */
-@media (max-width: 1024px) {
-  .topbar-center {
-    order: 3;
-    flex: 1 0 100%;
-    justify-content: center;
-  }
-  .view-tabs {
-    max-width: 100%;
-    overflow-x: auto;
-  }
 }
 .brand {
   font-weight: 600;
