@@ -1175,6 +1175,7 @@ export namespace testrepo {
 	    action: string;
 	    data: string;
 	    expected: string;
+	    calledTestKey: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Step(source);
@@ -1187,6 +1188,7 @@ export namespace testrepo {
 	        this.action = source["action"];
 	        this.data = source["data"];
 	        this.expected = source["expected"];
+	        this.calledTestKey = source["calledTestKey"];
 	    }
 	}
 	export class StepDraft {
@@ -1241,6 +1243,28 @@ export namespace testrepo {
 	        this.profileId = source["profileId"];
 	        this.lastSyncedAt = source["lastSyncedAt"];
 	        this.testCount = source["testCount"];
+	    }
+	}
+	export class TestCallLink {
+	    callerKey: string;
+	    callerSummary: string;
+	    calledKey: string;
+	    calledSummary: string;
+	    calledExists: boolean;
+	    stepIndex: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TestCallLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.callerKey = source["callerKey"];
+	        this.callerSummary = source["callerSummary"];
+	        this.calledKey = source["calledKey"];
+	        this.calledSummary = source["calledSummary"];
+	        this.calledExists = source["calledExists"];
+	        this.stepIndex = source["stepIndex"];
 	    }
 	}
 	

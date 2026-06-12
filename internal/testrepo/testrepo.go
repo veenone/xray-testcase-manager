@@ -115,6 +115,9 @@ type Step struct {
 	Action   string `json:"action"`
 	Data     string `json:"data"`
 	Expected string `json:"expected"`
+	// CalledTestKey is set when this step calls another Test (an Xray "test
+	// call") instead of being a manual action/data/expected step.
+	CalledTestKey string `json:"calledTestKey"`
 }
 
 // PendingChange is one uncommitted local edit awaiting a push (FR-1.5 / 1.6).
@@ -1937,9 +1940,9 @@ func (r *Repository) SetTestSteps(profileID, testKey string, steps []Step) error
 	for _, s := range steps {
 		if _, err := tx.Exec(
 			`INSERT INTO test_step
-			   (profile_id, test_key, xray_id, idx, action, data, expected)
-			   VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			profileID, testKey, s.XrayID, s.Index, s.Action, s.Data, s.Expected,
+			   (profile_id, test_key, xray_id, idx, action, data, expected, called_test_key)
+			   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			profileID, testKey, s.XrayID, s.Index, s.Action, s.Data, s.Expected, s.CalledTestKey,
 		); err != nil {
 			return fmt.Errorf("insert step: %w", err)
 		}
@@ -1952,7 +1955,7 @@ func (r *Repository) SetTestSteps(profileID, testKey string, steps []Step) error
 // the caller is responsible for deciding whether to fetch from Jira.
 func (r *Repository) ListTestSteps(profileID, testKey string) ([]Step, error) {
 	rows, err := r.db.Query(
-		`SELECT xray_id, idx, action, data, expected
+		`SELECT xray_id, idx, action, data, expected, called_test_key
 		 FROM test_step
 		 WHERE profile_id = ? AND test_key = ?
 		 ORDER BY idx`,
@@ -1966,7 +1969,7 @@ func (r *Repository) ListTestSteps(profileID, testKey string) ([]Step, error) {
 	out := []Step{}
 	for rows.Next() {
 		var s Step
-		if err := rows.Scan(&s.XrayID, &s.Index, &s.Action, &s.Data, &s.Expected); err != nil {
+		if err := rows.Scan(&s.XrayID, &s.Index, &s.Action, &s.Data, &s.Expected, &s.CalledTestKey); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -2632,10 +2635,10 @@ func (r *Repository) DeleteTestStep(profileID, testKey, xrayID string) error {
 
 	var s Step
 	err = tx.QueryRow(
-		`SELECT xray_id, idx, action, data, expected
+		`SELECT xray_id, idx, action, data, expected, called_test_key
 		   FROM test_step WHERE profile_id = ? AND test_key = ? AND xray_id = ?`,
 		profileID, testKey, xrayID,
-	).Scan(&s.XrayID, &s.Index, &s.Action, &s.Data, &s.Expected)
+	).Scan(&s.XrayID, &s.Index, &s.Action, &s.Data, &s.Expected, &s.CalledTestKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -2729,6 +2732,25 @@ func (r *Repository) DeleteTestStep(profileID, testKey, xrayID string) error {
 //
 // Returns the created Step so the caller can render it without a re-fetch.
 func (r *Repository) AddTestStep(profileID, testKey, action, data, expected string) (Step, error) {
+	return r.addStep(profileID, testKey, Step{Action: action, Data: data, Expected: expected})
+}
+
+// AddCalledTestStep appends a "call test" step — a step that invokes another
+// Test (Xray test call) rather than a manual action/data/expected step. Queued
+// for commit like any other step add (FR-2.5, #2).
+func (r *Repository) AddCalledTestStep(profileID, testKey, calledTestKey string) (Step, error) {
+	if strings.TrimSpace(calledTestKey) == "" {
+		return Step{}, fmt.Errorf("a called test key is required")
+	}
+	if calledTestKey == testKey {
+		return Step{}, fmt.Errorf("a test cannot call itself")
+	}
+	return r.addStep(profileID, testKey, Step{CalledTestKey: calledTestKey})
+}
+
+// addStep is the shared implementation behind AddTestStep / AddCalledTestStep:
+// it appends s (XrayID and Index are assigned here) and queues a step-add.
+func (r *Repository) addStep(profileID, testKey string, s Step) (Step, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return Step{}, fmt.Errorf("begin transaction: %w", err)
@@ -2760,11 +2782,12 @@ func (r *Repository) AddTestStep(profileID, testKey, action, data, expected stri
 		return Step{}, err
 	}
 
-	s := Step{XrayID: tempID, Index: nextIdx, Action: action, Data: data, Expected: expected}
+	s.XrayID = tempID
+	s.Index = nextIdx
 	if _, err := tx.Exec(
-		`INSERT INTO test_step (profile_id, test_key, xray_id, idx, action, data, expected)
-		   VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		profileID, testKey, s.XrayID, s.Index, s.Action, s.Data, s.Expected,
+		`INSERT INTO test_step (profile_id, test_key, xray_id, idx, action, data, expected, called_test_key)
+		   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		profileID, testKey, s.XrayID, s.Index, s.Action, s.Data, s.Expected, s.CalledTestKey,
 	); err != nil {
 		return Step{}, fmt.Errorf("insert test_step: %w", err)
 	}
@@ -3035,9 +3058,9 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 			return fmt.Errorf("decode step snapshot: %w", err)
 		}
 		if _, err := tx.Exec(
-			`INSERT INTO test_step (profile_id, test_key, xray_id, idx, action, data, expected)
-			   VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			profileID, testKey, snap.XrayID, snap.Index, snap.Action, snap.Data, snap.Expected,
+			`INSERT INTO test_step (profile_id, test_key, xray_id, idx, action, data, expected, called_test_key)
+			   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			profileID, testKey, snap.XrayID, snap.Index, snap.Action, snap.Data, snap.Expected, snap.CalledTestKey,
 		); err != nil {
 			return fmt.Errorf("restore test_step: %w", err)
 		}

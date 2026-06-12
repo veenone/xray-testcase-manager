@@ -19,6 +19,27 @@ you commit.
 
 ---
 
+## What's new in 1.3.0
+
+- **Call-test steps** — a step can call another test (Xray test call) instead of
+  manual content. Add one with **+ Call test** in the Steps header. See
+  [Calling another test](#calling-another-test-test-calls).
+- **Test Calls view** — a new tab mapping which tests call which, with
+  broken/cyclic calls flagged and a "calls" badge in the grid. See
+  [Calling another test](#calling-another-test-test-calls).
+- **Multi-select Sankey filters** and a **Cross-project only** toggle on the
+  traceability diagrams. See [Dashboard & traceability](#12-dashboard--traceability).
+- **Per-view sync / refresh** on Requirements, Containers, and the Dashboard.
+  See [Syncing](#14-syncing).
+- **Open a covering test from Requirements** — click it to view its detail in a
+  slide-over. See [Requirements & coverage](#9-requirements--coverage).
+- **Fixes** — view tabs always on their own row; committing a new test with
+  reordered steps no longer errors.
+
+See [`CHANGELOG.md`](../../CHANGELOG.md) for the full history.
+
+---
+
 ## Contents
 
 1. [Installation & first launch](#1-installation--first-launch)
@@ -195,6 +216,26 @@ for seeding a test from a similar existing one.
 ![Figure 36: Clone steps from another test](images/36-clone-steps.png)
 *Figure 36 — "Clone from…": after picking a source test, select which steps to
 copy (whole or selective) before appending them.*
+
+### Calling another test (test calls)
+
+Instead of manual Action / Data / Expected content, a step can **call another
+test** — Xray's "test call". In the Steps header click **+ Call test**, search
+for and pick the test to call, and the step is appended as **⮡ Calls KEY**. Call
+steps reorder, delete, and commit like any other step.
+
+> The live Xray API for creating a call step is still being verified against a
+> real instance; in demo mode it works end to end.
+
+The **Test Calls** tab gives a project-wide view of these relationships:
+
+- callers are grouped with the tests they call;
+- caller rows in the Browse grid show a **⮡ calls** badge;
+- a call whose target isn't in the local cache is flagged **missing**
+  (deleted, never synced, or in another project);
+- when tests call each other in a loop, every test in the cycle is flagged
+  **cycle** (a cyclic call would recurse forever when executed);
+- use **Expand all / Collapse all** and the pager when there are many callers.
 
 ### Custom fields
 
@@ -380,8 +421,8 @@ breakdowns, coverage, and two **traceability Sankey** diagrams.
 
 This diagram flows **Requirement → Coverage → Test plan → Test result**. With
 **All requirements** selected, every requirement is its own node in the first
-column; the dropdown narrows the flow to a single requirement. Hover any node to
-trace its threads.
+column; the requirements filter is **multi-select** — tick one or several to
+narrow the flow. Hover any node to trace its threads.
 
 ![Figure 26: Requirement traceability Sankey](images/26-requirement-sankey.png)
 *Figure 26 — Requirement traceability: requirement → coverage → Test plan → run
@@ -389,8 +430,11 @@ result, with the requirement filter.*
 
 ### Execution traceability Sankey
 
-A second diagram flows **Test Plan → Test Execution → run status**, with plan and
-execution filters.
+A second diagram flows **Test Plan → Test Execution → run status**. The plan and
+execution filters are **multi-select**, and a **Cross-project only** toggle keeps
+just the runs whose Test Execution lives in a *different* Jira project than the
+current profile — useful when a plan in one project is executed on another
+project's board. (Those cross-project executions are pulled in during sync.)
 
 ![Figure 27: Execution traceability Sankey](images/27-execution-sankey.png)
 *Figure 27 — Plan → Execution → status traceability.*
@@ -436,6 +480,14 @@ bar.*
 - **More → Full resync (re-pull folders)** — ignores the watermark and re-maps
   Test Repository folder membership. Slower; use after big folder reshuffles.
 - **More → Sync history** — past syncs with timing and counts.
+
+**Per-view refresh.** You don't always need a full sync. Some views refresh just
+their own data:
+
+- **Requirements → Sync** — pulls only requirement coverage from Jira.
+- **Containers → Sync** — pulls only Test Sets / Plans / Executions.
+- **Dashboard → Refresh** — recomputes the dashboard from the local cache.
+- **Duplicates → Scan** — re-scans the cache for duplicates.
 
 ![Figure 31: Sync history](images/31-sync-history.png)
 *Figure 31 — The paginated sync history.*

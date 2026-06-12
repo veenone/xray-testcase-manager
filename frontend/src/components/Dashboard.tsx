@@ -17,6 +17,7 @@ import type {
 import { SankeyChart } from "./SankeyChart";
 import { RequirementSankey } from "./RequirementSankey";
 import { DuplicatesCard } from "./DuplicatesCard";
+import { MultiSelect } from "./MultiSelect";
 
 interface Props {
   profileId: string;
@@ -32,16 +33,20 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
   const [sankey, setSankey] = useState<Sankey | null>(null);
   const [reqSankey, setReqSankey] = useState<Sankey | null>(null);
   const [reqSankeyErr, setReqSankeyErr] = useState("");
-  const [reqSankeyFilter, setReqSankeyFilter] = useState("");
+  const [reqSel, setReqSel] = useState<string[]>([]);
   const [reqOptions, setReqOptions] = useState<RequirementCoverage[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  // Local refresh: recompute the dashboard from the cache without a full sync (#7).
+  const [nonce, setNonce] = useState(0);
 
-  // Traceability filters (FR-9): narrow the flow to one Test Plan / Execution.
+  // Traceability filters (FR-9): narrow the flow to chosen Test Plans /
+  // Executions (multi-select), and optionally to cross-project executions only.
   const [plans, setPlans] = useState<Container[]>([]);
   const [execs, setExecs] = useState<Container[]>([]);
-  const [planFilter, setPlanFilter] = useState("");
-  const [execFilter, setExecFilter] = useState("");
+  const [planSel, setPlanSel] = useState<string[]>([]);
+  const [execSel, setExecSel] = useState<string[]>([]);
+  const [crossProject, setCrossProject] = useState(false);
   const [sankeyErr, setSankeyErr] = useState("");
 
   useEffect(() => {
@@ -62,14 +67,14 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey]);
+  }, [profileId, refreshKey, nonce]);
 
   // Filter options: the project's Test Plans and Test Executions.
   useEffect(() => {
     if (!profileId) return;
     let cancelled = false;
-    setPlanFilter("");
-    setExecFilter("");
+    setPlanSel([]);
+    setExecSel([]);
     Promise.all([
       ListContainers(profileId, "testplan"),
       ListContainers(profileId, "testexec"),
@@ -83,14 +88,14 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey]);
+  }, [profileId, refreshKey, nonce]);
 
   // The Sankey re-fetches whenever the filters change (or the data refreshes).
   useEffect(() => {
     if (!profileId) return;
     let cancelled = false;
     setSankeyErr("");
-    GetTraceabilitySankey(profileId, planFilter, execFilter)
+    GetTraceabilitySankey(profileId, planSel, execSel, crossProject)
       .then((sk) => {
         if (!cancelled) setSankey(sk);
       })
@@ -103,7 +108,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey, planFilter, execFilter]);
+  }, [profileId, refreshKey, planSel, execSel, crossProject, nonce]);
 
   // Requirement traceability is independent of the plan/exec filters, but can be
   // narrowed to a single requirement.
@@ -111,7 +116,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     if (!profileId) return;
     let cancelled = false;
     setReqSankeyErr("");
-    GetRequirementTraceability(profileId, reqSankeyFilter)
+    GetRequirementTraceability(profileId, reqSel)
       .then((sk) => {
         if (!cancelled) setReqSankey(sk);
       })
@@ -123,7 +128,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey, reqSankeyFilter]);
+  }, [profileId, refreshKey, reqSel, nonce]);
 
   // The requirement list drives the Sankey filter dropdown.
   useEffect(() => {
@@ -139,7 +144,7 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey]);
+  }, [profileId, refreshKey, nonce]);
 
   if (loading && !stats) {
     return <div className="dashboard muted">Loading…</div>;
@@ -163,6 +168,15 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
 
   return (
     <div className="dashboard">
+      <div className="dashboard-head">
+        <button
+          className="btn"
+          onClick={() => setNonce((n) => n + 1)}
+          title="Recompute the dashboard from the local cache"
+        >
+          ↻ Refresh
+        </button>
+      </div>
       <DuplicatesCard
         profileId={profileId}
         refreshKey={refreshKey}
@@ -262,19 +276,17 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
           </h4>
           {reqOptions.length > 0 && (
             <label className="sankey-filter">
-              <span className="muted">Requirement</span>
-              <select
-                value={reqSankeyFilter}
-                onChange={(e) => setReqSankeyFilter(e.target.value)}
-              >
-                <option value="">All requirements</option>
-                {reqOptions.map((r) => (
-                  <option key={r.key} value={r.key}>
-                    {r.key}
-                    {r.summary ? ` — ${r.summary}` : ""}
-                  </option>
-                ))}
-              </select>
+              <span className="muted">Requirements</span>
+              <MultiSelect
+                allLabel="All requirements"
+                title="Filter by one or more requirements"
+                selected={reqSel}
+                onChange={setReqSel}
+                options={reqOptions.map((r) => ({
+                  value: r.key,
+                  label: r.summary ? `${r.key} — ${r.summary}` : r.key,
+                }))}
+              />
             </label>
           )}
         </div>
@@ -304,38 +316,44 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
               </span>
             </h4>
             <div className="sankey-filters">
-              <select
-                value={planFilter}
-                onChange={(e) => setPlanFilter(e.target.value)}
-                title="Filter by Test Plan"
+              <MultiSelect
+                allLabel="All plans"
+                title="Filter by one or more Test Plans"
+                selected={planSel}
+                onChange={setPlanSel}
+                options={plans.map((p) => ({
+                  value: p.key,
+                  label: p.summary ? `${p.key} — ${p.summary}` : p.key,
+                }))}
+              />
+              <MultiSelect
+                allLabel={`All executions (${execs.length})`}
+                title="Filter by one or more Test Executions"
+                selected={execSel}
+                onChange={setExecSel}
+                options={execs.map((x) => ({
+                  value: x.key,
+                  label: x.summary ? `${x.key} — ${x.summary}` : x.key,
+                }))}
+              />
+              <label
+                className="sankey-crossproject"
+                title="Show only Test Plans in this project whose runs are in a different project"
               >
-                <option value="">All plans</option>
-                {plans.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.key}
-                    {p.summary ? ` — ${p.summary}` : ""}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={execFilter}
-                onChange={(e) => setExecFilter(e.target.value)}
-                title="Filter by Test Execution"
-              >
-                <option value="">All executions ({execs.length})</option>
-                {execs.map((x) => (
-                  <option key={x.key} value={x.key}>
-                    {x.key}
-                    {x.summary ? ` — ${x.summary}` : ""}
-                  </option>
-                ))}
-              </select>
-              {(planFilter || execFilter) && (
+                <input
+                  type="checkbox"
+                  checked={crossProject}
+                  onChange={(e) => setCrossProject(e.target.checked)}
+                />
+                Cross-project only
+              </label>
+              {(planSel.length > 0 || execSel.length > 0 || crossProject) && (
                 <button
                   className="btn btn-ghost sankey-clear"
                   onClick={() => {
-                    setPlanFilter("");
-                    setExecFilter("");
+                    setPlanSel([]);
+                    setExecSel([]);
+                    setCrossProject(false);
                   }}
                   title="Clear filters"
                 >
@@ -351,10 +369,11 @@ export function Dashboard({ profileId, refreshKey, onOpenDuplicates }: Props) {
           ) : (
             <SankeyChart
               data={sankey ?? { nodes: [], links: [] }}
-              filtered={!!(planFilter || execFilter)}
+              filtered={planSel.length > 0 || execSel.length > 0 || crossProject}
               onClearFilter={() => {
-                setPlanFilter("");
-                setExecFilter("");
+                setPlanSel([]);
+                setExecSel([]);
+                setCrossProject(false);
               }}
             />
           )}

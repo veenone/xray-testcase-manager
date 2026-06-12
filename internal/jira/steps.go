@@ -22,6 +22,9 @@ type Step struct {
 	Action   string `json:"action"`
 	Data     string `json:"data"`
 	Expected string `json:"expected"`
+	// CalledTestKey is set when the step is an Xray "test call" — it invokes
+	// another Test rather than holding manual action/data/expected content.
+	CalledTestKey string `json:"calledTestKey"`
 }
 
 // UpdateTestStep applies field changes to a single Test Step (FR-2.5). The
@@ -97,6 +100,37 @@ func (c *Client) CreateTestStep(ctx context.Context, key, action, data, expected
 		stepFields[stepFieldResult] = expected
 	}
 	body := map[string]any{"fields": stepFields}
+	var resp map[string]any
+	if err := c.writeJSONReturning(
+		ctx, http.MethodPost,
+		fmt.Sprintf("/rest/raven/2.0/api/test/%s/steps", key), body, &resp,
+	); err != nil {
+		return "", err
+	}
+	if id, ok := resp["id"]; ok && id != nil {
+		return fmt.Sprint(id), nil
+	}
+	return "", nil
+}
+
+// CreateCalledTestStep appends a "call test" step that invokes another Test
+// (FR-2.5, #2). calledTestID is the called Test's numeric Jira issue id (Xray's
+// preferred reference); calledTestKey is sent as a fallback for builds that
+// accept the key. Returns the new step's id when the response carries one.
+//
+// Maps to POST /rest/raven/2.0/api/test/{key}/steps. NOTE(xtm): the exact
+// call-step body varies by Xray Server/DC version — this sends calledTestIssueId
+// and needs verification against a live instance.
+func (c *Client) CreateCalledTestStep(ctx context.Context, key, calledTestKey, calledTestID string) (string, error) {
+	if isDemoURL(c.baseURL) {
+		return "", nil
+	}
+	body := map[string]any{}
+	if strings.TrimSpace(calledTestID) != "" {
+		body["calledTestIssueId"] = calledTestID
+	} else {
+		body["calledTestIssueKey"] = calledTestKey
+	}
 	var resp map[string]any
 	if err := c.writeJSONReturning(
 		ctx, http.MethodPost,
@@ -221,6 +255,9 @@ func parseOneStep(raw json.RawMessage) Step {
 	if s.Expected == "" {
 		s.Expected = firstText(m["result"], m["expected"])
 	}
+	// Test-call steps carry the called Test's key (some Xray builds also expose
+	// only a numeric calledTestIssueId, which we can't map to a key here).
+	s.CalledTestKey = firstText(m["calledTestIssueKey"], m["callTestIssueKey"])
 	return s
 }
 

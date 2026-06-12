@@ -58,6 +58,14 @@ func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgre
 		return demoContainersAndLinks(projectKey)
 	}
 
+	// NOTE(xtm, #4): this lists containers in projectKey only. To auto-discover
+	// cross-project Test Executions (the project's tests run in executions that
+	// live in another project — surfaced by the Sankey "cross-project only"
+	// filter), also pull each test's executions regardless of project — e.g. GET
+	// /rest/raven/2.0/api/test/{key}/testexecs (or a JQL using testTestExecutions)
+	// — and append those executions + their run links here. Pending live Xray
+	// verification; demo mode already seeds cross-project executions.
+
 	// Gather every container across the three kinds first, so the membership pass
 	// below has a known total for progress reporting.
 	type kindContainer struct {

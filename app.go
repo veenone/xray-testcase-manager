@@ -494,6 +494,39 @@ func (a *App) SyncProfile(profileID string) error {
 	return a.runSync(profileID, false)
 }
 
+// runPartialSync builds the Jira client + sync engine for a profile and runs a
+// single sub-phase (requirements / containers) — the per-view refresh actions
+// (#7). Unlike a full Sync it doesn't touch the watermark or sync history.
+func (a *App) runPartialSync(profileID string, fn func(*syncer.Engine, string) error) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return fmt.Errorf("load credentials: %w", err)
+	}
+	engine := syncer.New(jira.NewClient(p.JiraURL, token), a.repo)
+	return fn(engine, p.ProjectKey)
+}
+
+// SyncRequirements refreshes just the requirement coverage from Jira (#7).
+func (a *App) SyncRequirements(profileID string) error {
+	return a.runPartialSync(profileID, func(e *syncer.Engine, projectKey string) error {
+		return e.SyncRequirements(a.ctx, profileID, projectKey)
+	})
+}
+
+// SyncContainers refreshes just the Test Sets / Plans / Executions from Jira (#7).
+func (a *App) SyncContainers(profileID string) error {
+	return a.runPartialSync(profileID, func(e *syncer.Engine, projectKey string) error {
+		return e.SyncContainers(a.ctx, profileID, projectKey)
+	})
+}
+
 // SyncProfileFull forces a full re-sync, ignoring the stored watermark. Use it
 // to re-pull data the incremental path skips — notably the Test Repository
 // folder membership walk, which only runs on a full sync (it is one Jira call
@@ -731,11 +764,11 @@ func (a *App) ListRequirementsWithCoverage(profileID string) ([]testrepo.Require
 // requirement coverage -> covering Test run result -> Test review sign-off.
 // reqFilter (a requirement key, or "" for all) narrows the flow to one
 // requirement, which then appears as a labelled first node.
-func (a *App) GetRequirementTraceability(profileID, reqFilter string) (testrepo.Sankey, error) {
+func (a *App) GetRequirementTraceability(profileID string, reqFilters []string) (testrepo.Sankey, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.Sankey{Nodes: []testrepo.SankeyNode{}, Links: []testrepo.SankeyLink{}}, err
 	}
-	return a.repo.GetRequirementTraceability(profileID, reqFilter)
+	return a.repo.GetRequirementTraceability(profileID, reqFilters)
 }
 
 // ListTestsForRequirement returns the Tests covering a requirement with each
@@ -1008,6 +1041,24 @@ func (a *App) AddTestStep(profileID, testKey, action, data, expected string) (te
 	return a.repo.AddTestStep(profileID, testKey, action, data, expected)
 }
 
+// AddCalledTestStep appends a "call test" step — a step that invokes another
+// Test (Xray test call) — to a Test, queued for commit (FR-2.5, #2).
+func (a *App) AddCalledTestStep(profileID, testKey, calledTestKey string) (testrepo.Step, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.Step{}, err
+	}
+	return a.repo.AddCalledTestStep(profileID, testKey, calledTestKey)
+}
+
+// ListTestCallLinks returns every "call test" relationship in the cache —
+// which tests call which — for the Test Calls view and grid cue (#2 follow-up).
+func (a *App) ListTestCallLinks(profileID string) ([]testrepo.TestCallLink, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListTestCallLinks(profileID)
+}
+
 // CloneTestSteps appends Steps of sourceKey onto targetKey, queuing each as a
 // local step-add for commit (FR-2.5) — a quick way to seed a Test from an
 // existing one. stepIDs selects which source steps to copy (a selective clone);
@@ -1101,11 +1152,12 @@ func (a *App) GetTestSteps(profileID, testKey string, forceRefresh bool) ([]test
 	steps := make([]testrepo.Step, len(remote))
 	for i, s := range remote {
 		steps[i] = testrepo.Step{
-			XrayID:   s.ID,
-			Index:    s.Index,
-			Action:   s.Action,
-			Data:     s.Data,
-			Expected: s.Expected,
+			XrayID:        s.ID,
+			Index:         s.Index,
+			Action:        s.Action,
+			Data:          s.Data,
+			Expected:      s.Expected,
+			CalledTestKey: s.CalledTestKey,
 		}
 	}
 	if err := a.repo.SetTestSteps(profileID, testKey, steps); err != nil {
@@ -1448,11 +1500,17 @@ func (a *App) CleanSampleData(profileID string) (int, error) {
 // GetTraceabilitySankey returns the Plan -> Execution -> run-status traceability
 // flow for the dashboard (FR-9), optionally narrowed to one Test Plan and/or one
 // Test Execution (pass "" for either to include all).
-func (a *App) GetTraceabilitySankey(profileID, planFilter, execFilter string) (testrepo.Sankey, error) {
+func (a *App) GetTraceabilitySankey(profileID string, planFilters, execFilters []string, crossProjectOnly bool) (testrepo.Sankey, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.Sankey{}, err
 	}
-	return a.repo.GetTraceabilitySankey(profileID, planFilter, execFilter)
+	// The cross-project filter compares each Execution's project key against the
+	// active profile's project.
+	projectKey := ""
+	if p, err := a.profiles.Get(profileID); err == nil {
+		projectKey = p.ProjectKey
+	}
+	return a.repo.GetTraceabilitySankey(profileID, projectKey, planFilters, execFilters, crossProjectOnly)
 }
 
 // --- pytest helper (FR-7.2) ---

@@ -24,6 +24,8 @@ export {
   DeleteProfile,
   TestConnection,
   SyncProfile,
+  SyncRequirements,
+  SyncContainers,
   GetSyncState,
   ListSyncLog,
   ListFolders,
@@ -106,6 +108,8 @@ export {
   EditTestStepField,
   DeleteTestStep,
   AddTestStep,
+  AddCalledTestStep,
+  ListTestCallLinks,
   CloneTestSteps,
   ReorderTestSteps,
   GetStatistics,
@@ -376,6 +380,21 @@ export interface Step {
   action: string;
   data: string;
   expected: string;
+  // Set when the step calls another test (Xray "test call") instead of holding
+  // manual action/data/expected content.
+  calledTestKey: string;
+}
+
+// TestCallLink mirrors testrepo.TestCallLink — one "call test" relationship
+// (callerKey's step calls calledKey). calledExists is false for a dangling /
+// cross-project call whose target isn't in the local cache.
+export interface TestCallLink {
+  callerKey: string;
+  callerSummary: string;
+  calledKey: string;
+  calledSummary: string;
+  calledExists: boolean;
+  stepIndex: number;
 }
 
 // CustomFieldValue mirrors testrepo.CustomFieldValue — a Jira custom field on

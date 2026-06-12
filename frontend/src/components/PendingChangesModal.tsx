@@ -291,8 +291,14 @@ function describeChange(c: PendingChange): {
   switch (c.entityType) {
     case "test_step":
       return { field: `step:${c.field}`, before: c.beforeVal, after: c.afterVal };
-    case "test_step_add":
-      return { field: "step: new", before: "", after: stepAction(c.afterVal) };
+    case "test_step_add": {
+      const called = calledTestKeyOf(c.afterVal);
+      return {
+        field: "step: new",
+        before: "",
+        after: called ? `calls ${called}` : stepAction(c.afterVal),
+      };
+    }
     case "test_step_delete":
       return { field: "step: delete", before: stepAction(c.beforeVal), after: "" };
     case "test_step_order":
@@ -431,6 +437,17 @@ function orderSummary(json: string): string {
     return `${ids.length} steps: ${ids.join(" → ")}`;
   } catch {
     return json;
+  }
+}
+
+// calledTestKeyOf returns a step snapshot's called-test key, or "" when it's a
+// normal manual step (or older data without the field).
+function calledTestKeyOf(json: string): string {
+  try {
+    const o = JSON.parse(json) as { calledTestKey?: string };
+    return typeof o.calledTestKey === "string" ? o.calledTestKey : "";
+  } catch {
+    return "";
   }
 }
 

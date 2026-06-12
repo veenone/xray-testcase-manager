@@ -42,7 +42,7 @@ internal/
 frontend/            React + TypeScript (Vite), rendered in WebView2
   src/api.ts         Re-exports the generated Wails bindings as the frontend's typed API
   wailsjs/           GENERATED bindings — do not hand-edit
-scripts/release.ps1  Version-stamp + bundle portable exe and NSIS installer into dist/
+scripts/release.ps1  Version-stamp + bundle portable exe and Inno Setup installer into dist/
 ```
 
 ## Architecture — the big picture
@@ -138,8 +138,9 @@ update the `_test.go` beside it.
 ## Releasing
 
 Version is single-sourced in `wails.json` (`info.productVersion`).
-`scripts/release.ps1 -Version X.Y.Z` stamps it, builds the portable exe + NSIS
-installer (needs `makensis`), and writes `SHA256SUMS.txt` into `dist/`
+`scripts/release.ps1 -Version X.Y.Z` stamps it, builds the portable exe, compiles
+the installer from `build/windows/installer/installer.iss` with Inno Setup (needs
+`ISCC.exe`), bundles the user guide, and writes `SHA256SUMS.txt` into `dist/`
 (`-NoInstaller` skips the installer). Pushing a `vX.Y.Z` tag triggers
 `.github/workflows/release.yml` on `windows-latest` to build and publish a
 GitHub Release. See README for the artifact table.

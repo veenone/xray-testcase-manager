@@ -70,25 +70,21 @@
 .topbar-left {
   flex: 1 1 auto;
 }
+/* The view tabs always take their own full-width, centered row (order: 3 pushes
+   them below the wrapped flex line), keeping Browse / Preconditions / … visually
+   separate from the New Test / More / Sync actions and the profile controls. */
 .topbar-center {
-  flex: 0 1 auto;
+  order: 3;
+  flex: 1 0 100%;
+  justify-content: center;
+}
+.view-tabs {
+  max-width: 100%;
+  overflow-x: auto;
 }
 .topbar-right {
   flex: 1 1 auto;
   justify-content: flex-end;
-}
-/* Narrow windows: give the tab bar its own full-width, centered row so it can
-   never sit on top of the profile dropdown (left) or the actions (right). */
-@media (max-width: 1024px) {
-  .topbar-center {
-    order: 3;
-    flex: 1 0 100%;
-    justify-content: center;
-  }
-  .view-tabs {
-    max-width: 100%;
-    overflow-x: auto;
-  }
 }
 .brand {
   font-weight: 600;
@@ -882,6 +878,79 @@
   align-items: center;
   gap: 7px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.sankey-crossproject {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* MultiSelect: checkbox dropdown for the Sankey filters. */
+.multiselect {
+  position: relative;
+  display: inline-block;
+}
+.multiselect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.multiselect-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.multiselect-caret {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.multiselect-panel {
+  position: absolute;
+  z-index: 70;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 240px;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+}
+.multiselect-clear {
+  font-size: 11px;
+  margin: 2px 4px 6px;
+}
+.multiselect-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.multiselect-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  font-size: 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.multiselect-list label:hover {
+  background: var(--surface-2);
 }
 .sankey-filters select {
   max-width: 220px;
@@ -2072,6 +2141,33 @@ tr.row-selected {
 }
 .req-kind {
   background: #0e7490;
+}
+/* Covering-test rows open the test detail in a right slide-over (#5). */
+.reqs-test-row {
+  cursor: pointer;
+}
+.reqs-test-row:hover {
+  background: var(--surface-2);
+}
+.reqs-test-row-active {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.reqs-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: flex-end;
+}
+.reqs-detail-overlay > div {
+  height: 100vh;
+  display: flex;
+}
+.reqs-detail-overlay .detail {
+  height: 100vh;
+  max-height: 100vh;
 }
 .reqs-list-head {
   display: flex;
@@ -3566,3 +3662,216 @@ tr.row-checked:hover {
 .pager-compact .board-pagesize { justify-content: flex-start; }
 .pager-compact .board-pager-range { flex: none; text-align: left; }
 .pager-compact .board-pager-nav { justify-content: flex-start; flex-wrap: wrap; }
+
+/* Dashboard per-view refresh (#7). */
+.dashboard-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+/* "Call test" steps (#2). */
+.steps-add-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.step-call-head {
+  align-items: center;
+}
+.step-call-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+.step-call-label .mono {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Test Calls view (#2 follow-up) — caller -> called relationships. */
+.testcalls {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+.testcalls-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.testcalls-head h2 {
+  margin: 0;
+}
+.testcalls-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.testcalls-stat {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.testcalls-stat b {
+  color: var(--text);
+}
+.testcalls-stat-broken {
+  color: #b45309;
+  border-color: #f0c277;
+}
+.testcalls-stat-broken b {
+  color: #b45309;
+}
+.testcalls-stat-cycle {
+  color: #b91c1c;
+  border-color: #f0a9a9;
+}
+.testcalls-stat-cycle b {
+  color: #b91c1c;
+}
+.testcalls-empty {
+  margin-top: 24px;
+  max-width: 560px;
+}
+.testcalls-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.testcalls-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 10px 14px;
+}
+.testcalls-card-cycle {
+  border-color: #e88;
+  box-shadow: inset 3px 0 0 #dc2626;
+}
+.testcalls-caller {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.testcalls-key {
+  font-weight: 600;
+  color: var(--accent);
+}
+.testcalls-key-broken {
+  color: #b45309;
+  text-decoration: line-through;
+}
+.testcalls-summary {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.testcalls-callees {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 0 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.testcalls-callee {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+}
+.testcalls-arrow {
+  color: var(--accent);
+  font-weight: 700;
+}
+.testcalls-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: 600;
+}
+.testcalls-badge-broken {
+  background: #fef3c7;
+  color: #92400e;
+}
+.testcalls-badge-cycle {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Generic right slide-over for a TestDetail opened from a list view. */
+.detail-slideover {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: flex-end;
+}
+.detail-slideover > div {
+  height: 100vh;
+  display: flex;
+}
+.detail-slideover .detail {
+  height: 100vh;
+  max-height: 100vh;
+}
+
+/* Grid cue: a test that calls another test in its steps (#2). */
+.row-calls-badge {
+  margin-left: 6px;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* Test Calls: controls row, collapse toggle, call count. */
+.testcalls-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.testcalls-bulk {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.testcalls-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.testcalls-toggle:hover {
+  color: var(--text);
+}
+.testcalls-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 999px;
+  min-width: 20px;
+  text-align: center;
+  padding: 1px 7px;
+}
