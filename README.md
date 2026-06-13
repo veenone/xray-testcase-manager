@@ -61,9 +61,16 @@ Releases ship Windows and macOS artifacts plus checksums:
 | `xray-test-manager-<ver>-user-guide.zip` | User guide (markdown + screenshots) |
 | `SHA256SUMS.txt` / `SHA256SUMS-macos.txt` | Integrity check for the above |
 
-> **macOS Gatekeeper:** the `.app` is not yet code-signed/notarized, so on first
-> launch macOS may block it. Right-click the app → **Open** (then confirm), or run
+> **macOS Gatekeeper:** by default the `.app` is unsigned, so on first launch
+> macOS may block it. Right-click the app → **Open** (then confirm), or run
 > `xattr -dr com.apple.quarantine xray-test-manager.app` to clear the quarantine flag.
+>
+> **Signing & notarization (optional):** the `release-macos` job code-signs and
+> notarizes the `.app` automatically **when these repo secrets are set** — without
+> them it just publishes the unsigned build. Set `MACOS_CERTIFICATE_P12` (base64 of
+> a *Developer ID Application* `.p12`), `MACOS_CERTIFICATE_PASSWORD`,
+> `MACOS_SIGNING_IDENTITY`, and for notarization `MACOS_NOTARY_APPLE_ID`,
+> `MACOS_NOTARY_TEAM_ID`, and `MACOS_NOTARY_PASSWORD` (an app-specific password).
 
 **Build locally** (`scripts/release.ps1` builds, version-stamps, bundles into
 `dist/`, and writes checksums):

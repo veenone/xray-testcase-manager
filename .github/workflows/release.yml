@@ -106,6 +106,64 @@ jobs:
       - name: Build universal .app
         run: wails build -platform darwin/universal -clean
 
+      # --- Code signing + notarization (optional) ---
+      # All steps below are skipped unless the signing secrets are configured, so
+      # the workflow still publishes an (unsigned) .app out of the box. To enable,
+      # set repo secrets: MACOS_CERTIFICATE_P12 (base64 of a "Developer ID
+      # Application" .p12), MACOS_CERTIFICATE_PASSWORD, MACOS_SIGNING_IDENTITY,
+      # and for notarization MACOS_NOTARY_APPLE_ID / _TEAM_ID / _PASSWORD
+      # (an app-specific password).
+      - name: Check signing secrets
+        id: sign
+        run: |
+          if [ -n "${{ secrets.MACOS_CERTIFICATE_P12 }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS signing secrets not set — publishing an unsigned .app"
+          fi
+          if [ -n "${{ secrets.MACOS_NOTARY_PASSWORD }}" ]; then
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import signing certificate
+        if: steps.sign.outputs.enabled == 'true'
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PW: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          kpw="$(openssl rand -base64 24)"
+          security create-keychain -p "$kpw" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$kpw" "$keychain"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERT_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kpw" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Codesign .app
+        if: steps.sign.outputs.enabled == 'true'
+        working-directory: build/bin
+        run: |
+          codesign --force --deep --options runtime --timestamp \
+            --sign "${{ secrets.MACOS_SIGNING_IDENTITY }}" "xray-test-manager.app"
+          codesign --verify --strict --verbose=2 "xray-test-manager.app"
+
+      - name: Notarize + staple
+        if: steps.sign.outputs.enabled == 'true' && steps.sign.outputs.notarize == 'true'
+        working-directory: build/bin
+        run: |
+          ditto -c -k --keepParent "xray-test-manager.app" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --apple-id "${{ secrets.MACOS_NOTARY_APPLE_ID }}" \
+            --team-id "${{ secrets.MACOS_NOTARY_TEAM_ID }}" \
+            --password "${{ secrets.MACOS_NOTARY_PASSWORD }}" --wait
+          xcrun stapler staple "xray-test-manager.app"
+
       - name: Package .app (zip + checksum)
         working-directory: build/bin
         run: |
