@@ -23,7 +23,9 @@ jobs:
         with:
           go-version: "1.25"
       - name: Go tests
-        run: go test ./...
+        # Scope to internal/ — the root main package embeds frontend/dist, which
+        # isn't built in this job; all tests live under internal/ anyway.
+        run: go test ./internal/...
 
   build-windows:
     runs-on: windows-latest
