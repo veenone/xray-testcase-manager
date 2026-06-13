@@ -358,6 +358,10 @@ export function ReadLog(arg1) {
   return window['go']['main']['App']['ReadLog'](arg1);
 }
 
+export function RecreateDeletedTest(arg1, arg2) {
+  return window['go']['main']['App']['RecreateDeletedTest'](arg1, arg2);
+}
+
 export function RemoveRequirementSource(arg1, arg2) {
   return window['go']['main']['App']['RemoveRequirementSource'](arg1, arg2);
 }

@@ -185,6 +185,8 @@ export function PreviewImport(arg1:string,arg2:boolean):Promise<testrepo.ImportP
 
 export function ReadLog(arg1:number):Promise<string>;
 
+export function RecreateDeletedTest(arg1:string,arg2:string):Promise<string>;
+
 export function RemoveRequirementSource(arg1:string,arg2:string):Promise<void>;
 
 export function RenameFolder(arg1:string,arg2:string,arg3:string):Promise<void>;

@@ -235,3 +235,83 @@ func TestResolveConflictMergeStepDeleteKeepTheirs(t *testing.T) {
 		t.Errorf("restored step action = %q, want EDITED (remote)", found.Action)
 	}
 }
+
+func TestResolveConflictMergeCustomFieldKeepTheirs(t *testing.T) {
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{{Key: "QA-1", ID: "1", Updated: "T0"}}); err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	if err := repo.UpsertCustomFields("p1", []testrepo.CustomFieldDef{{FieldID: "cf1", Name: "Type", Type: "string"}}); err != nil {
+		t.Fatalf("seed def: %v", err)
+	}
+	if err := repo.SetTestCustomFields("p1", "QA-1", map[string]string{"cf1": "Manual"}); err != nil {
+		t.Fatalf("seed value: %v", err)
+	}
+	if err := repo.EditTestCustomField("p1", "QA-1", "cf1", "Automated"); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	id := pendingIDByType(t, repo, "custom_field")
+	if err := repo.ResolveConflictMerge("p1", "QA-1", "T1", []testrepo.ConflictDecision{{
+		PendingID: id, EntityType: "custom_field", EntityKey: "QA-1:cf1",
+		Field: "value", Choice: "theirs", RemoteValue: "Generic",
+	}}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	vals, _ := repo.ListTestCustomFields("p1", "QA-1")
+	var got string
+	for _, v := range vals {
+		if v.FieldID == "cf1" {
+			got = v.Value
+		}
+	}
+	if got != "Generic" {
+		t.Errorf("custom field = %q, want Generic (kept theirs)", got)
+	}
+	if pc, _ := repo.ListPendingChanges("p1"); len(pc) != 0 {
+		t.Errorf("want 0 pending after keep-theirs, got %d", len(pc))
+	}
+}
+
+func TestRecreateDeletedTest(t *testing.T) {
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-1", ID: "1", Summary: "Login", Priority: "High", Updated: "T0"},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := repo.SetTestSteps("p1", "QA-1", []testrepo.Step{{XrayID: "10", Index: 1, Action: "step1"}}); err != nil {
+		t.Fatalf("seed steps: %v", err)
+	}
+	// A local edit the user doesn't want to lose when the remote was deleted.
+	if err := repo.EditTestField("p1", "QA-1", "summary", "Login (edited locally)"); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+
+	newKey, err := repo.RecreateDeletedTest("p1", "QA-1")
+	if err != nil {
+		t.Fatalf("recreate: %v", err)
+	}
+	if newKey == "" || newKey == "QA-1" {
+		t.Fatalf("expected a new local key, got %q", newKey)
+	}
+
+	nt, _ := repo.GetTest("p1", newKey)
+	if nt.Summary != "Login (edited locally)" {
+		t.Errorf("new test summary = %q, want the locally-edited value", nt.Summary)
+	}
+	if nt.Priority != "High" {
+		t.Errorf("new test priority = %q, want High (carried over)", nt.Priority)
+	}
+	nsteps, _ := repo.ListTestSteps("p1", newKey)
+	if len(nsteps) != 1 || nsteps[0].Action != "step1" {
+		t.Errorf("new test should carry the step, got %+v", nsteps)
+	}
+
+	// The deleted test's own edits are cleared (no pending change keyed QA-1).
+	pc, _ := repo.ListPendingChanges("p1")
+	for _, c := range pc {
+		if c.EntityKey == "QA-1" {
+			t.Errorf("old test's pending change should be discarded, found %+v", c)
+		}
+	}
+}

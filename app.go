@@ -914,6 +914,16 @@ func (a *App) ResolveConflictMerge(profileID, testKey, remoteVersion string, dec
 	return a.repo.ResolveConflictMerge(profileID, testKey, remoteVersion, decisions)
 }
 
+// RecreateDeletedTest converts a remotely-deleted Test's held local edits into a
+// brand-new local Test (FR-1.4 remote-delete recreate). Returns the new "NEW-N"
+// key so the frontend can re-point an open detail view.
+func (a *App) RecreateDeletedTest(profileID, testKey string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	return a.repo.RecreateDeletedTest(profileID, testKey)
+}
+
 // ListPendingChanges returns all uncommitted local edits for a profile.
 func (a *App) ListPendingChanges(profileID string) ([]testrepo.PendingChange, error) {
 	if err := a.requireStore(); err != nil {

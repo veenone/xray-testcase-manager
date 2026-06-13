@@ -22,6 +22,7 @@ import {
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
   ResolveConflictMerge,
+  RecreateDeletedTest,
   ListPendingChanges,
   DiscardPendingChange,
   DiscardAllPendingChanges,
@@ -803,6 +804,28 @@ function App() {
     await handleCommit();
   }
 
+  // resolveConflictRecreate turns a remotely-deleted Test's held edits into a
+  // brand-new local Test, then drops it from the conflict list.
+  async function resolveConflictRecreate(testKey: string) {
+    if (!activeId) return;
+    try {
+      await RecreateDeletedTest(activeId, testKey);
+      setLastCommitResult((prev) =>
+        prev
+          ? {
+              ...prev,
+              conflicted: prev.conflicted.filter((c) => c.testKey !== testKey),
+            }
+          : prev,
+      );
+      setRefreshKey((k) => k + 1);
+      setDetailVersion((v) => v + 1);
+      reloadPending();
+    } catch (e) {
+      console.error("recreate deleted test:", errMsg(e));
+    }
+  }
+
   function closePendingModal() {
     setShowPending(false);
     setLastCommitResult(null);
@@ -1343,6 +1366,7 @@ function App() {
           onResolveOverride={resolveConflictOverride}
           onResolveKeepRemote={resolveConflictKeepRemote}
           onResolveMerge={resolveConflictMerge}
+          onResolveRecreate={resolveConflictRecreate}
           onClose={closePendingModal}
           committing={committing}
           lastResult={lastCommitResult}

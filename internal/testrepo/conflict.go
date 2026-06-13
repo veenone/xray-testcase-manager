@@ -18,6 +18,49 @@ type ConflictDecision struct {
 	RemoteValue string `json:"remoteValue"` // value to keep when choice == "theirs"
 }
 
+// RecreateDeletedTest converts a Test that was deleted in Jira into a brand-new
+// local Test carrying its current (locally-edited) content, so the user's work
+// isn't lost when they hit a remote-delete conflict (FR-1.4). The original
+// Test's now-unpushable pending changes are discarded. Returns the new local
+// "NEW-N" key.
+func (r *Repository) RecreateDeletedTest(profileID, testKey string) (string, error) {
+	tc, err := r.GetTest(profileID, testKey)
+	if err != nil {
+		return "", err
+	}
+	steps, err := r.ListTestSteps(profileID, testKey)
+	if err != nil {
+		return "", err
+	}
+	draft := TestDraft{
+		Summary:     tc.Summary,
+		Description: tc.Description,
+		Priority:    tc.Priority,
+		Labels:      strings.Join(tc.Labels, " "),
+		Components:  strings.Join(tc.Components, ","),
+		FolderID:    tc.FolderID,
+	}
+	for _, s := range steps {
+		draft.Steps = append(draft.Steps, StepDraft{Action: s.Action, Data: s.Data, Expected: s.Expected})
+	}
+	if pcs, perr := r.ListTestPreconditions(profileID, testKey); perr == nil {
+		for _, p := range pcs {
+			draft.PrecondKeys = append(draft.PrecondKeys, p.Key)
+		}
+	}
+
+	newKey, err := r.CreateTest(profileID, draft)
+	if err != nil {
+		return "", err
+	}
+	// The deleted Test's pending changes can never commit — discard them (this
+	// also reverts its cache rows, harmless for a Test that's gone upstream).
+	if err := r.DiscardTestChanges(profileID, testKey); err != nil {
+		return newKey, fmt.Errorf("recreated as %s but couldn't clear the old test's changes: %w", newKey, err)
+	}
+	return newKey, nil
+}
+
 // ResolveConflictMerge applies per-field conflict decisions for a Test and
 // re-bases its remaining pending changes onto remoteVersion so the next commit
 // succeeds:
@@ -60,6 +103,15 @@ func (r *Repository) ResolveConflictMerge(profileID, testKey, remoteVersion stri
 				d.RemoteValue, profileID, testKey, xrayID,
 			); err != nil {
 				return fmt.Errorf("revert step %s to remote: %w", d.Field, err)
+			}
+		case entityCustomField:
+			fieldID := strings.TrimPrefix(d.EntityKey, testKey+":")
+			if _, err := tx.Exec(
+				`UPDATE test_custom_field SET value = ?
+				 WHERE profile_id = ? AND test_key = ? AND field_id = ?`,
+				d.RemoteValue, profileID, testKey, fieldID,
+			); err != nil {
+				return fmt.Errorf("revert custom field to remote: %w", err)
 			}
 		case entityTestStepDelete:
 			// Keep the remote step I tried to delete: re-insert it at its remote

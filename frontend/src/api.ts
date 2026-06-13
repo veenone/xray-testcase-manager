@@ -89,6 +89,7 @@ export {
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
   ResolveConflictMerge,
+  RecreateDeletedTest,
   ListPendingChanges,
   ListAuditEntries,
   CommitPendingChanges,

@@ -57,12 +57,22 @@ func (e *Engine) detectConflicts(ctx context.Context, testKey string, changes []
 		remoteSteps map[string]jira.Step
 		remoteOrder string // JSON id list in remote index order
 	)
-	needSteps := false
+	needSteps, needCF := false, false
 	for _, c := range changes {
 		switch c.EntityType {
 		case "test_step", "test_step_delete", "test_step_order":
 			needSteps = true
+		case "custom_field":
+			needCF = true
 		}
+	}
+	var remoteCustomFs map[string]string
+	if needCF {
+		cf, cErr := e.client.GetTestCustomFields(ctx, testKey)
+		if cErr != nil {
+			return scan, cErr
+		}
+		remoteCustomFs = cf
 	}
 	if needSteps {
 		steps, serr := e.client.GetTestSteps(ctx, testKey)
@@ -94,7 +104,7 @@ func (e *Engine) detectConflicts(ctx context.Context, testKey string, changes []
 			e.classifyDelete(c, remoteSteps, &scan)
 			continue
 		}
-		base, mine, remote, label, checked := conflictTriple(c, remoteTest, remoteSteps, nil)
+		base, mine, remote, label, checked := conflictTriple(c, remoteTest, remoteSteps, remoteCustomFs)
 		if !checked {
 			continue // not conflict-checked this phase — auto-merge
 		}
@@ -200,9 +210,21 @@ func (e *Engine) classifyOrder(c testrepo.PendingChange, remoteOrder string, sca
 // checked=false so the caller auto-merges them.
 func conflictTriple(c testrepo.PendingChange, t jira.Test, steps map[string]jira.Step, customFs map[string]string) (base, mine, remote, label string, checked bool) {
 	base, mine = c.BeforeVal, c.AfterVal
-	_ = customFs // custom-field conflict detection is deferred to phase 3 (the
-	// remote custom-field fetch is stubbed; checking it would false-positive).
 	switch c.EntityType {
+	case "custom_field":
+		// Presence-gated: only conflict-check a custom field when it's actually
+		// in the remote fetch. The remote custom-field API is still stubbed
+		// (returns nothing), and a field absent from the response would otherwise
+		// false-positive — so an absent field auto-merges instead.
+		fieldID := c.EntityKey
+		if i := strings.LastIndex(c.EntityKey, ":"); i >= 0 {
+			fieldID = c.EntityKey[i+1:]
+		}
+		remote, ok := customFs[fieldID]
+		if !ok {
+			return base, mine, "", "Custom field", false
+		}
+		return base, mine, remote, "Custom field", true
 	case "test_case":
 		switch c.Field {
 		case "summary":

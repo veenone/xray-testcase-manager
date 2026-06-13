@@ -20,6 +20,7 @@ interface Props {
     remoteVersion: string,
     decisions: ConflictDecision[],
   ) => void;
+  onResolveRecreate: (testKey: string) => void;
   onClose: () => void;
   committing: boolean;
   lastResult: CommitResult | null;
@@ -35,6 +36,7 @@ export function PendingChangesModal({
   onResolveOverride,
   onResolveKeepRemote,
   onResolveMerge,
+  onResolveRecreate,
   onClose,
   committing,
   lastResult,
@@ -129,13 +131,23 @@ export function PendingChangesModal({
                             This test was <strong>deleted in Jira</strong> — your
                             local edits can&apos;t be pushed.
                           </span>
-                          <button
-                            className="btn"
-                            disabled={committing}
-                            onClick={() => onResolveKeepRemote(c.testKey)}
-                          >
-                            Discard my changes
-                          </button>
+                          <span className="conflict-row-actions">
+                            <button
+                              className="btn btn-primary"
+                              disabled={committing}
+                              onClick={() => onResolveRecreate(c.testKey)}
+                              title="Create a new test from your local edits"
+                            >
+                              Recreate as new
+                            </button>
+                            <button
+                              className="btn"
+                              disabled={committing}
+                              onClick={() => onResolveKeepRemote(c.testKey)}
+                            >
+                              Discard my changes
+                            </button>
+                          </span>
                         </div>
                       ) : c.fields && c.fields.length > 0 ? (
                         <>
