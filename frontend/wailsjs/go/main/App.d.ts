@@ -185,6 +185,8 @@ export function PreviewImport(arg1:string,arg2:boolean):Promise<testrepo.ImportP
 
 export function ReadLog(arg1:number):Promise<string>;
 
+export function RecreateDeletedTest(arg1:string,arg2:string):Promise<string>;
+
 export function RemoveRequirementSource(arg1:string,arg2:string):Promise<void>;
 
 export function RenameFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -192,6 +194,8 @@ export function RenameFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 export function ReorderTestSteps(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function ResolveConflictKeepRemote(arg1:string,arg2:string):Promise<void>;
+
+export function ResolveConflictMerge(arg1:string,arg2:string,arg3:string,arg4:Array<testrepo.ConflictDecision>):Promise<void>;
 
 export function ResolveConflictOverride(arg1:string,arg2:string,arg3:string):Promise<void>;
 

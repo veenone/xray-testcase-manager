@@ -8,7 +8,7 @@ require (
 	github.com/wailsapp/wails/v2 v2.12.0
 	github.com/xuri/excelize/v2 v2.10.1
 	github.com/zalando/go-keyring v0.2.8
-	modernc.org/sqlite v1.50.1
+	modernc.org/sqlite v1.52.0
 )
 
 require (
@@ -52,4 +52,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-// replace github.com/wailsapp/wails/v2 v2.12.0 => C:\Users\ARaha\go\pkg\mod
+// replace github.com/wailsapp/wails/v2 v2.12.0 => C:\Users\<username>\go\pkg\mod

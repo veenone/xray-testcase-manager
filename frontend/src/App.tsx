@@ -21,6 +21,8 @@ import {
   SetTheme,
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
+  ResolveConflictMerge,
+  RecreateDeletedTest,
   ListPendingChanges,
   DiscardPendingChange,
   DiscardAllPendingChanges,
@@ -39,6 +41,7 @@ import type {
   Bucket,
   PendingChange,
   CommitResult,
+  ConflictDecision,
 } from "./api";
 import { ProfileForm } from "./components/ProfileForm";
 import { TestTable } from "./components/TestTable";
@@ -780,6 +783,49 @@ function App() {
     }
   }
 
+  // resolveConflictMerge applies per-field keep-mine / keep-theirs decisions for
+  // a conflicting Test, then re-commits so the merge takes effect.
+  async function resolveConflictMerge(
+    testKey: string,
+    remoteVersion: string,
+    decisions: ConflictDecision[],
+  ) {
+    if (!activeId) return;
+    try {
+      await ResolveConflictMerge(activeId, testKey, remoteVersion, decisions);
+    } catch (e) {
+      setLastCommitResult({
+        succeeded: [],
+        conflicted: [],
+        failed: [{ testKey, error: errMsg(e) }],
+      });
+      return;
+    }
+    await handleCommit();
+  }
+
+  // resolveConflictRecreate turns a remotely-deleted Test's held edits into a
+  // brand-new local Test, then drops it from the conflict list.
+  async function resolveConflictRecreate(testKey: string) {
+    if (!activeId) return;
+    try {
+      await RecreateDeletedTest(activeId, testKey);
+      setLastCommitResult((prev) =>
+        prev
+          ? {
+              ...prev,
+              conflicted: prev.conflicted.filter((c) => c.testKey !== testKey),
+            }
+          : prev,
+      );
+      setRefreshKey((k) => k + 1);
+      setDetailVersion((v) => v + 1);
+      reloadPending();
+    } catch (e) {
+      console.error("recreate deleted test:", errMsg(e));
+    }
+  }
+
   function closePendingModal() {
     setShowPending(false);
     setLastCommitResult(null);
@@ -1319,6 +1365,8 @@ function App() {
           }}
           onResolveOverride={resolveConflictOverride}
           onResolveKeepRemote={resolveConflictKeepRemote}
+          onResolveMerge={resolveConflictMerge}
+          onResolveRecreate={resolveConflictRecreate}
           onClose={closePendingModal}
           committing={committing}
           lastResult={lastCommitResult}

@@ -903,6 +903,27 @@ func (a *App) ResolveConflictKeepRemote(profileID, testKey string) error {
 	return a.repo.DiscardTestChanges(profileID, testKey)
 }
 
+// ResolveConflictMerge applies per-field conflict decisions (keep mine / keep
+// theirs) for a Test, then re-bases the remaining changes so a re-commit
+// succeeds (FR-1.4, conflict management). decisions come from the resolution
+// modal built off CommitResult.Conflicted[].Fields.
+func (a *App) ResolveConflictMerge(profileID, testKey, remoteVersion string, decisions []testrepo.ConflictDecision) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.ResolveConflictMerge(profileID, testKey, remoteVersion, decisions)
+}
+
+// RecreateDeletedTest converts a remotely-deleted Test's held local edits into a
+// brand-new local Test (FR-1.4 remote-delete recreate). Returns the new "NEW-N"
+// key so the frontend can re-point an open detail view.
+func (a *App) RecreateDeletedTest(profileID, testKey string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	return a.repo.RecreateDeletedTest(profileID, testKey)
+}
+
 // ListPendingChanges returns all uncommitted local edits for a profile.
 func (a *App) ListPendingChanges(profileID string) ([]testrepo.PendingChange, error) {
 	if err := a.requireStore(); err != nil {

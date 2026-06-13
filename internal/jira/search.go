@@ -116,6 +116,65 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 	return tests, resp.Total, nil
 }
 
+// GetTestFields fetches one Test's current field values from Jira — the
+// "remote" side of three-way conflict detection at commit (FR-1.4). Demo mode
+// returns the deterministically generated Test for the key so the offline path
+// never errors.
+func (c *Client) GetTestFields(ctx context.Context, key string) (Test, error) {
+	if isDemoURL(c.baseURL) {
+		return demoTestForKey(key), nil
+	}
+	var resp struct {
+		ID     string `json:"id"`
+		Key    string `json:"key"`
+		Fields struct {
+			Summary     string   `json:"summary"`
+			Description string   `json:"description"`
+			Updated     string   `json:"updated"`
+			Labels      []string `json:"labels"`
+			Status      *struct {
+				Name string `json:"name"`
+			} `json:"status"`
+			Priority *struct {
+				Name string `json:"name"`
+			} `json:"priority"`
+			Components []struct {
+				Name string `json:"name"`
+			} `json:"components"`
+		} `json:"fields"`
+	}
+	if err := c.get(ctx, "/rest/api/2/issue/"+key+"?fields="+testFields, &resp); err != nil {
+		return Test{}, err
+	}
+	t := Test{
+		Key:         orFallback(resp.Key, key),
+		ID:          resp.ID,
+		Summary:     resp.Fields.Summary,
+		Description: resp.Fields.Description,
+		Updated:     resp.Fields.Updated,
+		Labels:      resp.Fields.Labels,
+	}
+	if resp.Fields.Status != nil {
+		t.Status = resp.Fields.Status.Name
+	}
+	if resp.Fields.Priority != nil {
+		t.Priority = resp.Fields.Priority.Name
+	}
+	for _, comp := range resp.Fields.Components {
+		if comp.Name != "" {
+			t.Components = append(t.Components, comp.Name)
+		}
+	}
+	return t, nil
+}
+
+func orFallback(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
+}
+
 // resolveTestType finds the plain "Test" issue type id on this instance and
 // caches it. Matching is exact on the letters-only name (see normalizeTypeName)
 // so "Test Set" / "Test Plan" / "Test Execution" are not mistaken for it.
