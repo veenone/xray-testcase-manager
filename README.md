@@ -1,8 +1,8 @@
 # Xray Test Manager
 
-A lightweight Windows desktop application for managing **Xray test cases in
-Jira Data Center** at scale — built for QA teams whose projects hold 10,000+
-test cases and have outgrown the Jira browser UI.
+A lightweight **Windows and macOS** desktop application for managing **Xray test
+cases in Jira Data Center** at scale — built for QA teams whose projects hold
+10,000+ test cases and have outgrown the Jira browser UI.
 
 ## Why
 
@@ -32,7 +32,9 @@ data; the real-Jira REST calls are stubbed (`NOTE`/`TODO(xtm)` markers in
 
 - **Go** + **Wails v2** + **React / TypeScript**
 - **SQLite** local store (pure-Go `modernc.org/sqlite` — no cgo)
-- Single Windows executable — only WebView2 is required (built into Windows 11)
+- **Windows:** a single `.exe`; only WebView2 is required (built into Windows 11)
+- **macOS:** a universal `.app` (Apple Silicon + Intel); uses the built-in WKWebView
+- Secrets in the OS-native store — Windows Credential Manager / macOS Keychain
 - Targets **Jira DC 8.14+** and **Xray Server / DC 8.4.0**
 
 ## Development
@@ -40,22 +42,28 @@ data; the real-Jira REST calls are stubbed (`NOTE`/`TODO(xtm)` markers in
 Prerequisites: Go 1.25+, Node.js, and the Wails CLI
 (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
 
-```powershell
-wails dev      # run with live reload
-wails build    # build build/bin/xray-test-manager.exe
-go build ./... # compile-check the Go backend only
+```sh
+wails dev                              # run with live reload
+wails build                            # Windows: build/bin/xray-test-manager.exe
+wails build -platform darwin/universal # macOS:   build/bin/xray-test-manager.app
+go build ./...                         # compile-check the Go backend only
 ```
 
 ## Releasing & distribution
 
-Releases ship two Windows artifacts plus checksums:
+Releases ship Windows and macOS artifacts plus checksums:
 
 | Artifact | Use |
 | --- | --- |
-| `xray-test-manager-<ver>-windows-amd64.exe` | Portable — run directly, no install |
-| `xray-test-manager-<ver>-windows-amd64-installer.exe` | Inno Setup installer (Start-menu entry, uninstaller) |
+| `xray-test-manager-<ver>-windows-amd64.exe` | Windows portable — run directly, no install |
+| `xray-test-manager-<ver>-windows-amd64-installer.exe` | Windows Inno Setup installer (Start-menu entry, uninstaller) |
+| `xray-test-manager-<ver>-macos-universal.zip` | macOS universal `.app` (Apple Silicon + Intel) |
 | `xray-test-manager-<ver>-user-guide.zip` | User guide (markdown + screenshots) |
-| `SHA256SUMS.txt` | Integrity check for the above |
+| `SHA256SUMS.txt` / `SHA256SUMS-macos.txt` | Integrity check for the above |
+
+> **macOS Gatekeeper:** the `.app` is not yet code-signed/notarized, so on first
+> launch macOS may block it. Right-click the app → **Open** (then confirm), or run
+> `xattr -dr com.apple.quarantine xray-test-manager.app` to clear the quarantine flag.
 
 **Build locally** (`scripts/release.ps1` builds, version-stamps, bundles into
 `dist/`, and writes checksums):
@@ -71,9 +79,11 @@ Releases ship two Windows artifacts plus checksums:
 The version is the single source of truth in `wails.json` (`info.productVersion`);
 the script stamps it and Wails bakes it into the installer and the exe metadata.
 
-**Cut a GitHub release** — push a tag and CI
-(`.github/workflows/release.yml`, on `windows-latest`) builds the installer and
-portable exe and publishes them to a GitHub Release:
+**Cut a GitHub release** — push a tag and CI (`.github/workflows/release.yml`)
+runs two jobs: `release-windows` (on `windows-latest`) builds the installer and
+portable exe, and `release-macos` (on `macos-latest`) builds the universal `.app`.
+Both publish to the same GitHub Release. (`scripts/release.ps1` is Windows-only;
+the macOS `.app` is built directly with `wails build`.)
 
 ```powershell
 git tag v0.2.0
