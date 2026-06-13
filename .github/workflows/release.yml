@@ -1,7 +1,8 @@
 name: Release
 
-# Tag a release to build and publish Windows artifacts:
+# Tag a release to build and publish Windows + macOS artifacts:
 #   git tag v0.2.0 && git push origin v0.2.0
+# The two jobs upload to the same GitHub Release for the tag.
 
 on:
   push:
@@ -22,7 +23,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  release:
+  release-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -74,3 +75,60 @@ jobs:
         with:
           name: xray-test-manager-${{ steps.ver.outputs.version }}
           path: dist/*
+
+  release-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25"
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "20"
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ github.event.inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Building version $v"
+
+      - name: Build universal .app
+        run: wails build -platform darwin/universal -clean
+
+      - name: Package .app (zip + checksum)
+        working-directory: build/bin
+        run: |
+          app="xray-test-manager.app"
+          out="xray-test-manager-${{ steps.ver.outputs.version }}-macos-universal.zip"
+          # ditto preserves the bundle structure and resource forks for a valid .app zip.
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$out"
+          shasum -a 256 "$out" > "SHA256SUMS-macos.txt"
+          ls -la
+
+      - name: Publish to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          name: Xray Test Manager v${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          files: |
+            build/bin/*.zip
+            build/bin/SHA256SUMS-macos.txt
+
+      - name: Upload artifacts (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: xray-test-manager-macos-${{ steps.ver.outputs.version }}
+          path: build/bin/*.zip
