@@ -501,6 +501,20 @@ func demoPreconditionsAndLinks(projectKey string) ([]Precondition, map[string][]
 
 // makeDemoTest builds a deterministic Test for index i, so repeated syncs of
 // a demo profile are idempotent.
+// demoTestForKey returns the deterministic demo Test for a "PROJ-N" key, so the
+// remote-fetch (GetTestFields) has something to return offline. Unparseable keys
+// yield the first demo Test.
+func demoTestForKey(key string) Test {
+	projectKey, idx := "DEMO", 0
+	if i := strings.LastIndex(key, "-"); i > 0 {
+		projectKey = key[:i]
+		if n, err := strconv.Atoi(key[i+1:]); err == nil && n > 0 {
+			idx = n - 1
+		}
+	}
+	return makeDemoTest(projectKey, idx)
+}
+
 func makeDemoTest(projectKey string, i int) Test {
 	feature := demoFeatures[i%len(demoFeatures)]
 	condition := demoConditions[(i/len(demoFeatures))%len(demoConditions)]

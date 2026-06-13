@@ -260,10 +260,39 @@ export namespace syncer {
 	        this.error = source["error"];
 	    }
 	}
+	export class ConflictField {
+	    pendingId: number;
+	    entityType: string;
+	    entityKey: string;
+	    field: string;
+	    label: string;
+	    base: string;
+	    remote: string;
+	    mine: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConflictField(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pendingId = source["pendingId"];
+	        this.entityType = source["entityType"];
+	        this.entityKey = source["entityKey"];
+	        this.field = source["field"];
+	        this.label = source["label"];
+	        this.base = source["base"];
+	        this.remote = source["remote"];
+	        this.mine = source["mine"];
+	    }
+	}
 	export class Conflict {
 	    testKey: string;
+	    testSummary: string;
 	    baseVersion: string;
 	    remoteVersion: string;
+	    remoteDeleted: boolean;
+	    fields: ConflictField[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Conflict(source);
@@ -272,9 +301,30 @@ export namespace syncer {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.testKey = source["testKey"];
+	        this.testSummary = source["testSummary"];
 	        this.baseVersion = source["baseVersion"];
 	        this.remoteVersion = source["remoteVersion"];
+	        this.remoteDeleted = source["remoteDeleted"];
+	        this.fields = this.convertValues(source["fields"], ConflictField);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class CommitResult {
 	    succeeded: string[];
@@ -312,6 +362,7 @@ export namespace syncer {
 		    return a;
 		}
 	}
+	
 	
 	
 
@@ -440,6 +491,28 @@ export namespace testrepo {
 		}
 	}
 	
+	export class ConflictDecision {
+	    pendingId: number;
+	    entityType: string;
+	    entityKey: string;
+	    field: string;
+	    choice: string;
+	    remoteValue: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConflictDecision(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pendingId = source["pendingId"];
+	        this.entityType = source["entityType"];
+	        this.entityKey = source["entityKey"];
+	        this.field = source["field"];
+	        this.choice = source["choice"];
+	        this.remoteValue = source["remoteValue"];
+	    }
+	}
 	export class Container {
 	    key: string;
 	    kind: string;

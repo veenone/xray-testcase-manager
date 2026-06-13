@@ -3875,3 +3875,79 @@ tr.row-checked:hover {
   text-align: center;
   padding: 1px 7px;
 }
+
+/* Three-way conflict resolution (FR-1.4, conflict management). */
+.conflict-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--surface);
+}
+.conflict-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.conflict-card-head .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conflict-deleted {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.conflict-merge-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+.conflict-merge-quick {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+.conflict-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+.conflict-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.conflict-table td {
+  padding: 4px 6px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--surface-2);
+}
+.conflict-field-label {
+  font-weight: 600;
+  width: 18%;
+  white-space: nowrap;
+}
+.conflict-pick label {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.conflict-pick-on {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 4px;
+}
+.conflict-val {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 5.5em;
+  overflow-y: auto;
+}

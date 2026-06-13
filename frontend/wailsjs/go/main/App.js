@@ -358,6 +358,10 @@ export function ReadLog(arg1) {
   return window['go']['main']['App']['ReadLog'](arg1);
 }
 
+export function RecreateDeletedTest(arg1, arg2) {
+  return window['go']['main']['App']['RecreateDeletedTest'](arg1, arg2);
+}
+
 export function RemoveRequirementSource(arg1, arg2) {
   return window['go']['main']['App']['RemoveRequirementSource'](arg1, arg2);
 }
@@ -372,6 +376,10 @@ export function ReorderTestSteps(arg1, arg2, arg3) {
 
 export function ResolveConflictKeepRemote(arg1, arg2) {
   return window['go']['main']['App']['ResolveConflictKeepRemote'](arg1, arg2);
+}
+
+export function ResolveConflictMerge(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ResolveConflictMerge'](arg1, arg2, arg3, arg4);
 }
 
 export function ResolveConflictOverride(arg1, arg2, arg3) {
