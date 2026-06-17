@@ -1257,6 +1257,7 @@ function App() {
                 version={detailVersion}
                 pendingForTest={pendingByTestKey.get(selectedKey) ?? []}
                 folders={folders}
+                jiraUrl={activeProfile?.jiraUrl ?? ""}
                 onClose={() => setSelectedKey(null)}
                 onEdited={handleEdited}
                 onCloned={handleTestCreated}

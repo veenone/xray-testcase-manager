@@ -1905,6 +1905,24 @@ tr.row-selected {
   font-weight: 600;
   color: #e8eaed;
 }
+.detail-key-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.detail-key-link:hover {
+  color: #fff;
+}
+.detail-key-ext {
+  font-size: 11px;
+  opacity: 0.8;
+}
 .detail-head-status {
   font-size: 11px;
   background: #2a3850;

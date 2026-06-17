@@ -25,6 +25,8 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
 - **Sync Test Calls.** The Test Calls view has a Sync button that re-pulls steps
   for the known caller tests to refresh the call graph, without a full profile
   sync. (RND_P_4TFINT_05-207)
+- **Open a test in Jira.** The test key in the detail panel header links to the
+  test's real Jira issue, opened in the system browser. (RND_P_4TFINT_05-211)
 
 ### Fixed
 - Committing changes no longer fails when a newly added step is reordered and

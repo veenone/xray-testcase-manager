@@ -30,6 +30,7 @@ import {
   CloneTestSteps,
   ReorderTestSteps,
   MoveTestToFolder,
+  BrowserOpenURL,
   errMsg,
 } from "../api";
 import type {
@@ -64,6 +65,9 @@ interface Props {
   version: number;
   pendingForTest: PendingChange[];
   folders: Folder[];
+  // The active profile's Jira base URL, used to link the test key to its real
+  // Jira issue (RND_P_4TFINT_05-211). Optional / empty hides the link.
+  jiraUrl?: string;
   onClose: () => void;
   onEdited: () => void;
   // Called with the new temp key after cloning this test into a fresh draft.
@@ -80,12 +84,24 @@ export function TestDetail({
   version,
   pendingForTest,
   folders,
+  jiraUrl,
   onClose,
   onEdited,
   onCloned,
 }: Props) {
   const { prompt, promptUI } = usePrompt();
   const { confirm, confirmUI } = useConfirm();
+
+  // The test key links to its real Jira issue, opened in the system browser
+  // (RND_P_4TFINT_05-211). Suppressed for demo profiles and for uncommitted
+  // "NEW-" drafts, which have no Jira URL yet.
+  const isDemoProfile = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
+  const canLinkToJira =
+    !!jiraUrl && !isDemoProfile && !testKey.startsWith("NEW-");
+  function openInJira() {
+    const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
+    if (base) BrowserOpenURL(`${base}/browse/${testKey}`);
+  }
 
   // Resizeable panel width (FR-11) — drag the left edge to widen for long
   // descriptions / steps; the width persists across sessions.
@@ -578,7 +594,20 @@ export function TestDetail({
       />
       <div className="detail-head">
         <div className="detail-head-id">
-          <span className="mono detail-key">{testKey}</span>
+          {canLinkToJira ? (
+            <button
+              className="mono detail-key detail-key-link"
+              onClick={openInJira}
+              title="Open this test in Jira (browser)"
+            >
+              {testKey}
+              <span className="detail-key-ext" aria-hidden="true">
+                ↗
+              </span>
+            </button>
+          ) : (
+            <span className="mono detail-key">{testKey}</span>
+          )}
           {test && (
             <span className="status-pill detail-head-status">
               {test.status || "—"}
