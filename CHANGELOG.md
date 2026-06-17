@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [1.5.0] - 2026-06-17
+
+### Added
+- **Searchable pickers.** Adding a requirement or precondition (the bulk modals
+  and the per-test "+ Link requirement" / "+ Add precondition" controls) and the
+  dashboard traceability filters now have a type-to-filter search box, so long
+  lists no longer mean scrolling. (RND_P_4TFINT_05-200)
+- **Duplicate a step.** Each step in the detail panel has a Duplicate action that
+  appends a copy on the same test, for both manual steps and call-test steps.
+  (RND_P_4TFINT_05-204)
+- **Clone a test.** A Clone action in the detail header drafts a new local test
+  copying the source's fields and steps (call steps preserved) and opens the
+  fresh draft for editing. (RND_P_4TFINT_05-206)
+- **Spell check on test text.** The browser's native spell check is enabled on
+  step Action / Data / Expected, descriptions, and summaries, flagging typos as
+  you type, fully offline. (RND_P_4TFINT_05-201)
+- **Sync Test Calls.** The Test Calls view has a Sync button that re-pulls steps
+  for the known caller tests to refresh the call graph, without a full profile
+  sync. (RND_P_4TFINT_05-207)
+
+### Fixed
+- Committing changes no longer fails when a newly added step is reordered and
+  then deleted before commit: the cancelled step's temporary id is pruned from
+  the queued reorder, so the commit doesn't reorder a step Jira never created.
+  (RND_P_4TFINT_05-203)
+
+### Changed
+- Lists sort Jira keys by their issue number numerically (KEY-2 before KEY-10
+  before KEY-100) instead of as text, and the Browse grid defaults to newest
+  first. The Preconditions and requirement lists, and the pickers they back,
+  order newest first. (RND_P_4TFINT_05-202, RND_P_4TFINT_05-205)
+
 ## [1.4.0] - 2026-06-14
 
 ### Added
@@ -112,6 +144,7 @@ with on-commit sync, bulk operations, Test Sets/Plans/Executions, Test
 Repository folders, preconditions, CSV/XLSX import & export, pytest scaffold,
 statistics dashboard, diagnostics, light/dark themes, profile management).
 
+[1.5.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.5.0
 [1.4.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.4.0
 [1.3.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.3.0
 [1.2.1]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.2.1
