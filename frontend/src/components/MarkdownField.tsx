@@ -54,14 +54,19 @@ export function MarkdownField({
       value,
       className,
       placeholder,
-      // Native browser spell-check (WebView2 is Chromium) flags typos in step
-      // and description prose as you edit (RND_P_4TFINT_05-201).
-      spellCheck: true,
       onChange: (e: React.ChangeEvent<HTMLTextAreaElement & HTMLInputElement>) =>
         onChange(e.target.value),
       onBlur: finishEditing,
     };
-    return multiline ? <textarea {...shared} rows={rows} /> : <input {...shared} />;
+    // Native browser spell-check (WebView2 is Chromium) flags typos in step
+    // (Action / Data / Expected) and description prose as you edit
+    // (RND_P_4TFINT_05-201). Set as an explicit attribute on the element rather
+    // than via the spread so it reliably reaches the DOM as spellcheck="true".
+    return multiline ? (
+      <textarea {...shared} rows={rows} spellCheck={true} />
+    ) : (
+      <input {...shared} spellCheck={true} />
+    );
   }
 
   // Idle view. role/tabIndex make it keyboard-reachable; Enter also opens the
