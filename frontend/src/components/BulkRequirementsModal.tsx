@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ListRequirementsWithCoverage, BulkAssociateRequirements, errMsg } from "../api";
 import type { RequirementCoverage, BulkEditResult } from "../api";
+import { SearchableSelect } from "./SearchableSelect";
 
 interface Props {
   profileId: string;
@@ -96,20 +97,18 @@ export function BulkRequirementsModal({
               {loading ? (
                 <span className="muted">Loading…</span>
               ) : (
-                <select
+                <SearchableSelect
                   value={target}
-                  onChange={(e) => setTarget(e.target.value)}
+                  onChange={setTarget}
                   disabled={requirements.length === 0}
-                >
-                  {requirements.length === 0 && (
-                    <option value="">None synced</option>
-                  )}
-                  {requirements.map((r) => (
-                    <option key={r.key} value={r.key}>
-                      {r.key} — {r.summary}
-                    </option>
-                  ))}
-                </select>
+                  placeholder={
+                    requirements.length === 0 ? "None synced" : "Select…"
+                  }
+                  options={requirements.map((r) => ({
+                    value: r.key,
+                    label: `${r.key} — ${r.summary}`,
+                  }))}
+                />
               )}
             </label>
 

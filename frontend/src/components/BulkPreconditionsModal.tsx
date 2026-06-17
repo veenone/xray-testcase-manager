@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ListAllPreconditions, BulkAssociatePreconditions, errMsg } from "../api";
 import type { Precondition, BulkEditResult } from "../api";
+import { SearchableSelect } from "./SearchableSelect";
 
 interface Props {
   profileId: string;
@@ -96,20 +97,18 @@ export function BulkPreconditionsModal({
               {loading ? (
                 <span className="muted">Loading…</span>
               ) : (
-                <select
+                <SearchableSelect
                   value={target}
-                  onChange={(e) => setTarget(e.target.value)}
+                  onChange={setTarget}
                   disabled={preconditions.length === 0}
-                >
-                  {preconditions.length === 0 && (
-                    <option value="">None synced</option>
-                  )}
-                  {preconditions.map((p) => (
-                    <option key={p.key} value={p.key}>
-                      {p.key} — {p.summary}
-                    </option>
-                  ))}
-                </select>
+                  placeholder={
+                    preconditions.length === 0 ? "None synced" : "Select…"
+                  }
+                  options={preconditions.map((p) => ({
+                    value: p.key,
+                    label: `${p.key} — ${p.summary}`,
+                  }))}
+                />
               )}
             </label>
 

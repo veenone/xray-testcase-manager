@@ -1,29 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 
-export interface MultiOption {
+export interface SelectOption {
   value: string;
   label: string;
 }
 
 interface Props {
-  options: MultiOption[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-  // Label shown when nothing is selected (e.g. "All requirements").
-  allLabel?: string;
+  options: SelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+  // Shown on the button when nothing is selected.
+  placeholder?: string;
+  disabled?: boolean;
   title?: string;
+  // Extra class on the wrapper, so callers can keep existing inline spacing.
+  className?: string;
 }
 
-// MultiSelect is a compact checkbox dropdown: a button shows the selection
-// summary ("All …" / one label / "N selected") and opens a checkbox list. Used
-// for the dashboard Sankey filters where several requirements / plans /
-// executions can be picked at once.
-export function MultiSelect({
+// SearchableSelect is a single-select dropdown with a type-to-filter box, for
+// picking one entry from a long list (e.g. a requirement or precondition) where
+// a native <select> means scrolling through everything (RND_P_4TFINT_05-200). It
+// mirrors MultiSelect's look: a button shows the current selection and opens a
+// panel with a search field and the filtered options.
+export function SearchableSelect({
   options,
-  selected,
+  value,
   onChange,
-  allLabel = "All",
+  placeholder = "Select…",
+  disabled = false,
   title,
+  className,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -38,7 +44,7 @@ export function MultiSelect({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  // Reset the filter each time the panel closes so it reopens showing everything.
+  // Clear the filter whenever the panel closes.
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
@@ -47,31 +53,28 @@ export function MultiSelect({
   const shown = q
     ? options.filter((o) => o.label.toLowerCase().includes(q))
     : options;
+  const current = options.find((o) => o.value === value);
 
-  const sel = new Set(selected);
-  function toggle(v: string) {
-    const next = new Set(sel);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
-    onChange([...next]);
+  function pick(v: string) {
+    onChange(v);
+    setOpen(false);
   }
 
-  const summary =
-    selected.length === 0
-      ? allLabel
-      : selected.length === 1
-        ? (options.find((o) => o.value === selected[0])?.label ?? selected[0])
-        : `${selected.length} selected`;
-
   return (
-    <div className="multiselect" ref={ref}>
+    <div
+      className={`multiselect searchable-select${className ? " " + className : ""}`}
+      ref={ref}
+    >
       <button
         type="button"
         className="multiselect-btn"
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         title={title}
       >
-        <span className="multiselect-summary">{summary}</span>
+        <span className="multiselect-summary">
+          {current ? current.label : placeholder}
+        </span>
         <span className="multiselect-caret" aria-hidden="true">
           ▾
         </span>
@@ -88,26 +91,16 @@ export function MultiSelect({
               onChange={(e) => setQuery(e.target.value)}
             />
           )}
-          {selected.length > 0 && (
-            <button
-              type="button"
-              className="link-btn multiselect-clear"
-              onClick={() => onChange([])}
-            >
-              Clear all
-            </button>
-          )}
           <ul className="multiselect-list">
             {shown.map((o) => (
               <li key={o.value}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={sel.has(o.value)}
-                    onChange={() => toggle(o.value)}
-                  />
-                  <span>{o.label}</span>
-                </label>
+                <button
+                  type="button"
+                  className={`searchable-option${o.value === value ? " is-selected" : ""}`}
+                  onClick={() => pick(o.value)}
+                >
+                  {o.label}
+                </button>
               </li>
             ))}
             {options.length === 0 && <li className="muted">No options</li>}

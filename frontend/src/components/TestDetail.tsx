@@ -50,6 +50,7 @@ import type {
 import { usePrompt } from "./usePrompt";
 import { useConfirm } from "./useConfirm";
 import { MarkdownField } from "./MarkdownField";
+import { SearchableSelect } from "./SearchableSelect";
 import { CloneStepsModal } from "./CloneStepsModal";
 import { PickTestModal } from "./PickTestModal";
 import { formatDateTime } from "../dates";
@@ -769,25 +770,24 @@ export function TestDetail({
               ))}
             </ul>
           )}
-          <select
-            className="detail-input detail-input-inline pre-add"
+          <SearchableSelect
+            className="pre-add"
             value=""
-            onChange={(e) => {
-              const v = e.target.value;
+            placeholder="+ Add precondition…"
+            onChange={(v) => {
               if (v === "__new__") createAndAssociatePrecondition();
               else if (v) addPrecondition(v);
             }}
-          >
-            <option value="">+ Add precondition…</option>
-            {allPreconditions
-              .filter((p) => !preconditions.some((lp) => lp.key === p.key))
-              .map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.key} — {p.summary}
-                </option>
-              ))}
-            <option value="__new__">＋ Create new precondition…</option>
-          </select>
+            options={[
+              ...allPreconditions
+                .filter((p) => !preconditions.some((lp) => lp.key === p.key))
+                .map((p) => ({
+                  value: p.key,
+                  label: `${p.key} — ${p.summary}`,
+                })),
+              { value: "__new__", label: "＋ Create new precondition…" },
+            ]}
+          />
 
           {(() => {
             const sets = containers.filter((c) => c.kind === "testset");
@@ -857,22 +857,20 @@ export function TestDetail({
               ))}
             </ul>
           )}
-          <select
-            className="detail-input detail-input-inline pre-add"
+          <SearchableSelect
+            className="pre-add"
             value=""
-            onChange={(e) => {
-              if (e.target.value) addRequirement(e.target.value);
+            placeholder="+ Link requirement…"
+            onChange={(v) => {
+              if (v) addRequirement(v);
             }}
-          >
-            <option value="">+ Link requirement…</option>
-            {allRequirements
+            options={allRequirements
               .filter((r) => !requirements.some((lr) => lr.key === r.key))
-              .map((r) => (
-                <option key={r.key} value={r.key}>
-                  {r.key} — {r.summary}
-                </option>
-              ))}
-          </select>
+              .map((r) => ({
+                value: r.key,
+                label: `${r.key} — ${r.summary}`,
+              }))}
+          />
 
           <h4>
             Description {isDirty("description") && <DirtyDot />}
