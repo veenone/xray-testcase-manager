@@ -2676,6 +2676,12 @@ func (r *Repository) DeleteTestStep(profileID, testKey, xrayID string) error {
 		); derr != nil {
 			return fmt.Errorf("cancel pending add: %w", derr)
 		}
+		// The cancelled step never reached Xray, so its temporary "new-N" id must
+		// not linger in a queued reorder — committing one would PUT a reorder
+		// against a step Xray never created and fail (RND_P_4TFINT_05-203).
+		if perr := pruneStepFromOrder(tx, profileID, testKey, xrayID); perr != nil {
+			return perr
+		}
 		if aerr := writeAudit(
 			tx, profileID, entityTestStepAdd, ek,
 			"add-cancelled", "step", string(snapshot), "", "",
@@ -2719,6 +2725,68 @@ func (r *Repository) DeleteTestStep(profileID, testKey, xrayID string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// pruneStepFromOrder removes xrayID from this Test's queued step reorder, if one
+// exists, keeping the pending order self-consistent when a step is dropped. If
+// removing the id leaves the order identical to its original, the reorder is a
+// no-op and the pending row is deleted (mirroring revert-to-original
+// coalescing). Used when a locally-added step is cancelled so its temporary
+// "new-N" id can't survive in the order and make the commit reorder a step Xray
+// never created (RND_P_4TFINT_05-203).
+func pruneStepFromOrder(tx *sql.Tx, profileID, testKey, xrayID string) error {
+	var id int64
+	var beforeJSON, afterJSON string
+	err := tx.QueryRow(
+		`SELECT id, before_val, after_val FROM pending_change
+		 WHERE profile_id = ? AND entity_type = ? AND entity_key = ? AND field = 'order'`,
+		profileID, entityTestStepOrder, testKey,
+	).Scan(&id, &beforeJSON, &afterJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("probe pending order: %w", err)
+	}
+
+	var before, after []string
+	if err := json.Unmarshal([]byte(beforeJSON), &before); err != nil {
+		return fmt.Errorf("unmarshal order before: %w", err)
+	}
+	if err := json.Unmarshal([]byte(afterJSON), &after); err != nil {
+		return fmt.Errorf("unmarshal order after: %w", err)
+	}
+	before = removeString(before, xrayID)
+	after = removeString(after, xrayID)
+
+	if equalOrder(before, after) {
+		_, derr := tx.Exec(`DELETE FROM pending_change WHERE profile_id = ? AND id = ?`, profileID, id)
+		return derr
+	}
+	nb, err := json.Marshal(before)
+	if err != nil {
+		return fmt.Errorf("marshal pruned order before: %w", err)
+	}
+	na, err := json.Marshal(after)
+	if err != nil {
+		return fmt.Errorf("marshal pruned order after: %w", err)
+	}
+	_, err = tx.Exec(
+		`UPDATE pending_change SET before_val = ?, after_val = ? WHERE profile_id = ? AND id = ?`,
+		string(nb), string(na), profileID, id,
+	)
+	return err
+}
+
+// removeString returns ss without any element equal to v, preserving order.
+func removeString(ss []string, v string) []string {
+	out := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if s != v {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // AddTestStep appends a new Step to a Test locally and queues it for creation
