@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ListTestCallLinks, errMsg } from "../api";
+import { ListTestCallLinks, SyncTestCalls, errMsg } from "../api";
 import type { TestCallLink } from "../api";
 import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
@@ -84,6 +84,10 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
   const [pageSize, setPageSize] = useState(25);
   // Caller keys whose callee list is collapsed (default: all expanded).
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState("");
+  // Bumped after a partial sync to re-pull the (now refreshed) call links.
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (!profileId) return;
@@ -103,7 +107,23 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey, detailVersion]);
+  }, [profileId, refreshKey, detailVersion, reload]);
+
+  // syncCalls re-pulls steps for the known caller tests so the call graph
+  // refreshes without a full profile sync (RND_P_4TFINT_05-207).
+  async function syncCalls() {
+    setSyncing(true);
+    setSyncError("");
+    try {
+      await SyncTestCalls(profileId);
+      setReload((r) => r + 1);
+      onChanged?.();
+    } catch (e) {
+      setSyncError(errMsg(e));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   // Group the flat edge list by caller, preserving step order.
   const callers = useMemo(() => {
@@ -158,6 +178,14 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
             Which tests call other tests (Xray test calls) in their steps.
           </p>
         </div>
+        <button
+          className="btn"
+          onClick={syncCalls}
+          disabled={syncing}
+          title="Re-pull steps for the known caller tests to refresh the call graph (no full sync)"
+        >
+          {syncing ? "Syncing…" : "↻ Sync"}
+        </button>
         <div className="testcalls-stats">
           <span className="testcalls-stat">
             <b>{callerCount}</b> calling
@@ -177,6 +205,7 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
           )}
         </div>
       </div>
+      {syncError && <div className="error-text">{syncError}</div>}
 
       {links.length === 0 ? (
         <p className="muted testcalls-empty">

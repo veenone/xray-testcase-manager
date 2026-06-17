@@ -54,6 +54,9 @@ export function MarkdownField({
       value,
       className,
       placeholder,
+      // Native browser spell-check (WebView2 is Chromium) flags typos in step
+      // and description prose as you edit (RND_P_4TFINT_05-201).
+      spellCheck: true,
       onChange: (e: React.ChangeEvent<HTMLTextAreaElement & HTMLInputElement>) =>
         onChange(e.target.value),
       onBlur: finishEditing,

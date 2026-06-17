@@ -229,6 +229,8 @@ export function SyncProfileFull(arg1:string):Promise<void>;
 
 export function SyncRequirements(arg1:string):Promise<void>;
 
+export function SyncTestCalls(arg1:string):Promise<void>;
+
 export function TestConnection(arg1:string,arg2:string):Promise<string>;
 
 export function TransitionTest(arg1:string,arg2:string,arg3:string):Promise<void>;

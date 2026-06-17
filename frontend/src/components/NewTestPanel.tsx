@@ -151,6 +151,7 @@ export function NewTestPanel({
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
           placeholder="What does this test verify?"
+          spellCheck
           autoFocus
         />
 
@@ -161,6 +162,7 @@ export function NewTestPanel({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Markdown supported"
+          spellCheck
         />
 
         <div className="ntp-row">

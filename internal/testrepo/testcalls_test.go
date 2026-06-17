@@ -1,46 +1,55 @@
-package testrepo_test
+package testrepo
 
 import (
+	"path/filepath"
 	"testing"
 
-	"xray-test-manager/internal/testrepo"
+	"xray-test-manager/internal/store"
 )
 
-func TestListTestCallLinks(t *testing.T) {
-	repo := seedTestWithSteps(t) // QA-1 with one manual step
-	if err := repo.UpsertTests("p1", []testrepo.TestCase{
-		{Key: "QA-2", ID: "2", Summary: "Login helper"},
-	}); err != nil {
-		t.Fatalf("seed called test: %v", err)
-	}
-
-	// QA-1 calls QA-2 (exists) and QA-404 (not in the cache → broken).
-	if _, err := repo.AddCalledTestStep("p1", "QA-1", "QA-2"); err != nil {
-		t.Fatalf("call QA-2: %v", err)
-	}
-	if _, err := repo.AddCalledTestStep("p1", "QA-1", "QA-404"); err != nil {
-		t.Fatalf("call QA-404: %v", err)
-	}
-
-	links, err := repo.ListTestCallLinks("p1")
+// DistinctTestCallers lists the cached tests that call another test, de-duped
+// and ordered, driving the Test Calls partial sync (RND_P_4TFINT_05-207).
+func TestDistinctTestCallers(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "x.db"))
 	if err != nil {
-		t.Fatalf("list call links: %v", err)
+		t.Fatalf("open: %v", err)
 	}
-	if len(links) != 2 {
-		t.Fatalf("want 2 call links, got %d: %+v", len(links), links)
+	t.Cleanup(func() { _ = st.Close() })
+	repo := NewRepository(st)
+
+	if err := repo.UpsertTests("p1", []TestCase{
+		{Key: "QA-1", ID: "1"}, {Key: "QA-2", ID: "2"}, {Key: "QA-3", ID: "3"},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := repo.SetTestSteps("p1", "QA-1", []Step{
+		{XrayID: "10", Index: 1, CalledTestKey: "QA-2"},
+		{XrayID: "11", Index: 2, CalledTestKey: "QA-3"},
+	}); err != nil {
+		t.Fatalf("steps QA-1: %v", err)
+	}
+	if err := repo.SetTestSteps("p1", "QA-2", []Step{
+		{XrayID: "20", Index: 1, CalledTestKey: "QA-3"},
+	}); err != nil {
+		t.Fatalf("steps QA-2: %v", err)
+	}
+	if err := repo.SetTestSteps("p1", "QA-3", []Step{
+		{XrayID: "30", Index: 1, Action: "plain step"},
+	}); err != nil {
+		t.Fatalf("steps QA-3: %v", err)
 	}
 
-	byCalled := map[string]testrepo.TestCallLink{}
-	for _, l := range links {
-		if l.CallerKey != "QA-1" {
-			t.Errorf("caller = %q, want QA-1", l.CallerKey)
+	callers, err := repo.DistinctTestCallers("p1")
+	if err != nil {
+		t.Fatalf("callers: %v", err)
+	}
+	want := []string{"QA-1", "QA-2"}
+	if len(callers) != len(want) {
+		t.Fatalf("callers = %v, want %v", callers, want)
+	}
+	for i := range want {
+		if callers[i] != want[i] {
+			t.Errorf("callers[%d] = %q, want %q", i, callers[i], want[i])
 		}
-		byCalled[l.CalledKey] = l
-	}
-	if !byCalled["QA-2"].CalledExists || byCalled["QA-2"].CalledSummary != "Login helper" {
-		t.Errorf("QA-2 link should resolve to an existing test: %+v", byCalled["QA-2"])
-	}
-	if byCalled["QA-404"].CalledExists {
-		t.Errorf("QA-404 link should be flagged as broken (not in cache)")
 	}
 }

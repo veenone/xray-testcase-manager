@@ -579,6 +579,7 @@ export function TestDetail({
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
             onBlur={() => saveField("summary", summary)}
+            spellCheck
           />
 
           <dl className="detail-fields">

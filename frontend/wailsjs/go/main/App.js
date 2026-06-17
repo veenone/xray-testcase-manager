@@ -446,6 +446,10 @@ export function SyncRequirements(arg1) {
   return window['go']['main']['App']['SyncRequirements'](arg1);
 }
 
+export function SyncTestCalls(arg1) {
+  return window['go']['main']['App']['SyncTestCalls'](arg1);
+}
+
 export function TestConnection(arg1, arg2) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2);
 }

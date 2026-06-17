@@ -527,6 +527,66 @@ func (a *App) SyncContainers(profileID string) error {
 	})
 }
 
+// SyncTestCalls refreshes the "call test" relationships by re-pulling steps for
+// every test currently known to call another (RND_P_4TFINT_05-207), without a
+// full profile sync. It catches calls added, removed or retargeted on those
+// tests. A test that only became a caller in Jira since the last full sync is
+// picked up once its steps are loaded (open it) or on the next full sync, since
+// call links derive from the lazily-loaded step cache. Best-effort: a per-test
+// fetch failure is collected and reported but does not abort the others.
+func (a *App) SyncTestCalls(profileID string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	callers, err := a.repo.DistinctTestCallers(profileID)
+	if err != nil {
+		return err
+	}
+	if len(callers) == 0 {
+		return nil
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return fmt.Errorf("load credentials: %w", err)
+	}
+	client := jira.NewClient(p.JiraURL, token)
+
+	var firstErr error
+	for _, key := range callers {
+		if isLocalTestKey(key) {
+			continue // uncommitted local test — its steps never came from Jira
+		}
+		remote, err := client.GetTestSteps(a.ctx, key)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("refresh %s: %w", key, err)
+			}
+			continue
+		}
+		steps := make([]testrepo.Step, len(remote))
+		for i, s := range remote {
+			steps[i] = testrepo.Step{
+				XrayID:        s.ID,
+				Index:         s.Index,
+				Action:        s.Action,
+				Data:          s.Data,
+				Expected:      s.Expected,
+				CalledTestKey: s.CalledTestKey,
+			}
+		}
+		if err := a.repo.SetTestSteps(profileID, key, steps); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("cache %s: %w", key, err)
+			}
+		}
+	}
+	return firstErr
+}
+
 // SyncProfileFull forces a full re-sync, ignoring the stored watermark. Use it
 // to re-pull data the incremental path skips — notably the Test Repository
 // folder membership walk, which only runs on a full sync (it is one Jira call

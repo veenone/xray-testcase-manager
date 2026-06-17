@@ -58,3 +58,30 @@ func (r *Repository) ListTestCallLinks(profileID string) ([]TestCallLink, error)
 	}
 	return out, rows.Err()
 }
+
+// DistinctTestCallers returns the cached test keys that call at least one other
+// test (have a step with called_test_key set), ordered by key. Drives the Test
+// Calls view's partial sync, which re-pulls just these tests' steps to refresh
+// the call graph without a full profile sync (RND_P_4TFINT_05-207).
+func (r *Repository) DistinctTestCallers(profileID string) ([]string, error) {
+	rows, err := r.db.Query(
+		`SELECT DISTINCT test_key FROM test_step
+		  WHERE profile_id = ? AND called_test_key <> ''
+		  ORDER BY test_key`,
+		profileID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list test callers: %w", err)
+	}
+	defer rows.Close()
+
+	out := []string{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
