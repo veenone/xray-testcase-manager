@@ -216,6 +216,18 @@ var sortColumns = map[string]string{
 	"updated": "updated_at",
 }
 
+// keyNumericOrderExpr returns a SQL ORDER-BY expression that sorts a Jira-key
+// column by its trailing issue number *numerically* — so QA-2 sorts before
+// QA-10 before QA-100 — instead of the lexical "-1, -10, -100" order a plain
+// string sort produces (RND_P_4TFINT_05-202 / -205). It strips the trailing
+// digits to find where the number starts, then CASTs the remainder to an
+// integer; keys with no trailing digits collapse to 0 and fall back to the
+// caller's prefix tiebreaker. col must be a trusted column name, never user
+// input.
+func keyNumericOrderExpr(col string) string {
+	return fmt.Sprintf("CAST(substr(%[1]s, length(rtrim(%[1]s, '0123456789')) + 1) AS INTEGER)", col)
+}
+
 // editableFields whitelists which Test fields can be edited via EditTestField.
 // Status transitions need workflow logic and are handled separately in a
 // later slice (FR-4.2).
@@ -2003,10 +2015,21 @@ func (r *Repository) ListTests(profileID string, q Query) (Page, error) {
 		limit = 100
 	}
 
+	// Sorting by key orders on the trailing issue number numerically (QA-2 <
+	// QA-10 < QA-100), not lexically; the bare key is the stable tiebreaker.
+	// Other sorts keep numeric key as their secondary sort so equal values stay
+	// in issue-number order (RND_P_4TFINT_05-202 / -205).
+	var orderSQL string
+	if sortCol == "jira_key" {
+		orderSQL = fmt.Sprintf("%s %s, jira_key %s", keyNumericOrderExpr("jira_key"), dir, dir)
+	} else {
+		orderSQL = fmt.Sprintf("%s %s, %s ASC", sortCol, dir, keyNumericOrderExpr("jira_key"))
+	}
+
 	listSQL := fmt.Sprintf(
 		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id
-		 FROM test_case %s ORDER BY %s %s LIMIT ? OFFSET ?`,
-		whereSQL, sortCol, dir)
+		 FROM test_case %s ORDER BY %s LIMIT ? OFFSET ?`,
+		whereSQL, orderSQL)
 
 	rows, err := r.db.Query(listSQL, append(args, limit, q.Offset)...)
 	if err != nil {

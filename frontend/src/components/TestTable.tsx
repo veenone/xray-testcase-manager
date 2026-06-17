@@ -213,7 +213,10 @@ export function TestTable({
   const [status, setStatus] = useState("");
   const [review, setReview] = useState("");
   const [sortBy, setSortBy] = useState<SortCol>("key");
-  const [desc, setDesc] = useState(false);
+  // Default to newest-first by issue number (RND_P_4TFINT_05-202). The key sort
+  // is numeric on the trailing number, so this lists the highest issue keys
+  // first; saved views restore their own direction.
+  const [desc, setDesc] = useState(true);
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageInput, setPageInput] = useState("");

@@ -46,7 +46,7 @@ func (r *Repository) ListPreconditionsWithUsage(profileID string) ([]Preconditio
 		   ON tp.profile_id = p.profile_id AND tp.precondition_key = p.jira_key
 		 WHERE p.profile_id = ?
 		 GROUP BY p.jira_key, p.summary, p.type, p.description
-		 ORDER BY p.jira_key`,
+		 ORDER BY `+keyNumericOrderExpr("p.jira_key")+` DESC, p.jira_key DESC`,
 		profileID)
 	if err != nil {
 		return nil, fmt.Errorf("list preconditions with usage: %w", err)

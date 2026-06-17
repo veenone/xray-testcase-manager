@@ -308,7 +308,7 @@ func (r *Repository) ListRequirementsWithCoverage(profileID string) ([]Requireme
 	reqRows, err := r.db.Query(
 		`SELECT jira_key, project_key, issue_type, summary, status
 		 FROM requirement WHERE profile_id = ?
-		 ORDER BY project_key, jira_key`, profileID)
+		 ORDER BY project_key, `+keyNumericOrderExpr("jira_key")+` DESC, jira_key DESC`, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("list requirements: %w", err)
 	}
