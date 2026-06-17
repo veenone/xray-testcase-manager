@@ -33,6 +33,8 @@ export function CheckJiraTestSteps(arg1:string,arg2:string):Promise<main.JiraSte
 
 export function CleanSampleData(arg1:string):Promise<number>;
 
+export function CloneTest(arg1:string,arg2:string):Promise<string>;
+
 export function CloneTestSteps(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<Array<testrepo.Step>>;
 
 export function CommitPendingChanges(arg1:string):Promise<syncer.CommitResult>;

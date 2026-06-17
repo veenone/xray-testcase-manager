@@ -1875,6 +1875,20 @@ tr.row-selected {
   color: #c7d0e0;
   border: 1px solid #3a4a66;
 }
+.detail-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.detail-clone {
+  font-size: 12px;
+  color: #c7d0e0;
+}
+.detail-clone:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
 .detail-close {
   color: #9aa7bd;
   flex-shrink: 0;

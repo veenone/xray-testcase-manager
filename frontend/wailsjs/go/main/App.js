@@ -54,6 +54,10 @@ export function CleanSampleData(arg1) {
   return window['go']['main']['App']['CleanSampleData'](arg1);
 }
 
+export function CloneTest(arg1, arg2) {
+  return window['go']['main']['App']['CloneTest'](arg1, arg2);
+}
+
 export function CloneTestSteps(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CloneTestSteps'](arg1, arg2, arg3, arg4);
 }

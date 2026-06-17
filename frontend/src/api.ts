@@ -75,6 +75,7 @@ export {
   PreviewImport,
   ImportTests,
   CreateTest,
+  CloneTest,
   ExportTests,
   ExportImportTemplate,
   ExportRequirementAudit,

@@ -1,6 +1,9 @@
 package testrepo
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // StepDraft is one step entered in the interactive New Test form (FR-1).
 type StepDraft struct {
@@ -66,6 +69,53 @@ func (r *Repository) CreateTest(profileID string, d TestDraft) (string, error) {
 	if len(d.PrecondKeys) > 0 {
 		if err := r.SetTestPreconditions(profileID, tempKey, d.PrecondKeys); err != nil {
 			return tempKey, fmt.Errorf("link preconditions on new test: %w", err)
+		}
+	}
+	return tempKey, nil
+}
+
+// CloneTest drafts a brand-new local Test (temp "NEW-N" key) that copies an
+// existing Test's fields and steps, so a similar test can be created without
+// re-entering everything (RND_P_4TFINT_05-206). The clone's summary gets a
+// " (copy)" suffix; it has no link back to the source and is queued for creation
+// on commit like any New Test. Steps come from the local cache, so the caller
+// should ensure they are loaded first (the detail panel loads them on open);
+// call-test steps are preserved as call steps, manual steps as manual content.
+func (r *Repository) CloneTest(profileID, sourceKey string) (string, error) {
+	src, err := r.GetTest(profileID, sourceKey)
+	if err != nil {
+		return "", fmt.Errorf("read source test: %w", err)
+	}
+	steps, err := r.ListTestSteps(profileID, sourceKey)
+	if err != nil {
+		return "", fmt.Errorf("read source steps: %w", err)
+	}
+
+	// Create the test shell first (no steps in the draft), then append each step
+	// so call-test steps survive — TestDraft only carries manual step content.
+	tempKey, err := r.CreateTest(profileID, TestDraft{
+		Summary:     strings.TrimSpace(src.Summary) + " (copy)",
+		Description: src.Description,
+		Priority:    src.Priority,
+		Labels:      strings.Join(src.Labels, " "),
+		Components:  strings.Join(src.Components, ","),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	for _, s := range steps {
+		if s.CalledTestKey != "" {
+			if _, err := r.AddCalledTestStep(profileID, tempKey, s.CalledTestKey); err != nil {
+				return tempKey, fmt.Errorf("clone call step: %w", err)
+			}
+			continue
+		}
+		if s.Action == "" && s.Data == "" && s.Expected == "" {
+			continue // skip blank steps (Xray rejects them)
+		}
+		if _, err := r.AddTestStep(profileID, tempKey, s.Action, s.Data, s.Expected); err != nil {
+			return tempKey, fmt.Errorf("clone step: %w", err)
 		}
 	}
 	return tempKey, nil

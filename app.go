@@ -1865,6 +1865,19 @@ func (a *App) CreateTest(profileID string, draft testrepo.TestDraft) (string, er
 	return a.repo.CreateTest(profileID, draft)
 }
 
+// CloneTest drafts a new local Test copying an existing Test's fields and steps
+// (RND_P_4TFINT_05-206), pushed to Jira on commit. Returns the temp key so the
+// frontend can open the clone in the detail panel.
+func (a *App) CloneTest(profileID, sourceKey string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(sourceKey) == "" {
+		return "", fmt.Errorf("a source test key is required to clone")
+	}
+	return a.repo.CloneTest(profileID, sourceKey)
+}
+
 // decodeImport base64-decodes an uploaded file and parses it into rows.
 func decodeImport(contentB64 string, isXlsx bool) ([][]string, error) {
 	data, err := base64.StdEncoding.DecodeString(contentB64)

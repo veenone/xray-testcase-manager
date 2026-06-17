@@ -26,6 +26,7 @@ import {
   DeleteTestStep,
   AddTestStep,
   AddCalledTestStep,
+  CloneTest,
   CloneTestSteps,
   ReorderTestSteps,
   MoveTestToFolder,
@@ -64,6 +65,10 @@ interface Props {
   folders: Folder[];
   onClose: () => void;
   onEdited: () => void;
+  // Called with the new temp key after cloning this test into a fresh draft.
+  // Optional: omitted where the panel is a read-only slide-over, which hides
+  // the Clone action.
+  onCloned?: (tempKey: string) => void;
 }
 
 type EditableField = "summary" | "description" | "priority" | "labels";
@@ -76,6 +81,7 @@ export function TestDetail({
   folders,
   onClose,
   onEdited,
+  onCloned,
 }: Props) {
   const { prompt, promptUI } = usePrompt();
   const { confirm, confirmUI } = useConfirm();
@@ -131,6 +137,7 @@ export function TestDetail({
   const [stepsError, setStepsError] = useState("");
   const [showCloneSteps, setShowCloneSteps] = useState(false);
   const [showCallPicker, setShowCallPicker] = useState(false);
+  const [cloning, setCloning] = useState(false);
   // What Jira itself reports about this Test's steps — used to warn when the
   // panel is empty but Jira actually has steps (a load/shape problem), so the
   // user doesn't add a blank step that Xray rejects.
@@ -456,6 +463,37 @@ export function TestDetail({
     }
   }
 
+  // cloneThisTest drafts a new local test copying this one's fields and steps
+  // (RND_P_4TFINT_05-206), then opens the fresh draft in the detail panel.
+  async function cloneThisTest() {
+    setCloning(true);
+    setSaveError("");
+    try {
+      const tempKey = await CloneTest(profileId, testKey);
+      onCloned?.(tempKey);
+    } catch (e) {
+      setSaveError(`Clone test failed: ${errMsg(e)}`);
+      setCloning(false);
+    }
+  }
+
+  // duplicateStep appends a copy of an existing step on this same test
+  // (RND_P_4TFINT_05-204) — a call step clones its called test, a manual step
+  // clones its action/data/expected. The copy is a new queued step the user can
+  // reorder; it lands in Jira on commit like any added step.
+  async function duplicateStep(step: Step) {
+    setSaveError("");
+    try {
+      const s = step.calledTestKey
+        ? await AddCalledTestStep(profileId, testKey, step.calledTestKey)
+        : await AddTestStep(profileId, testKey, step.action, step.data, step.expected);
+      setSteps((prev) => [...prev, s]);
+      onEdited();
+    } catch (e) {
+      setSaveError(`Duplicate step failed: ${errMsg(e)}`);
+    }
+  }
+
   // moveStep swaps a step with its neighbour and persists the whole new order
   // (FR-2.5). The reorder is a single test-level pending change; on failure we
   // roll the local list back so the UI matches what was actually saved.
@@ -546,13 +584,25 @@ export function TestDetail({
             </span>
           )}
         </div>
-        <button
-          className="btn btn-ghost detail-close"
-          onClick={onClose}
-          title="Close"
-        >
-          ✕
-        </button>
+        <div className="detail-head-actions">
+          {onCloned && !testKey.startsWith("NEW-") && (
+            <button
+              className="btn btn-ghost detail-clone"
+              onClick={cloneThisTest}
+              disabled={cloning}
+              title="Create a new test that copies this test's fields and steps"
+            >
+              {cloning ? "Cloning…" : "⧉ Clone"}
+            </button>
+          )}
+          <button
+            className="btn btn-ghost detail-close"
+            onClick={onClose}
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {testKey.startsWith("NEW-") && (
@@ -950,6 +1000,7 @@ export function TestDetail({
                   isLast={i === steps.length - 1}
                   confirm={confirm}
                   onMove={(dir) => moveStep(i, dir)}
+                  onDuplicate={() => duplicateStep(s)}
                   onLocalChange={(field, value) => {
                     setSteps((prev) =>
                       prev.map((p) =>
@@ -1041,6 +1092,7 @@ interface StepRowProps {
     confirmLabel?: string;
   }) => Promise<boolean>;
   onMove: (dir: "up" | "down") => void;
+  onDuplicate: () => void;
   onLocalChange: (field: StepField, value: string) => void;
   onLocalDelete: (xrayId: string) => void;
   onEdited: () => void;
@@ -1059,6 +1111,7 @@ function StepRow({
   isLast,
   confirm,
   onMove,
+  onDuplicate,
   onLocalChange,
   onLocalDelete,
   onEdited,
@@ -1156,6 +1209,13 @@ function StepRow({
             </button>
           </div>
           <button
+            className="btn btn-ghost step-duplicate"
+            onClick={onDuplicate}
+            title="Duplicate this call"
+          >
+            ⧉
+          </button>
+          <button
             className="btn btn-ghost step-delete"
             onClick={deleteStep}
             title={isNew ? "Discard this call" : "Delete this call"}
@@ -1198,6 +1258,13 @@ function StepRow({
             ▼
           </button>
         </div>
+        <button
+          className="btn btn-ghost step-duplicate"
+          onClick={onDuplicate}
+          title="Duplicate this step"
+        >
+          ⧉
+        </button>
         <button
           className="btn btn-ghost step-delete"
           onClick={deleteStep}

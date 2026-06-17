@@ -1259,6 +1259,7 @@ function App() {
                 folders={folders}
                 onClose={() => setSelectedKey(null)}
                 onEdited={handleEdited}
+                onCloned={handleTestCreated}
               />
             )
           )}
