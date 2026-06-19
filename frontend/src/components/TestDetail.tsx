@@ -79,7 +79,15 @@ interface Props {
   onCloned?: (tempKey: string) => void;
 }
 
-type EditableField = "summary" | "description" | "priority" | "labels";
+type EditableField =
+  | "summary"
+  | "description"
+  | "priority"
+  | "labels"
+  | "exec_type";
+
+// EXEC_TYPE_OPTIONS is the fixed Xray Test Type (execution type) vocabulary.
+const EXEC_TYPE_OPTIONS = ["Manual", "Automated", "Generic", "Cucumber"];
 
 export function TestDetail({
   profileId,
@@ -181,6 +189,7 @@ export function TestDetail({
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("");
   const [labels, setLabels] = useState("");
+  const [execType, setExecType] = useState("");
 
   // Tracks the previously-shown key so we can detect a just-committed new Test
   // (its key flips from a "NEW-N" placeholder to the real Jira key) and force a
@@ -213,6 +222,7 @@ export function TestDetail({
         setDescription(t.description);
         setPriority(t.priority);
         setLabels((t.labels ?? []).join(" "));
+        setExecType(t.execType ?? "");
         setPreconditions(pre);
         setContainers(cons ?? []);
         setAllPreconditions(allPre ?? []);
@@ -304,6 +314,9 @@ export function TestDetail({
       case "labels":
         backendValue = (test.labels ?? []).join(" ");
         break;
+      case "exec_type":
+        backendValue = test.execType ?? "";
+        break;
     }
     if (value === backendValue) return;
 
@@ -324,6 +337,9 @@ export function TestDetail({
           break;
         case "labels":
           updated.labels = value.split(/\s+/).filter(Boolean);
+          break;
+        case "exec_type":
+          updated.execType = value;
           break;
       }
       setTest(updated);
@@ -737,6 +753,27 @@ export function TestDetail({
                 onBlur={() => saveField("labels", labels)}
                 placeholder="space-separated"
               />
+            </dd>
+
+            <dt>
+              Execution type {isDirty("exec_type") && <DirtyDot />}
+            </dt>
+            <dd>
+              <select
+                className="detail-input detail-input-inline"
+                value={execType}
+                onChange={(e) => {
+                  setExecType(e.target.value);
+                  saveField("exec_type", e.target.value);
+                }}
+              >
+                <option value="">—</option>
+                {EXEC_TYPE_OPTIONS.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
             </dd>
 
             {folders.length > 0 && (

@@ -187,6 +187,7 @@ export interface TestCase {
   components: string[];
   updated: string;
   folderId: string;
+  execType: string;
 }
 
 export interface TestPage {
@@ -200,6 +201,7 @@ export interface TestQuery {
   folderId: string;
   containerKey: string;
   component: string;
+  execType: string;
   review: string;
   sortBy: string;
   desc: boolean;

@@ -58,6 +58,12 @@ func FieldsForJira(updates map[string]string) map[string]any {
 				labels = []string{}
 			}
 			out["labels"] = labels
+		case "exec_type":
+			// TODO(xtm): map exec_type (Xray Test Type) to its instance-specific
+			// custom field id, e.g. out["customfield_XXXXX"] = {"value": v}. The
+			// field id varies per Jira/Xray instance and is unverified against a
+			// live server (Phase 7), so the edit is journaled + cleared locally
+			// but not yet pushed. Dropped here until the live field is wired.
 		}
 	}
 	return out

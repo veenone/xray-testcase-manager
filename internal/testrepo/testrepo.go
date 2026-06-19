@@ -33,6 +33,9 @@ type TestCase struct {
 	Components  []string `json:"components"`
 	Updated     string   `json:"updated"`
 	FolderID    string   `json:"folderId"`
+	// ExecType is the Xray Test Type (a.k.a. execution type): Manual /
+	// Automated / Generic / Cucumber. Empty when unknown / not yet synced.
+	ExecType string `json:"execType"`
 }
 
 // Folder is one node in the Xray Test Repository tree (FR-13.1). The ID is
@@ -159,6 +162,7 @@ type Query struct {
 	FolderID     string `json:"folderId"`     // empty = any folder
 	ContainerKey string `json:"containerKey"` // empty = any container (FR-11.6)
 	Component    string `json:"component"`    // empty = any component (group-by component)
+	ExecType     string `json:"execType"`     // empty = any execution type (Manual/Automated/Generic/Cucumber)
 	Review       string `json:"review"`       // "approved"|"rejected"|"pending"|"unreviewed"|"" = any
 	SortBy       string `json:"sortBy"`
 	Desc         bool   `json:"desc"`
@@ -238,6 +242,7 @@ var editableFields = map[string]string{
 	"description": "description",
 	"priority":    "priority",
 	"labels":      "labels",
+	"exec_type":   "exec_type",
 }
 
 // columnForField returns the test_case column corresponding to a field
@@ -290,11 +295,18 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 	// local value instead of overwriting from the incoming sync.
 	stmt, err := tx.Prepare(
 		`INSERT INTO test_case
-		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id, components)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id, components, exec_type)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
 		   jira_id     = excluded.jira_id,
 		   components  = excluded.components,
+		   exec_type   = CASE WHEN EXISTS (
+		       SELECT 1 FROM pending_change
+		       WHERE pending_change.profile_id  = excluded.profile_id
+		         AND pending_change.entity_type = 'test_case'
+		         AND pending_change.entity_key  = excluded.jira_key
+		         AND pending_change.field       = 'exec_type'
+		     ) THEN test_case.exec_type ELSE excluded.exec_type END,
 		   summary     = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
@@ -347,7 +359,7 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 		if _, err := stmt.Exec(
 			profileID, t.Key, t.ID, t.Summary, t.Description,
 			t.Status, t.Priority, strings.Join(t.Labels, " "),
-			t.Updated, t.FolderID, encodeComponents(t.Components),
+			t.Updated, t.FolderID, encodeComponents(t.Components), t.ExecType,
 		); err != nil {
 			return fmt.Errorf("upsert %s: %w", t.Key, err)
 		}
@@ -1963,6 +1975,11 @@ func buildTestFilter(profileID string, q Query) (string, []any) {
 		where = append(where, "components LIKE ?")
 		args = append(args, componentFilterPattern(q.Component))
 	}
+	if q.ExecType != "" {
+		// Filter by Xray Test Type (execution type) - exact match.
+		where = append(where, "exec_type = ?")
+		args = append(args, q.ExecType)
+	}
 	if q.Review != "" {
 		// Filter by review verdict. "unreviewed" means no review row with a
 		// non-empty verdict; any other value matches that verdict exactly.
@@ -2076,7 +2093,7 @@ func (r *Repository) ListTests(profileID string, q Query) (Page, error) {
 	}
 
 	listSQL := fmt.Sprintf(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type
 		 FROM test_case %s ORDER BY %s LIMIT ? OFFSET ?`,
 		whereSQL, orderSQL)
 
@@ -2204,7 +2221,7 @@ func (r *Repository) ListTestStatuses(profileID string) ([]string, error) {
 // GetTest returns one Test by its Jira key, or ErrNotFound.
 func (r *Repository) GetTest(profileID, key string) (TestCase, error) {
 	row := r.db.QueryRow(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type
 		 FROM test_case WHERE profile_id = ? AND jira_key = ?`, profileID, key)
 	t, err := scanTest(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -4315,7 +4332,7 @@ func scanTest(s scanner) (TestCase, error) {
 	)
 	if err := s.Scan(
 		&t.Key, &t.ID, &t.Summary, &t.Description,
-		&t.Status, &t.Priority, &labels, &components, &t.Updated, &t.FolderID,
+		&t.Status, &t.Priority, &labels, &components, &t.Updated, &t.FolderID, &t.ExecType,
 	); err != nil {
 		return TestCase{}, err
 	}

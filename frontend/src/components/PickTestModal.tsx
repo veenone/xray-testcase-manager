@@ -44,6 +44,7 @@ export function PickTestModal({
         folderId: "",
         containerKey: "",
         component: "",
+        execType: "",
         review: "",
         sortBy: "key",
         desc: false,

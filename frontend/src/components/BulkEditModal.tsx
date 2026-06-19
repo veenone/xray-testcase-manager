@@ -18,7 +18,13 @@ interface FieldDef {
   value: string;
   label: string;
   ops: OpDef[];
+  // options, when present, constrains the value to a fixed list rendered as a
+  // dropdown (used for the Execution type / Xray Test Type).
+  options?: string[];
 }
+
+// EXEC_TYPE_OPTIONS is the fixed Xray Test Type (execution type) vocabulary.
+const EXEC_TYPE_OPTIONS = ["Manual", "Automated", "Generic", "Cucumber"];
 
 const FIELDS: FieldDef[] = [
   { value: "summary", label: "Summary", ops: [{ value: "set", label: "Replace" }] },
@@ -39,6 +45,12 @@ const FIELDS: FieldDef[] = [
       { value: "add_label", label: "Add label" },
       { value: "remove_label", label: "Remove label" },
     ],
+  },
+  {
+    value: "exec_type",
+    label: "Execution type",
+    ops: [{ value: "set", label: "Set" }],
+    options: EXEC_TYPE_OPTIONS,
   },
 ];
 
@@ -63,6 +75,15 @@ export function BulkEditModal({
       setOperation(fieldDef.ops[0].value);
     }
   }, [fieldDef, operation]);
+
+  // Default the value to the first option when switching to a fixed-option
+  // field (Execution type) so the dropdown always reflects a real choice.
+  useEffect(() => {
+    if (fieldDef.options && !fieldDef.options.includes(value)) {
+      setValue(fieldDef.options[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldDef]);
 
   async function apply() {
     if (
@@ -142,7 +163,19 @@ export function BulkEditModal({
 
             <label className="bulk-row bulk-row-value">
               <span>Value</span>
-              {useTextarea ? (
+              {fieldDef.options ? (
+                <select
+                  className="detail-input"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                >
+                  {fieldDef.options.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              ) : useTextarea ? (
                 <textarea
                   className="detail-input"
                   value={value}

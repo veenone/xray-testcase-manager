@@ -22,6 +22,12 @@ type Test struct {
 	Components  []string
 	Updated     string
 	FolderID    string
+	// ExecType is the Xray Test Type (a.k.a. execution type): Manual /
+	// Automated / Generic / Cucumber. It is a Jira custom field; the live
+	// search pull does not request it yet (see SearchTestsPage), so it is
+	// populated only in demo mode for now. TODO(xtm): resolve the Test Type
+	// custom field id per instance and read it on the live test pull (Phase 7).
+	ExecType string
 }
 
 // testFields are the issue fields requested from Jira's search API.

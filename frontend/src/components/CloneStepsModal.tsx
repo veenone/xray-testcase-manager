@@ -64,6 +64,7 @@ export function CloneStepsModal({
         folderId: "",
         containerKey: "",
         component: "",
+        execType: "",
         review: "",
         sortBy: "key",
         desc: false,

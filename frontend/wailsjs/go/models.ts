@@ -871,11 +871,12 @@ export namespace testrepo {
 	    components: string[];
 	    updated: string;
 	    folderId: string;
-	
+	    execType: string;
+
 	    static createFrom(source: any = {}) {
 	        return new TestCase(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
@@ -888,6 +889,7 @@ export namespace testrepo {
 	        this.components = source["components"];
 	        this.updated = source["updated"];
 	        this.folderId = source["folderId"];
+	        this.execType = source["execType"];
 	    }
 	}
 	export class Page {
@@ -1008,16 +1010,17 @@ export namespace testrepo {
 	    folderId: string;
 	    containerKey: string;
 	    component: string;
+	    execType: string;
 	    review: string;
 	    sortBy: string;
 	    desc: boolean;
 	    limit: number;
 	    offset: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new Query(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.search = source["search"];
@@ -1025,6 +1028,7 @@ export namespace testrepo {
 	        this.folderId = source["folderId"];
 	        this.containerKey = source["containerKey"];
 	        this.component = source["component"];
+	        this.execType = source["execType"];
 	        this.review = source["review"];
 	        this.sortBy = source["sortBy"];
 	        this.desc = source["desc"];

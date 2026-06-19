@@ -650,7 +650,21 @@ func makeDemoTest(projectKey string, i int) Test {
 		Components:  demoComponentsForIndex(i),
 		Updated:     updated,
 		FolderID:    demoFolderForFeature(feature),
+		ExecType:    demoExecTypeForIndex(i),
 	}
+}
+
+// demoExecTypes covers all four execution-type filter options so demo data
+// exercises each one. Independent of the Test Type custom field value set.
+var demoExecTypes = []string{"Manual", "Automated", "Generic", "Cucumber"}
+
+// demoExecTypeForIndex assigns a deterministic Xray Test Type (execution type)
+// to a demo test by index, so repeated syncs are stable. It cycles through
+// demoExecTypes, covering all four frontend filter options so demo data
+// exercises each one (including "Automated", which is not in the Test Type
+// custom field value set).
+func demoExecTypeForIndex(i int) string {
+	return demoExecTypes[i%len(demoExecTypes)]
 }
 
 // demoComponentNames is the demo Jira components vocabulary (the multi-valued

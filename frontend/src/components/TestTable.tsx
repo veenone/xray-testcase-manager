@@ -51,6 +51,7 @@ type ColKey =
   | "priority"
   | "labels"
   | "components"
+  | "execType"
   | "updated";
 
 interface ColDef {
@@ -66,8 +67,13 @@ const ALL_COLUMNS: ColDef[] = [
   { key: "priority", label: "Priority" },
   { key: "labels", label: "Labels" },
   { key: "components", label: "Components" },
+  { key: "execType", label: "Exec type" },
   { key: "updated", label: "Updated", sortCol: "updated" },
 ];
+
+// EXEC_TYPE_OPTIONS is the fixed Xray Test Type (execution type) vocabulary
+// offered in the Browse filter bar and the bulk-edit / detail editors.
+const EXEC_TYPE_OPTIONS = ["Manual", "Automated", "Generic", "Cucumber"];
 
 const COL_LABEL = Object.fromEntries(
   ALL_COLUMNS.map((c) => [c.key, c.label]),
@@ -186,6 +192,8 @@ function renderCell(
           )}
         </td>
       );
+    case "execType":
+      return <td key="execType">{t.execType || "—"}</td>;
     case "updated":
       return (
         <td key="updated" className="muted">
@@ -212,6 +220,7 @@ export function TestTable({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [execType, setExecType] = useState("");
   const [review, setReview] = useState("");
   const [sortBy, setSortBy] = useState<SortCol>("key");
   // Default to newest-first by issue number (RND_P_4TFINT_05-202). The key sort
@@ -301,7 +310,7 @@ export function TestTable({
       submitLabel: "Save",
     });
     if (!name || !name.trim()) return;
-    const query = JSON.stringify({ search, status, review, sortBy, desc });
+    const query = JSON.stringify({ search, status, execType, review, sortBy, desc });
     try {
       const v = await CreateSavedView(profileId, name.trim(), query);
       setSavedViews((prev) => [v, ...prev]);
@@ -320,12 +329,14 @@ export function TestTable({
       const q = JSON.parse(v.query) as Partial<{
         search: string;
         status: string;
+        execType: string;
         review: string;
         sortBy: SortCol;
         desc: boolean;
       }>;
       setSearch(q.search ?? "");
       setStatus(q.status ?? "");
+      setExecType(q.execType ?? "");
       setReview(q.review ?? "");
       setSortBy(q.sortBy ?? "key");
       setDesc(q.desc ?? false);
@@ -355,6 +366,7 @@ export function TestTable({
   }, [
     debouncedSearch,
     status,
+    execType,
     review,
     folderId,
     containerKey,
@@ -375,6 +387,7 @@ export function TestTable({
       folderId,
       containerKey,
       component,
+      execType,
       review,
       sortBy,
       desc,
@@ -398,6 +411,7 @@ export function TestTable({
     profileId,
     debouncedSearch,
     status,
+    execType,
     folderId,
     containerKey,
     component,
@@ -461,6 +475,7 @@ export function TestTable({
         folderId,
         containerKey,
         component,
+        execType,
         review,
         sortBy,
         desc,
@@ -485,6 +500,7 @@ export function TestTable({
         folderId,
         containerKey,
         component,
+        execType,
         review,
         sortBy,
         desc,
@@ -522,6 +538,19 @@ export function TestTable({
             <option key={s} value={s} />
           ))}
         </datalist>
+        <select
+          className="exectype-filter"
+          value={execType}
+          onChange={(e) => setExecType(e.target.value)}
+          title="Filter by execution type (Xray Test Type)"
+        >
+          <option value="">Any exec type</option>
+          {EXEC_TYPE_OPTIONS.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
         {REVIEW_ENABLED && (
           <select
             className="review-filter"
