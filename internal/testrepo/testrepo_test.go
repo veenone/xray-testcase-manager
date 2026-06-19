@@ -871,7 +871,7 @@ func TestSeedSampleContainersPopulatesAllThreeKinds(t *testing.T) {
 		t.Errorf("containers not created: sets=%d plans=%d execs=%d", len(sets), len(plans), len(execs))
 	}
 
-	stats, _ := repo.GetStatistics("p1")
+	stats, _ := repo.GetStatistics("p1", "", "", "")
 	if stats.ExecutedTests == 0 {
 		t.Errorf("expected seeded execution runs; ExecutedTests=0")
 	}
@@ -2191,7 +2191,7 @@ func TestGetStatisticsCountsByStatusAndPriority(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	stats, err := repo.GetStatistics("p1")
+	stats, err := repo.GetStatistics("p1", "", "", "")
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -2213,7 +2213,7 @@ func TestGetStatisticsTalliesLabelsAcrossTests(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	stats, err := repo.GetStatistics("p1")
+	stats, err := repo.GetStatistics("p1", "", "", "")
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -2229,7 +2229,7 @@ func TestGetStatisticsIncludesPendingCount(t *testing.T) {
 		t.Fatalf("edit: %v", err)
 	}
 
-	stats, err := repo.GetStatistics("p1")
+	stats, err := repo.GetStatistics("p1", "", "", "")
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -2261,7 +2261,7 @@ func TestGetStatisticsCountsContainersAndCoverage(t *testing.T) {
 		t.Fatalf("seed links: %v", err)
 	}
 
-	stats, err := repo.GetStatistics("p1")
+	stats, err := repo.GetStatistics("p1", "", "", "")
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -2296,7 +2296,7 @@ func TestGetStatisticsRollsUpExecutionCoverage(t *testing.T) {
 		t.Fatalf("seed links: %v", err)
 	}
 
-	stats, err := repo.GetStatistics("p1")
+	stats, err := repo.GetStatistics("p1", "", "", "")
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -2326,9 +2326,99 @@ func TestGetStatisticsIgnoresNonExecutionMembershipsForCoverage(t *testing.T) {
 		t.Fatalf("seed links: %v", err)
 	}
 
-	stats, _ := repo.GetStatistics("p1")
+	stats, _ := repo.GetStatistics("p1", "", "", "")
 	if stats.ExecutedTests != 0 {
 		t.Errorf("ExecutedTests = %d, want 0 (a Test Set is not an execution)", stats.ExecutedTests)
+	}
+}
+
+// bucketCount returns the count for a label in a bucket slice, or 0 if absent.
+func bucketCount(buckets []testrepo.Bucket, label string) int {
+	for _, b := range buckets {
+		if b.Label == label {
+			return b.Count
+		}
+	}
+	return 0
+}
+
+func TestGetStatisticsFolderComponentStatusFilters(t *testing.T) {
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		// Folder /Auth (and a descendant), components + statuses spread across.
+		{Key: "QA-1", ID: "1", Status: "Open", Priority: "High",
+			FolderID: "/Auth", Components: []string{"Login"}, Labels: []string{"smoke"}},
+		{Key: "QA-2", ID: "2", Status: "Done", Priority: "Low",
+			FolderID: "/Auth/Login", Components: []string{"Login", "API"}, Labels: []string{"smoke"}},
+		// Folder /Billing.
+		{Key: "QA-3", ID: "3", Status: "Open", Priority: "High",
+			FolderID: "/Billing", Components: []string{"API"}, Labels: []string{"api"}},
+		{Key: "QA-4", ID: "4", Status: "Open", Priority: "Low",
+			FolderID: "/Billing", Components: []string{"Reports"}, Labels: []string{"api"}},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Unfiltered: the full set.
+	all, err := repo.GetStatistics("p1", "", "", "")
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if all.Total != 4 {
+		t.Fatalf("unfiltered Total = %d, want 4", all.Total)
+	}
+
+	// Folder filter: /Auth must include its descendant /Auth/Login (prefix
+	// match, mirroring ListTests), so QA-1 and QA-2 only.
+	folder, err := repo.GetStatistics("p1", "/Auth", "", "")
+	if err != nil {
+		t.Fatalf("folder stats: %v", err)
+	}
+	if folder.Total != 2 {
+		t.Errorf("folder Total = %d, want 2 (QA-1, QA-2)", folder.Total)
+	}
+	if got := bucketCount(folder.ByStatus, "Open"); got != 1 {
+		t.Errorf("folder Open status count = %d, want 1", got)
+	}
+	if got := bucketCount(folder.ByComponent, "Login"); got != 2 {
+		t.Errorf("folder Login component count = %d, want 2", got)
+	}
+	if got := bucketCount(folder.ByComponent, "Reports"); got != 0 {
+		t.Errorf("folder Reports component count = %d, want 0 (Billing excluded)", got)
+	}
+
+	// Component filter: "Login" must match a whole component name, not a prefix
+	// (QA-1, QA-2 carry Login; QA-3/QA-4 do not).
+	comp, err := repo.GetStatistics("p1", "", "Login", "")
+	if err != nil {
+		t.Fatalf("component stats: %v", err)
+	}
+	if comp.Total != 2 {
+		t.Errorf("component Total = %d, want 2 (QA-1, QA-2)", comp.Total)
+	}
+	if got := bucketCount(comp.ByFolder, "Billing"); got != 0 {
+		t.Errorf("component byFolder Billing = %d, want 0", got)
+	}
+
+	// Status filter: exact match.
+	status, err := repo.GetStatistics("p1", "", "", "Open")
+	if err != nil {
+		t.Fatalf("status stats: %v", err)
+	}
+	if status.Total != 3 {
+		t.Errorf("status Total = %d, want 3 (QA-1, QA-3, QA-4)", status.Total)
+	}
+	if len(status.ByStatus) != 1 || status.ByStatus[0].Label != "Open" {
+		t.Errorf("status byStatus = %+v, want only Open", status.ByStatus)
+	}
+
+	// Combined: folder + status narrows further (QA-1 only).
+	combo, err := repo.GetStatistics("p1", "/Auth", "", "Open")
+	if err != nil {
+		t.Fatalf("combo stats: %v", err)
+	}
+	if combo.Total != 1 {
+		t.Errorf("combo Total = %d, want 1 (QA-1)", combo.Total)
 	}
 }
 

@@ -1902,12 +1902,14 @@ func (a *App) CreateContainerAndAllocate(profileID, kind, summary string, testKe
 
 // GetStatistics returns the dashboard rollup for a profile, computed entirely
 // from the local store (FR-9.5) — status / priority / label / folder
-// distributions, a last-updated trend, and the pending-change count.
-func (a *App) GetStatistics(profileID string) (testrepo.Statistics, error) {
+// distributions, a last-updated trend, and the pending-change count. The
+// optional folder / component / status arguments narrow every panel to the
+// matching subset of Tests (empty string = no constraint).
+func (a *App) GetStatistics(profileID, folder, component, status string) (testrepo.Statistics, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.Statistics{}, err
 	}
-	return a.repo.GetStatistics(profileID)
+	return a.repo.GetStatistics(profileID, folder, component, status)
 }
 
 // --- Duplicate management (FR — duplicate management) ---

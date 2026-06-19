@@ -3818,8 +3818,27 @@ tr.row-checked:hover {
 /* Dashboard per-view refresh (#7). */
 .dashboard-head {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+/* Dashboard folder / component / status filters (RND_P_4TFINT_05-228). */
+.dashboard-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dashboard-filter {
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  max-width: 220px;
 }
 
 /* "Call test" steps (#2). */

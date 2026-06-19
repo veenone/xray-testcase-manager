@@ -2256,12 +2256,42 @@ func (r *Repository) GetSyncState(profileID string) (SyncState, error) {
 	return s, nil
 }
 
+// statsFilter builds the WHERE clause + args that scope the dashboard rollup to
+// an optional folder / component / status subset. Empty values impose no
+// constraint, so the zero-filter case reproduces the original full-profile
+// behaviour. The folder and component matches mirror ListTests/buildTestFilter
+// exactly: a folder matches itself plus any descendant ("/Auth" also covers
+// "/Auth/Login"), and a component matches a whole name within the newline-
+// bounded encoded string (never a prefix of a longer name). Status is exact.
+func statsFilter(profileID, folder, component, status string) (string, []any) {
+	where := []string{"profile_id = ?"}
+	args := []any{profileID}
+	if folder != "" {
+		where = append(where, "(folder_id = ? OR folder_id LIKE ?)")
+		args = append(args, folder, folder+"/%")
+	}
+	if component != "" {
+		where = append(where, "components LIKE ?")
+		args = append(args, componentFilterPattern(component))
+	}
+	if status != "" {
+		where = append(where, "status = ?")
+		args = append(args, status)
+	}
+	return "WHERE " + strings.Join(where, " AND "), args
+}
+
 // GetStatistics computes the dashboard rollup for a profile (FR-9) in a single
 // table scan plus one count query — fast enough to recompute on demand even at
 // 50k Tests. Status / priority distributions are returned in full; labels and
 // folders are capped to the top buckets; the trend is the most recent months
 // keyed by the Test's last-updated month.
-func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
+//
+// The optional folder / component / status arguments narrow every aggregate to
+// the matching subset of Tests (empty = no constraint). The container, execution
+// and requirement panels are scoped to memberships whose Test is in the subset,
+// so the whole dashboard recomputes for the filtered view.
+func (r *Repository) GetStatistics(profileID, folder, component, status string) (Statistics, error) {
 	stats := Statistics{
 		ByStatus:     []Bucket{},
 		ByPriority:   []Bucket{},
@@ -2273,9 +2303,12 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 		ByCoverage:   []Bucket{},
 	}
 
+	whereSQL, args := statsFilter(profileID, folder, component, status)
+	filtered := folder != "" || component != "" || status != ""
+
 	rows, err := r.db.Query(
 		`SELECT status, priority, labels, folder_id, components, updated_at
-		 FROM test_case WHERE profile_id = ?`, profileID)
+		 FROM test_case `+whereSQL, args...)
 	if err != nil {
 		return stats, fmt.Errorf("read tests for stats: %w", err)
 	}
@@ -2318,19 +2351,33 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 	stats.ByComponent = topBuckets(componentCounts, 12)
 	stats.UpdatedTrend = recentMonths(trendCounts, 12)
 
-	if err := r.db.QueryRow(
-		`SELECT COUNT(*) FROM pending_change WHERE profile_id = ?`, profileID,
-	).Scan(&stats.PendingChanges); err != nil {
+	// scope is an extra predicate (with its own args) that restricts a query's
+	// test_key / entity_key column to the filtered subset of Tests. When no
+	// filter is active it is empty, so the queries below stay identical to the
+	// original full-profile behaviour.
+	scope, scopeArgs := "", []any(nil)
+	if filtered {
+		scope = "test_case " + whereSQL
+		scopeArgs = args
+	}
+
+	pendSQL := `SELECT COUNT(*) FROM pending_change WHERE profile_id = ?`
+	pendArgs := []any{profileID}
+	if filtered {
+		pendSQL += ` AND entity_type = 'test_case' AND entity_key IN (SELECT jira_key FROM ` + scope + `)`
+		pendArgs = append(pendArgs, scopeArgs...)
+	}
+	if err := r.db.QueryRow(pendSQL, pendArgs...).Scan(&stats.PendingChanges); err != nil {
 		return stats, fmt.Errorf("count pending for stats: %w", err)
 	}
 
-	if err := r.addExecutionCoverage(profileID, &stats); err != nil {
+	if err := r.addExecutionCoverage(profileID, &stats, scope, scopeArgs); err != nil {
 		return stats, err
 	}
-	if err := r.addContainerStats(profileID, &stats); err != nil {
+	if err := r.addContainerStats(profileID, &stats, scope, scopeArgs); err != nil {
 		return stats, err
 	}
-	if err := r.addRequirementCoverage(profileID, &stats); err != nil {
+	if err := r.addRequirementCoverage(profileID, &stats, scope, scopeArgs); err != nil {
 		return stats, err
 	}
 	return stats, nil
@@ -2339,13 +2386,29 @@ func (r *Repository) GetStatistics(profileID string) (Statistics, error) {
 // addRequirementCoverage tallies requirements by their derived coverage status
 // for the dashboard panel, in the same canonical order as the coverage view
 // (worst-first). Buckets with no requirements are omitted.
-func (r *Repository) addRequirementCoverage(profileID string, stats *Statistics) error {
+func (r *Repository) addRequirementCoverage(profileID string, stats *Statistics, scope string, scopeArgs []any) error {
 	reqs, err := r.ListRequirementsWithCoverage(profileID)
 	if err != nil {
 		return err
 	}
+
+	// When a dashboard filter is active, keep only requirements that are covered
+	// by at least one Test in the subset, so the requirement-coverage panel
+	// tracks the filtered view too. A requirement whose covering Tests all fall
+	// outside the subset drops out.
+	var inSubset map[string]bool
+	if scope != "" {
+		inSubset, err = r.subsetKeyToReqSet(profileID, scope, scopeArgs)
+		if err != nil {
+			return err
+		}
+	}
+
 	counts := map[string]int{}
 	for _, req := range reqs {
+		if inSubset != nil && !inSubset[req.Key] {
+			continue
+		}
 		counts[req.Coverage]++
 	}
 	order := []string{CoverageFailed, CoverageNotRun, CoveragePassed, CoverageUncovered}
@@ -2357,13 +2420,52 @@ func (r *Repository) addRequirementCoverage(profileID string, stats *Statistics)
 	return nil
 }
 
+// subsetKeyToReqSet returns the set of requirement keys covered by at least one
+// Test in the filtered subset (scope is "test_case <whereSQL>"), so the
+// requirement-coverage panel can be narrowed to the active dashboard filter.
+func (r *Repository) subsetKeyToReqSet(profileID, scope string, scopeArgs []any) (map[string]bool, error) {
+	args := append([]any{profileID}, scopeArgs...)
+	rows, err := r.db.Query(
+		`SELECT DISTINCT l.requirement_key
+		 FROM test_requirement l
+		 WHERE l.profile_id = ?
+		   AND l.test_key IN (SELECT jira_key FROM `+scope+`)`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("scope requirement coverage: %w", err)
+	}
+	defer rows.Close()
+	set := map[string]bool{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		set[k] = true
+	}
+	return set, rows.Err()
+}
+
 // addContainerStats fills the Test Set / Plan / Execution counts and the
 // set / plan coverage — how many distinct Tests belong to at least one set or
 // plan (FR-9.4).
-func (r *Repository) addContainerStats(profileID string, stats *Statistics) error {
-	kindRows, err := r.db.Query(
-		`SELECT kind, COUNT(*) FROM test_container WHERE profile_id = ? GROUP BY kind`,
-		profileID)
+func (r *Repository) addContainerStats(profileID string, stats *Statistics, scope string, scopeArgs []any) error {
+	// Unfiltered: count every container of each kind. Filtered: count only the
+	// containers that hold at least one Test in the subset, so the tiles track
+	// the filtered view (a Set with no matching Test drops out).
+	kindSQL := `SELECT kind, COUNT(*) FROM test_container WHERE profile_id = ? GROUP BY kind`
+	kindArgs := []any{profileID}
+	if scope != "" {
+		kindSQL = `SELECT c.kind, COUNT(DISTINCT c.jira_key)
+			 FROM test_container c
+			 JOIN test_container_test l
+			   ON c.profile_id = l.profile_id AND c.jira_key = l.container_key
+			 WHERE c.profile_id = ?
+			   AND l.test_key IN (SELECT jira_key FROM ` + scope + `)
+			 GROUP BY c.kind`
+		kindArgs = append(kindArgs, scopeArgs...)
+	}
+	kindRows, err := r.db.Query(kindSQL, kindArgs...)
 	if err != nil {
 		return fmt.Errorf("count containers: %w", err)
 	}
@@ -2387,14 +2489,15 @@ func (r *Repository) addContainerStats(profileID string, stats *Statistics) erro
 		return err
 	}
 
-	covRows, err := r.db.Query(
+	covSQL, covArgs := scopeClause(
 		`SELECT c.kind, COUNT(DISTINCT l.test_key)
 		 FROM test_container_test l
 		 JOIN test_container c
 		   ON c.profile_id = l.profile_id AND c.jira_key = l.container_key
-		 WHERE l.profile_id = ?
-		 GROUP BY c.kind`,
-		profileID)
+		 WHERE l.profile_id = ?`,
+		[]any{profileID}, scope, scopeArgs)
+	covSQL += ` GROUP BY c.kind`
+	covRows, err := r.db.Query(covSQL, covArgs...)
 	if err != nil {
 		return fmt.Errorf("count container coverage: %w", err)
 	}
@@ -2415,19 +2518,31 @@ func (r *Repository) addContainerStats(profileID string, stats *Statistics) erro
 	return covRows.Err()
 }
 
+// scopeClause appends a "l.test_key IN (SELECT jira_key FROM <scope>)" predicate
+// (with its args) when a dashboard filter is active, restricting a membership
+// query to runs whose Test is in the filtered subset. With an empty scope it
+// returns the query and args unchanged.
+func scopeClause(sql string, args []any, scope string, scopeArgs []any) (string, []any) {
+	if scope == "" {
+		return sql, args
+	}
+	return sql + " AND l.test_key IN (SELECT jira_key FROM " + scope + ")", append(args, scopeArgs...)
+}
+
 // addExecutionCoverage rolls up Test Run statuses across all Test Execution
 // memberships (FR-9.3): the run-status distribution plus the count of distinct
 // Tests that appear in at least one execution. Each Test-in-execution is one
 // data point, so a Test in two executions counts twice in the distribution but
 // once in ExecutedTests.
-func (r *Repository) addExecutionCoverage(profileID string, stats *Statistics) error {
-	rows, err := r.db.Query(
+func (r *Repository) addExecutionCoverage(profileID string, stats *Statistics, scope string, scopeArgs []any) error {
+	sql, args := scopeClause(
 		`SELECT l.run_status, l.test_key
 		 FROM test_container_test l
 		 JOIN test_container c
 		   ON c.profile_id = l.profile_id AND c.jira_key = l.container_key
 		 WHERE l.profile_id = ? AND c.kind = ?`,
-		profileID, "testexec")
+		[]any{profileID, "testexec"}, scope, scopeArgs)
+	rows, err := r.db.Query(sql, args...)
 	if err != nil {
 		return fmt.Errorf("read execution coverage: %w", err)
 	}

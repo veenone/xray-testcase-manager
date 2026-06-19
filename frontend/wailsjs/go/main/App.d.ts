@@ -123,7 +123,7 @@ export function GetRequirementTraceability(arg1:string,arg2:Array<string>):Promi
 
 export function GetSettings():Promise<settings.Settings>;
 
-export function GetStatistics(arg1:string):Promise<testrepo.Statistics>;
+export function GetStatistics(arg1:string,arg2:string,arg3:string,arg4:string):Promise<testrepo.Statistics>;
 
 export function GetSubTaskTraceability(arg1:string,arg2:Array<string>):Promise<testrepo.Sankey>;
 

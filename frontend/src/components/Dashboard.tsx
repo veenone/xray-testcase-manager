@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
-import { GetStatistics, errMsg } from "../api";
+import {
+  GetStatistics,
+  ListFolders,
+  ListComponents,
+  ListStatuses,
+  errMsg,
+} from "../api";
 import type { Statistics, Bucket } from "../api";
+import { testrepo } from "../../wailsjs/go/models";
 import { DuplicatesCard } from "./DuplicatesCard";
 
 interface Props {
@@ -12,6 +19,8 @@ interface Props {
 // Dashboard renders the per-profile statistics view (FR-9), computed entirely
 // from the local store. It recomputes whenever the profile changes or a sync /
 // commit bumps refreshKey, so the numbers track the cache without a Jira call.
+// Optional Folder / Component / Status filters narrow every panel to the
+// matching subset of Tests (RND_P_4TFINT_05-228).
 export function Dashboard({
   profileId,
   refreshKey,
@@ -23,12 +32,48 @@ export function Dashboard({
   // Local refresh: recompute the dashboard from the cache without a full sync (#7).
   const [nonce, setNonce] = useState(0);
 
+  // Filter selections + their option lists, loaded from existing bindings.
+  const [folder, setFolder] = useState("");
+  const [component, setComponent] = useState("");
+  const [status, setStatus] = useState("");
+  const [folderOptions, setFolderOptions] = useState<testrepo.Folder[]>([]);
+  const [componentOptions, setComponentOptions] = useState<Bucket[]>([]);
+  const [statusOptions, setStatusOptions] = useState<string[]>([]);
+  const hasFilter = folder !== "" || component !== "" || status !== "";
+
+  // Reset selections when the profile changes, then load the option lists.
+  useEffect(() => {
+    setFolder("");
+    setComponent("");
+    setStatus("");
+    if (!profileId) return;
+    let cancelled = false;
+    ListFolders(profileId)
+      .then((f) => {
+        if (!cancelled) setFolderOptions(f ?? []);
+      })
+      .catch((e) => console.error("list folders:", errMsg(e)));
+    ListComponents(profileId)
+      .then((c) => {
+        if (!cancelled) setComponentOptions(c ?? []);
+      })
+      .catch((e) => console.error("list components:", errMsg(e)));
+    ListStatuses(profileId)
+      .then((s) => {
+        if (!cancelled) setStatusOptions(s ?? []);
+      })
+      .catch((e) => console.error("list statuses:", errMsg(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
   useEffect(() => {
     if (!profileId) return;
     let cancelled = false;
     setLoading(true);
     setError("");
-    GetStatistics(profileId)
+    GetStatistics(profileId, folder, component, status)
       .then((s) => {
         if (!cancelled) setStats(s);
       })
@@ -41,7 +86,7 @@ export function Dashboard({
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey, nonce]);
+  }, [profileId, refreshKey, nonce, folder, component, status]);
 
   if (loading && !stats) {
     return <div className="dashboard muted">Loading…</div>;
@@ -53,11 +98,71 @@ export function Dashboard({
     return null;
   }
 
+  const filterBar = (
+    <div className="dashboard-filters">
+      <select
+        className="dashboard-filter"
+        value={folder}
+        onChange={(e) => setFolder(e.target.value)}
+        title="Limit the dashboard to a Test Repository folder (and its subfolders)"
+      >
+        <option value="">All folders</option>
+        {folderOptions.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.id}
+          </option>
+        ))}
+      </select>
+      <select
+        className="dashboard-filter"
+        value={component}
+        onChange={(e) => setComponent(e.target.value)}
+        title="Limit the dashboard to a component"
+      >
+        <option value="">All components</option>
+        {componentOptions.map((c) => (
+          <option key={c.label} value={c.label}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+      <select
+        className="dashboard-filter"
+        value={status}
+        onChange={(e) => setStatus(e.target.value)}
+        title="Limit the dashboard to a status"
+      >
+        <option value="">All statuses</option>
+        {statusOptions.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+      {hasFilter && (
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            setFolder("");
+            setComponent("");
+            setStatus("");
+          }}
+          title="Clear all dashboard filters"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  );
+
   if (stats.total === 0) {
     return (
       <div className="dashboard">
+        {filterBar}
         <p className="muted">
-          No tests cached yet. Run a sync to populate the dashboard.
+          {hasFilter
+            ? "No tests match the selected filters."
+            : "No tests cached yet. Run a sync to populate the dashboard."}
         </p>
       </div>
     );
@@ -66,6 +171,7 @@ export function Dashboard({
   return (
     <div className="dashboard">
       <div className="dashboard-head">
+        {filterBar}
         <button
           className="btn"
           onClick={() => setNonce((n) => n + 1)}

@@ -68,7 +68,7 @@ func TestExportRequirementAuditCSVRows(t *testing.T) {
 
 func TestStatisticsByCoverage(t *testing.T) {
 	repo := seedReqRepo(t)
-	stats, err := repo.GetStatistics("p1")
+	stats, err := repo.GetStatistics("p1", "", "", "")
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}

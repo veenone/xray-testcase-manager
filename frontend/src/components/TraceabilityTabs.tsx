@@ -67,7 +67,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
     if (!profileId) return;
     let cancelled = false;
     setStatsErr("");
-    GetStatistics(profileId)
+    GetStatistics(profileId, "", "", "")
       .then((s) => {
         if (!cancelled) setStats(s);
       })
