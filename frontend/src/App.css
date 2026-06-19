@@ -1240,6 +1240,57 @@ i.sankey-node-l2 {
   gap: 6px;
   flex-wrap: wrap;
 }
+/* Related defects for the selected container (an execution's bugs, incl.
+   cross-project member bugs). */
+.container-bugs {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0 2px;
+}
+.container-bugs-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.container-bugs-count {
+  color: var(--text-strong);
+}
+.container-bugs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.container-bug {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.container-bug-key {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+}
+.container-bug-key:hover {
+  text-decoration: underline;
+}
+.container-bug-summary {
+  color: var(--text-strong);
+}
+.container-bug-status {
+  font-size: 10px;
+}
 .env-chip {
   display: inline-flex;
   align-items: center;

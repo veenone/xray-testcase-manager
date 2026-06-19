@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ListContainers,
   GetContainerBoard,
+  ListBugsForContainer,
   SeedSampleContainers,
   CleanSampleData,
   CreateContainerAndAllocate,
@@ -17,7 +18,7 @@ import {
   BrowserOpenURL,
   errMsg,
 } from "../api";
-import type { Container, TestPlanBoard, Bucket } from "../api";
+import type { Container, TestPlanBoard, Bucket, Bug } from "../api";
 import { SortControl } from "./SortControl";
 import { SearchableSelect } from "./SearchableSelect";
 import { keyCompare, cmpStr, applyDir } from "../sort";
@@ -84,6 +85,9 @@ export function ContainersView({
   const [bugFor, setBugFor] = useState<{ testKey: string; summary: string } | null>(null);
   const [mode, setMode] = useState<"containers" | "bugs">("containers");
   const [board, setBoard] = useState<TestPlanBoard | null>(null);
+  // Related defects reached through the selected container's member Tests
+  // (including bugs reached only via a cross-project member, #219).
+  const [relatedBugs, setRelatedBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [seeding, setSeeding] = useState(false);
@@ -361,6 +365,14 @@ export function ContainersView({
       BrowserOpenURL(`${base}/browse/${parentKey}`);
     }
   }
+  // openBug mirrors BugsPanel.openBug: open the defect in Jira when a real URL
+  // exists (skip in demo mode and for not-yet-committed NEW- keys).
+  function openBug(bugKey: string) {
+    const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
+    if (base && !isDemoUrl && !bugKey.startsWith("NEW-")) {
+      BrowserOpenURL(`${base}/browse/${bugKey}`);
+    }
+  }
 
   async function newContainer() {
     const name = await prompt({
@@ -478,6 +490,27 @@ export function ContainersView({
       })
       .catch((e) => {
         if (!cancelled) setError(errMsg(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, selected, refreshKey]);
+
+  // Load the defects reached through the selected container's member Tests. This
+  // is what surfaces a bug that reaches an execution only via a cross-project
+  // member Test (#219), which the per-test Bugs panel cannot show.
+  useEffect(() => {
+    if (!profileId || !selected) {
+      setRelatedBugs([]);
+      return;
+    }
+    let cancelled = false;
+    ListBugsForContainer(profileId, selected)
+      .then((bs) => {
+        if (!cancelled) setRelatedBugs(bs ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedBugs([]);
       });
     return () => {
       cancelled = true;
@@ -881,6 +914,51 @@ export function ContainersView({
                   <RunBadge key={b.label} status={b.label} count={b.count} />
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Related defects reached through this container's member Tests -
+              shown for executions, or for any container that has linked bugs.
+              Surfaces a bug that reaches this execution only via a cross-project
+              member Test, which the per-test Bugs panel cannot show (#219). */}
+          {(kind === "testexec" || relatedBugs.length > 0) && (
+            <div className="container-bugs">
+              <span className="container-bugs-label">
+                Related bugs
+                {relatedBugs.length > 0 && (
+                  <span className="container-bugs-count">
+                    {" "}
+                    ({relatedBugs.length})
+                  </span>
+                )}
+              </span>
+              {relatedBugs.length === 0 ? (
+                <span className="muted">None</span>
+              ) : (
+                <ul className="container-bugs-list">
+                  {relatedBugs.map((b) => (
+                    <li key={b.key} className="container-bug">
+                      <button
+                        className="mono container-bug-key"
+                        onClick={() => openBug(b.key)}
+                        title={
+                          isDemoUrl || !jiraUrl
+                            ? b.key
+                            : `Open ${b.key} in Jira`
+                        }
+                      >
+                        {b.key}
+                      </button>
+                      <span className="container-bug-summary">{b.summary}</span>
+                      {b.status && (
+                        <span className="status-pill container-bug-status">
+                          {b.status}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </div>

@@ -318,6 +318,10 @@ export function ListAuditEntries(arg1, arg2) {
   return window['go']['main']['App']['ListAuditEntries'](arg1, arg2);
 }
 
+export function ListBugsForContainer(arg1, arg2) {
+  return window['go']['main']['App']['ListBugsForContainer'](arg1, arg2);
+}
+
 export function ListBugsWithTests(arg1) {
   return window['go']['main']['App']['ListBugsWithTests'](arg1);
 }

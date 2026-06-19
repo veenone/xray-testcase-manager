@@ -489,7 +489,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 	// case the traceability Sankey's "cross-project only" filter surfaces. In live
 	// mode these come from Xray's per-test executions lookup; here they're seeded
 	// so the feature is exercisable offline.
-	const crossProject = "XRAYINT"
+	const crossProject = demoCrossProjectKey
 	crossExecKeys := []string{crossProject + "-TE-1", crossProject + "-TE-2"}
 	for i, key := range crossExecKeys {
 		containers = append(containers, Container{
@@ -633,6 +633,26 @@ func demoPreconditionsAndLinks(projectKey string) ([]Precondition, map[string][]
 // execution carries — enough to exercise the external-member board path offline.
 const demoExternalMembers = 4
 
+// demoCrossProjectKey is the project the demo cross-project member Tests live in
+// (distinct from the profile's project), used by both the container seed and the
+// ListTestsBasic demo path so they agree on the foreign member keys.
+const demoCrossProjectKey = "XRAYINT"
+
+// demoCrossProjectBug is the demo defect reached only through a cross-project
+// member Test of the demo *-TE-XPROJ execution (#219). It lives in a defect
+// project (distinct from the foreign member's project) and is linked to no
+// in-project Test, so it never appears via the normal syncBugs path and is
+// surfaced for the execution only because the harvest walks the foreign member's
+// issue links. This is exactly the reported case the harvest fixes.
+var demoCrossProjectBug = Bug{
+	Key:        "BUGS-219",
+	ProjectKey: demoBugProject,
+	IssueType:  "Bug",
+	Summary:    "Cross-project integration login fails",
+	Status:     "Open",
+	Priority:   "High",
+}
+
 // demoExternalStatuses cycles workflow statuses for the seeded external member
 // Tests so the board shows a mix.
 var demoExternalStatuses = []string{"Approved", "In Progress", "Draft", "Done"}
@@ -650,12 +670,28 @@ func demoTestBasicForKey(key string) TestBasic {
 	}
 	feature := demoFeatures[idx%len(demoFeatures)]
 	condition := demoConditions[(idx/len(demoFeatures))%len(demoConditions)]
-	return TestBasic{
+	tb := TestBasic{
 		Key:        key,
 		Summary:    fmt.Sprintf("%s %s", feature, condition),
 		Status:     demoExternalStatuses[idx%len(demoExternalStatuses)],
 		ProjectKey: projectKey,
 	}
+	// The first XRAYINT-* cross-project member carries a bug link, so the
+	// container bug harvest is exercised offline: the linked defect lives in the
+	// BUGS defect project (see demoCrossProjectBug) and reaches an execution only
+	// through this foreign member (#219).
+	if projectKey == demoCrossProjectKey && idx == 0 {
+		tb.IssueLinks = []BugLinkRef{{
+			Key:        demoCrossProjectBug.Key,
+			IssueType:  demoCrossProjectBug.IssueType,
+			LinkID:     "xbl-1",
+			ProjectKey: demoCrossProjectBug.ProjectKey,
+			Summary:    demoCrossProjectBug.Summary,
+			Status:     demoCrossProjectBug.Status,
+			Priority:   demoCrossProjectBug.Priority,
+		}}
+	}
+	return tb
 }
 
 func demoTestForKey(key string) Test {

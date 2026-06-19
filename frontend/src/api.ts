@@ -135,6 +135,7 @@ export {
   UnexcludeFromDuplicates,
   CreateBugForTest,
   ListBugsWithTests,
+  ListBugsForContainer,
   GetTestBugs,
   ListTestsForBug,
 } from "../wailsjs/go/main/App";
@@ -706,6 +707,19 @@ export interface SankeyLink {
 export interface Sankey {
   nodes: SankeyNode[];
   links: SankeyLink[];
+}
+
+// Bug mirrors testrepo.Bug - a cached defect issue (possibly cross-project)
+// linked to Tests. Returned by ListBugsForContainer for an execution's related
+// defects.
+export interface Bug {
+  key: string;
+  projectKey: string;
+  issueType: string;
+  summary: string;
+  status: string;
+  priority: string;
+  updated: string;
 }
 
 // BugWithTests mirrors testrepo.BugWithTests — a bug plus the Test keys it

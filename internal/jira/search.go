@@ -122,33 +122,51 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 	return tests, resp.Total, nil
 }
 
+// BugLinkRef is an issue-link reference carried on a TestBasic: the linked
+// issue's key and issue type (so the cross-project harvest can keep only the
+// links whose target is a defect matching the profile's configured bug issue
+// type), plus the linked issue's basics so the harvested bug row carries a
+// summary/status/priority instead of a bare key (#219). The live path resolves
+// the basics from a batch fetch of the linked issues; the demo fills them
+// deterministically.
+type BugLinkRef struct {
+	Key        string
+	IssueType  string
+	LinkID     string
+	ProjectKey string
+	Summary    string
+	Status     string
+	Priority   string
+}
+
 // TestBasic is the minimal shape of a Test issue used to cache cross-project
 // execution members: just enough for the board (summary, status) plus the
-// project the Test lives in.
-//
-// NOTE(xtm): Feature A2 will extend this to also carry issuelinks so the same
-// chunked fetch can populate cross-project bug links; A1 needs only the basics.
+// project the Test lives in, plus the Test's issue links so the cross-project
+// bug harvest can collect defects reached through a foreign member (#219).
 type TestBasic struct {
 	Key        string
 	Summary    string
 	Status     string
 	ProjectKey string
+	// IssueLinks are the issues this Test links to (key + issue type), used to
+	// harvest bugs reached through cross-project member Tests. Populated only in
+	// demo mode for now; the live read is a documented TODO(xtm).
+	IssueLinks []BugLinkRef
 }
 
-// listTestsBasicChunk caps how many keys go into one `key in (...)` JQL request.
-const listTestsBasicChunk = 50
-
-// ListTestsBasic fetches the basics (summary, status, project) of the given
-// Test issue keys, regardless of their project, in chunked `key in (...)`
-// searches. It backs the external_test cache for cross-project execution members
-// (members that live in a different project than the profile's and so are never
-// returned by the project-scoped bulk pull).
+// ListTestsBasic fetches the basics (summary, status, project, issue links) of
+// the given Test issue keys, regardless of their project, in chunked
+// `key in (...)` searches. It backs the external_test cache for cross-project
+// execution members (members that live in a different project than the profile's
+// and so are never returned by the project-scoped bulk pull), and feeds the
+// cross-project bug harvest via each member's issue links.
 //
 // Demo mode returns deterministic entries for the seeded XRAYINT-* keys (and any
-// other key it can parse). The real path is a documented TODO(xtm): a live
-// `key in (...)` search is plausible but unverified against an Xray Server/DC
-// instance, so it returns empty rather than issuing an unverified call from
-// tests.
+// other key it can parse), including a bug link on at least one member so the
+// harvest is exercised offline. The real path is a documented TODO(xtm): a live
+// `key in (...)` search (fields=summary,status,project,issuelinks) is plausible
+// but unverified against an Xray Server/DC instance, so it returns empty rather
+// than issuing an unverified call from tests.
 func (c *Client) ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic, error) {
 	if len(keys) == 0 {
 		return []TestBasic{}, nil
@@ -162,14 +180,13 @@ func (c *Client) ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic
 	}
 
 	// TODO(xtm): wire the live chunked `key in (...)` search once verified on a
-	// real Xray Server/DC instance. The intended shape is below; it is left
-	// unexecuted so tests never hit an unverified live endpoint.
+	// real Xray Server/DC instance. The intended shape is:
 	//
-	//   for each chunk of keys:
+	//   for each chunk of keys (cap ~50 per `key in (...)`):
 	//     jql := `key in (` + strings.Join(chunk, ",") + `)`
-	//     GET /rest/api/2/search?jql=...&fields=summary,status,project
-	//     map issues -> TestBasic{Key, Summary, Status, ProjectKey}
-	_ = listTestsBasicChunk
+	//     GET /rest/api/2/search?jql=...&fields=summary,status,project,issuelinks
+	//     map issues -> TestBasic{Key, Summary, Status, ProjectKey, IssueLinks}
+	//       where IssueLinks = each issuelink's inward/outward issue {key, issuetype}
 	return []TestBasic{}, nil
 }
 

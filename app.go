@@ -1048,6 +1048,16 @@ func (a *App) ListTestsForBug(profileID, bugKey string) ([]testrepo.BugTest, err
 	return a.repo.ListTestsForBug(profileID, bugKey)
 }
 
+// ListBugsForContainer returns the bugs reached through any member Test of a
+// container (an execution's related defects), including bugs reached only via a
+// cross-project member Test (#219).
+func (a *App) ListBugsForContainer(profileID, containerKey string) ([]testrepo.Bug, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListBugsForContainer(profileID, containerKey)
+}
+
 // --- Local editing & change tracking (FR-2 / FR-1.5 / FR-12.6) ---
 
 // EditTestField applies a local edit to a Test field and queues a pending

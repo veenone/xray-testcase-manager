@@ -165,6 +165,8 @@ export function ListAllPreconditions(arg1:string):Promise<Array<testrepo.Precond
 
 export function ListAuditEntries(arg1:string,arg2:number):Promise<Array<testrepo.AuditEntry>>;
 
+export function ListBugsForContainer(arg1:string,arg2:string):Promise<Array<testrepo.Bug>>;
+
 export function ListBugsWithTests(arg1:string):Promise<Array<testrepo.BugWithTests>>;
 
 export function ListComponents(arg1:string):Promise<Array<testrepo.Bucket>>;
