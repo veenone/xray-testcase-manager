@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ListTestCallLinks, SyncTestCalls, errMsg } from "../api";
-import type { TestCallLink } from "../api";
+import { ListTestCallLinks, SyncTestCalls, EventsOn, errMsg } from "../api";
+import type { TestCallLink, SyncProgress } from "../api";
 import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
 
@@ -86,6 +86,10 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState("");
+  // Live per-caller progress for the toolbar bar while a sync runs.
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  // When the last manual sync finished (local clock), for the toolbar note.
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
   // Bumped after a partial sync to re-pull the (now refreshed) call links.
   const [reload, setReload] = useState(0);
 
@@ -109,19 +113,34 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
     };
   }, [profileId, refreshKey, detailVersion, reload]);
 
+  // While a sync runs, mirror its "testcalls:progress" events into the toolbar's
+  // local progress bar. This is a dedicated channel (not the global
+  // "sync:progress") so the refresh does not touch the footer sync bar. The
+  // terminal done event clears it.
+  useEffect(() => {
+    if (!syncing) return;
+    return EventsOn("testcalls:progress", (p: SyncProgress) => {
+      if (p.done) setSyncProgress(null);
+      else setSyncProgress(p);
+    });
+  }, [syncing]);
+
   // syncCalls re-pulls steps for the known caller tests so the call graph
   // refreshes without a full profile sync (RND_P_4TFINT_05-207).
   async function syncCalls() {
     setSyncing(true);
     setSyncError("");
+    setSyncProgress(null);
     try {
       await SyncTestCalls(profileId);
+      setLastSynced(new Date());
       setReload((r) => r + 1);
       onChanged?.();
     } catch (e) {
       setSyncError(errMsg(e));
     } finally {
       setSyncing(false);
+      setSyncProgress(null);
     }
   }
 
@@ -171,41 +190,49 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
 
   return (
     <div className="testcalls">
-      <div className="testcalls-head">
-        <div>
-          <h2>Test Calls</h2>
-          <p className="stat-panel-sub">
-            Which tests call other tests (Xray test calls) in their steps.
-          </p>
-        </div>
+      <div className="dup-toolbar">
         <button
-          className="btn"
+          className="btn btn-primary"
           onClick={syncCalls}
           disabled={syncing}
           title="Re-pull steps for the known caller tests to refresh the call graph (no full sync)"
         >
           {syncing ? "Syncing…" : "↻ Sync"}
         </button>
-        <div className="testcalls-stats">
-          <span className="testcalls-stat">
-            <b>{callerCount}</b> calling
+        {syncing && syncProgress && !syncProgress.done && (
+          <TestCallsSyncBar progress={syncProgress} />
+        )}
+        {lastSynced && !syncing && (
+          <span className="muted">
+            calls last synced {lastSynced.toLocaleString()}
           </span>
-          <span className="testcalls-stat">
-            <b>{links.length}</b> relationships
-          </span>
-          {brokenCount > 0 && (
-            <span className="testcalls-stat testcalls-stat-broken">
-              <b>{brokenCount}</b> broken
-            </span>
-          )}
-          {cycles.size > 0 && (
-            <span className="testcalls-stat testcalls-stat-cycle">
-              <b>{cycles.size}</b> in a cycle
-            </span>
-          )}
+        )}
+        <span style={{ flex: 1 }} />
+        <span className="muted">
+          Which tests call other tests (Xray test calls) in their steps.
+        </span>
+      </div>
+
+      {syncError && <div className="error-text dup-error">{syncError}</div>}
+
+      <div className="dup-tiles">
+        <div className="dup-tile t-grp">
+          <b>{callerCount}</b>
+          <span>calling</span>
+        </div>
+        <div className="dup-tile t-grp">
+          <b>{links.length}</b>
+          <span>relationships</span>
+        </div>
+        <div className="dup-tile t-diff">
+          <b>{brokenCount}</b>
+          <span>broken</span>
+        </div>
+        <div className="dup-tile t-dup">
+          <b>{cycles.size}</b>
+          <span>in a cycle</span>
         </div>
       </div>
-      {syncError && <div className="error-text">{syncError}</div>}
 
       {links.length === 0 ? (
         <p className="muted testcalls-empty">
@@ -335,6 +362,32 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// TestCallsSyncBar renders the per-caller refresh progress in the toolbar,
+// reusing the shared syncbar styling so it matches the Duplicates view and the
+// app's status-bar sync readout.
+function TestCallsSyncBar({ progress }: { progress: SyncProgress }) {
+  const hasCount = progress.total > 0;
+  const pct = hasCount
+    ? Math.round((progress.fetched / progress.total) * 100)
+    : 0;
+  const stage = progress.stage || "Refreshing test calls";
+  return (
+    <div className="syncbar">
+      {hasCount && (
+        <div className="syncbar-track">
+          <div className="syncbar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <span className="muted">
+        {stage}
+        {hasCount
+          ? `: ${progress.fetched.toLocaleString()} / ${progress.total.toLocaleString()}`
+          : "…"}
+      </span>
     </div>
   );
 }

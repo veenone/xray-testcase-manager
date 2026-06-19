@@ -567,7 +567,17 @@ func (a *App) SyncTestCalls(profileID string) error {
 	if err != nil {
 		return err
 	}
-	if len(callers) == 0 {
+	// Drop uncommitted local callers up front: their steps never came from Jira,
+	// so re-pulling would fail or wipe them. Filtering here also makes the
+	// progress Total reflect the work actually done.
+	refresh := make([]string, 0, len(callers))
+	for _, key := range callers {
+		if isLocalTestKey(key) {
+			continue
+		}
+		refresh = append(refresh, key)
+	}
+	if len(refresh) == 0 {
 		return nil
 	}
 	p, err := a.profiles.Get(profileID)
@@ -580,11 +590,19 @@ func (a *App) SyncTestCalls(profileID string) error {
 	}
 	client := jira.NewClient(p.JiraURL, token)
 
+	// Per-caller progress on a dedicated channel (not the global "sync:progress")
+	// so the Test Calls view shows its own bar without touching the footer sync
+	// bar. A deferred terminal event clears the bar however the loop exits.
+	n := len(refresh)
+	defer runtime.EventsEmit(a.ctx, "testcalls:progress", syncer.Progress{Done: true})
+
 	var firstErr error
-	for _, key := range callers {
-		if isLocalTestKey(key) {
-			continue // uncommitted local test — its steps never came from Jira
-		}
+	for i, key := range refresh {
+		runtime.EventsEmit(a.ctx, "testcalls:progress", syncer.Progress{
+			Stage:   "Refreshing test calls",
+			Fetched: i + 1,
+			Total:   n,
+		})
 		remote, err := client.GetTestSteps(a.ctx, key)
 		if err != nil {
 			if firstErr == nil {

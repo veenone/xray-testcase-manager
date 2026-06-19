@@ -58,6 +58,60 @@ func TestMakeDemoTestIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestDemoStepsSeedDeterministicCallGraph(t *testing.T) {
+	// The seeded callers (numbers 6, 8, 9) each expose a call step pointing at
+	// a sibling Test in the SAME project. 6 and 8 share callee 7; 9 calls 10.
+	cases := []struct {
+		caller string
+		callee string
+	}{
+		{"QA-6", "QA-7"},
+		{"QA-8", "QA-7"},
+		{"QA-9", "QA-10"},
+		{"DEMO-6", "DEMO-7"},
+	}
+	for _, c := range cases {
+		steps := demoStepsForKey(c.caller)
+		var got string
+		for _, s := range steps {
+			if s.CalledTestKey != "" {
+				got = s.CalledTestKey
+				break
+			}
+		}
+		if got != c.callee {
+			t.Errorf("demoStepsForKey(%q) called %q, want %q", c.caller, got, c.callee)
+		}
+	}
+}
+
+func TestDemoStepsCallGraphAvoidsDuplicateClustersAndIsStable(t *testing.T) {
+	// Duplicate-cluster keys (numbers 1..4, indices 0..3) must carry no call
+	// step — the Duplicates feature depends on their fixed step content.
+	for _, key := range []string{"QA-1", "QA-2", "QA-3", "QA-4"} {
+		for _, s := range demoStepsForKey(key) {
+			if s.CalledTestKey != "" {
+				t.Errorf("%s should have no call step, got CalledTestKey=%q", key, s.CalledTestKey)
+			}
+		}
+	}
+
+	// Determinism: re-pulling returns identical steps. This is what makes a
+	// SyncTestCalls re-pull stable (the graph is preserved, not wiped).
+	for _, key := range []string{"QA-6", "QA-8", "QA-9", "QA-100"} {
+		a := demoStepsForKey(key)
+		b := demoStepsForKey(key)
+		if len(a) != len(b) {
+			t.Fatalf("demoStepsForKey(%q) length not stable: %d vs %d", key, len(a), len(b))
+		}
+		for i := range a {
+			if a[i] != b[i] {
+				t.Errorf("demoStepsForKey(%q)[%d] not deterministic: %+v vs %+v", key, i, a[i], b[i])
+			}
+		}
+	}
+}
+
 func TestIncrementalSinceClauseEmptyReturnsEmpty(t *testing.T) {
 	if got := incrementalSinceClause(""); got != "" {
 		t.Errorf("empty input should yield empty clause, got %q", got)

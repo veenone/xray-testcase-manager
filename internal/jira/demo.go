@@ -290,6 +290,38 @@ func demoKeyIndex(testKey string) int {
 	return n - 1
 }
 
+// demoCallGraph maps a caller's numeric key suffix to the callee's numeric
+// suffix for the seeded demo call graph. Both keys share the caller's project
+// prefix. Numbers are well within demoTestCount and avoid the duplicate-cluster
+// indices (0..3, i.e. numbers 1..4). 6 and 8 both call 7 (shared callee); 9
+// calls 10 (separate pair).
+var demoCallGraph = map[int]int{
+	6: 7,
+	8: 7,
+	9: 10,
+}
+
+// demoCalledSibling returns the called Test key for a caller in the demo call
+// graph, or "" if the given key is not a seeded caller. The returned key reuses
+// the caller's project prefix so the call stays within the same project, and
+// the lookup is deterministic (same input -> same output), which is what makes
+// a SyncTestCalls re-pull stable.
+func demoCalledSibling(testKey string) string {
+	dash := strings.LastIndex(testKey, "-")
+	if dash < 0 {
+		return ""
+	}
+	num, err := strconv.Atoi(testKey[dash+1:])
+	if err != nil {
+		return ""
+	}
+	callee, ok := demoCallGraph[num]
+	if !ok {
+		return ""
+	}
+	return testKey[:dash+1] + strconv.Itoa(callee)
+}
+
 // demoStepsForKey returns a deterministic three-step skeleton for any test
 // in demo mode (FR-2.5). The steps are generic on purpose — they exercise
 // the panel layout, not Jira fidelity. Real Xray returns whatever the
@@ -314,6 +346,32 @@ func demoStepsForKey(testKey string) []Step {
 		return []Step{
 			{ID: "dup-b-4", Index: 1, Action: "Open the cart from the menu", Data: "", Expected: "Cart page loads"},
 			{ID: "dup-b-4b", Index: 2, Action: "Proceed to payment", Data: "visa", Expected: "Payment screen opens"},
+		}
+	}
+
+	// Deterministic demo call graph so the Test Calls view is non-empty in
+	// demo mode and a SyncTestCalls re-pull is stable (FR-2.5). A few
+	// non-duplicate tests (numbers 6, 8, 9) get a "call test" step pointing at
+	// a SIBLING test in the SAME project. The called key reuses the caller's
+	// project prefix, so this works for any demo project key (DEMO-6 -> DEMO-7,
+	// QA-6 -> QA-7, ...). Numbers 6 and 8 both call 7 (a shared callee with two
+	// callers); 9 calls 10 (a separate caller/callee pair). This must stay
+	// deterministic: SyncTestCalls re-pulls via demoStepsForKey, and identical
+	// output on re-pull is exactly what keeps the graph from being wiped.
+	if callee := demoCalledSibling(testKey); callee != "" {
+		return []Step{
+			{
+				ID:       testKey + "-s1",
+				Index:    1,
+				Action:   "Set up the preconditions described in the test description.",
+				Expected: "All preconditions are met and the system is in a known state.",
+			},
+			{
+				ID:            testKey + "-call",
+				Index:         2,
+				Action:        "Call test " + callee,
+				CalledTestKey: callee,
+			},
 		}
 	}
 
