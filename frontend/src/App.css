@@ -4385,6 +4385,11 @@ tr.row-checked:hover {
   justify-content: space-between;
   gap: 8px;
 }
+.bugs-md-check {
+  margin: 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
 .bugs-md-key {
   font-size: 12px;
   font-weight: 600;

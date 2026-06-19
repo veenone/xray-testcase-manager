@@ -3,12 +3,14 @@ import {
   ListBugsWithTests,
   ListTestsForBug,
   SyncBugs,
+  CreateContainerAndAllocate,
   BrowserOpenURL,
   errMsg,
 } from "../api";
 import type { BugWithTests, BugTest } from "../api";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
+import { usePrompt } from "./usePrompt";
 import { keyCompare, cmpStr, applyDir } from "../sort";
 
 interface Props {
@@ -40,13 +42,20 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [bugs, setBugs] = useState<BugWithTests[]>([]);
   const [filter, setFilter] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState("");
   const [tests, setTests] = useState<BugTest[]>([]);
+  // Checked bugs for the bulk "Create Test Execution" action. This is kept
+  // independent of `selected` (the detail-pane row): ticking a checkbox must
+  // not change which bug is shown in the detail pane, and vice versa.
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [creating, setCreating] = useState(false);
   const [page, setPage] = useState(0); // 0-based
   const [pageSize, setPageSize] = useState(15);
   const [sortField, setSortField] = useState("key");
   const [sortDesc, setSortDesc] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const { prompt, promptUI } = usePrompt();
   // Local refresh nonce: bumped after a bugs-only sync to re-pull the list
   // without forcing a full profile refresh.
   const [nonce, setNonce] = useState(0);
@@ -57,6 +66,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   async function syncBugs() {
     setSyncing(true);
     setError("");
+    setNotice("");
     try {
       await SyncBugs(profileId);
       setNonce((n) => n + 1);
@@ -64,6 +74,73 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
       setError(errMsg(e));
     } finally {
       setSyncing(false);
+    }
+  }
+
+  // Toggle a bug's checkbox without disturbing the detail-pane selection.
+  function toggleChecked(key: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  // De-duplicated union of the linked test keys across all checked bugs. A bug
+  // with no linked tests contributes nothing, so the union can be empty even
+  // when bugs are checked - in that case the action is disabled.
+  const unionTestKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const b of bugs) {
+      if (checked.has(b.key)) {
+        for (const k of b.testKeys ?? []) set.add(k);
+      }
+    }
+    return [...set];
+  }, [bugs, checked]);
+
+  // Create a Test Execution whose members are the union of the checked bugs'
+  // linked tests, to isolate a run that verifies only those bugs
+  // (RND_P_4TFINT_05-222).
+  async function createExecFromBugs() {
+    if (unionTestKeys.length === 0) return;
+    const checkedKeys = bugs
+      .filter((b) => checked.has(b.key))
+      .map((b) => b.key);
+    const joined = checkedKeys.join(", ");
+    const defaultName =
+      joined.length > 60
+        ? `Verify bugs: ${joined.slice(0, 57)}...`
+        : `Verify bugs: ${joined}`;
+    const name = await prompt({
+      title: "New Test Execution",
+      defaultValue: defaultName,
+      placeholder: "Test Execution name",
+      submitLabel: "Create",
+    });
+    if (!name || !name.trim()) return;
+    setCreating(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await CreateContainerAndAllocate(
+        profileId,
+        "testexec",
+        name.trim(),
+        unionTestKeys,
+      );
+      setNotice(
+        `Created Test Execution ${res.tempKey} with ${res.added} test${
+          res.added === 1 ? "" : "s"
+        }. It will appear in Containers.`,
+      );
+      setChecked(new Set());
+      setNonce((n) => n + 1);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -145,9 +222,32 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
 
   return (
     <div className="bugs-md">
+      {promptUI}
       <div className="bugs-md-list">
         <div className="bugs-md-head">
           <span className="bugs-md-title">Bugs</span>
+          <button
+            className="btn"
+            onClick={createExecFromBugs}
+            disabled={creating || unionTestKeys.length === 0}
+            title={
+              checked.size === 0
+                ? "Tick one or more bugs to create a Test Execution from their linked tests"
+                : unionTestKeys.length === 0
+                  ? "The checked bugs have no linked tests"
+                  : `Create a Test Execution containing the ${unionTestKeys.length} test${
+                      unionTestKeys.length === 1 ? "" : "s"
+                    } linked to the ${checked.size} checked bug${
+                      checked.size === 1 ? "" : "s"
+                    }`
+            }
+          >
+            {creating
+              ? "Creating…"
+              : `Create Test Execution${
+                  unionTestKeys.length > 0 ? ` (${unionTestKeys.length})` : ""
+                }`}
+          </button>
           <button
             className="btn"
             onClick={syncBugs}
@@ -158,6 +258,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           </button>
         </div>
         {error && <div className="error-text">{error}</div>}
+        {notice && <p className="reqs-notice muted">{notice}</p>}
         <input
           className="search bugs-md-filter"
           placeholder="Filter bugs by key, summary, project, status…"
@@ -194,6 +295,17 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                   onClick={() => setSelected(b.key)}
                 >
                   <div className="bugs-md-item-top">
+                    <input
+                      type="checkbox"
+                      className="bugs-md-check"
+                      checked={checked.has(b.key)}
+                      title="Include this bug's linked tests when creating a Test Execution"
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleChecked(b.key);
+                      }}
+                    />
                     <span className="mono bugs-md-key">{b.key}</span>
                     <span className="muted">{b.projectKey}</span>
                     {b.status && <span className="status-pill">{b.status}</span>}
