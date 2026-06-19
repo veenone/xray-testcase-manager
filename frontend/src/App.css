@@ -951,6 +951,13 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 6px;
 }
+/* Detail-panel pickers open within the 440px detail (it has overflow:hidden);
+   anchor left so the panel is not clipped at the detail's left border. */
+.pre-add .multiselect-panel {
+  left: 0;
+  right: auto;
+  max-width: 100%;
+}
 .multiselect-clear {
   font-size: 11px;
   margin: 2px 4px 6px;
