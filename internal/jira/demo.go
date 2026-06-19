@@ -501,6 +501,27 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		})
 	}
 
+	// Cross-project member execution (#219): a Test Execution that lives in this
+	// project but whose member Tests live in the XRAYINT project. Those member
+	// Tests are NOT in this project's test_case set, so they only render on the
+	// board via the external_test cache (populated by the sync's missing-keys pass
+	// calling ListTestsBasic, which returns basics for XRAYINT-* keys below).
+	xprojExecKey := fmt.Sprintf("%s-TE-XPROJ", projectKey)
+	containers = append(containers, Container{
+		Key:          xprojExecKey,
+		Kind:         KindTestExec,
+		Summary:      "Cross-project integration cycle",
+		Status:       demoExecStatuses[0],
+		Environments: demoEnvironments(0),
+	})
+	for i := 1; i <= demoExternalMembers; i++ {
+		links = append(links, ContainerLink{
+			ContainerKey: xprojExecKey,
+			TestKey:      fmt.Sprintf("%s-%d", crossProject, i),
+			RunStatus:    demoRunStatuses[i%len(demoRunStatuses)],
+		})
+	}
+
 	// Sub-task Test Executions: a couple of executions that are Jira sub-tasks of
 	// a parent issue (a Story here), exercising the parent-linked execution path
 	// offline. They are still Kind=testexec and behave like standalone ones.
@@ -608,6 +629,35 @@ func demoPreconditionsAndLinks(projectKey string) ([]Precondition, map[string][]
 // demoTestForKey returns the deterministic demo Test for a "PROJ-N" key, so the
 // remote-fetch (GetTestFields) has something to return offline. Unparseable keys
 // yield the first demo Test.
+// demoExternalMembers is how many XRAYINT-* member Tests the demo cross-project
+// execution carries — enough to exercise the external-member board path offline.
+const demoExternalMembers = 4
+
+// demoExternalStatuses cycles workflow statuses for the seeded external member
+// Tests so the board shows a mix.
+var demoExternalStatuses = []string{"Approved", "In Progress", "Draft", "Done"}
+
+// demoTestBasicForKey returns the deterministic basics for a Test key, used by
+// the ListTestsBasic demo path so the sync can cache cross-project (XRAYINT-*)
+// execution members offline. The project key is parsed from the issue key.
+func demoTestBasicForKey(key string) TestBasic {
+	projectKey, idx := "DEMO", 0
+	if i := strings.LastIndex(key, "-"); i > 0 {
+		projectKey = key[:i]
+		if n, err := strconv.Atoi(key[i+1:]); err == nil && n > 0 {
+			idx = n - 1
+		}
+	}
+	feature := demoFeatures[idx%len(demoFeatures)]
+	condition := demoConditions[(idx/len(demoFeatures))%len(demoConditions)]
+	return TestBasic{
+		Key:        key,
+		Summary:    fmt.Sprintf("%s %s", feature, condition),
+		Status:     demoExternalStatuses[idx%len(demoExternalStatuses)],
+		ProjectKey: projectKey,
+	}
+}
+
 func demoTestForKey(key string) Test {
 	projectKey, idx := "DEMO", 0
 	if i := strings.LastIndex(key, "-"); i > 0 {

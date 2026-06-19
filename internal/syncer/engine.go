@@ -309,7 +309,40 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 			RunStatus:    l.RunStatus,
 		}
 	}
-	return e.repo.ReplaceAllContainerLinks(profileID, repoLinks)
+	if err := e.repo.ReplaceAllContainerLinks(profileID, repoLinks); err != nil {
+		return err
+	}
+
+	// Cache the basics of member Tests that live in another project (so have no
+	// test_case row), so the board can render them instead of dropping them
+	// (#219). Best-effort: on any error, log and continue — members still show by
+	// key, just without a cached summary / status.
+	missing, err := e.repo.ContainerMemberKeysMissingTests(profileID)
+	if err != nil {
+		log.Printf("xtm: find external member tests: %v", err)
+		return nil
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	basics, err := e.client.ListTestsBasic(ctx, missing)
+	if err != nil {
+		log.Printf("xtm: fetch external member basics: %v", err)
+		return nil
+	}
+	externals := make([]testrepo.ExternalTest, len(basics))
+	for i, b := range basics {
+		externals[i] = testrepo.ExternalTest{
+			Key:        b.Key,
+			Summary:    b.Summary,
+			Status:     b.Status,
+			ProjectKey: b.ProjectKey,
+		}
+	}
+	if err := e.repo.ReplaceExternalTests(profileID, externals); err != nil {
+		log.Printf("xtm: cache external member tests: %v", err)
+	}
+	return nil
 }
 
 // syncRequirements refreshes requirement issues and their Test coverage links

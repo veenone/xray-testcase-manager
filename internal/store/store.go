@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 25
+const schemaVersion = 26
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -275,6 +275,20 @@ CREATE TABLE IF NOT EXISTS test_bug (
 	link_id    TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, test_key, bug_key)
 );
+
+-- Cache of the basics of external member Tests: Tests that belong to a Test
+-- Execution (or other container) but live in a different Jira project than the
+-- profile's, so the bulk test pull (which fetches only the profile's project)
+-- never caches them in test_case. The container board LEFT JOINs this so such
+-- members still render with a summary/status instead of being dropped.
+CREATE TABLE IF NOT EXISTS external_test (
+	profile_id  TEXT NOT NULL,
+	jira_key    TEXT NOT NULL,
+	summary     TEXT NOT NULL DEFAULT '',
+	status      TEXT NOT NULL DEFAULT '',
+	project_key TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (profile_id, jira_key)
+);
 `
 
 // indexSchema is applied *after* applyMigrations so every column referenced
@@ -491,6 +505,8 @@ func applyMigrations(db *sql.DB) error {
 			return fmt.Errorf("v25 add environments: %w", err)
 		}
 	}
+	// v26: external_test cache for cross-project execution members (additive,
+	// covered by CREATE TABLE IF NOT EXISTS, no ALTER needed).
 	return nil
 }
 

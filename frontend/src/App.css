@@ -1206,6 +1206,20 @@ i.sankey-node-l2 {
 .kind-testexec {
   background: #b45309;
 }
+/* "ext" tag on a board member Test that lives in a different Jira project. */
+.ext-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #fff;
+  background: #64748b;
+  vertical-align: middle;
+}
 .container-environments {
   display: flex;
   align-items: center;

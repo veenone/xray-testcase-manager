@@ -993,7 +993,17 @@ export function ContainersView({
                       />
                     </td>
                   )}
-                  <td className="mono">{r.testKey}</td>
+                  <td className="mono">
+                    {r.testKey}
+                    {r.isExternal && (
+                      <span
+                        className="ext-badge"
+                        title="This test lives in a different Jira project than this profile"
+                      >
+                        ext
+                      </span>
+                    )}
+                  </td>
                   <td>{r.summary}</td>
                   <td>{r.status || "—"}</td>
                   <td>

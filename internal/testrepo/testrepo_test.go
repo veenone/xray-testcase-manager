@@ -834,6 +834,68 @@ func TestGetContainerBoardForExecutionUsesDirectRunStatus(t *testing.T) {
 	}
 }
 
+func TestGetContainerBoardIncludesExternalMembers(t *testing.T) {
+	repo := newRepo(t)
+	// QA-1 is a normal member cached in test_case; XRAYINT-1 is a member that
+	// lives in another project and so has no test_case row (only an external_test
+	// cache row from the sync's missing-keys pass).
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-1", ID: "1", Summary: "Login", Status: "Approved"},
+	}); err != nil {
+		t.Fatalf("seed tests: %v", err)
+	}
+	if err := repo.UpsertContainers("p1", []testrepo.Container{
+		{Key: "QA-TE-1", Kind: "testexec", Summary: "Cycle 1", Status: "Done"},
+	}); err != nil {
+		t.Fatalf("seed container: %v", err)
+	}
+	if err := repo.ReplaceAllContainerLinks("p1", []testrepo.ContainerLink{
+		{ContainerKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "PASS"},
+		{ContainerKey: "QA-TE-1", TestKey: "XRAYINT-1", RunStatus: "FAIL"},
+	}); err != nil {
+		t.Fatalf("seed links: %v", err)
+	}
+	if err := repo.ReplaceExternalTests("p1", []testrepo.ExternalTest{
+		{Key: "XRAYINT-1", Summary: "Integration login", Status: "In Progress", ProjectKey: "XRAYINT"},
+	}); err != nil {
+		t.Fatalf("seed external: %v", err)
+	}
+
+	board, err := repo.GetContainerBoard("p1", "QA-TE-1")
+	if err != nil {
+		t.Fatalf("board: %v", err)
+	}
+	if len(board.Rows) != 2 {
+		t.Fatalf("rows = %d, want 2 (QA-1 + XRAYINT-1)", len(board.Rows))
+	}
+	var ext testrepo.TestPlanBoardRow
+	var found bool
+	for _, r := range board.Rows {
+		if r.TestKey == "XRAYINT-1" {
+			ext = r
+			found = true
+		}
+		if r.TestKey == "QA-1" && r.IsExternal {
+			t.Errorf("QA-1 is a local test_case member, should not be marked external")
+		}
+	}
+	if !found {
+		t.Fatalf("external member XRAYINT-1 missing from board rows %+v", board.Rows)
+	}
+	if !ext.IsExternal {
+		t.Errorf("XRAYINT-1 IsExternal = false, want true")
+	}
+	if ext.Summary != "Integration login" {
+		t.Errorf("XRAYINT-1 Summary = %q, want the cached external summary", ext.Summary)
+	}
+	if ext.Status != "In Progress" {
+		t.Errorf("XRAYINT-1 Status = %q, want the cached external status", ext.Status)
+	}
+	if ext.RunStatus != "FAIL" {
+		t.Errorf("XRAYINT-1 RunStatus = %q, want FAIL (its direct membership run status)", ext.RunStatus)
+	}
+}
+
 func TestGetContainerBoardRejectsUnknownKey(t *testing.T) {
 	repo := seedPlanBoard(t)
 

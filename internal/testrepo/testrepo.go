@@ -110,6 +110,10 @@ type TestPlanBoardRow struct {
 	Summary   string `json:"summary"`
 	Status    string `json:"status"`
 	RunStatus string `json:"runStatus"`
+	// IsExternal is true when this member Test has no local test_case row (it
+	// lives in a different Jira project than the profile's) and its summary /
+	// status come from the external_test cache instead.
+	IsExternal bool `json:"isExternal"`
 }
 
 // TestPlanBoard is the read-only board for one Test Plan (FR-13.7) — its member
@@ -1202,6 +1206,86 @@ func (r *Repository) ReplaceAllContainerLinks(profileID string, links []Containe
 	return tx.Commit()
 }
 
+// ExternalTest is the cached basics of a member Test that lives in a different
+// Jira project than the profile's, so it is never returned by the project-scoped
+// bulk test pull and has no test_case row. The container board reads these so
+// such members still render with a summary / status instead of bare keys.
+type ExternalTest struct {
+	Key        string `json:"key"`
+	Summary    string `json:"summary"`
+	Status     string `json:"status"`
+	ProjectKey string `json:"projectKey"`
+}
+
+// ContainerMemberKeysMissingTests returns the distinct container-member Test
+// keys that have no matching row in test_case — i.e. members living in another
+// project (the bulk pull only fetches the profile's project). The sync caches
+// the basics of these via ReplaceExternalTests so the board can show them.
+func (r *Repository) ContainerMemberKeysMissingTests(profileID string) ([]string, error) {
+	rows, err := r.db.Query(
+		`SELECT DISTINCT l.test_key
+		 FROM test_container_test l
+		 LEFT JOIN test_case t
+		   ON t.profile_id = l.profile_id AND t.jira_key = l.test_key
+		 WHERE l.profile_id = ? AND t.jira_key IS NULL
+		 ORDER BY l.test_key`,
+		profileID)
+	if err != nil {
+		return nil, fmt.Errorf("find missing member tests: %w", err)
+	}
+	defer rows.Close()
+
+	out := []string{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		out = append(out, key)
+	}
+	return out, rows.Err()
+}
+
+// ReplaceExternalTests wipes a profile's external_test cache and rewrites it
+// from the provided list, so external members removed upstream disappear on
+// resync (mirrors ReplaceAllContainerLinks). An empty list clears the cache.
+func (r *Repository) ReplaceExternalTests(profileID string, tests []ExternalTest) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(
+		`DELETE FROM external_test WHERE profile_id = ?`, profileID,
+	); err != nil {
+		return fmt.Errorf("clear external tests: %w", err)
+	}
+
+	if len(tests) == 0 {
+		return tx.Commit()
+	}
+
+	stmt, err := tx.Prepare(
+		`INSERT INTO external_test (profile_id, jira_key, summary, status, project_key)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
+		   summary     = excluded.summary,
+		   status      = excluded.status,
+		   project_key = excluded.project_key`)
+	if err != nil {
+		return fmt.Errorf("prepare insert external test: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, et := range tests {
+		if _, err := stmt.Exec(profileID, et.Key, et.Summary, et.Status, et.ProjectKey); err != nil {
+			return fmt.Errorf("cache external test %s: %w", et.Key, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // ListContainersForTest returns the Test Sets, Plans and Executions a Test
 // belongs to, ordered by kind then key, with the run status for execution
 // memberships.
@@ -1251,29 +1335,40 @@ func (r *Repository) GetContainerBoard(profileID, containerKey string) (TestPlan
 	}
 
 	// Member Tests, plus this container's direct run status (meaningful for a
-	// Test Execution).
+	// Test Execution). LEFT JOIN both the local test_case cache and the
+	// external_test cache (cross-project members live only in the latter) and
+	// COALESCE so a member with neither still shows by key. is_external flags the
+	// members that have no local test_case row.
 	memberRows, err := r.db.Query(
-		`SELECT t.jira_key, t.summary, t.status, l.run_status
+		`SELECT l.test_key,
+		        COALESCE(t.summary, x.summary, '') AS summary,
+		        COALESCE(t.status,  x.status,  '') AS status,
+		        (t.jira_key IS NULL)               AS is_external,
+		        l.run_status
 		 FROM test_container_test l
-		 JOIN test_case t
-		   ON t.profile_id = l.profile_id AND t.jira_key = l.test_key
+		 LEFT JOIN test_case     t ON t.profile_id = l.profile_id AND t.jira_key = l.test_key
+		 LEFT JOIN external_test x ON x.profile_id = l.profile_id AND x.jira_key = l.test_key
 		 WHERE l.profile_id = ? AND l.container_key = ?
-		 ORDER BY t.jira_key`,
+		 ORDER BY l.test_key`,
 		profileID, containerKey)
 	if err != nil {
 		return board, fmt.Errorf("read container members: %w", err)
 	}
 	defer memberRows.Close()
 
-	type member struct{ summary, status, directRun string }
+	type member struct {
+		summary, status, directRun string
+		isExternal                 bool
+	}
 	members := map[string]member{}
 	memberOrder := []string{}
 	for memberRows.Next() {
 		var key, summary, status, directRun string
-		if err := memberRows.Scan(&key, &summary, &status, &directRun); err != nil {
+		var isExternal bool
+		if err := memberRows.Scan(&key, &summary, &status, &isExternal, &directRun); err != nil {
 			return board, err
 		}
-		members[key] = member{summary: summary, status: status, directRun: directRun}
+		members[key] = member{summary: summary, status: status, directRun: directRun, isExternal: isExternal}
 		memberOrder = append(memberOrder, key)
 	}
 	if err := memberRows.Err(); err != nil {
@@ -1321,10 +1416,11 @@ func (r *Repository) GetContainerBoard(profileID, containerKey string) (TestPlan
 			runStatus = consolidateRunStatus(runsByTest[key])
 		}
 		board.Rows = append(board.Rows, TestPlanBoardRow{
-			TestKey:   key,
-			Summary:   m.summary,
-			Status:    m.status,
-			RunStatus: runStatus,
+			TestKey:    key,
+			Summary:    m.summary,
+			Status:     m.status,
+			RunStatus:  runStatus,
+			IsExternal: m.isExternal,
 		})
 		runCounts[blankAs(runStatus, "(not run)")]++
 	}

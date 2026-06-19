@@ -122,6 +122,57 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 	return tests, resp.Total, nil
 }
 
+// TestBasic is the minimal shape of a Test issue used to cache cross-project
+// execution members: just enough for the board (summary, status) plus the
+// project the Test lives in.
+//
+// NOTE(xtm): Feature A2 will extend this to also carry issuelinks so the same
+// chunked fetch can populate cross-project bug links; A1 needs only the basics.
+type TestBasic struct {
+	Key        string
+	Summary    string
+	Status     string
+	ProjectKey string
+}
+
+// listTestsBasicChunk caps how many keys go into one `key in (...)` JQL request.
+const listTestsBasicChunk = 50
+
+// ListTestsBasic fetches the basics (summary, status, project) of the given
+// Test issue keys, regardless of their project, in chunked `key in (...)`
+// searches. It backs the external_test cache for cross-project execution members
+// (members that live in a different project than the profile's and so are never
+// returned by the project-scoped bulk pull).
+//
+// Demo mode returns deterministic entries for the seeded XRAYINT-* keys (and any
+// other key it can parse). The real path is a documented TODO(xtm): a live
+// `key in (...)` search is plausible but unverified against an Xray Server/DC
+// instance, so it returns empty rather than issuing an unverified call from
+// tests.
+func (c *Client) ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic, error) {
+	if len(keys) == 0 {
+		return []TestBasic{}, nil
+	}
+	if isDemoURL(c.baseURL) {
+		out := make([]TestBasic, 0, len(keys))
+		for _, k := range keys {
+			out = append(out, demoTestBasicForKey(k))
+		}
+		return out, nil
+	}
+
+	// TODO(xtm): wire the live chunked `key in (...)` search once verified on a
+	// real Xray Server/DC instance. The intended shape is below; it is left
+	// unexecuted so tests never hit an unverified live endpoint.
+	//
+	//   for each chunk of keys:
+	//     jql := `key in (` + strings.Join(chunk, ",") + `)`
+	//     GET /rest/api/2/search?jql=...&fields=summary,status,project
+	//     map issues -> TestBasic{Key, Summary, Status, ProjectKey}
+	_ = listTestsBasicChunk
+	return []TestBasic{}, nil
+}
+
 // GetTestFields fetches one Test's current field values from Jira — the
 // "remote" side of three-way conflict detection at commit (FR-1.4). Demo mode
 // returns the deterministically generated Test for the key so the offline path

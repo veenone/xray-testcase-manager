@@ -1468,17 +1468,19 @@ export namespace testrepo {
 	    summary: string;
 	    status: string;
 	    runStatus: string;
-	
+	    isExternal: boolean;
+
 	    static createFrom(source: any = {}) {
 	        return new TestPlanBoardRow(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.testKey = source["testKey"];
 	        this.summary = source["summary"];
 	        this.status = source["status"];
 	        this.runStatus = source["runStatus"];
+	        this.isExternal = source["isExternal"];
 	    }
 	}
 	export class TestPlanBoard {

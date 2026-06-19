@@ -359,6 +359,10 @@ export interface TestPlanBoardRow {
   summary: string;
   status: string;
   runStatus: string;
+  // isExternal is true when the member Test lives in a different Jira project
+  // (no local test_case row) and its summary/status come from the external_test
+  // cache.
+  isExternal: boolean;
 }
 
 // TestPlanBoard mirrors testrepo.TestPlanBoard — a Test Plan's member Tests
