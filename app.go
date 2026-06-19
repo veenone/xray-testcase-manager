@@ -2238,6 +2238,42 @@ func (a *App) ExportRequirementAudit(profileID string) (string, error) {
 	return path, nil
 }
 
+// ExportTraceability exports the active Traceability tab (kind "requirement",
+// "execution", or "subtask") to an XLSX with a Flow sheet (the Sankey edge list
+// with resolved labels) and a Table sheet (flat one-row-per-thread records),
+// respecting that tab's current filters (RND_P_4TFINT_05-221). crossProject is
+// threaded to the execution producer; the sub-task producer ignores it until
+// Task 12 wires cross-project sub-tasks. Returns the saved path, or "" if
+// cancelled.
+func (a *App) ExportTraceability(profileID, kind string, planFilters, execFilters []string, crossProject bool, reqFilters, parentFilters []string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	projectKey, err := a.GetProfileProjectKey(profileID)
+	if err != nil {
+		return "", err
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export traceability",
+		DefaultFilename: "traceability-" + kind + ".xlsx",
+		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	data, err := a.repo.ExportTraceabilitySheets(profileID, projectKey, kind, planFilters, execFilters, reqFilters, parentFilters, crossProject)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "", fmt.Errorf("write export: %w", err)
+	}
+	return path, nil
+}
+
 // ExportImportTemplate writes a starter CSV import template to a user-chosen
 // file (FR-10.3). Returns the saved path, or "" if cancelled.
 func (a *App) ExportImportTemplate() (string, error) {

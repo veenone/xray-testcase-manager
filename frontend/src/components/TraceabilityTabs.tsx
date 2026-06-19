@@ -4,6 +4,7 @@ import {
   GetTraceabilitySankey,
   GetRequirementTraceability,
   GetSubTaskTraceability,
+  ExportTraceability,
   ListRequirementsWithCoverage,
   ListContainers,
   GetExecutionsForPlans,
@@ -39,6 +40,9 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   const [tab, setTab] = useState<Tab>("exec");
   const [stats, setStats] = useState<Statistics | null>(null);
   const [statsErr, setStatsErr] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
+  const [exportErr, setExportErr] = useState("");
 
   // Requirement traceability.
   const [reqSankey, setReqSankey] = useState<Sankey | null>(null);
@@ -239,6 +243,32 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
     };
   }, [profileId, refreshKey, parentSel]);
 
+  // Export the active tab's diagram (Flow + Table sheets) honouring its current
+  // filters. The kind selects which filter slices the backend uses.
+  async function exportActive() {
+    const kind =
+      tab === "req" ? "requirement" : tab === "subtask" ? "subtask" : "execution";
+    setExporting(true);
+    setExportErr("");
+    setExportNotice("");
+    try {
+      const path = await ExportTraceability(
+        profileId,
+        kind,
+        planSel,
+        execSel,
+        crossProject,
+        reqSel,
+        parentSel,
+      );
+      if (path) setExportNotice(`Saved to ${path}`);
+    } catch (e) {
+      setExportErr(errMsg(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function openCrossBug(key: string) {
     const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
     const isDemo = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
@@ -284,7 +314,17 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
         >
           Sub-task
         </button>
+        <button
+          className="btn btn-ghost trace-export"
+          onClick={exportActive}
+          disabled={exporting}
+          title="Export the active tab's traceability (Flow + Table) to XLSX"
+        >
+          {exporting ? "Exporting…" : "Export XLSX"}
+        </button>
       </div>
+      {exportErr && <p className="error-text">{exportErr}</p>}
+      {exportNotice && <p className="muted">{exportNotice}</p>}
 
       {tab === "req" && (
         <div className="stat-panel sankey-panel">

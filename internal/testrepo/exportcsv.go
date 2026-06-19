@@ -86,20 +86,80 @@ func writeXLSX(rows [][]string) ([]byte, error) {
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()
 	sheet := f.GetSheetName(0)
-	for rIdx, row := range rows {
-		for cIdx, val := range row {
-			cell, err := excelize.CoordinatesToCellName(cIdx+1, rIdx+1)
-			if err != nil {
-				return nil, fmt.Errorf("xlsx cell: %w", err)
-			}
-			if err := f.SetCellStr(sheet, cell, val); err != nil {
-				return nil, fmt.Errorf("xlsx set: %w", err)
-			}
-		}
+	if err := fillSheet(f, sheet, rows); err != nil {
+		return nil, err
 	}
 	var buf bytes.Buffer
 	if err := f.Write(&buf); err != nil {
 		return nil, fmt.Errorf("write XLSX: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// namedRows is one sheet in a multi-sheet XLSX export: a sheet name, a header
+// row, and the data rows beneath it.
+type namedRows struct {
+	Name   string
+	Header []string
+	Rows   [][]string
+}
+
+// writeXLSXSheets renders one excelize sheet per namedRows entry and returns the
+// workbook bytes. The default Sheet1 is removed unless a sheet is named "Sheet1".
+func writeXLSXSheets(sheets []namedRows) ([]byte, error) {
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+	defaultSheet := f.GetSheetName(0)
+
+	keepDefault := false
+	for _, s := range sheets {
+		if s.Name == defaultSheet {
+			keepDefault = true
+			break
+		}
+	}
+
+	for _, s := range sheets {
+		if s.Name != defaultSheet {
+			if _, err := f.NewSheet(s.Name); err != nil {
+				return nil, fmt.Errorf("xlsx sheet %q: %w", s.Name, err)
+			}
+		}
+		rows := make([][]string, 0, len(s.Rows)+1)
+		if len(s.Header) > 0 {
+			rows = append(rows, s.Header)
+		}
+		rows = append(rows, s.Rows...)
+		if err := fillSheet(f, s.Name, rows); err != nil {
+			return nil, err
+		}
+	}
+
+	if !keepDefault {
+		if err := f.DeleteSheet(defaultSheet); err != nil {
+			return nil, fmt.Errorf("xlsx remove default sheet: %w", err)
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, fmt.Errorf("write XLSX: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// fillSheet writes rows into the named sheet as plain strings, one row per slice.
+func fillSheet(f *excelize.File, sheet string, rows [][]string) error {
+	for rIdx, row := range rows {
+		for cIdx, val := range row {
+			cell, err := excelize.CoordinatesToCellName(cIdx+1, rIdx+1)
+			if err != nil {
+				return fmt.Errorf("xlsx cell: %w", err)
+			}
+			if err := f.SetCellStr(sheet, cell, val); err != nil {
+				return fmt.Errorf("xlsx set: %w", err)
+			}
+		}
+	}
+	return nil
 }
