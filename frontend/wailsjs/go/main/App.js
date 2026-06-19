@@ -26,6 +26,14 @@ export function BulkAssociateRequirements(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BulkAssociateRequirements'](arg1, arg2, arg3, arg4);
 }
 
+export function BulkReplacePreconditions(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BulkReplacePreconditions'](arg1, arg2, arg3, arg4);
+}
+
+export function BulkReplaceRequirements(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BulkReplaceRequirements'](arg1, arg2, arg3, arg4);
+}
+
 export function BulkEditTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkEditTests'](arg1, arg2, arg3);
 }

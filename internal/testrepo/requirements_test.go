@@ -135,6 +135,38 @@ func TestSetTestRequirementsQueuesAndDiscardRestores(t *testing.T) {
 	}
 }
 
+func TestBulkReplaceRequirements(t *testing.T) {
+	repo := seedReqRepo(t)
+	// Both tests start covering {PRD-10, PRD-11}.
+	if err := repo.ReplaceAllRequirementLinks("p1", []testrepo.RequirementLink{
+		{TestKey: "QA-1", RequirementKey: "PRD-10", LinkID: "100"},
+		{TestKey: "QA-1", RequirementKey: "PRD-11", LinkID: "101"},
+		{TestKey: "QA-2", RequirementKey: "PRD-10", LinkID: "102"},
+		{TestKey: "QA-2", RequirementKey: "PRD-11", LinkID: "103"},
+	}); err != nil {
+		t.Fatalf("seed links: %v", err)
+	}
+
+	res, err := repo.BulkReplaceRequirements("p1", []string{"QA-1", "QA-2"}, []string{"PRD-10"}, []string{"PRD-12"})
+	if err != nil {
+		t.Fatalf("bulk replace: %v", err)
+	}
+	if len(res.Succeeded) != 2 || len(res.Failed) != 0 {
+		t.Fatalf("result = %+v, want 2 succeeded / 0 failed", res)
+	}
+
+	for _, key := range []string{"QA-1", "QA-2"} {
+		reqs, _ := repo.GetTestRequirements("p1", key)
+		got := map[string]bool{}
+		for _, rq := range reqs {
+			got[rq.Key] = true
+		}
+		if len(got) != 2 || !got["PRD-11"] || !got["PRD-12"] {
+			t.Errorf("%s requirements = %+v, want exactly {PRD-11, PRD-12}", key, reqs)
+		}
+	}
+}
+
 func TestSetTestRequirementsSameSetIsNoop(t *testing.T) {
 	repo := seedReqRepo(t)
 	if err := repo.SetTestRequirements("p1", "QA-1", []string{"PRD-10"}); err != nil {

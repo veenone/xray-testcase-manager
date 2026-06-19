@@ -149,6 +149,9 @@ export function TestDetail({
   const [allRequirements, setAllRequirements] = useState<RequirementCoverage[]>(
     [],
   );
+  const [swapKind, setSwapKind] = useState<"precondition" | "requirement" | null>(
+    null,
+  );
   const [containers, setContainers] = useState<ContainerMembership[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldValue[]>([]);
   const [review, setReview] = useState<Review | null>(null);
@@ -896,6 +899,15 @@ export function TestDetail({
             >
               ＋ New
             </button>
+            <button
+              type="button"
+              className="btn btn-ghost pre-add-new"
+              onClick={() => setSwapKind("precondition")}
+              disabled={preconditions.length === 0 && allPreconditions.length === 0}
+              title="Swap preconditions: remove some and add others in one apply"
+            >
+              ⇄ Swap
+            </button>
           </div>
 
           {(() => {
@@ -966,17 +978,27 @@ export function TestDetail({
               ))}
             </ul>
           )}
-          <MultiAddSelect
-            className="pre-add"
-            placeholder="+ Link requirement…"
-            onAdd={addRequirements}
-            options={allRequirements
-              .filter((r) => !requirements.some((lr) => lr.key === r.key))
-              .map((r) => ({
-                value: r.key,
-                label: `${r.key} — ${r.summary}`,
-              }))}
-          />
+          <div className="pre-add pre-add-row">
+            <MultiAddSelect
+              placeholder="+ Link requirement…"
+              onAdd={addRequirements}
+              options={allRequirements
+                .filter((r) => !requirements.some((lr) => lr.key === r.key))
+                .map((r) => ({
+                  value: r.key,
+                  label: `${r.key} — ${r.summary}`,
+                }))}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost pre-add-new"
+              onClick={() => setSwapKind("requirement")}
+              disabled={requirements.length === 0 && allRequirements.length === 0}
+              title="Swap requirements: unlink some and link others in one apply"
+            >
+              ⇄ Swap
+            </button>
+          </div>
 
           <h4>Bugs</h4>
           {bugs.length === 0 ? (
@@ -1153,9 +1175,169 @@ export function TestDetail({
           }}
         />
       )}
+      {swapKind === "precondition" && (
+        <SwapModal
+          title="Swap preconditions"
+          current={preconditions.map((p) => ({
+            key: p.key,
+            label: `${p.key} — ${p.summary}`,
+          }))}
+          candidates={allPreconditions
+            .filter((p) => !preconditions.some((lp) => lp.key === p.key))
+            .map((p) => ({ key: p.key, label: `${p.key} — ${p.summary}` }))}
+          onCancel={() => setSwapKind(null)}
+          onConfirm={async (next) => {
+            await applyPreconditions(next);
+            setSwapKind(null);
+          }}
+        />
+      )}
+      {swapKind === "requirement" && (
+        <SwapModal
+          title="Swap requirements"
+          current={requirements.map((rq) => ({
+            key: rq.key,
+            label: `${rq.key} — ${rq.summary}`,
+          }))}
+          candidates={allRequirements
+            .filter((r) => !requirements.some((lr) => lr.key === r.key))
+            .map((r) => ({ key: r.key, label: `${r.key} — ${r.summary}` }))}
+          onCancel={() => setSwapKind(null)}
+          onConfirm={async (next) => {
+            await applyRequirements(next);
+            setSwapKind(null);
+          }}
+        />
+      )}
       {promptUI}
       {confirmUI}
     </aside>
+  );
+}
+
+interface SwapItem {
+  key: string;
+  label: string;
+}
+
+// SwapModal lists the test's current items as checkboxes (ticked = remove) and
+// a multi-pick add list, then computes next = (current minus removed) + added
+// and hands it back in one apply (RND_P_4TFINT_05-231).
+function SwapModal({
+  title,
+  current,
+  candidates,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  current: SwapItem[];
+  candidates: SwapItem[];
+  onCancel: () => void;
+  onConfirm: (next: string[]) => void | Promise<void>;
+}) {
+  const [toRemove, setToRemove] = useState<Set<string>>(new Set());
+  const [toAdd, setToAdd] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
+  function toggleRemove(key: string) {
+    setToRemove((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAdd(key: string) {
+    setToAdd((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function confirm() {
+    const next = [
+      ...current.map((c) => c.key).filter((k) => !toRemove.has(k)),
+      ...candidates.map((c) => c.key).filter((k) => toAdd.has(k)),
+    ];
+    setBusy(true);
+    try {
+      await onConfirm(next);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="pending-head">
+          <h2>{title}</h2>
+          <button className="btn btn-ghost" onClick={onCancel} title="Close">
+            ✕
+          </button>
+        </div>
+        <div className="bulk-body">
+          <div className="bulk-row bulk-swap-row">
+            <span>Remove</span>
+            <ul className="bulk-swap-list">
+              {current.length === 0 && <li className="muted">None linked</li>}
+              {current.map((c) => (
+                <li key={c.key}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={toRemove.has(c.key)}
+                      onChange={() => toggleRemove(c.key)}
+                    />
+                    <span>{c.label}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="bulk-row bulk-swap-row">
+            <span>Add</span>
+            <ul className="bulk-swap-list">
+              {candidates.length === 0 && (
+                <li className="muted">Nothing else to add</li>
+              )}
+              {candidates.map((c) => (
+                <li key={c.key}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={toAdd.has(c.key)}
+                      onChange={() => toggleAdd(c.key)}
+                    />
+                    <span>{c.label}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <p className="muted bulk-preview">
+            Ticked Remove items are dropped and ticked Add items are linked in
+            one apply. The change is queued locally; commit it from Pending.
+          </p>
+        </div>
+        <div className="pending-actions">
+          <button className="btn" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={confirm}
+            disabled={busy || (toRemove.size === 0 && toAdd.size === 0)}
+          >
+            {busy ? "Applying…" : "Apply swap"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -791,6 +791,16 @@ func (a *App) BulkAssociatePreconditions(profileID string, testKeys, precondKeys
 	return a.repo.BulkAssociatePreconditions(profileID, testKeys, precondKeys, add)
 }
 
+// BulkReplacePreconditions swaps Preconditions across a batch of Tests: per Test
+// it removes toRemove and adds toAdd in one apply (FR-13.6).
+func (a *App) BulkReplacePreconditions(profileID string, testKeys, toRemove, toAdd []string) (testrepo.BulkEditResult, error) {
+	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	return a.repo.BulkReplacePreconditions(profileID, testKeys, toRemove, toAdd)
+}
+
 // --- Precondition management view (FR-13.4) ---
 
 // ListPreconditionsWithUsage returns every cached Precondition with the count
@@ -891,6 +901,16 @@ func (a *App) BulkAssociateRequirements(profileID string, testKeys, requirementK
 		return empty, err
 	}
 	return a.repo.BulkAssociateRequirements(profileID, testKeys, requirementKeys, add)
+}
+
+// BulkReplaceRequirements swaps requirement links across a batch of Tests: per
+// Test it removes toRemove and adds toAdd in one apply.
+func (a *App) BulkReplaceRequirements(profileID string, testKeys, toRemove, toAdd []string) (testrepo.BulkEditResult, error) {
+	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	return a.repo.BulkReplaceRequirements(profileID, testKeys, toRemove, toAdd)
 }
 
 // EditRequirementField applies a local edit to a requirement field (summary)

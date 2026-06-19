@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { ListAllPreconditions, BulkAssociatePreconditions, errMsg } from "../api";
+import {
+  ListAllPreconditions,
+  BulkAssociatePreconditions,
+  BulkReplacePreconditions,
+  errMsg,
+} from "../api";
 import type { Precondition, BulkEditResult } from "../api";
 import { SearchableSelect } from "./SearchableSelect";
 
@@ -10,8 +15,18 @@ interface Props {
   onCancel: () => void;
 }
 
-// BulkPreconditionsModal associates or disassociates a Precondition across the
-// selected Tests (FR-13.6).
+type Mode = "add" | "remove" | "replace";
+
+// togglePick flips a key in a staged multi-select set.
+function togglePick(prev: Set<string>, key: string): Set<string> {
+  const next = new Set(prev);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
+// BulkPreconditionsModal associates, disassociates, or swaps (Replace mode)
+// Preconditions across the selected Tests (FR-13.6, RND_P_4TFINT_05-231).
 export function BulkPreconditionsModal({
   profileId,
   testKeys,
@@ -20,7 +35,9 @@ export function BulkPreconditionsModal({
 }: Props) {
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [target, setTarget] = useState("");
-  const [mode, setMode] = useState<"add" | "remove">("add");
+  const [mode, setMode] = useState<Mode>("add");
+  const [toRemove, setToRemove] = useState<Set<string>>(new Set());
+  const [toAdd, setToAdd] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [applying, setApplying] = useState(false);
@@ -47,17 +64,30 @@ export function BulkPreconditionsModal({
     };
   }, [profileId]);
 
+  const canApply =
+    mode === "replace" ? toRemove.size > 0 || toAdd.size > 0 : !!target;
+
   async function apply() {
-    if (!target) return;
     setApplying(true);
     setApplyError("");
     try {
-      const r = await BulkAssociatePreconditions(
-        profileId,
-        testKeys,
-        [target],
-        mode === "add",
-      );
+      let r: BulkEditResult;
+      if (mode === "replace") {
+        r = await BulkReplacePreconditions(
+          profileId,
+          testKeys,
+          [...toRemove],
+          [...toAdd],
+        );
+      } else {
+        if (!target) return;
+        r = await BulkAssociatePreconditions(
+          profileId,
+          testKeys,
+          [target],
+          mode === "add",
+        );
+      }
       setResult(r);
     } catch (e) {
       setApplyError(errMsg(e));
@@ -85,39 +115,98 @@ export function BulkPreconditionsModal({
               <span>Action</span>
               <select
                 value={mode}
-                onChange={(e) => setMode(e.target.value as "add" | "remove")}
+                onChange={(e) => setMode(e.target.value as Mode)}
               >
                 <option value="add">Associate</option>
                 <option value="remove">Disassociate</option>
+                <option value="replace">Replace</option>
               </select>
             </label>
 
-            <label className="bulk-row">
-              <span>Precondition</span>
-              {loading ? (
-                <span className="muted">Loading…</span>
-              ) : (
-                <SearchableSelect
-                  value={target}
-                  onChange={setTarget}
-                  disabled={preconditions.length === 0}
-                  placeholder={
-                    preconditions.length === 0 ? "None synced" : "Select…"
-                  }
-                  options={preconditions.map((p) => ({
-                    value: p.key,
-                    label: `${p.key} — ${p.summary}`,
-                  }))}
-                />
-              )}
-            </label>
+            {mode !== "replace" && (
+              <label className="bulk-row">
+                <span>Precondition</span>
+                {loading ? (
+                  <span className="muted">Loading…</span>
+                ) : (
+                  <SearchableSelect
+                    value={target}
+                    onChange={setTarget}
+                    disabled={preconditions.length === 0}
+                    placeholder={
+                      preconditions.length === 0 ? "None synced" : "Select…"
+                    }
+                    options={preconditions.map((p) => ({
+                      value: p.key,
+                      label: `${p.key} — ${p.summary}`,
+                    }))}
+                  />
+                )}
+              </label>
+            )}
+
+            {mode === "replace" && !loading && (
+              <>
+                <div className="bulk-row bulk-swap-row">
+                  <span>Remove</span>
+                  <ul className="bulk-swap-list">
+                    {preconditions.length === 0 && (
+                      <li className="muted">None synced</li>
+                    )}
+                    {preconditions.map((p) => (
+                      <li key={p.key}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={toRemove.has(p.key)}
+                            onChange={() =>
+                              setToRemove((s) => togglePick(s, p.key))
+                            }
+                          />
+                          <span>
+                            {p.key} — {p.summary}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="bulk-row bulk-swap-row">
+                  <span>Add</span>
+                  <ul className="bulk-swap-list">
+                    {preconditions.length === 0 && (
+                      <li className="muted">None synced</li>
+                    )}
+                    {preconditions.map((p) => (
+                      <li key={p.key}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={toAdd.has(p.key)}
+                            onChange={() =>
+                              setToAdd((s) => togglePick(s, p.key))
+                            }
+                          />
+                          <span>
+                            {p.key} — {p.summary}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
 
             {loadError && <div className="error-text">{loadError}</div>}
 
             <p className="muted bulk-preview">
-              {mode === "add"
-                ? "The precondition is added to tests that don't already have it."
-                : "The precondition is removed from tests that have it."}{" "}
+              {mode === "add" &&
+                "The precondition is added to tests that don't already have it. "}
+              {mode === "remove" &&
+                "The precondition is removed from tests that have it. "}
+              {mode === "replace" &&
+                "Per test the ticked Remove items are dropped and the ticked Add items are linked, in one apply. "}
               Changes are queued locally; commit them from the Pending list.
             </p>
 
@@ -157,7 +246,7 @@ export function BulkPreconditionsModal({
               <button
                 className="btn btn-primary"
                 onClick={apply}
-                disabled={applying || loading || !target}
+                disabled={applying || loading || !canApply}
               >
                 {applying ? "Applying…" : "Apply"}
               </button>

@@ -228,6 +228,28 @@ func (r *Repository) BulkAssociateRequirements(profileID string, testKeys, reqKe
 	return result, nil
 }
 
+// BulkReplaceRequirements swaps requirement links across many Tests: for each
+// Test it removes toRemove and adds toAdd in one apply, computing the new set as
+// (current minus toRemove) plus toAdd and queuing it via SetTestRequirements.
+// A Test already in the desired state is reported as succeeded.
+func (r *Repository) BulkReplaceRequirements(profileID string, testKeys, toRemove, toAdd []string) (BulkEditResult, error) {
+	result := BulkEditResult{Succeeded: []string{}, Failed: []BulkFailure{}}
+	for _, testKey := range testKeys {
+		current, err := r.testRequirementKeys(profileID, testKey)
+		if err != nil {
+			result.Failed = append(result.Failed, BulkFailure{TestKey: testKey, Error: err.Error()})
+			continue
+		}
+		newSet := applyReplaceDelta(current, toRemove, toAdd)
+		if err := r.SetTestRequirements(profileID, testKey, newSet); err != nil {
+			result.Failed = append(result.Failed, BulkFailure{TestKey: testKey, Error: err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, testKey)
+	}
+	return result, nil
+}
+
 // testRequirementKeys returns the requirement keys a single Test covers.
 func (r *Repository) testRequirementKeys(profileID, testKey string) ([]string, error) {
 	rows, err := r.db.Query(

@@ -307,6 +307,41 @@ func TestBulkAssociatePreconditionsAddsAndRemoves(t *testing.T) {
 	}
 }
 
+func TestBulkReplacePreconditions(t *testing.T) {
+	repo := seedTestWithPreconditions(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-2", ID: "2", Summary: "b"},
+	}); err != nil {
+		t.Fatalf("seed test 2: %v", err)
+	}
+	// Both tests start covering {QA-P-1, QA-P-2}.
+	if err := repo.ReplaceAllTestPreconditions("p1", map[string][]string{
+		"QA-1": {"QA-P-1", "QA-P-2"},
+		"QA-2": {"QA-P-1", "QA-P-2"},
+	}); err != nil {
+		t.Fatalf("seed links: %v", err)
+	}
+
+	res, err := repo.BulkReplacePreconditions("p1", []string{"QA-1", "QA-2"}, []string{"QA-P-1"}, []string{"QA-P-3"})
+	if err != nil {
+		t.Fatalf("bulk replace: %v", err)
+	}
+	if len(res.Succeeded) != 2 || len(res.Failed) != 0 {
+		t.Fatalf("result = %+v, want 2 succeeded / 0 failed", res)
+	}
+
+	for _, key := range []string{"QA-1", "QA-2"} {
+		linked, _ := repo.ListTestPreconditions("p1", key)
+		got := map[string]bool{}
+		for _, p := range linked {
+			got[p.Key] = true
+		}
+		if len(got) != 2 || !got["QA-P-2"] || !got["QA-P-3"] {
+			t.Errorf("%s linked = %+v, want exactly {QA-P-2, QA-P-3}", key, linked)
+		}
+	}
+}
+
 func TestEditPreconditionFieldQueuesPreconditionEdit(t *testing.T) {
 	repo := seedTestWithPreconditions(t)
 

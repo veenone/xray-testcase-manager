@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { ListRequirementsWithCoverage, BulkAssociateRequirements, errMsg } from "../api";
+import {
+  ListRequirementsWithCoverage,
+  BulkAssociateRequirements,
+  BulkReplaceRequirements,
+  errMsg,
+} from "../api";
 import type { RequirementCoverage, BulkEditResult } from "../api";
 import { SearchableSelect } from "./SearchableSelect";
 
@@ -10,8 +15,18 @@ interface Props {
   onCancel: () => void;
 }
 
-// BulkRequirementsModal links or unlinks a requirement across the selected
-// Tests at once.
+type Mode = "add" | "remove" | "replace";
+
+// togglePick flips a key in a staged multi-select set.
+function togglePick(prev: Set<string>, key: string): Set<string> {
+  const next = new Set(prev);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
+// BulkRequirementsModal links, unlinks, or swaps (Replace mode) a requirement
+// across the selected Tests at once (RND_P_4TFINT_05-231).
 export function BulkRequirementsModal({
   profileId,
   testKeys,
@@ -20,7 +35,9 @@ export function BulkRequirementsModal({
 }: Props) {
   const [requirements, setRequirements] = useState<RequirementCoverage[]>([]);
   const [target, setTarget] = useState("");
-  const [mode, setMode] = useState<"add" | "remove">("add");
+  const [mode, setMode] = useState<Mode>("add");
+  const [toRemove, setToRemove] = useState<Set<string>>(new Set());
+  const [toAdd, setToAdd] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [applying, setApplying] = useState(false);
@@ -47,17 +64,30 @@ export function BulkRequirementsModal({
     };
   }, [profileId]);
 
+  const canApply =
+    mode === "replace" ? toRemove.size > 0 || toAdd.size > 0 : !!target;
+
   async function apply() {
-    if (!target) return;
     setApplying(true);
     setApplyError("");
     try {
-      const r = await BulkAssociateRequirements(
-        profileId,
-        testKeys,
-        [target],
-        mode === "add",
-      );
+      let r: BulkEditResult;
+      if (mode === "replace") {
+        r = await BulkReplaceRequirements(
+          profileId,
+          testKeys,
+          [...toRemove],
+          [...toAdd],
+        );
+      } else {
+        if (!target) return;
+        r = await BulkAssociateRequirements(
+          profileId,
+          testKeys,
+          [target],
+          mode === "add",
+        );
+      }
       setResult(r);
     } catch (e) {
       setApplyError(errMsg(e));
@@ -85,39 +115,98 @@ export function BulkRequirementsModal({
               <span>Action</span>
               <select
                 value={mode}
-                onChange={(e) => setMode(e.target.value as "add" | "remove")}
+                onChange={(e) => setMode(e.target.value as Mode)}
               >
                 <option value="add">Link</option>
                 <option value="remove">Unlink</option>
+                <option value="replace">Replace</option>
               </select>
             </label>
 
-            <label className="bulk-row">
-              <span>Requirement</span>
-              {loading ? (
-                <span className="muted">Loading…</span>
-              ) : (
-                <SearchableSelect
-                  value={target}
-                  onChange={setTarget}
-                  disabled={requirements.length === 0}
-                  placeholder={
-                    requirements.length === 0 ? "None synced" : "Select…"
-                  }
-                  options={requirements.map((r) => ({
-                    value: r.key,
-                    label: `${r.key} — ${r.summary}`,
-                  }))}
-                />
-              )}
-            </label>
+            {mode !== "replace" && (
+              <label className="bulk-row">
+                <span>Requirement</span>
+                {loading ? (
+                  <span className="muted">Loading…</span>
+                ) : (
+                  <SearchableSelect
+                    value={target}
+                    onChange={setTarget}
+                    disabled={requirements.length === 0}
+                    placeholder={
+                      requirements.length === 0 ? "None synced" : "Select…"
+                    }
+                    options={requirements.map((r) => ({
+                      value: r.key,
+                      label: `${r.key} — ${r.summary}`,
+                    }))}
+                  />
+                )}
+              </label>
+            )}
+
+            {mode === "replace" && !loading && (
+              <>
+                <div className="bulk-row bulk-swap-row">
+                  <span>Remove</span>
+                  <ul className="bulk-swap-list">
+                    {requirements.length === 0 && (
+                      <li className="muted">None synced</li>
+                    )}
+                    {requirements.map((r) => (
+                      <li key={r.key}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={toRemove.has(r.key)}
+                            onChange={() =>
+                              setToRemove((s) => togglePick(s, r.key))
+                            }
+                          />
+                          <span>
+                            {r.key} — {r.summary}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="bulk-row bulk-swap-row">
+                  <span>Add</span>
+                  <ul className="bulk-swap-list">
+                    {requirements.length === 0 && (
+                      <li className="muted">None synced</li>
+                    )}
+                    {requirements.map((r) => (
+                      <li key={r.key}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={toAdd.has(r.key)}
+                            onChange={() =>
+                              setToAdd((s) => togglePick(s, r.key))
+                            }
+                          />
+                          <span>
+                            {r.key} — {r.summary}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
 
             {loadError && <div className="error-text">{loadError}</div>}
 
             <p className="muted bulk-preview">
-              {mode === "add"
-                ? "The requirement is linked to tests that don't already cover it."
-                : "The requirement link is removed from tests that have it."}{" "}
+              {mode === "add" &&
+                "The requirement is linked to tests that don't already cover it. "}
+              {mode === "remove" &&
+                "The requirement link is removed from tests that have it. "}
+              {mode === "replace" &&
+                "Per test the ticked Remove links are dropped and the ticked Add links are created, in one apply. "}
               Changes are queued locally; commit them from the Pending list.
             </p>
 
@@ -157,7 +246,7 @@ export function BulkRequirementsModal({
               <button
                 className="btn btn-primary"
                 onClick={apply}
-                disabled={applying || loading || !target}
+                disabled={applying || loading || !canApply}
               >
                 {applying ? "Applying…" : "Apply"}
               </button>
