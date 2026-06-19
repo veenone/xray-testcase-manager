@@ -1206,6 +1206,54 @@ i.sankey-node-l2 {
 .kind-testexec {
   background: #b45309;
 }
+.container-environments {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 8px;
+}
+.container-env-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.container-env-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.env-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: #1d4ed8;
+  color: #fff;
+}
+.env-chip-remove {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+}
+.env-chip-remove:hover {
+  color: #fff;
+}
+.container-env-add {
+  font-size: 12px;
+  padding: 2px 6px;
+  width: 140px;
+}
 .container-card-key {
   font-size: 13px;
   font-weight: 600;
@@ -4410,6 +4458,14 @@ tr.row-checked:hover {
 .container-filter-count {
   font-size: 12px;
   white-space: nowrap;
+}
+.container-env-batch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.container-env-batch .container-env-add {
+  width: 150px;
 }
 .board-sort-th {
   cursor: pointer;

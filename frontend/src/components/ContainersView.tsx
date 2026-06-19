@@ -7,9 +7,11 @@ import {
   CreateContainerAndAllocate,
   EditContainer,
   DeleteContainer,
+  SetContainerEnvironments,
   DeallocateTests,
   SetTestRunStatus,
   BulkSetTestRunStatus,
+  BulkEditContainers,
   ExportPytest,
   SyncContainers,
   BrowserOpenURL,
@@ -61,6 +63,18 @@ export function ContainersView({
   const [cStatus, setCStatus] = useState("");
   // Execution-type filter (Test Execution kind only): "" = all, "standalone", "subtask".
   const [cExecType, setCExecType] = useState("");
+  // Environment filter (Test Execution kind only): "" = any; otherwise keep only
+  // executions whose environments array contains the value (mirrors
+  // ContainerQuery.Environment server-side, applied client-side here since the
+  // environments are already loaded on each container).
+  const [cEnv, setCEnv] = useState("");
+  // Inline environment editor (selected execution): a draft of a new env name.
+  const [envDraft, setEnvDraft] = useState("");
+  // Batch environment editor (all currently-filtered executions): chosen
+  // operation, the env name to apply, and an in-flight guard.
+  const [batchEnvOp, setBatchEnvOp] = useState<"add_env" | "remove_env" | "set_env">("add_env");
+  const [batchEnvName, setBatchEnvName] = useState("");
+  const [batchEnvBusy, setBatchEnvBusy] = useState(false);
   const [cSortField, setCSortField] = useState("key");
   const [cSortDesc, setCSortDesc] = useState(false);
   const [rowSortField, setRowSortField] = useState("key");
@@ -130,7 +144,10 @@ export function ContainersView({
         (!cStatus || c.status === cStatus) &&
         (kind !== "testexec" ||
           !cExecType ||
-          (cExecType === "subtask" ? !!c.parentKey : !c.parentKey)),
+          (cExecType === "subtask" ? !!c.parentKey : !c.parentKey)) &&
+        (kind !== "testexec" ||
+          !cEnv ||
+          (c.environments ?? []).includes(cEnv)),
     );
     return [...base].sort((a, b) => {
       let cmp: number;
@@ -146,7 +163,15 @@ export function ContainersView({
       }
       return applyDir(cmp, cSortDesc);
     });
-  }, [containers, cStatus, cExecType, kind, cSortField, cSortDesc]);
+  }, [containers, cStatus, cExecType, cEnv, kind, cSortField, cSortDesc]);
+
+  // Distinct environments across the loaded executions, for the filter dropdown.
+  const envOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of containers)
+      for (const e of c.environments ?? []) if (e) s.add(e);
+    return [...s].sort();
+  }, [containers]);
 
   useEffect(() => {
     if (viewContainers.length === 0) return;
@@ -168,6 +193,80 @@ export function ContainersView({
       onChanged();
     } catch (e) {
       setError(errMsg(e));
+    }
+  }
+
+  // addEnvironment / removeEnvironment edit the selected execution's Test
+  // Environments, computing the new set and queuing it via
+  // SetContainerEnvironments (committed to Jira as a custom-field update).
+  async function addEnvironment() {
+    const name = envDraft.trim();
+    if (!selectedContainer || !name) return;
+    const cur = selectedContainer.environments ?? [];
+    if (cur.includes(name)) {
+      setEnvDraft("");
+      return;
+    }
+    setEnvDraft("");
+    setError("");
+    try {
+      await SetContainerEnvironments(profileId, selected, [...cur, name]);
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
+  async function removeEnvironment(name: string) {
+    if (!selectedContainer) return;
+    const cur = selectedContainer.environments ?? [];
+    setError("");
+    try {
+      await SetContainerEnvironments(
+        profileId,
+        selected,
+        cur.filter((e) => e !== name),
+      );
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
+  // applyBatchEnv runs one environment operation across every execution in the
+  // current filtered view (viewContainers), via the bulk BulkEditContainers
+  // path. set_env replaces each execution's environments, so it is confirmed.
+  async function applyBatchEnv() {
+    const name = batchEnvName.trim();
+    const keys = viewContainers.map((c) => c.key);
+    if (keys.length === 0) return;
+    if (batchEnvOp !== "set_env" && !name) return;
+    if (
+      batchEnvOp === "set_env" &&
+      !window.confirm(
+        `Set environments to "${name || "(none)"}" on ${keys.length} execution${keys.length === 1 ? "" : "s"}? ` +
+          "This replaces their current environments.",
+      )
+    )
+      return;
+    setBatchEnvBusy(true);
+    setError("");
+    try {
+      const res = await BulkEditContainers(profileId, keys, {
+        operation: batchEnvOp,
+        field: "",
+        value: name,
+      });
+      if (res.failed && res.failed.length > 0) {
+        setError(
+          `Updated ${res.succeeded.length}, failed ${res.failed.length}: ${res.failed[0].error}`,
+        );
+      }
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBatchEnvBusy(false);
     }
   }
 
@@ -591,6 +690,64 @@ export function ContainersView({
             <option value="subtask">Sub-task</option>
           </select>
         )}
+        {kind === "testexec" && envOptions.length > 0 && (
+          <select
+            className="container-status-filter"
+            value={cEnv}
+            onChange={(e) => setCEnv(e.target.value)}
+            title="Filter by test environment"
+          >
+            <option value="">All environments</option>
+            {envOptions.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
+        )}
+        {kind === "testexec" && (
+          <span
+            className="container-env-batch"
+            title="Apply an environment change to every execution currently shown"
+          >
+            <select
+              className="container-status-filter"
+              value={batchEnvOp}
+              onChange={(e) =>
+                setBatchEnvOp(e.target.value as "add_env" | "remove_env" | "set_env")
+              }
+              title="Batch environment operation"
+            >
+              <option value="add_env">Add env</option>
+              <option value="remove_env">Remove env</option>
+              <option value="set_env">Set env</option>
+            </select>
+            <input
+              className="container-env-add"
+              list="container-env-names"
+              value={batchEnvName}
+              placeholder="Environment…"
+              onChange={(e) => setBatchEnvName(e.target.value)}
+            />
+            <datalist id="container-env-names">
+              {envOptions.map((e) => (
+                <option key={e} value={e} />
+              ))}
+            </datalist>
+            <button
+              className="btn"
+              onClick={applyBatchEnv}
+              disabled={
+                batchEnvBusy ||
+                viewContainers.length === 0 ||
+                (batchEnvOp !== "set_env" && !batchEnvName.trim())
+              }
+              title="Apply to all executions currently shown by the filter"
+            >
+              {batchEnvBusy ? "Applying…" : `Apply to ${viewContainers.length}`}
+            </button>
+          </span>
+        )}
         <SortControl
           fields={[
             { value: "key", label: "Key" },
@@ -654,6 +811,40 @@ export function ContainersView({
                   {selectedContainer.issueType}
                 </span>
               )}
+            </div>
+          )}
+
+          {kind === "testexec" && (
+            <div className="container-environments">
+              <span className="container-env-label">Environments</span>
+              <div className="container-env-chips">
+                {(selectedContainer.environments ?? []).length === 0 && (
+                  <span className="muted">None</span>
+                )}
+                {(selectedContainer.environments ?? []).map((env) => (
+                  <span key={env} className="env-chip">
+                    {env}
+                    <button
+                      className="env-chip-remove"
+                      title={`Remove ${env}`}
+                      aria-label={`Remove ${env}`}
+                      onClick={() => removeEnvironment(env)}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+                <input
+                  className="container-env-add"
+                  value={envDraft}
+                  placeholder="Add environment…"
+                  onChange={(e) => setEnvDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addEnvironment();
+                  }}
+                  title="Type an environment name and press Enter"
+                />
+              </div>
             </div>
           )}
 

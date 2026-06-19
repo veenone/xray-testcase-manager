@@ -32,6 +32,11 @@ type Container struct {
 	Status    string
 	ParentKey string // parent issue key for a sub-task Test Execution; else ""
 	IssueType string // Jira issuetype name (e.g. "Sub Test Execution"); informational
+	// Environments is the Xray Test Environments field on a Test Execution
+	// (empty for Test Sets / Plans). TODO(xtm): the real container search must
+	// read the configured Test Environments custom field and populate this once
+	// verified on a live Xray Server/DC instance; demo mode seeds it.
+	Environments []string
 }
 
 // ContainerLink is one Test's membership in a Container. RunStatus carries the
@@ -470,6 +475,24 @@ func (c *Client) resolveTestRunID(ctx context.Context, execKey, testKey string) 
 	return "", fmt.Errorf(
 		"%s has no test run in execution %s yet — Xray may still be creating it; "+
 			"sync the execution and commit again", testKey, execKey)
+}
+
+// SetContainerEnvironments sets the Xray Test Environments field on a Test
+// Execution issue. Demo URLs short-circuit to a no-op success so a demo commit
+// clears the pending change.
+//
+// TODO(xtm): maps to PUT /rest/api/2/issue/{key} updating the configured Test
+// Environments custom field (a multi-select). The field id varies per instance
+// and must be resolved/configured; verify the payload shape on a live Xray
+// Server/DC instance before wiring the real call.
+func (c *Client) SetContainerEnvironments(ctx context.Context, execKey string, envs []string) error {
+	if isDemoURL(c.baseURL) {
+		return nil
+	}
+	// NOTE(xtm): real path intentionally unimplemented until verified live. The
+	// custom-field id and value shape (array of {value} vs array of strings)
+	// differ across Xray configurations.
+	return fmt.Errorf("setting Test Environments against a live Jira is not yet supported")
 }
 
 // DeleteContainer deletes a Test Set, Test Plan or Test Execution issue

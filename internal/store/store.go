@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 24
+const schemaVersion = 25
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS test_container (
 	status     TEXT NOT NULL DEFAULT '',
 	parent_key TEXT NOT NULL DEFAULT '',
 	issue_type TEXT NOT NULL DEFAULT '',
+	environments TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -476,6 +477,18 @@ func applyMigrations(db *sql.DB) error {
 			`ALTER TABLE test_case ADD COLUMN exec_type TEXT NOT NULL DEFAULT ''`,
 		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("v24 add exec_type: %w", err)
+		}
+	}
+	// v25: add environments to test_container for the Xray Test Environments
+	// field on Test Executions (a JSON array of environment names). Fresh
+	// installs get it from the CREATE above; this ALTER catches pre-v25
+	// databases. The "duplicate column" error is tolerated so the migration is
+	// idempotent.
+	if current < 25 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_container ADD COLUMN environments TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v25 add environments: %w", err)
 		}
 	}
 	return nil

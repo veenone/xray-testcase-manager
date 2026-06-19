@@ -412,6 +412,23 @@ var demoRunStatuses = []string{
 	"ABORTED",
 }
 
+// demoEnvironments returns a deterministic, non-empty subset of the environment
+// pool for the i-th execution, cycling subsets so different executions show
+// different environment chips.
+func demoEnvironments(i int) []string {
+	// Six deterministic subsets cycled by index; each is non-empty so every demo
+	// execution shows at least one chip, and the filter has something to narrow.
+	subsets := [][]string{
+		{"Staging"},
+		{"Prod"},
+		{"Staging", "Chrome"},
+		{"Prod", "Android"},
+		{"Chrome"},
+		{"Staging", "Prod", "Chrome", "Android"},
+	}
+	return subsets[i%len(subsets)]
+}
+
 // demoLinkedTests caps how many of the low-numbered demo Tests get container
 // memberships, keeping the demo link table small while still giving the most
 // commonly-opened Tests (DEMO-1…) sets, plans and executions to display.
@@ -459,10 +476,11 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		key := fmt.Sprintf("%s-TE-%d", projectKey, i+1)
 		execKeys[i] = key
 		containers = append(containers, Container{
-			Key:     key,
-			Kind:    KindTestExec,
-			Summary: fmt.Sprintf("Cycle %d execution", i+1),
-			Status:  demoExecStatuses[i%len(demoExecStatuses)],
+			Key:          key,
+			Kind:         KindTestExec,
+			Summary:      fmt.Sprintf("Cycle %d execution", i+1),
+			Status:       demoExecStatuses[i%len(demoExecStatuses)],
+			Environments: demoEnvironments(i),
 		})
 	}
 
@@ -475,10 +493,11 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 	crossExecKeys := []string{crossProject + "-TE-1", crossProject + "-TE-2"}
 	for i, key := range crossExecKeys {
 		containers = append(containers, Container{
-			Key:     key,
-			Kind:    KindTestExec,
-			Summary: fmt.Sprintf("%s integration cycle %d", crossProject, i+1),
-			Status:  demoExecStatuses[i%len(demoExecStatuses)],
+			Key:          key,
+			Kind:         KindTestExec,
+			Summary:      fmt.Sprintf("%s integration cycle %d", crossProject, i+1),
+			Status:       demoExecStatuses[i%len(demoExecStatuses)],
+			Environments: demoEnvironments(execCount + i),
 		})
 	}
 
@@ -491,12 +510,13 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		key := fmt.Sprintf("%s-STE-%d", projectKey, i+1)
 		subExecKeys[i] = key
 		containers = append(containers, Container{
-			Key:       key,
-			Kind:      KindTestExec,
-			Summary:   fmt.Sprintf("Sub-execution for story %d", i+1),
-			Status:    demoExecStatuses[i%len(demoExecStatuses)],
-			ParentKey: fmt.Sprintf("%s-S-%d", projectKey, i+1),
-			IssueType: "Sub Test Execution",
+			Key:          key,
+			Kind:         KindTestExec,
+			Summary:      fmt.Sprintf("Sub-execution for story %d", i+1),
+			Status:       demoExecStatuses[i%len(demoExecStatuses)],
+			ParentKey:    fmt.Sprintf("%s-S-%d", projectKey, i+1),
+			IssueType:    "Sub Test Execution",
+			Environments: demoEnvironments(execCount + len(crossExecKeys) + i),
 		})
 	}
 

@@ -1882,6 +1882,30 @@ func (a *App) DeleteContainer(profileID, key string) error {
 	return a.repo.DeleteContainer(profileID, key)
 }
 
+// SetContainerEnvironments replaces a Test Execution's Test Environments and
+// queues the change for commit (RND_P_4TFINT_05-229). The set is pushed to Jira
+// as a custom-field update on commit.
+func (a *App) SetContainerEnvironments(profileID, containerKey string, envs []string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.SetContainerEnvironments(profileID, containerKey, envs)
+}
+
+// BulkEditContainers applies a Test Environments operation (set_env / add_env /
+// remove_env) across a batch of containers, queuing a pending change per
+// container (RND_P_4TFINT_05-229).
+func (a *App) BulkEditContainers(profileID string, containerKeys []string, op testrepo.BulkEdit) (testrepo.BulkEditResult, error) {
+	empty := testrepo.BulkEditResult{
+		Succeeded: []string{},
+		Failed:    []testrepo.BulkFailure{},
+	}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	return a.repo.BulkEditContainers(profileID, containerKeys, op)
+}
+
 // CreateContainerAndAllocate creates a new Test Set / Plan / Execution locally
 // and allocates the given Tests to it (FR-3.4–3.6). The Container is created in
 // Jira on commit; until then it carries a temporary key. The project comes

@@ -566,7 +566,8 @@ export namespace testrepo {
 	    status: string;
 	    parentKey: string;
 	    issueType: string;
-	
+	    environments: string[];
+
 	    static createFrom(source: any = {}) {
 	        return new Container(source);
 	    }
@@ -579,6 +580,7 @@ export namespace testrepo {
 	        this.status = source["status"];
 	        this.parentKey = source["parentKey"];
 	        this.issueType = source["issueType"];
+	        this.environments = source["environments"];
 	    }
 	}
 	export class ContainerMembership {

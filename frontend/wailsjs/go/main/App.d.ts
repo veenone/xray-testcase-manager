@@ -23,6 +23,8 @@ export function BulkReplacePreconditions(arg1:string,arg2:Array<string>,arg3:Arr
 
 export function BulkReplaceRequirements(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:Array<string>):Promise<testrepo.BulkEditResult>;
 
+export function BulkEditContainers(arg1:string,arg2:Array<string>,arg3:testrepo.BulkEdit):Promise<testrepo.BulkEditResult>;
+
 export function BulkEditTests(arg1:string,arg2:Array<string>,arg3:testrepo.BulkEdit):Promise<testrepo.BulkEditResult>;
 
 export function BulkMoveToFolder(arg1:string,arg2:Array<string>,arg3:string):Promise<testrepo.BulkEditResult>;
@@ -232,6 +234,8 @@ export function SeedSampleContainers(arg1:string):Promise<testrepo.SeedResult>;
 export function SetDefaultProfile(arg1:string):Promise<void>;
 
 export function SetRequirementSource(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SetContainerEnvironments(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function SetTestPreconditions(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 

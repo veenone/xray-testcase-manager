@@ -34,6 +34,10 @@ export function BulkReplaceRequirements(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BulkReplaceRequirements'](arg1, arg2, arg3, arg4);
 }
 
+export function BulkEditContainers(arg1, arg2, arg3) {
+  return window['go']['main']['App']['BulkEditContainers'](arg1, arg2, arg3);
+}
+
 export function BulkEditTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkEditTests'](arg1, arg2, arg3);
 }
@@ -452,6 +456,10 @@ export function SetDefaultProfile(arg1) {
 
 export function SetRequirementSource(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetRequirementSource'](arg1, arg2, arg3, arg4);
+}
+
+export function SetContainerEnvironments(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetContainerEnvironments'](arg1, arg2, arg3);
 }
 
 export function SetTestPreconditions(arg1, arg2, arg3) {

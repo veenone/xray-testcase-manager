@@ -181,7 +181,8 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 			c.EntityType == "test_membership_remove" ||
 			c.EntityType == "test_container_add" ||
 			c.EntityType == "container_edit" ||
-			c.EntityType == "container_delete" {
+			c.EntityType == "container_delete" ||
+			c.EntityType == "container_env" {
 			membershipRows = append(membershipRows, c)
 			continue
 		}
@@ -1183,6 +1184,8 @@ func (e *Engine) commitMemberships(ctx context.Context, profileID string, rows [
 			key, err = c.EntityKey, e.client.UpdateIssue(ctx, c.EntityKey, jira.FieldsForJira(map[string]string{"summary": c.AfterVal}))
 		case "container_delete":
 			key, err = e.commitContainerDelete(ctx, c)
+		case "container_env":
+			key, err = e.commitContainerEnv(ctx, c)
 		default:
 			key, err = e.commitMembershipAdd(ctx, c)
 		}
@@ -1244,6 +1247,22 @@ func (e *Engine) commitContainerDelete(ctx context.Context, c testrepo.PendingCh
 	}
 	if err := e.client.DeleteContainer(ctx, snap.Kind, c.EntityKey); err != nil {
 		return c.EntityKey, fmt.Errorf("delete container %s: %s", c.EntityKey, sanitizeError(err.Error()))
+	}
+	return c.EntityKey, nil
+}
+
+// commitContainerEnv pushes a container_env pending change (the new Test
+// Environments set for a Test Execution) as a custom-field update on the
+// execution issue. The after value is the JSON array of environment names. The
+// real Xray field write is behind the demo short-circuit (TODO(xtm)); demo
+// returns success so the pending change clears on a demo commit.
+func (e *Engine) commitContainerEnv(ctx context.Context, c testrepo.PendingChange) (string, error) {
+	var envs []string
+	if err := json.Unmarshal([]byte(c.AfterVal), &envs); err != nil {
+		return c.EntityKey, fmt.Errorf("malformed environments payload: %s", err)
+	}
+	if err := e.client.SetContainerEnvironments(ctx, c.EntityKey, envs); err != nil {
+		return c.EntityKey, fmt.Errorf("set environments on %s: %s", c.EntityKey, sanitizeError(err.Error()))
 	}
 	return c.EntityKey, nil
 }

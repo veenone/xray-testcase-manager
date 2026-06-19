@@ -70,6 +70,17 @@ type Container struct {
 	Status    string `json:"status"`
 	ParentKey string `json:"parentKey"`
 	IssueType string `json:"issueType"`
+	// Environments are the Xray Test Environments assigned to a Test Execution
+	// (empty for Test Sets / Plans, which have no such field).
+	Environments []string `json:"environments"`
+}
+
+// ContainerQuery filters a ListContainersQuery call. Kind is required (one of
+// "testset" / "testplan" / "testexec"); Environment, when set, keeps only
+// containers whose environments array contains that value (membership test).
+type ContainerQuery struct {
+	Kind        string `json:"kind"`
+	Environment string `json:"environment"` // empty = any environment
 }
 
 // ContainerLink is one Test's membership in a Container. RunStatus carries the
@@ -1122,22 +1133,31 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// environments is preserved when a pending container_env edit exists, so a
+	// sync can't clobber an uncommitted local edit (mirrors the per-field guard
+	// in UpsertTests).
 	stmt, err := tx.Prepare(
-		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, environments)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
 		   kind       = excluded.kind,
 		   summary    = excluded.summary,
 		   status     = excluded.status,
 		   parent_key = excluded.parent_key,
-		   issue_type = excluded.issue_type`)
+		   issue_type = excluded.issue_type,
+		   environments = CASE WHEN EXISTS (
+		       SELECT 1 FROM pending_change
+		       WHERE pending_change.profile_id  = excluded.profile_id
+		         AND pending_change.entity_type = 'container_env'
+		         AND pending_change.entity_key  = excluded.jira_key
+		     ) THEN test_container.environments ELSE excluded.environments END`)
 	if err != nil {
 		return fmt.Errorf("prepare upsert container: %w", err)
 	}
 	defer stmt.Close()
 
 	for _, c := range containers {
-		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType); err != nil {
+		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, encodeEnvironments(c.Environments)); err != nil {
 			return fmt.Errorf("upsert container %s: %w", c.Key, err)
 		}
 	}
@@ -1480,10 +1500,24 @@ func (r *Repository) SeedSampleContainers(profileID, projectKey string) (SeedRes
 // ListContainers returns the cached Containers of a given kind for a profile,
 // ordered by key — used by the bulk-allocation picker (FR-3.4–3.6).
 func (r *Repository) ListContainers(profileID, kind string) ([]Container, error) {
-	rows, err := r.db.Query(
-		`SELECT jira_key, kind, summary, status, parent_key, issue_type FROM test_container
-		 WHERE profile_id = ? AND kind = ? ORDER BY jira_key`,
-		profileID, kind)
+	return r.ListContainersQuery(profileID, ContainerQuery{Kind: kind})
+}
+
+// ListContainersQuery lists the containers of one kind, optionally filtered by a
+// Test Environment (membership test over the JSON environments array). The
+// filter matches the JSON-quoted token so "Prod" does not collide with
+// "Production" (see environmentFilterPattern).
+func (r *Repository) ListContainersQuery(profileID string, q ContainerQuery) ([]Container, error) {
+	sqlStr := `SELECT jira_key, kind, summary, status, parent_key, issue_type, environments
+		 FROM test_container WHERE profile_id = ? AND kind = ?`
+	args := []any{profileID, q.Kind}
+	if q.Environment != "" {
+		sqlStr += ` AND environments LIKE ?`
+		args = append(args, environmentFilterPattern(q.Environment))
+	}
+	sqlStr += ` ORDER BY jira_key`
+
+	rows, err := r.db.Query(sqlStr, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
@@ -1492,9 +1526,11 @@ func (r *Repository) ListContainers(profileID, kind string) ([]Container, error)
 	out := []Container{}
 	for rows.Next() {
 		var c Container
-		if err := rows.Scan(&c.Key, &c.Kind, &c.Summary, &c.Status, &c.ParentKey, &c.IssueType); err != nil {
+		var environments string
+		if err := rows.Scan(&c.Key, &c.Kind, &c.Summary, &c.Status, &c.ParentKey, &c.IssueType, &environments); err != nil {
 			return nil, err
 		}
+		c.Environments = decodeEnvironments(environments)
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -4197,6 +4233,7 @@ const (
 	entityContainerAdd       = "test_container_add"
 	entityContainerEdit      = "container_edit"
 	entityContainerDelete    = "container_delete"
+	entityContainerEnv       = "container_env"
 	entityPreconditionSet    = "precondition_set"
 	entityPreconditionEdit   = "precondition_edit"
 	entityPreconditionAdd    = "precondition_add"
