@@ -2076,6 +2076,23 @@ tr.row-selected {
 .pre-add {
   margin-bottom: 12px;
 }
+/* Precondition picker row: multi-pick add + a separate "New" create button. */
+.pre-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pre-add-new {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+/* "Add N" confirm button at the foot of the multi-pick panel. */
+.multiadd-confirm {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+}
 .pre-summary-edit {
   flex: 1;
   min-width: 0;

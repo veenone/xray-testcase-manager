@@ -54,7 +54,7 @@ import type {
 import { usePrompt } from "./usePrompt";
 import { useConfirm } from "./useConfirm";
 import { MarkdownField } from "./MarkdownField";
-import { SearchableSelect } from "./SearchableSelect";
+import { MultiAddSelect } from "./MultiAddSelect";
 import { CloneStepsModal } from "./CloneStepsModal";
 import { PickTestModal } from "./PickTestModal";
 import { formatDateTime } from "../dates";
@@ -406,9 +406,15 @@ export function TestDetail({
     }
   }
 
-  function addRequirement(key: string) {
-    if (!key || requirements.some((r) => r.key === key)) return;
-    applyRequirements([...requirements.map((r) => r.key), key]);
+  // addRequirements links every picked requirement in a single apply: the union
+  // of the already-linked keys and the newly ticked ones is sent to
+  // applyRequirements once, so it coalesces into one pending change
+  // (RND_P_4TFINT_05-224).
+  function addRequirements(keys: string[]) {
+    const linked = new Set(requirements.map((r) => r.key));
+    const additions = keys.filter((k) => k && !linked.has(k));
+    if (additions.length === 0) return;
+    applyRequirements([...linked, ...additions]);
   }
 
   async function removeRequirement(key: string) {
@@ -451,9 +457,15 @@ export function TestDetail({
     );
   }
 
-  function addPrecondition(key: string) {
-    if (!key || preconditions.some((p) => p.key === key)) return;
-    applyPreconditions([...preconditions.map((p) => p.key), key]);
+  // addPreconditions links every picked precondition in a single apply: the
+  // union of the already-linked keys and the newly ticked ones is sent to
+  // applyPreconditions once, so it coalesces into one pending change
+  // (RND_P_4TFINT_05-224).
+  function addPreconditions(keys: string[]) {
+    const linked = new Set(preconditions.map((p) => p.key));
+    const additions = keys.filter((k) => k && !linked.has(k));
+    if (additions.length === 0) return;
+    applyPreconditions([...linked, ...additions]);
   }
 
   // createAndAssociatePrecondition creates a brand-new Precondition (FR-13.5)
@@ -865,24 +877,26 @@ export function TestDetail({
               ))}
             </ul>
           )}
-          <SearchableSelect
-            className="pre-add"
-            value=""
-            placeholder="+ Add precondition…"
-            onChange={(v) => {
-              if (v === "__new__") createAndAssociatePrecondition();
-              else if (v) addPrecondition(v);
-            }}
-            options={[
-              ...allPreconditions
+          <div className="pre-add pre-add-row">
+            <MultiAddSelect
+              placeholder="+ Add precondition…"
+              onAdd={addPreconditions}
+              options={allPreconditions
                 .filter((p) => !preconditions.some((lp) => lp.key === p.key))
                 .map((p) => ({
                   value: p.key,
                   label: `${p.key} — ${p.summary}`,
-                })),
-              { value: "__new__", label: "＋ Create new precondition…" },
-            ]}
-          />
+                }))}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost pre-add-new"
+              onClick={createAndAssociatePrecondition}
+              title="Create a brand-new precondition and link it"
+            >
+              ＋ New
+            </button>
+          </div>
 
           {(() => {
             const sets = containers.filter((c) => c.kind === "testset");
@@ -952,13 +966,10 @@ export function TestDetail({
               ))}
             </ul>
           )}
-          <SearchableSelect
+          <MultiAddSelect
             className="pre-add"
-            value=""
             placeholder="+ Link requirement…"
-            onChange={(v) => {
-              if (v) addRequirement(v);
-            }}
+            onAdd={addRequirements}
             options={allRequirements
               .filter((r) => !requirements.some((lr) => lr.key === r.key))
               .map((r) => ({
