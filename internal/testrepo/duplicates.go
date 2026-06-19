@@ -9,10 +9,11 @@ import (
 
 // DuplicateMember is one Test inside a duplicate group.
 type DuplicateMember struct {
-	Key      string `json:"key"`
-	Summary  string `json:"summary"`
-	Status   string `json:"status"`
-	FolderID string `json:"folderId"`
+	Key         string `json:"key"`
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+	FolderID    string `json:"folderId"`
 }
 
 // DuplicateGroup is a set of Tests (>=2) sharing a normalized summary, with a
@@ -142,14 +143,14 @@ func (r *Repository) stepScans(profileID string) (map[string]string, string, err
 
 // dupCandidate is a non-ignored Test loaded for grouping.
 type dupCandidate struct {
-	key, summary, status, folder string
+	key, summary, description, status, folder string
 }
 
 // loadCandidates returns every non-ignored Test for a profile, optionally only
 // those whose normalized summary equals `onlyNorm` (empty = all).
 func (r *Repository) loadCandidates(profileID, onlyNorm string) ([]dupCandidate, error) {
 	rows, err := r.db.Query(
-		`SELECT jira_key, summary, status, folder_id FROM test_case
+		`SELECT jira_key, summary, description, status, folder_id FROM test_case
 		 WHERE profile_id = ?
 		   AND jira_key NOT IN (SELECT test_key FROM duplicate_ignore WHERE profile_id = ?)`,
 		profileID, profileID,
@@ -161,7 +162,7 @@ func (r *Repository) loadCandidates(profileID, onlyNorm string) ([]dupCandidate,
 	out := []dupCandidate{}
 	for rows.Next() {
 		var c dupCandidate
-		if err := rows.Scan(&c.key, &c.summary, &c.status, &c.folder); err != nil {
+		if err := rows.Scan(&c.key, &c.summary, &c.description, &c.status, &c.folder); err != nil {
 			return nil, err
 		}
 		if onlyNorm == "" || normalizeText(c.summary) == onlyNorm {
@@ -219,7 +220,7 @@ func buildGroup(norm string, members []dupCandidate, fps map[string]string) Dupl
 		Members:           make([]DuplicateMember, len(members)),
 	}
 	for i, m := range members {
-		g.Members[i] = DuplicateMember{Key: m.key, Summary: m.summary, Status: m.status, FolderID: m.folder}
+		g.Members[i] = DuplicateMember{Key: m.key, Summary: m.summary, Description: m.description, Status: m.status, FolderID: m.folder}
 	}
 	return g
 }

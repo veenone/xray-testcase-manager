@@ -597,6 +597,7 @@ export interface Statistics {
 export interface DuplicateMember {
   key: string;
   summary: string;
+  description: string;
   status: string;
   folderId: string;
 }

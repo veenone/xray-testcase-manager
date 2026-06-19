@@ -650,17 +650,19 @@ export namespace testrepo {
 	export class DuplicateMember {
 	    key: string;
 	    summary: string;
+	    description: string;
 	    status: string;
 	    folderId: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DuplicateMember(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
 	        this.summary = source["summary"];
+	        this.description = source["description"];
 	        this.status = source["status"];
 	        this.folderId = source["folderId"];
 	    }

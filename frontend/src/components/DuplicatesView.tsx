@@ -40,6 +40,13 @@ interface CompareMember {
   steps: Step[];
 }
 
+// One member's raw summary + description, for the side-by-side summary comparison.
+interface SummaryMember {
+  key: string;
+  summary: string;
+  description: string;
+}
+
 // normStep is the normalized comparison key for a single step (case / whitespace
 // insensitive), so the side-by-side view can highlight rows that actually differ.
 function normStep(s: Step | undefined): string {
@@ -79,6 +86,12 @@ export function DuplicatesView({
     members: CompareMember[];
   } | null>(null);
 
+  // Side-by-side raw-summary (+ description) comparison.
+  const [summaryCompare, setSummaryCompare] = useState<{
+    title: string;
+    members: SummaryMember[];
+  } | null>(null);
+
   const load = useCallback(() => {
     if (!profileId) return;
     ScanDuplicates(profileId)
@@ -114,6 +127,18 @@ export function DuplicatesView({
     } finally {
       setScanningGroup("");
     }
+  }
+
+  // Compare summaries: open a side-by-side view of every member's raw summary
+  // (and description). Members share a NORMALIZED summary, so the raw values can
+  // still differ in case / whitespace / punctuation. No backend round trip.
+  function compareSummaries(g: DuplicateGroup) {
+    const members: SummaryMember[] = g.members.map((m) => ({
+      key: m.key,
+      summary: m.summary,
+      description: m.description ?? "",
+    }));
+    setSummaryCompare({ title: g.displaySummary, members });
   }
 
   async function exclude(key: string) {
@@ -259,6 +284,15 @@ export function DuplicatesView({
                       className="btn dup-cmp"
                       onClick={(e) => {
                         e.stopPropagation();
+                        compareSummaries(g);
+                      }}
+                    >
+                      Compare summaries
+                    </button>
+                    <button
+                      className="btn dup-cmp"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         compareSteps(g);
                       }}
                       disabled={scanningGroup === g.normalizedSummary}
@@ -392,6 +426,14 @@ export function DuplicatesView({
           onClose={() => setCompare(null)}
         />
       )}
+
+      {summaryCompare && (
+        <SummaryCompareModal
+          title={summaryCompare.title}
+          members={summaryCompare.members}
+          onClose={() => setSummaryCompare(null)}
+        />
+      )}
     </div>
   );
 }
@@ -481,6 +523,96 @@ function StepCompareModal({
               </tbody>
             </table>
           )}
+        </div>
+
+        <div className="pending-actions">
+          <span className="muted dup-compare-legend">
+            Highlighted rows differ between tests.
+          </span>
+          <button className="btn btn-primary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// SummaryCompareModal shows the raw summary (and description) of every
+// duplicate-group member side by side, one column per test. Members share a
+// NORMALIZED summary, so the raw values can still differ in case / whitespace /
+// punctuation; rows whose raw values are not all equal are highlighted.
+function SummaryCompareModal({
+  title,
+  members,
+  onClose,
+}: {
+  title: string;
+  members: SummaryMember[];
+  onClose: () => void;
+}) {
+  // Show the description row only if at least one member has a description.
+  const hasDescription = members.some((m) => (m.description || "").trim() !== "");
+  const rows: { label: string; value: (m: SummaryMember) => string }[] = [
+    { label: "summary", value: (m) => m.summary },
+  ];
+  if (hasDescription) {
+    rows.push({ label: "description", value: (m) => m.description });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal dup-compare-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="pending-head">
+          <h2>Compare summaries — "{title}"</h2>
+          <button className="btn btn-ghost" onClick={onClose} title="Close">
+            ✕
+          </button>
+        </div>
+
+        <div className="dup-compare-wrap">
+          <p className="muted dup-compare-ref">
+            Grouped by normalized summary: "{title}". Members can still differ in
+            case, whitespace, or punctuation.
+          </p>
+          <table className="dup-compare-table">
+            <thead>
+              <tr>
+                <th className="dup-compare-idx">field</th>
+                {members.map((m) => (
+                  <th key={m.key} className="mono">
+                    {m.key}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const values = members.map((m) => row.value(m));
+                const differs = new Set(values).size > 1;
+                return (
+                  <tr
+                    key={row.label}
+                    className={differs ? "dup-compare-diff" : undefined}
+                  >
+                    <td className="dup-compare-idx">{row.label}</td>
+                    {values.map((v, j) => (
+                      <td key={members[j].key}>
+                        {v && v.trim() !== "" ? (
+                          <div className="dup-compare-step">{v}</div>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
         <div className="pending-actions">

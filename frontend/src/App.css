@@ -3771,6 +3771,7 @@ tr.row-checked:hover {
   margin-right: 5px;
 }
 .dup-compare-legend { flex: 1; text-align: left; }
+.dup-compare-ref { margin: 0 0 8px; font-size: 12px; }
 
 /* Requirement filter input must not stretch to fill the column height (#1). */
 .reqs-filter { flex: 0 0 auto; }
