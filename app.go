@@ -1929,6 +1929,34 @@ func (a *App) ScanDuplicateGroupSteps(profileID, normalizedSummary string) (test
 	return a.repo.ScanDuplicateGroup(profileID, normalizedSummary)
 }
 
+// ScanAllDuplicateSteps walks every duplicate group whose steps verdict is still
+// unscanned, records each member's step fingerprint, and sets the group verdict,
+// emitting "dup:scan-progress" so the Duplicates toolbar can show a progress bar.
+// It uses its own event channel (not the global "sync:progress") so the walk does
+// not show in the footer sync bar or reset global sync state. It returns the number
+// of groups scanned. Per-group errors are swallowed so one bad group does not abort
+// the run.
+func (a *App) ScanAllDuplicateSteps(profileID string) (int, error) {
+	if err := a.requireStore(); err != nil {
+		return 0, err
+	}
+	defer runtime.EventsEmit(a.ctx, "dup:scan-progress", syncer.Progress{Done: true})
+	return a.repo.ScanAllDuplicateSteps(profileID,
+		// Force a fresh pull so each member's verdict reflects current Jira step
+		// content, exactly like ScanDuplicateGroupSteps. Steps load lazily, so a
+		// never-opened member has an empty cache that would otherwise fingerprint
+		// to "" and wrongly read as identical.
+		func(key string) ([]testrepo.Step, error) { return a.GetTestSteps(profileID, key, true) },
+		func(done, total int) {
+			runtime.EventsEmit(a.ctx, "dup:scan-progress", syncer.Progress{
+				Stage:   "Scanning duplicate steps",
+				Fetched: done,
+				Total:   total,
+			})
+		},
+	)
+}
+
 // ExcludeFromDuplicates permanently ignores a Test in duplicate scans (local).
 func (a *App) ExcludeFromDuplicates(profileID, testKey string) error {
 	if err := a.requireStore(); err != nil {

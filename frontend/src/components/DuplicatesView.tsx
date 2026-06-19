@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ScanDuplicates,
   ScanDuplicateGroupSteps,
+  ScanAllDuplicateSteps,
   ExcludeFromDuplicates,
   EditTestField,
   GetTestSteps,
+  EventsOn,
   errMsg,
 } from "../api";
 import type {
@@ -14,6 +16,7 @@ import type {
   Folder,
   PendingChange,
   Step,
+  SyncProgress,
 } from "../api";
 import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
@@ -69,6 +72,10 @@ export function DuplicatesView({
   const [filter, setFilter] = useState<Filter>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [scanningGroup, setScanningGroup] = useState<string>("");
+  const [scanning, setScanning] = useState(false); // plain "Scan" busy state
+  // Walk-all-groups step scan: running flag + live progress for the toolbar bar.
+  const [scanningSteps, setScanningSteps] = useState(false);
+  const [stepProgress, setStepProgress] = useState<SyncProgress | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ key: string; value: string } | null>(
     null,
@@ -102,6 +109,35 @@ export function DuplicatesView({
   useEffect(() => {
     load();
   }, [load, refreshKey]);
+
+  // While a scan-all-steps walk is running, mirror its "dup:scan-progress" events
+  // into the toolbar's local progress bar. The terminal done event clears it. This
+  // is a dedicated channel (not the global "sync:progress") so the walk does not
+  // touch the footer sync bar.
+  useEffect(() => {
+    if (!scanningSteps) return;
+    return EventsOn("dup:scan-progress", (p: SyncProgress) => {
+      if (p.done) setStepProgress(null);
+      else setStepProgress(p);
+    });
+  }, [scanningSteps]);
+
+  // Scan steps for ALL still-unscanned duplicate groups, with a progress bar.
+  async function scanAllSteps() {
+    if (!profileId) return;
+    setError("");
+    setScanningSteps(true);
+    setStepProgress(null);
+    try {
+      await ScanAllDuplicateSteps(profileId);
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setScanningSteps(false);
+      setStepProgress(null);
+    }
+  }
 
   // Compare steps: record fingerprints (updates the verdict) AND open a
   // side-by-side view of every member's steps.
@@ -198,14 +234,29 @@ export function DuplicatesView({
       <div className="dup-toolbar">
         <button
           className="btn btn-primary"
+          disabled={scanning || scanningSteps}
           onClick={() => {
             setPage(0);
+            setScanning(true);
             load();
+            // load() is fire-and-forget; clear the brief busy state next tick.
+            window.setTimeout(() => setScanning(false), 300);
           }}
         >
-          ⟳ Scan
+          {scanning ? "Scanning…" : "⟳ Scan"}
         </button>
-        {report?.scannedAt && (
+        <button
+          className="btn"
+          disabled={scanningSteps}
+          title="Fetch and compare steps for every still-unscanned group"
+          onClick={scanAllSteps}
+        >
+          {scanningSteps ? "Scanning steps…" : "Scan steps"}
+        </button>
+        {scanningSteps && stepProgress && !stepProgress.done && (
+          <DupScanBar progress={stepProgress} />
+        )}
+        {report?.scannedAt && !scanningSteps && (
           <span className="muted">
             steps last scanned {new Date(report.scannedAt).toLocaleString()}
           </span>
@@ -434,6 +485,31 @@ export function DuplicatesView({
           onClose={() => setSummaryCompare(null)}
         />
       )}
+    </div>
+  );
+}
+
+// DupScanBar renders the scan-steps walk progress in the toolbar, reusing the
+// shared syncbar styling so it matches the app's status-bar sync readout.
+function DupScanBar({ progress }: { progress: SyncProgress }) {
+  const hasCount = progress.total > 0;
+  const pct = hasCount
+    ? Math.round((progress.fetched / progress.total) * 100)
+    : 0;
+  const stage = progress.stage || "Scanning duplicate steps";
+  return (
+    <div className="syncbar">
+      {hasCount && (
+        <div className="syncbar-track">
+          <div className="syncbar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <span className="muted">
+        {stage}
+        {hasCount
+          ? `: ${progress.fetched.toLocaleString()} / ${progress.total.toLocaleString()}`
+          : "…"}
+      </span>
     </div>
   );
 }

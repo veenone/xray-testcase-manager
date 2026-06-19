@@ -221,6 +221,8 @@ export function ResolveConflictOverride(arg1:string,arg2:string,arg3:string):Pro
 
 export function RunStatuses():Promise<Array<string>>;
 
+export function ScanAllDuplicateSteps(arg1:string):Promise<number>;
+
 export function ScanDuplicateGroupSteps(arg1:string,arg2:string):Promise<testrepo.DuplicateGroup>;
 
 export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;

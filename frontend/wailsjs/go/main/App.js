@@ -430,6 +430,10 @@ export function RunStatuses() {
   return window['go']['main']['App']['RunStatuses']();
 }
 
+export function ScanAllDuplicateSteps(arg1) {
+  return window['go']['main']['App']['ScanAllDuplicateSteps'](arg1);
+}
+
 export function ScanDuplicateGroupSteps(arg1, arg2) {
   return window['go']['main']['App']['ScanDuplicateGroupSteps'](arg1, arg2);
 }

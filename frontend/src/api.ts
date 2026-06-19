@@ -127,6 +127,7 @@ export {
   GetRequirementTraceability,
   ScanDuplicates,
   ScanDuplicateGroupSteps,
+  ScanAllDuplicateSteps,
   ExcludeFromDuplicates,
   UnexcludeFromDuplicates,
   CreateBugForTest,

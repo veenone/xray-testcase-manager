@@ -132,6 +132,81 @@ func TestScanDuplicatesGroupsAndCounts(t *testing.T) {
 	}
 }
 
+// seedDupStep inserts a single test_step row so the local-cache step scan has
+// content to fingerprint for grouping tests.
+func seedDupStep(t *testing.T, repo *Repository, profile, testKey, action string) {
+	t.Helper()
+	_, err := repo.db.Exec(
+		`INSERT INTO test_step
+		   (profile_id, test_key, xray_id, idx, action, data, expected, called_test_key)
+		   VALUES (?, ?, ?, 0, ?, '', '', '')`,
+		profile, testKey, testKey+"-s0", action,
+	)
+	if err != nil {
+		t.Fatalf("seed step %s: %v", testKey, err)
+	}
+}
+
+func TestScanAllDuplicateSteps(t *testing.T) {
+	repo := newDupRepo(t)
+	// Two duplicate groups, two members each, each member with cached steps.
+	seedDupTest(t, repo, "p1", "QA-1", "Login with valid creds", "Approved")
+	seedDupTest(t, repo, "p1", "QA-2", "login WITH valid creds", "Draft")
+	seedDupStep(t, repo, "p1", "QA-1", "open login")
+	seedDupStep(t, repo, "p1", "QA-2", "open login")
+
+	seedDupTest(t, repo, "p1", "QA-3", "Reset password", "Approved")
+	seedDupTest(t, repo, "p1", "QA-4", "Reset password", "Approved")
+	seedDupStep(t, repo, "p1", "QA-3", "open reset")
+	seedDupStep(t, repo, "p1", "QA-4", "different reset")
+
+	var lastDone, lastTotal int
+	calls := 0
+	// fetch force-pulls a member's steps; here the seeded cache is the source of
+	// truth, so returning the cached steps faithfully mirrors GetTestSteps.
+	fetch := func(key string) ([]Step, error) { return repo.ListTestSteps("p1", key) }
+	scanned, err := repo.ScanAllDuplicateSteps("p1", fetch, func(done, total int) {
+		calls++
+		lastDone, lastTotal = done, total
+	})
+	if err != nil {
+		t.Fatalf("ScanAllDuplicateSteps: %v", err)
+	}
+	if scanned != 2 {
+		t.Fatalf("scanned = %d, want 2", scanned)
+	}
+	if lastDone != 2 || lastTotal != 2 {
+		t.Fatalf("last progress = (%d/%d), want (2/2)", lastDone, lastTotal)
+	}
+	if calls != 2 {
+		t.Fatalf("progress calls = %d, want 2", calls)
+	}
+
+	// Read verdicts back: no group should remain unscanned, and the verdicts must
+	// reflect the real (fetched) step content rather than empty caches.
+	rep, err := repo.ScanDuplicates("p1")
+	if err != nil {
+		t.Fatalf("ScanDuplicates: %v", err)
+	}
+	if rep.StepsUnscanned != 0 {
+		t.Fatalf("StepsUnscanned = %d, want 0", rep.StepsUnscanned)
+	}
+	verdicts := map[string]string{}
+	for _, g := range rep.Groups {
+		if g.StepsVerdict == stepVerdictUnscanned {
+			t.Fatalf("group %q still unscanned", g.NormalizedSummary)
+		}
+		verdicts[g.NormalizedSummary] = g.StepsVerdict
+	}
+	// QA-1/QA-2 share "open login" -> identical; QA-3/QA-4 differ.
+	if got := verdicts["login with valid creds"]; got != stepVerdictIdentical {
+		t.Fatalf("login group verdict = %q, want %q", got, stepVerdictIdentical)
+	}
+	if got := verdicts["reset password"]; got != stepVerdictDiffer {
+		t.Fatalf("reset password group verdict = %q, want %q", got, stepVerdictDiffer)
+	}
+}
+
 func TestScanDuplicateGroupStepVerdicts(t *testing.T) {
 	repo := newDupRepo(t)
 	seedDupTest(t, repo, "p1", "QA-3", "Reset password", "Approved")
