@@ -73,6 +73,8 @@ import { ImportTestsModal } from "./components/ImportTestsModal";
 import { Menu } from "./components/Menu";
 import { AboutModal } from "./components/AboutModal";
 import { usePrompt } from "./components/usePrompt";
+import { useConfirm } from "./components/useConfirm";
+import { useNotice } from "./components/useNotice";
 
 // applyTheme resolves the preference ("system" follows the OS) and sets the
 // data-theme attribute the CSS tokens key off (FR-12.2).
@@ -92,6 +94,8 @@ function App() {
   const [defaultProfileId, setDefaultProfileId] = useState<string>("");
   const [theme, setThemeState] = useState<string>("light");
   const { prompt, promptUI } = usePrompt();
+  const { confirm, confirmUI } = useConfirm();
+  const { notice, noticeUI } = useNotice();
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showProfiles, setShowProfiles] = useState(false);
@@ -371,7 +375,7 @@ function App() {
       setRefreshKey((k) => k + 1);
       reloadPending();
     } catch (e) {
-      window.alert(errMsg(e));
+      await notice({ title: "Sync failed", message: errMsg(e), tone: "error" });
     }
   }
 
@@ -391,20 +395,20 @@ function App() {
       setRefreshKey((k) => k + 1);
       reloadPending();
     } catch (e) {
-      window.alert(errMsg(e));
+      await notice({ title: "Couldn't load folders", message: errMsg(e), tone: "error" });
     }
   }
 
   async function deleteFolder(path: string) {
     if (!activeId) return;
-    if (!window.confirm(`Delete folder "${path}"? It must be empty.`)) return;
+    if (!(await confirm({ title: "Delete folder", message: `Delete folder "${path}"? It must be empty.`, confirmLabel: "Delete", danger: true }))) return;
     try {
       await DeleteFolder(activeId, path);
       if (selectedFolder === path) setSelectedFolder("");
       setRefreshKey((k) => k + 1);
       reloadPending();
     } catch (e) {
-      window.alert(errMsg(e));
+      await notice({ title: "Delete failed", message: errMsg(e), tone: "error" });
     }
   }
 
@@ -463,13 +467,17 @@ function App() {
   // runFullSync forces a full re-pull, ignoring the incremental watermark, so
   // the Test Repository folder membership (skipped on routine resyncs) is
   // refreshed. It can be slow on large projects, so confirm first.
-  function runFullSync() {
+  async function runFullSync() {
     if (!activeId || syncRunningRef.current) return;
     if (
-      !window.confirm(
-        "Full resync re-pulls every test and re-maps Test Repository folders. " +
+      !(await confirm({
+        title: "Full resync",
+        message:
+          "Full resync re-pulls every test and re-maps Test Repository folders. " +
           "This can take a while on large projects. Continue?",
-      )
+        confirmLabel: "Continue",
+        danger: false,
+      }))
     ) {
       return;
     }
@@ -521,9 +529,9 @@ function App() {
     if (!id) return;
     try {
       const path = await ExportProfile(id);
-      if (path) window.alert(`Profile exported to:\n${path}`);
+      if (path) await notice({ title: "Profile exported", message: path });
     } catch (e) {
-      window.alert(`Export failed: ${errMsg(e)}`);
+      await notice({ title: "Export failed", message: errMsg(e), tone: "error" });
     }
   }
 
@@ -548,7 +556,7 @@ function App() {
       }
       return p;
     } catch (e) {
-      window.alert(`Import failed: ${errMsg(e)}`);
+      await notice({ title: "Import failed", message: errMsg(e), tone: "error" });
       return null;
     }
   }
@@ -574,7 +582,7 @@ function App() {
     try {
       await DeleteProfile(id);
     } catch (e) {
-      window.alert(`Delete failed: ${errMsg(e)}`);
+      await notice({ title: "Delete failed", message: errMsg(e), tone: "error" });
       return;
     }
     const remaining = profiles.filter((p) => p.id !== id);
@@ -1526,6 +1534,8 @@ function App() {
       </footer>
 
       {promptUI}
+      {confirmUI}
+      {noticeUI}
     </div>
   );
 }

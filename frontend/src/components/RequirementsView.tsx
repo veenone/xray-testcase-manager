@@ -16,6 +16,7 @@ import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
 import { keyCompare, cmpStr, applyDir } from "../sort";
+import { useConfirm } from "./useConfirm";
 
 interface Props {
   profileId: string;
@@ -80,6 +81,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   const [draftSummary, setDraftSummary] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const { confirm, confirmUI } = useConfirm();
   // A covering test opened in a slide-over detail panel (#5).
   const [detailKey, setDetailKey] = useState("");
   const [detailVersion, setDetailVersion] = useState(0);
@@ -239,11 +241,14 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   async function deleteReq() {
     if (!sel) return;
     if (
-      !window.confirm(
-        `Delete requirement ${sel.key}? This removes it and its ${sel.testCount} coverage link${
+      !(await confirm({
+        title: "Delete requirement",
+        message: `Delete requirement ${sel.key}? This removes it and its ${sel.testCount} coverage link${
           sel.testCount === 1 ? "" : "s"
         }, and queues the issue for deletion in Jira on the next commit.`,
-      )
+        confirmLabel: "Delete",
+        danger: true,
+      }))
     )
       return;
     setBusy(true);
@@ -563,6 +568,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
           </div>
         </div>
       )}
+      {confirmUI}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   errMsg,
 } from "../api";
 import { usePrompt } from "./usePrompt";
+import { useNotice } from "./useNotice";
 import { formatDate } from "../dates";
 import { REVIEW_ENABLED } from "../features";
 import type {
@@ -243,6 +244,7 @@ export function TestTable({
   const [activeView, setActiveView] = useState("");
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
   const { prompt, promptUI } = usePrompt();
+  const { notice, noticeUI } = useNotice();
 
   const [columns, setColumns] = useState<ColState[]>(loadColumns);
   const [showColumns, setShowColumns] = useState(false);
@@ -483,9 +485,9 @@ export function TestTable({
         offset: 0,
       };
       const path = await ExportTests(profileId, q);
-      if (path) window.alert(`Exported ${page.total} test(s) to:\n${path}`);
+      if (path) await notice({ title: "Tests exported", message: path });
     } catch (e) {
-      window.alert(`Export failed: ${errMsg(e)}`);
+      await notice({ title: "Export failed", message: errMsg(e), tone: "error" });
     }
   }
 
@@ -836,6 +838,7 @@ export function TestTable({
         </span>
       </div>
       {promptUI}
+      {noticeUI}
     </div>
   );
 }

@@ -27,6 +27,8 @@ import { AddTestsModal } from "./AddTestsModal";
 import { BugsPanel } from "./BugsPanel";
 import { CreateBugModal } from "./CreateBugModal";
 import { usePrompt } from "./usePrompt";
+import { useConfirm } from "./useConfirm";
+import { useNotice } from "./useNotice";
 
 interface Props {
   profileId: string;
@@ -101,6 +103,8 @@ export function ContainersView({
   const [showAdd, setShowAdd] = useState(false);
   const [boardPage, setBoardPage] = useState(0);
   const { prompt, promptUI } = usePrompt();
+  const { confirm, confirmUI } = useConfirm();
+  const { notice, noticeUI } = useNotice();
 
   // Member tables can be long (an Execution may hold hundreds of tests), so the
   // board is paged client-side. The page size is user-selectable; default 15.
@@ -291,20 +295,26 @@ export function ContainersView({
   // project can start fresh. Real synced data is untouched (FR-5).
   async function cleanSample() {
     if (
-      !window.confirm(
-        "Remove all sample Test Sets / Plans / Executions created by 'Regenerate sample data'? " +
+      !(await confirm({
+        title: "Clean sample data",
+        message:
+          "Remove all sample Test Sets / Plans / Executions created by 'Regenerate sample data'? " +
           "Real synced containers are not affected.",
-      )
+        confirmLabel: "Delete",
+        danger: true,
+      }))
     )
       return;
     setError("");
     try {
       const removed = await CleanSampleData(profileId);
-      window.alert(
-        removed > 0
-          ? `Removed ${removed} sample container${removed === 1 ? "" : "s"}.`
-          : "No sample data found for this project.",
-      );
+      await notice({
+        title: "Sample data cleaned",
+        message:
+          removed > 0
+            ? `Removed ${removed} sample container${removed === 1 ? "" : "s"}.`
+            : "No sample data found for this project.",
+      });
       setSelected("");
       onChanged();
     } catch (e) {
@@ -413,7 +423,7 @@ export function ContainersView({
     setError("");
     try {
       const path = await ExportPytest(profileId, selected, style);
-      if (path) window.alert(`Scaffold saved to:\n${path}`);
+      if (path) await notice({ title: "Scaffold saved", message: path });
     } catch (e) {
       setError(errMsg(e));
     }
@@ -422,9 +432,12 @@ export function ContainersView({
   async function deleteContainer() {
     if (!selected) return;
     if (
-      !window.confirm(
-        `Delete this ${kindLabel}? Its test memberships are removed (committed on sync).`,
-      )
+      !(await confirm({
+        title: `Delete ${kindLabel}`,
+        message: `Delete this ${kindLabel}? Its test memberships are removed (committed on sync).`,
+        confirmLabel: "Delete",
+        danger: true,
+      }))
     )
       return;
     setError("");
@@ -1229,6 +1242,8 @@ export function ContainersView({
       )}
 
       {promptUI}
+      {confirmUI}
+      {noticeUI}
     </div>
   );
 }

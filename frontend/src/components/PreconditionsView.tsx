@@ -10,6 +10,7 @@ import {
 } from "../api";
 import type { PreconditionUsage, PreconditionTest } from "../api";
 import { Menu } from "./Menu";
+import { useConfirm } from "./useConfirm";
 import { AddTestsModal } from "./AddTestsModal";
 import { MarkdownField } from "./MarkdownField";
 import { Pager } from "./Pager";
@@ -58,6 +59,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const { confirm, confirmUI } = useConfirm();
 
   const selectedPre = list.find((p) => p.key === selected) ?? null;
   const isLocal = selected.startsWith("new-precond-");
@@ -189,11 +191,15 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   async function deletePrecondition() {
     if (!selectedPre) return;
     if (
-      !window.confirm(
-        `Delete precondition ${selectedPre.key}? It will be unlinked from ` +
+      !(await confirm({
+        title: "Delete precondition",
+        message:
+          `Delete precondition ${selectedPre.key}? It will be unlinked from ` +
           `${selectedPre.testCount} test${selectedPre.testCount === 1 ? "" : "s"} ` +
           `and removed from Jira on commit.`,
-      )
+        confirmLabel: "Delete",
+        danger: true,
+      }))
     )
       return;
     setError("");
@@ -463,6 +469,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
           }}
         />
       )}
+      {confirmUI}
     </div>
   );
 }
