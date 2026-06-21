@@ -121,6 +121,25 @@ func TestCreateTestsFromGaps(t *testing.T) {
 	}
 }
 
+func TestCreateTestsFromGapsDefaultsEmptyFields(t *testing.T) {
+	repo := newGapRepo(t)
+	// A summary-only gap: no priority/description.
+	if _, err := repo.CreateTestsFromGaps("p1", []GapTest{{Summary: "SSO login"}}); err != nil {
+		t.Fatalf("CreateTestsFromGaps: %v", err)
+	}
+	page, _ := repo.ListTests("p1", Query{})
+	if page.Total != 1 {
+		t.Fatalf("listed %d, want 1", page.Total)
+	}
+	tc := page.Tests[0]
+	if tc.Priority != defaultGapPriority {
+		t.Errorf("Priority = %q, want default %q", tc.Priority, defaultGapPriority)
+	}
+	if tc.Description != defaultGapDescription {
+		t.Errorf("Description = %q, want default %q", tc.Description, defaultGapDescription)
+	}
+}
+
 func TestBuildGapReportHasHeaderAndSections(t *testing.T) {
 	res := GapResult{
 		ReferenceSource: "project", ReferenceCount: 5, TargetCount: 6, Matched: 4,

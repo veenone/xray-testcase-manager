@@ -222,6 +222,10 @@ export function ExportRequirementAudit(arg1) {
   return window['go']['main']['App']['ExportRequirementAudit'](arg1);
 }
 
+export function ExportSummaryTemplate() {
+  return window['go']['main']['App']['ExportSummaryTemplate']();
+}
+
 export function ExportTests(arg1, arg2) {
   return window['go']['main']['App']['ExportTests'](arg1, arg2);
 }

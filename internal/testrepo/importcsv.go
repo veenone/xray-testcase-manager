@@ -361,3 +361,14 @@ func ImportTemplateCSV() string {
 		"Login flow with steps,Multi-step example,Medium,smoke,Frontend,/Authentication/Login,Open the login page,,Login form is shown\n" +
 		",,,,,,Enter credentials and submit,user / pass,User is logged in\n"
 }
+
+// SummaryTemplateCSV returns a minimal template with only the Summary column —
+// for gap analysis "summary only" comparison. When a gap from such a file is
+// added as a test, the other fields are filled with defaults (Priority,
+// Description) by CreateTestsFromGaps.
+func SummaryTemplateCSV() string {
+	return "Summary\n" +
+		"Login with valid credentials\n" +
+		"Logout clears the session\n" +
+		"Password reset email is sent\n"
+}

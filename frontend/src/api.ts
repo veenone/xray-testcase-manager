@@ -84,6 +84,7 @@ export {
   CloneTest,
   ExportTests,
   ExportImportTemplate,
+  ExportSummaryTemplate,
   ExportRequirementAudit,
   ExportTraceability,
   ExportDashboard,

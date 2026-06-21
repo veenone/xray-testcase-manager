@@ -2416,6 +2416,27 @@ func (a *App) ExportImportTemplate() (string, error) {
 	return path, nil
 }
 
+// ExportSummaryTemplate writes the summary-only gap-analysis template (just a
+// Summary column) to a user-chosen file. Returns the saved path, or "" if
+// cancelled.
+func (a *App) ExportSummaryTemplate() (string, error) {
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save summary-only template",
+		DefaultFilename: "gap-summary-template.csv",
+		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(path, []byte(testrepo.SummaryTemplateCSV()), 0o644); err != nil {
+		return "", fmt.Errorf("write template: %w", err)
+	}
+	return path, nil
+}
+
 // --- Browse (FR-11) ---
 
 // ListTests returns a filtered, sorted, paginated page of Tests for a profile.

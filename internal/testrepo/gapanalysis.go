@@ -167,13 +167,30 @@ func splitComponents(s string) []string {
 	return out
 }
 
+// Defaults applied to a gap added as a test when the source file (e.g. a
+// summary-only template) did not provide the field, so created tests have a
+// sensible priority and a description rather than blanks.
+const (
+	defaultGapPriority    = "Medium"
+	defaultGapDescription = "(added from gap analysis)"
+)
+
 // gapTestToPayload converts an exported GapTest to an import payload (joined
-// labels/components, no steps) for insertLocalTest.
+// labels/components, no steps) for insertLocalTest, filling empty Priority and
+// Description with defaults.
 func gapTestToPayload(g GapTest) testCreatePayload {
+	priority := g.Priority
+	if strings.TrimSpace(priority) == "" {
+		priority = defaultGapPriority
+	}
+	description := g.Description
+	if strings.TrimSpace(description) == "" {
+		description = defaultGapDescription
+	}
 	return testCreatePayload{
 		Summary:     g.Summary,
-		Description: g.Description,
-		Priority:    g.Priority,
+		Description: description,
+		Priority:    priority,
 		Labels:      strings.Join(g.Labels, " "),
 		Components:  strings.Join(g.Components, ", "),
 		Folder:      g.Folder,
