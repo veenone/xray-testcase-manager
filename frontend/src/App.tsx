@@ -377,7 +377,7 @@ function App() {
       setRefreshKey((k) => k + 1);
       reloadPending();
     } catch (e) {
-      await notice({ title: "Sync failed", message: errMsg(e), tone: "error" });
+      await notice({ title: "Create folder failed", message: errMsg(e), tone: "error" });
     }
   }
 
@@ -397,7 +397,7 @@ function App() {
       setRefreshKey((k) => k + 1);
       reloadPending();
     } catch (e) {
-      await notice({ title: "Couldn't load folders", message: errMsg(e), tone: "error" });
+      await notice({ title: "Rename failed", message: errMsg(e), tone: "error" });
     }
   }
 
