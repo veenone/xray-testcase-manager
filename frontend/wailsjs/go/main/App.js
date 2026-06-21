@@ -18,6 +18,10 @@ export function AllocateTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['AllocateTests'](arg1, arg2, arg3);
 }
 
+export function AnalyzeGap(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['AnalyzeGap'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function BulkAssociatePreconditions(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BulkAssociatePreconditions'](arg1, arg2, arg3, arg4);
 }
@@ -118,6 +122,10 @@ export function CreateTest(arg1, arg2) {
   return window['go']['main']['App']['CreateTest'](arg1, arg2);
 }
 
+export function CreateTestsFromGaps(arg1, arg2) {
+  return window['go']['main']['App']['CreateTestsFromGaps'](arg1, arg2);
+}
+
 export function DeallocateTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeallocateTests'](arg1, arg2, arg3);
 }
@@ -188,6 +196,10 @@ export function ExcludeFromDuplicates(arg1, arg2) {
 
 export function ExportDiagnostics() {
   return window['go']['main']['App']['ExportDiagnostics']();
+}
+
+export function ExportGapReport(arg1) {
+  return window['go']['main']['App']['ExportGapReport'](arg1);
 }
 
 export function ExportImportTemplate() {

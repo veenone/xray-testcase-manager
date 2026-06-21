@@ -66,6 +66,7 @@ import { ContainersView } from "./components/ContainersView";
 import { PreconditionsView } from "./components/PreconditionsView";
 import { RequirementsView } from "./components/RequirementsView";
 import { DuplicatesView } from "./components/DuplicatesView";
+import { GapAnalysisView } from "./components/GapAnalysisView";
 import { TestCallsView } from "./components/TestCallsView";
 import { DiagnosticsModal } from "./components/DiagnosticsModal";
 import { SyncHistoryModal } from "./components/SyncHistoryModal";
@@ -153,6 +154,7 @@ function App() {
     | "preconditions"
     | "requirements"
     | "duplicates"
+    | "gapanalysis"
     | "testcalls"
     | "dashboard"
     | "traceability"
@@ -500,6 +502,7 @@ function App() {
     "menu:view-traceability": () => setView("traceability"),
     "menu:view-plans": () => setView("plans"),
     "menu:view-duplicates": () => setView("duplicates"),
+    "menu:view-gapanalysis": () => setView("gapanalysis"),
     "menu:view-testcalls": () => setView("testcalls"),
     "menu:sync-history": () => setShowSyncHistory(true),
     "menu:diagnostics": () => setShowDiagnostics(true),
@@ -934,6 +937,12 @@ function App() {
             Duplicates
           </button>
           <button
+            className={`view-tab${view === "gapanalysis" ? " view-tab-active" : ""}`}
+            onClick={() => setView("gapanalysis")}
+          >
+            Gap Analysis
+          </button>
+          <button
             className={`view-tab${view === "testcalls" ? " view-tab-active" : ""}`}
             onClick={() => setView("testcalls")}
           >
@@ -1131,6 +1140,16 @@ function App() {
             refreshKey={refreshKey}
             folders={folders}
             pendingByTestKey={pendingByTestKey}
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              reloadPending();
+            }}
+          />
+        </main>
+      ) : view === "gapanalysis" ? (
+        <main className="content content-gapanalysis">
+          <GapAnalysisView
+            profileId={activeId}
             onChanged={() => {
               setRefreshKey((k) => k + 1);
               reloadPending();

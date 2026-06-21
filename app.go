@@ -2180,6 +2180,87 @@ func decodeImport(contentB64 string, isXlsx bool) ([][]string, error) {
 	return testrepo.ParseRecords(data, isXlsx)
 }
 
+// AnalyzeGap diffs a reference test list against an uploaded target list by
+// normalized summary. refSource "project" uses the active project's cached
+// tests (refB64 ignored); "file" parses refB64. The target is always a file.
+func (a *App) AnalyzeGap(profileID, refSource, refB64 string, refXlsx bool, targetB64 string, targetXlsx bool) (testrepo.GapResult, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.GapResult{}, err
+	}
+	var reference []testrepo.GapTest
+	switch refSource {
+	case "project":
+		tests, err := a.repo.ListTestsForExport(profileID, testrepo.Query{})
+		if err != nil {
+			return testrepo.GapResult{}, err
+		}
+		reference = testrepo.GapRowsFromTests(tests)
+	case "file":
+		recs, err := decodeImport(refB64, refXlsx)
+		if err != nil {
+			return testrepo.GapResult{}, fmt.Errorf("reference file: %w", err)
+		}
+		reference, err = testrepo.ParseGapRows(recs)
+		if err != nil {
+			return testrepo.GapResult{}, fmt.Errorf("reference file: %w", err)
+		}
+	default:
+		return testrepo.GapResult{}, fmt.Errorf("unknown reference source %q", refSource)
+	}
+	targetRecs, err := decodeImport(targetB64, targetXlsx)
+	if err != nil {
+		return testrepo.GapResult{}, fmt.Errorf("target file: %w", err)
+	}
+	target, err := testrepo.ParseGapRows(targetRecs)
+	if err != nil {
+		return testrepo.GapResult{}, fmt.Errorf("target file: %w", err)
+	}
+	return testrepo.AnalyzeGap(reference, target, refSource), nil
+}
+
+// CreateTestsFromGaps adds the selected gaps as local pending Tests (committed
+// on the next sync), reusing the import create path.
+func (a *App) CreateTestsFromGaps(profileID string, gaps []testrepo.GapTest) (testrepo.ImportResult, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.ImportResult{}, err
+	}
+	return a.repo.CreateTestsFromGaps(profileID, gaps)
+}
+
+// ExportGapReport writes the gap-analysis report to a user-chosen CSV/XLSX file.
+// Returns the saved path, or "" if cancelled.
+func (a *App) ExportGapReport(result testrepo.GapResult) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export gap analysis report",
+		DefaultFilename: "gap-analysis-report.csv",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "CSV", Pattern: "*.csv"},
+			{DisplayName: "Excel", Pattern: "*.xlsx"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	format := "csv"
+	if strings.HasSuffix(strings.ToLower(path), ".xlsx") {
+		format = "xlsx"
+	}
+	data, err := testrepo.BuildGapReport(result, time.Now().Format(time.RFC3339), format)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "", fmt.Errorf("write report: %w", err)
+	}
+	return path, nil
+}
+
 // ExportTests writes the Tests matching a query to a user-chosen CSV or XLSX
 // file (FR-10.8). The format follows the saved file's extension. Returns the
 // saved path, or "" if cancelled.

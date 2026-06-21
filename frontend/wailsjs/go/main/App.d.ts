@@ -15,6 +15,8 @@ export function AddTestStep(arg1:string,arg2:string,arg3:string,arg4:string,arg5
 
 export function AllocateTests(arg1:string,arg2:string,arg3:Array<string>):Promise<testrepo.AllocateResult>;
 
+export function AnalyzeGap(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5:string,arg6:boolean):Promise<testrepo.GapResult>;
+
 export function BulkAssociatePreconditions(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:boolean):Promise<testrepo.BulkEditResult>;
 
 export function BulkAssociateRequirements(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:boolean):Promise<testrepo.BulkEditResult>;
@@ -65,6 +67,8 @@ export function CreateSavedView(arg1:string,arg2:string,arg3:string):Promise<tes
 
 export function CreateTest(arg1:string,arg2:testrepo.TestDraft):Promise<string>;
 
+export function CreateTestsFromGaps(arg1:string,arg2:Array<testrepo.GapTest>):Promise<testrepo.ImportResult>;
+
 export function DeallocateTests(arg1:string,arg2:string,arg3:Array<string>):Promise<testrepo.DeallocateResult>;
 
 export function DeleteContainer(arg1:string,arg2:string):Promise<void>;
@@ -102,6 +106,8 @@ export function ExcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
 export function ExportDashboard(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function ExportDiagnostics():Promise<string>;
+
+export function ExportGapReport(arg1:testrepo.GapResult):Promise<string>;
 
 export function ExportImportTemplate():Promise<string>;
 

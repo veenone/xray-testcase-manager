@@ -798,6 +798,69 @@ export namespace testrepo {
 	        this.totalTestCount = source["totalTestCount"];
 	    }
 	}
+	export class GapTest {
+	    summary: string;
+	    description: string;
+	    priority: string;
+	    labels: string[];
+	    components: string[];
+	    folder: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GapTest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.summary = source["summary"];
+	        this.description = source["description"];
+	        this.priority = source["priority"];
+	        this.labels = source["labels"];
+	        this.components = source["components"];
+	        this.folder = source["folder"];
+	    }
+	}
+	export class GapResult {
+	    referenceSource: string;
+	    referenceCount: number;
+	    targetCount: number;
+	    matched: number;
+	    missingFromReference: GapTest[];
+	    missingFromTarget: GapTest[];
+	
+	    static createFrom(source: any = {}) {
+	        return new GapResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.referenceSource = source["referenceSource"];
+	        this.referenceCount = source["referenceCount"];
+	        this.targetCount = source["targetCount"];
+	        this.matched = source["matched"];
+	        this.missingFromReference = this.convertValues(source["missingFromReference"], GapTest);
+	        this.missingFromTarget = this.convertValues(source["missingFromTarget"], GapTest);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class ImportError {
 	    row: number;
 	    message: string;
