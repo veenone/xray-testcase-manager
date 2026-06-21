@@ -6,6 +6,7 @@ import {
   errMsg,
 } from "../api";
 import type { ImportMapping, ImportResult } from "../api";
+import { useNotice } from "./useNotice";
 
 interface Props {
   profileId: string;
@@ -51,6 +52,7 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const { notice, noticeUI } = useNotice();
 
   function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -94,9 +96,9 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
   async function downloadTemplate() {
     try {
       const path = await ExportImportTemplate();
-      if (path) window.alert(`Template saved to:\n${path}`);
+      if (path) await notice({ title: "Template saved", message: path });
     } catch (err) {
-      window.alert(`Template export failed: ${errMsg(err)}`);
+      await notice({ title: "Template export failed", message: errMsg(err), tone: "error" });
     }
   }
 
@@ -218,6 +220,7 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
           )}
         </div>
       </div>
+      {noticeUI}
     </div>
   );
 }
