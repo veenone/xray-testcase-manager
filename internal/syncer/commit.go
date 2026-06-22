@@ -416,8 +416,19 @@ testLoop:
 					log.Printf("xtm: no Test Type custom field on this instance, committing %s without exec_type", testKey)
 				}
 			}
+			// Generic custom field edits (FR-2.6) share this PUT. The journaled
+			// edit carries only the field id and a string value (no type hint), so
+			// resolve the field's schema type here and shape the value the same way
+			// exec_type does above. Best-effort - if the type cannot be resolved
+			// the raw string is sent (CustomFieldValue defaults to it).
 			for fieldID, value := range customFields {
-				fields[fieldID] = value
+				id, shaped, ferr := e.client.CustomFieldValue(ctx, fieldID, value)
+				if ferr != nil {
+					log.Printf("xtm: resolve custom field %s type for %s failed, committing raw string: %v", fieldID, testKey, ferr)
+					fields[fieldID] = value
+					continue
+				}
+				fields[id] = shaped
 			}
 			if err := e.client.UpdateIssue(ctx, testKey, fields); err != nil {
 				result.Failed = append(result.Failed, FailedCommit{
