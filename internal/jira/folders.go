@@ -33,36 +33,90 @@ type Folder struct {
 // than a hard sync failure.
 const testRepositoryPath = "/rest/raven/1.0/api/testrepository"
 
-// CreateFolder / RenameFolder / DeleteFolder manage the Test Repository tree
-// (FR-13.3). Demo URLs short-circuit to no-ops; the real-Jira calls are
-// best-effort no-ops pending verification against an actual Xray Server 8.4.0
-// instance.
+// resolveFolderID resolves a slash-path Test Repository folder (e.g.
+// "/Authentication/Login") to its native Xray folder id by fetching the folder
+// tree and matching the path. The repository root ("" or "/") maps to "-1",
+// matching MoveTestToFolder's root convention. A path the tree does not contain
+// is an error directing the caller to sync first, since the tree is the only
+// source of native ids and a stale local view can name a folder Xray no longer
+// has.
 //
-// TODO(xtm): wire to the Xray test-repository folder endpoints (create / rename
-// / delete under /rest/raven/2.0/api/testrepository/{project}/folders) once the
-// request and response shapes can be verified on a live instance.
+// Paths are compared against FolderRef.Path, which flattenFolders builds as a
+// leading-slash, no-trailing-slash string ("/Parent/Child"); the input is
+// normalised to the same form before matching.
+func (c *Client) resolveFolderID(ctx context.Context, projectKey, path string) (string, error) {
+	norm := "/" + strings.Trim(strings.TrimSpace(path), "/")
+	if norm == "/" {
+		return "-1", nil
+	}
+	tree, err := c.FolderTree(ctx, projectKey)
+	if err != nil {
+		return "", err
+	}
+	for _, f := range tree.Folders {
+		if f.ID == norm && f.XrayID != "" {
+			return f.XrayID, nil
+		}
+	}
+	return "", fmt.Errorf("folder %s not found; sync the Test Repository first", norm)
+}
+
+// CreateFolder adds a child folder named name under parentPath in the project's
+// Test Repository tree (FR-13.3). Demo URLs short-circuit to a no-op. Live, it
+// resolves parentPath to its native Xray folder id (root = "-1") and posts the
+// new folder under it.
+//
+// NOTE(xtm): the create endpoint and body are the best-understood raven/1.0
+// shape (POST .../folders/{parentID}/folders with {"name":...}) and MUST be
+// verified against a live Xray Server/DC 8.4.0 instance; the exact path segment
+// and field name may differ by version.
 func (c *Client) CreateFolder(ctx context.Context, projectKey, parentPath, name string) error {
-	_ = ctx
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
-	return nil
+	parentID, err := c.resolveFolderID(ctx, projectKey, parentPath)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{"name": name}
+	return c.post(ctx, fmt.Sprintf("%s/%s/folders/%s/folders", testRepositoryPath, projectKey, parentID), body)
 }
 
+// RenameFolder renames the folder at path to newName (FR-13.3). Demo URLs
+// short-circuit to a no-op. Live, it resolves path to its native Xray folder id
+// and updates the folder's name.
+//
+// NOTE(xtm): the rename endpoint and body are the best-understood raven/1.0
+// shape (PUT .../folders/{folderID} with {"name":...}) and MUST be verified
+// against a live Xray Server/DC 8.4.0 instance.
 func (c *Client) RenameFolder(ctx context.Context, projectKey, path, newName string) error {
-	_ = ctx
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
-	return nil
+	folderID, err := c.resolveFolderID(ctx, projectKey, path)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{"name": newName}
+	return c.put(ctx, fmt.Sprintf("%s/%s/folders/%s", testRepositoryPath, projectKey, folderID), body)
 }
 
+// DeleteFolder removes the folder at path (FR-13.3). Demo URLs short-circuit to
+// a no-op. Live, it resolves path to its native Xray folder id and deletes it.
+//
+// NOTE(xtm): the delete endpoint is the best-understood raven/1.0 shape
+// (DELETE .../folders/{folderID}) and MUST be verified against a live Xray
+// Server/DC 8.4.0 instance. Deletion may be restricted, and the behaviour for a
+// non-empty folder (cascade vs reject) is instance-specific.
 func (c *Client) DeleteFolder(ctx context.Context, projectKey, path string) error {
-	_ = ctx
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
-	return nil
+	folderID, err := c.resolveFolderID(ctx, projectKey, path)
+	if err != nil {
+		return err
+	}
+	return c.delete(ctx, fmt.Sprintf("%s/%s/folders/%s", testRepositoryPath, projectKey, folderID))
 }
 
 // MoveTestToFolder relocates a Test within the project's Test Repository tree
