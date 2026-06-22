@@ -12,13 +12,6 @@ import (
 	"time"
 )
 
-// defectLinkType is the issue-link type used when linking a Test to a defect.
-// "Relates" is universally present in Jira. NOTE(xtm): the exact defect link
-// type and direction may vary per Xray instance (some shops use a dedicated
-// "Defect"/"is caused by" link); verify against the live Xray Server/DC 8.4.0
-// instance and make this configurable if needed.
-const defectLinkType = "Relates"
-
 // bugSearchKeyChunk caps how many Test keys go into one `key in (...)` JQL
 // clause, keeping the query well under Jira's clause-size limits.
 const bugSearchKeyChunk = 50
@@ -329,22 +322,64 @@ func (c *Client) CreateBug(ctx context.Context, projectKey, issueType, summary, 
 	return resp.Key, nil
 }
 
-// CreateBugLink links a Test to a Bug. Demo URLs no-op.
+// CreateBugLink links a Test to a Bug with a Jira issue link. The link type is
+// resolved once per client (a defect-oriented type if the instance defines one,
+// else the universal "Relates"). Demo URLs no-op.
 //
-// Live path: POST /rest/api/2/issueLink with {type:{name:defectLinkType},
-// inwardIssue:{key:bugKey}, outwardIssue:{key:testKey}}; Jira answers 201 with no
-// body. NOTE(xtm): the defect link type (defectLinkType, default "Relates") and
-// its direction may differ per Xray instance; verify against the live instance.
+// Maps to POST /rest/api/2/issueLink. NOTE(xtm): the link-type/direction default
+// is best-effort - verify the preferred defect link type on a live Xray Server
+// 8.4.0 instance.
 func (c *Client) CreateBugLink(ctx context.Context, testKey, bugKey string) error {
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
+	linkType, err := c.resolveBugLinkType(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve defect link type: %w", err)
+	}
+	if linkType == "" {
+		return fmt.Errorf("this Jira instance defines no issue link type to link %s and %s", testKey, bugKey)
+	}
+	// outwardIssue is the Test, inwardIssue the Bug ("Test relates to Bug"). For
+	// the symmetric "Relates" default the direction is immaterial, and ListBugs
+	// matches links by the linked issue's type, not by link type or direction.
 	body := map[string]any{
-		"type":         map[string]string{"name": defectLinkType},
+		"type":         map[string]string{"name": linkType},
 		"inwardIssue":  map[string]string{"key": bugKey},
 		"outwardIssue": map[string]string{"key": testKey},
 	}
-	return c.writeJSONReturning(ctx, http.MethodPost, "/rest/api/2/issueLink", body, nil)
+	return c.post(ctx, "/rest/api/2/issueLink", body)
+}
+
+// resolveBugLinkType picks and caches the issue-link type CreateBugLink uses,
+// most specific first: a defect-oriented type, then Jira's universal symmetric
+// "Relates", then (fallback) the first type the instance defines. Matching is on
+// the letters-only name (normalizeTypeName) so casing/spacing variants resolve.
+// An empty name (no error) means the instance defines no link types at all.
+func (c *Client) resolveBugLinkType(ctx context.Context) (string, error) {
+	c.bugLinkTypeOnce.Do(func() {
+		var resp struct {
+			IssueLinkTypes []struct {
+				Name string `json:"name"`
+			} `json:"issueLinkTypes"`
+		}
+		if e := c.get(ctx, "/rest/api/2/issueLinkType", &resp); e != nil {
+			c.bugLinkTypeErr = e
+			return
+		}
+		for _, want := range []string{"defect", "relates"} {
+			for _, t := range resp.IssueLinkTypes {
+				if strings.Contains(normalizeTypeName(t.Name), want) {
+					c.bugLinkTypeName = t.Name
+					return
+				}
+			}
+		}
+		if len(resp.IssueLinkTypes) > 0 {
+			c.bugLinkTypeName = resp.IssueLinkTypes[0].Name
+		}
+	})
+	return c.bugLinkTypeName, c.bugLinkTypeErr
 }
 
 // Two separate defect-tracking projects (both distinct from the test project) so

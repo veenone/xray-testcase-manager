@@ -52,6 +52,13 @@ type Client struct {
 	// fetch has run, so an unknown id (absent from customFieldTypes) does not
 	// trigger a redundant re-fetch.
 	customFieldTypesLoaded bool
+
+	// bugLinkTypeOnce lazily resolves and caches the issue-link type CreateBugLink
+	// uses (a defect-oriented type if the instance defines one, else "Relates"),
+	// so linking many bugs in one commit resolves the type just once.
+	bugLinkTypeOnce sync.Once
+	bugLinkTypeName string
+	bugLinkTypeErr  error
 }
 
 // User is the subset of /rest/api/2/myself the app needs to confirm a connection.

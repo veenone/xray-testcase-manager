@@ -1,6 +1,11 @@
 package jira
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -66,6 +71,71 @@ func TestDemoBugsAreCrossProjectAndVaried(t *testing.T) {
 	}
 	if !multiTestBug {
 		t.Error("expected at least one bug linked to two tests")
+	}
+}
+
+// TestCreateBugLinkPostsIssueLink exercises the live-Jira path: the link type is
+// resolved from /issueLinkType, then a link is POSTed with the Test as the
+// outward issue and the Bug as the inward issue.
+func TestCreateBugLinkPostsIssueLink(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/2/issueLinkType":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"issueLinkTypes": []map[string]any{
+					{"id": "1", "name": "Blocks"},
+					{"id": "2", "name": "Relates"},
+				},
+			})
+		case "/rest/api/2/issueLink":
+			gotPath = r.URL.Path
+			b, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(b, &gotBody)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			t.Errorf("unexpected request to %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	if err := newTestClient(srv).CreateBugLink(context.Background(), "QA-1", "BUGS-100"); err != nil {
+		t.Fatalf("CreateBugLink: %v", err)
+	}
+	if gotPath != "/rest/api/2/issueLink" {
+		t.Fatalf("issue link not POSTed (path=%q)", gotPath)
+	}
+	if typ, _ := gotBody["type"].(map[string]any); typ["name"] != "Relates" {
+		t.Errorf("link type = %v, want Relates", typ["name"])
+	}
+	if inward, _ := gotBody["inwardIssue"].(map[string]any); inward["key"] != "BUGS-100" {
+		t.Errorf("inwardIssue.key = %v, want BUGS-100 (the bug)", inward["key"])
+	}
+	if outward, _ := gotBody["outwardIssue"].(map[string]any); outward["key"] != "QA-1" {
+		t.Errorf("outwardIssue.key = %v, want QA-1 (the test)", outward["key"])
+	}
+}
+
+// TestResolveBugLinkTypePrefersDefect verifies a defect-oriented link type wins
+// over the universal "Relates" when the instance defines one.
+func TestResolveBugLinkTypePrefersDefect(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issueLinkTypes": []map[string]any{
+				{"name": "Relates"},
+				{"name": "Defect"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	name, err := newTestClient(srv).resolveBugLinkType(context.Background())
+	if err != nil {
+		t.Fatalf("resolveBugLinkType: %v", err)
+	}
+	if name != "Defect" {
+		t.Errorf("link type = %q, want Defect (preferred over Relates)", name)
 	}
 }
 
