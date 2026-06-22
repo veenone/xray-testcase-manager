@@ -4656,8 +4656,10 @@ tr.row-checked:hover {
   flex: 1;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   width: 100%;
   padding: 4px 0 24px;
+  overflow-y: auto;
 }
 .gap-inner {
   width: 100%;

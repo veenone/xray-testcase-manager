@@ -1,9 +1,12 @@
 package testrepo
 
 import (
+	"bytes"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xuri/excelize/v2"
 
 	"xray-test-manager/internal/store"
 )
@@ -189,5 +192,45 @@ func TestBuildGapReportHasHeaderAndSections(t *testing.T) {
 	}
 	if _, err := BuildGapReport(res, "t", "xlsx"); err != nil {
 		t.Errorf("xlsx report: %v", err)
+	}
+}
+
+func TestBuildGapReportXLSXHasSectionSheets(t *testing.T) {
+	res := GapResult{
+		ReferenceSource:      "file",
+		MissingFromReference: []GapTest{{Summary: "SSO login"}},
+		MissingFromTarget:    []GapTest{{Summary: "Legacy captcha"}},
+		ThreeWay:             true,
+		MissingFromProject:   []GapTest{{Summary: "Bulk export"}},
+		FolderMismatches:     []FolderMismatch{{Summary: "Login", ReferenceFolder: "/Auth", TargetFolder: "/Smoke"}},
+	}
+	data, err := BuildGapReport(res, "2026-06-22T00:00:00Z", "xlsx")
+	if err != nil {
+		t.Fatalf("BuildGapReport xlsx: %v", err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("open xlsx: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	want := []string{"Overview", "Missing from Reference", "Missing from Target", "Missing from Project", "Folder Mismatches"}
+	got := f.GetSheetList()
+	if len(got) != len(want) {
+		t.Fatalf("sheets = %v, want %v", got, want)
+	}
+	for i, name := range want {
+		if got[i] != name {
+			t.Errorf("sheet[%d] = %q, want %q", i, got[i], name)
+		}
+	}
+
+	header, err := f.GetCellValue("Missing from Reference", "A1")
+	if err != nil || header != "Summary" {
+		t.Errorf("Missing from Reference A1 = %q (err %v), want \"Summary\"", header, err)
+	}
+	summary, err := f.GetCellValue("Missing from Reference", "A2")
+	if err != nil || summary != "SSO login" {
+		t.Errorf("Missing from Reference A2 = %q (err %v), want \"SSO login\"", summary, err)
 	}
 }

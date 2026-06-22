@@ -1,8 +1,11 @@
 package testrepo
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
+
+	"github.com/xuri/excelize/v2"
 )
 
 // GapTest is one comparable test row, carrying the import fields so an added
@@ -334,10 +337,21 @@ func (r *Repository) CreateTestsFromGaps(profileID string, gaps []GapTest) (Impo
 // gapReportHeader is the per-row column order for the two gap sections.
 var gapReportHeader = []string{"Summary", "Description", "Priority", "Labels", "Components", "Folder"}
 
-// BuildGapReport renders the management report: a metadata block, then the two
-// gap sections. generatedAt is supplied by the caller (the binding passes
-// time.Now) so the function stays testable. format is "csv" or "xlsx".
+// BuildGapReport renders the management report. format is "csv" or "xlsx":
+// CSV is a single flat sheet (metadata block then stacked sections); XLSX is a
+// formatted workbook — an Overview sheet plus one banded, filterable Excel table
+// per section. generatedAt is supplied by the caller (the binding passes
+// time.Now) so the function stays testable.
 func BuildGapReport(result GapResult, generatedAt, format string) ([]byte, error) {
+	if format == "xlsx" {
+		return buildGapWorkbook(result, generatedAt)
+	}
+	return writeCSV(gapReportRows(result, generatedAt))
+}
+
+// gapReportRows builds the flat CSV layout: a metadata block, then each section
+// as a label line, a header, and its rows, separated by blank lines.
+func gapReportRows(result GapResult, generatedAt string) [][]string {
 	rows := [][]string{
 		{"Test Case Gap Analysis Report"},
 		{"Generated", generatedAt},
@@ -379,10 +393,7 @@ func BuildGapReport(result GapResult, generatedAt, format string) ([]byte, error
 			rows = append(rows, []string{m.Summary, m.ReferenceFolder, m.TargetFolder})
 		}
 	}
-	if format == "xlsx" {
-		return writeXLSX(rows)
-	}
-	return writeCSV(rows)
+	return rows
 }
 
 func gapRow(g GapTest) []string {
@@ -390,4 +401,198 @@ func gapRow(g GapTest) []string {
 		g.Summary, g.Description, g.Priority,
 		strings.Join(g.Labels, " "), strings.Join(g.Components, ", "), g.Folder,
 	}
+}
+
+func gapRows(tests []GapTest) [][]string {
+	out := make([][]string, 0, len(tests))
+	for _, g := range tests {
+		out = append(out, gapRow(g))
+	}
+	return out
+}
+
+// gapTableStyle is the built-in Excel table style applied to each gap section —
+// a banded blue table with header filter dropdowns.
+const gapTableStyle = "TableStyleMedium9"
+
+// gapSection is one section rendered as its own sheet/table in the workbook.
+type gapSection struct {
+	sheet  string
+	table  string // Excel table name: letters only, unique, no spaces
+	header []string
+	widths []float64
+	rows   [][]string
+}
+
+// buildGapWorkbook renders the gap report as a formatted multi-sheet workbook:
+// an Overview sheet with the run metadata, then one banded, filterable Excel
+// table per gap section so each section reads as a proper table.
+func buildGapWorkbook(result GapResult, generatedAt string) ([]byte, error) {
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+
+	if err := writeGapOverview(f, result, generatedAt); err != nil {
+		return nil, err
+	}
+
+	gapWidths := []float64{46, 50, 12, 20, 20, 30}
+	sections := []gapSection{
+		{"Missing from Reference", "MissingFromReference", gapReportHeader, gapWidths, gapRows(result.MissingFromReference)},
+		{"Missing from Target", "MissingFromTarget", gapReportHeader, gapWidths, gapRows(result.MissingFromTarget)},
+	}
+	if result.ThreeWay {
+		sections = append(sections, gapSection{
+			"Missing from Project", "MissingFromProject", gapReportHeader, gapWidths,
+			gapRows(result.MissingFromProject),
+		})
+	}
+	if len(result.FolderMismatches) > 0 {
+		fmRows := make([][]string, 0, len(result.FolderMismatches))
+		for _, m := range result.FolderMismatches {
+			fmRows = append(fmRows, []string{m.Summary, m.ReferenceFolder, m.TargetFolder})
+		}
+		sections = append(sections, gapSection{
+			"Folder Mismatches", "FolderMismatches",
+			[]string{"Summary", "Reference folder", "Target folder"}, []float64{46, 34, 34}, fmRows,
+		})
+	}
+
+	for _, s := range sections {
+		if err := addGapTableSheet(f, s); err != nil {
+			return nil, err
+		}
+	}
+
+	f.SetActiveSheet(0)
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, fmt.Errorf("write gap XLSX: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// gapBorderColor is the thin grid line drawn around Overview value cells.
+const gapBorderColor = "D1D5DB"
+
+// writeGapOverview renames the default sheet to Overview and writes the run
+// metadata as a titled, two-column block with a colored label gutter.
+func writeGapOverview(f *excelize.File, result GapResult, generatedAt string) error {
+	const sheet = "Overview"
+	f.SetSheetName(f.GetSheetName(0), sheet)
+
+	titleStyle, err := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Size: 15, Color: "1F2937"},
+	})
+	if err != nil {
+		return err
+	}
+	labelStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"3884DE"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Vertical: "center"},
+	})
+	if err != nil {
+		return err
+	}
+	valueStyle, err := f.NewStyle(&excelize.Style{
+		Alignment: &excelize.Alignment{Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "left", Color: gapBorderColor, Style: 1},
+			{Type: "top", Color: gapBorderColor, Style: 1},
+			{Type: "right", Color: gapBorderColor, Style: 1},
+			{Type: "bottom", Color: gapBorderColor, Style: 1},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	_ = f.SetColWidth(sheet, "A", "A", 26)
+	_ = f.SetColWidth(sheet, "B", "B", 46)
+	_ = f.SetCellStr(sheet, "A1", "Test Case Gap Analysis Report")
+	_ = f.MergeCell(sheet, "A1", "B1")
+	_ = f.SetCellStyle(sheet, "A1", "A1", titleStyle)
+	_ = f.SetRowHeight(sheet, 1, 24)
+
+	meta := [][2]string{
+		{"Generated", generatedAt},
+		{"Reference source", result.ReferenceSource},
+		{"Reference count", fmt.Sprintf("%d", result.ReferenceCount)},
+		{"Target count", fmt.Sprintf("%d", result.TargetCount)},
+		{"Matched", fmt.Sprintf("%d", result.Matched)},
+		{"Missing from reference", fmt.Sprintf("%d", len(result.MissingFromReference))},
+		{"Missing from target", fmt.Sprintf("%d", len(result.MissingFromTarget))},
+	}
+	if result.ThreeWay {
+		meta = append(meta,
+			[2]string{"Project count", fmt.Sprintf("%d", result.ProjectCount)},
+			[2]string{"Missing from project", fmt.Sprintf("%d", len(result.MissingFromProject))},
+		)
+	}
+	if len(result.FolderMismatches) > 0 {
+		meta = append(meta, [2]string{"Folder mismatches", fmt.Sprintf("%d", len(result.FolderMismatches))})
+	}
+	for i, kv := range meta {
+		row := i + 3
+		labelCell := fmt.Sprintf("A%d", row)
+		valueCell := fmt.Sprintf("B%d", row)
+		_ = f.SetCellStr(sheet, labelCell, kv[0])
+		_ = f.SetCellStr(sheet, valueCell, kv[1])
+		_ = f.SetCellStyle(sheet, labelCell, labelCell, labelStyle)
+		_ = f.SetCellStyle(sheet, valueCell, valueCell, valueStyle)
+	}
+	return nil
+}
+
+// addGapTableSheet writes one section to its own sheet as a banded, filterable
+// Excel table. Empty sections get a single "(none)" row so the sheet still
+// renders as a valid table rather than failing AddTable on a header-only range.
+func addGapTableSheet(f *excelize.File, s gapSection) error {
+	if _, err := f.NewSheet(s.sheet); err != nil {
+		return err
+	}
+	for c, h := range s.header {
+		cell, err := excelize.CoordinatesToCellName(c+1, 1)
+		if err != nil {
+			return err
+		}
+		if err := f.SetCellStr(s.sheet, cell, h); err != nil {
+			return err
+		}
+	}
+	data := s.rows
+	if len(data) == 0 {
+		empty := make([]string, len(s.header))
+		empty[0] = "(none)"
+		data = [][]string{empty}
+	}
+	for r, row := range data {
+		for c, v := range row {
+			cell, err := excelize.CoordinatesToCellName(c+1, r+2)
+			if err != nil {
+				return err
+			}
+			if err := f.SetCellStr(s.sheet, cell, v); err != nil {
+				return err
+			}
+		}
+	}
+	for c, w := range s.widths {
+		if c >= len(s.header) {
+			break
+		}
+		col, err := excelize.ColumnNumberToName(c + 1)
+		if err != nil {
+			return err
+		}
+		if err := f.SetColWidth(s.sheet, col, col, w); err != nil {
+			return err
+		}
+	}
+	lastCol, err := excelize.ColumnNumberToName(len(s.header))
+	if err != nil {
+		return err
+	}
+	rng := fmt.Sprintf("A1:%s%d", lastCol, len(data)+1)
+	return f.AddTable(s.sheet, &excelize.Table{Range: rng, Name: s.table, StyleName: gapTableStyle})
 }
