@@ -234,7 +234,8 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
         </div>
       </div>
 
-      {links.length === 0 ? (
+      <div className="testcalls-body">
+        {links.length === 0 ? (
         <p className="muted testcalls-empty">
           No call-test relationships yet. Open a test, add a{" "}
           <b>+ Call test</b> step in its detail panel, and the caller → called
@@ -343,6 +344,7 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
           </ul>
         </>
       )}
+      </div>
 
       {detailKey && (
         <div className="detail-slideover" onClick={() => setDetailKey("")}>
