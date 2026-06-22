@@ -13,20 +13,23 @@ bulk-first interface, writing changes back to Jira on commit.
 
 ## Status
 
-✅ **Feature-complete in demo mode.** Phases 0–6 are implemented and exercised
-end to end against the built-in demo data: sync, fast browse/search/filter/sort,
+✅ **1.6.0 release candidate.** Phases 0 to 7 are implemented and exercised end
+to end against the built-in demo data: sync, fast browse/search/filter/sort,
 saved views, configurable columns, local field/step/custom-field editing with
 on-commit sync and conflict resolution, workflow transitions (single + bulk),
 all bulk operations, Test Sets / Plans / Executions (board, detail view, CRUD,
-assign/remove tests), Test Repository folders (browse/move + CRUD),
-preconditions, test review (single + bulk), CSV/XLSX import and export, a
-pytest scaffold generator, a statistics dashboard with a traceability Sankey,
+assign/remove tests, Test Environments, Fix Version(s)), Test Repository folders
+(browse/move + CRUD), preconditions, requirements and coverage, defect tracking,
+duplicates, test calls, a statistics dashboard with traceability Sankeys, Test
+Case Gap Analysis, CSV/XLSX import and export, a pytest scaffold generator,
 diagnostics, sync history, light/dark themes, and profile management.
 
-🔌 **Pending: live Xray/Jira wiring.** Every read/write is proven against demo
-data; the real-Jira REST calls are stubbed (`NOTE`/`TODO(xtm)` markers in
-`internal/jira/`) until they can be verified against an actual Xray Server/DC
-8.4.0 instance. Until then the app is fully usable in demo mode.
+🔌 **Live Xray/Jira REST is wired (Phase 7).** Every call in `internal/jira/`
+now has a real implementation behind the demo short-circuit; no demo-only stubs
+remain. Instance-specific shapes (link types and direction, custom-field names
+and value shapes, mandatory create fields, folder endpoints) are marked
+`NOTE(xtm)` and still need verification against an actual Xray Server/DC 8.4.0
+instance. The app also remains fully usable in demo mode.
 
 ## Stack
 
@@ -116,7 +119,7 @@ end. The header shows a yellow `DEMO` chip while a demo profile is active.
 | 4 | Workflow transitions, statistics dashboard, traceability Sankey | ✅ |
 | 5 | XLSX / CSV import + export | ✅ |
 | 6 | pytest scaffold, containers & folder CRUD, test review, themes, diagnostics | ✅ |
-| 7 | Live Xray/Jira REST wiring (verify against a real instance) | 🔌 pending |
+| 7 | Live Xray/Jira REST wiring (wired; verify against a real instance) | ✅ |
 
 Full planning, requirements (FR-1…FR-13) and design notes are maintained in the
 project's Outline documentation collection.
