@@ -1740,12 +1740,14 @@ func (a *App) GetTraceabilitySankey(profileID string, planFilters, execFilters [
 
 // GetSubTaskTraceability returns the Parent -> Execution -> run-status flow over
 // sub-task Test Executions (FR-9). parentFilters narrows to chosen parent
-// issues; empty includes all.
-func (a *App) GetSubTaskTraceability(profileID string, parentFilters []string) (testrepo.Sankey, error) {
+// issues; empty includes all. crossProject controls whether members that live
+// only in another project (cached in external_test, absent from test_case) are
+// drawn (true) or excluded (false); the UI defaults it on.
+func (a *App) GetSubTaskTraceability(profileID string, parentFilters []string, crossProject bool) (testrepo.Sankey, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.Sankey{}, err
 	}
-	return a.repo.GetSubTaskTraceability(profileID, parentFilters)
+	return a.repo.GetSubTaskTraceability(profileID, parentFilters, crossProject)
 }
 
 // GetExecutionsForPlans returns the Test Executions sharing a Test with the

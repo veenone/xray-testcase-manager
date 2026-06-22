@@ -169,9 +169,10 @@ func (r *Repository) RequirementTableRows(profileID string, reqFilters []string)
 }
 
 // SubTaskFlowRows returns the sub-task Sankey's edge list with resolved labels,
-// honouring the same parent filter as GetSubTaskTraceability.
-func (r *Repository) SubTaskFlowRows(profileID string, parentFilters []string) ([][]string, error) {
-	sk, err := r.GetSubTaskTraceability(profileID, parentFilters)
+// honouring the same parent filter and crossProject behavior as
+// GetSubTaskTraceability.
+func (r *Repository) SubTaskFlowRows(profileID string, parentFilters []string, crossProject bool) ([][]string, error) {
+	sk, err := r.GetSubTaskTraceability(profileID, parentFilters, crossProject)
 	if err != nil {
 		return nil, err
 	}
@@ -180,8 +181,9 @@ func (r *Repository) SubTaskFlowRows(profileID string, parentFilters []string) (
 
 // SubTaskTableRows returns one flat row per sub-task execution thread: Parent,
 // Test Execution, Test, Run status. It reuses the exact WHERE/filter handling of
-// GetSubTaskTraceability.
-func (r *Repository) SubTaskTableRows(profileID string, parentFilters []string) ([][]string, error) {
+// GetSubTaskTraceability, including crossProject: when false, members that live
+// only in external_test (no test_case row) are excluded.
+func (r *Repository) SubTaskTableRows(profileID string, parentFilters []string, crossProject bool) ([][]string, error) {
 	summaryByKey, err := r.containerSummaries(profileID)
 	if err != nil {
 		return nil, err
@@ -193,6 +195,10 @@ func (r *Repository) SubTaskTableRows(profileID string, parentFilters []string) 
 		   ON c.profile_id = l.profile_id AND c.jira_key = l.container_key
 		 WHERE l.profile_id = ? AND c.kind = 'testexec' AND c.parent_key != ''`
 	args := []any{profileID}
+	if !crossProject {
+		q += ` AND EXISTS (SELECT 1 FROM test_case t
+			 WHERE t.profile_id = l.profile_id AND t.jira_key = l.test_key)`
+	}
 	if parents := nonEmptyKeys(parentFilters); len(parents) > 0 {
 		q += " AND c.parent_key IN (" + sqlPlaceholders(len(parents)) + ")"
 		for _, p := range parents {
@@ -235,8 +241,8 @@ const (
 // ExportTraceabilitySheets builds the Flow + Table sheets for the active
 // traceability tab and renders them to a single XLSX workbook's bytes. kind is
 // "requirement", "execution", or "subtask"; the matching filter slices are used
-// (the others are ignored). crossProject is threaded to the execution producer;
-// the subtask producer does not yet take it (Task 12 / Feature A3).
+// (the others are ignored). crossProject is threaded to the execution and
+// subtask producers, controlling whether cross-project members are drawn.
 func (r *Repository) ExportTraceabilitySheets(profileID, projectKey, kind string, planFilters, execFilters, reqFilters, parentFilters []string, crossProject bool) ([]byte, error) {
 	var flow, table [][]string
 	var flowHeader, tableHeader []string
@@ -262,14 +268,12 @@ func (r *Repository) ExportTraceabilitySheets(profileID, projectKey, kind string
 			return nil, err
 		}
 	case kindSubTask:
-		// NOTE(xtm): crossProject is accepted but ignored for sub-tasks until
-		// Task 12 (Feature A3) adds cross-project support to the sub-task producer.
 		flowHeader = []string{"Source", "Target", "Value"}
 		tableHeader = []string{"Parent", "Test Execution", "Test", "Run status"}
-		if flow, err = r.SubTaskFlowRows(profileID, parentFilters); err != nil {
+		if flow, err = r.SubTaskFlowRows(profileID, parentFilters, crossProject); err != nil {
 			return nil, err
 		}
-		if table, err = r.SubTaskTableRows(profileID, parentFilters); err != nil {
+		if table, err = r.SubTaskTableRows(profileID, parentFilters, crossProject); err != nil {
 			return nil, err
 		}
 	default:

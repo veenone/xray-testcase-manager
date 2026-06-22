@@ -66,6 +66,10 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   const [subSankeyErr, setSubSankeyErr] = useState("");
   const [parents, setParents] = useState<string[]>([]);
   const [parentSel, setParentSel] = useState<string[]>([]);
+  // Include cross-project members: when on, sub-task executions whose member
+  // Tests live in another project (cached locally) are drawn in the flow.
+  // Distinct from the Execution tab's "Cross-project only" filter above.
+  const [crossMembers, setCrossMembers] = useState(true);
 
   useEffect(() => {
     if (!profileId) return;
@@ -229,7 +233,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
     if (!profileId) return;
     let cancelled = false;
     setSubSankeyErr("");
-    GetSubTaskTraceability(profileId, parentSel)
+    GetSubTaskTraceability(profileId, parentSel, crossMembers)
       .then((sk) => {
         if (!cancelled) setSubSankey(sk);
       })
@@ -241,13 +245,18 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [profileId, refreshKey, parentSel]);
+  }, [profileId, refreshKey, parentSel, crossMembers]);
 
   // Export the active tab's diagram (Flow + Table sheets) honouring its current
   // filters. The kind selects which filter slices the backend uses.
   async function exportActive() {
     const kind =
       tab === "req" ? "requirement" : tab === "subtask" ? "subtask" : "execution";
+    // The crossProject arg means different things per tab: on Execution it is
+    // the "cross-project only" filter; on Sub-task it is "include cross-project
+    // members". Pass the flag that matches the active tab so the export honors
+    // the same control the chart does.
+    const crossArg = tab === "subtask" ? crossMembers : crossProject;
     setExporting(true);
     setExportErr("");
     setExportNotice("");
@@ -257,7 +266,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
         kind,
         planSel,
         execSel,
-        crossProject,
+        crossArg,
         reqSel,
         parentSel,
       );
@@ -485,19 +494,38 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
                 executions to run results
               </span>
             </h4>
-            {parents.length > 0 && (
-              <label className="sankey-filter">
-                <span className="muted">Parents</span>
-                <MultiSelect
-                  allLabel={`All parents (${parents.length})`}
-                  title="Filter by one or more parent issues"
-                  selected={parentSel}
-                  onChange={setParentSel}
-                  options={parents.map((p) => ({ value: p, label: p }))}
+            <div className="sankey-filters">
+              {parents.length > 0 && (
+                <label className="sankey-filter">
+                  <span className="muted">Parents</span>
+                  <MultiSelect
+                    allLabel={`All parents (${parents.length})`}
+                    title="Filter by one or more parent issues"
+                    selected={parentSel}
+                    onChange={setParentSel}
+                    options={parents.map((p) => ({ value: p, label: p }))}
+                  />
+                </label>
+              )}
+              <label
+                className="sankey-crossproject"
+                title="Show member tests that live in another Jira project (cached locally during sync)"
+              >
+                <input
+                  type="checkbox"
+                  checked={crossMembers}
+                  onChange={(e) => setCrossMembers(e.target.checked)}
                 />
+                Include cross-project members
               </label>
-            )}
+            </div>
           </div>
+          <p className="muted sankey-hint">
+            Cross-project members. When a Test Execution includes tests from
+            another Jira project, enable this to show those tests in the flow.
+            They are fetched into a local cache during sync; if a member is
+            missing, run a sync first.
+          </p>
           {subSankeyErr ? (
             <p className="error-text sankey-empty">
               Couldn&apos;t build the sub-task traceability flow: {subSankeyErr}

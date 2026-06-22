@@ -246,8 +246,8 @@ export function GetStatistics(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetStatistics'](arg1, arg2, arg3, arg4);
 }
 
-export function GetSubTaskTraceability(arg1, arg2) {
-  return window['go']['main']['App']['GetSubTaskTraceability'](arg1, arg2);
+export function GetSubTaskTraceability(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetSubTaskTraceability'](arg1, arg2, arg3);
 }
 
 export function GetSyncState(arg1) {

@@ -19,7 +19,7 @@ func TestGetSubTaskTraceability(t *testing.T) {
 	seedContainerTest(t, r, p, "DEMO-STE-2", "DEMO-3", "PASS")
 	seedContainerTest(t, r, p, "DEMO-TE-9", "DEMO-4", "PASS") // standalone, excluded
 
-	sk, err := r.GetSubTaskTraceability(p, nil)
+	sk, err := r.GetSubTaskTraceability(p, nil, true)
 	if err != nil {
 		t.Fatalf("GetSubTaskTraceability: %v", err)
 	}
@@ -45,12 +45,59 @@ func TestGetSubTaskTraceability(t *testing.T) {
 	}
 
 	// Parent filter to a non-existent parent yields an empty (not error) result.
-	empty, err := r.GetSubTaskTraceability(p, []string{"NOPE-1"})
+	empty, err := r.GetSubTaskTraceability(p, []string{"NOPE-1"}, true)
 	if err != nil {
 		t.Fatalf("filtered: %v", err)
 	}
 	if len(empty.Nodes) != 0 {
 		t.Errorf("unknown parent filter should yield no nodes, got %d", len(empty.Nodes))
+	}
+}
+
+// TestSubTaskTraceabilityIncludesExternalWhenEnabled verifies that a sub-task
+// execution whose only member Test lives in another project (cached in
+// external_test, absent from test_case) is drawn in the flow when crossProject
+// is true and excluded when it is false (the legacy, project-scoped behavior).
+func TestSubTaskTraceabilityIncludesExternalWhenEnabled(t *testing.T) {
+	r := newTestRepo(t)
+	const p = "p1"
+
+	// A sub-task execution under a parent, whose single member (OTHER-9) is a
+	// cross-project Test: it has no test_case row, only an external_test cache
+	// entry, exactly as the sync's missing-keys pass records it.
+	seedContainer(t, r, p, "DEMO-STE-X", "testexec", "Cross sub", "Open")
+	setContainerParent(t, r, p, "DEMO-STE-X", "DEMO-S-9")
+	seedContainerTest(t, r, p, "DEMO-STE-X", "OTHER-9", "PASS")
+	if err := r.ReplaceExternalTests(p, []ExternalTest{
+		{Key: "OTHER-9", Summary: "Foreign test", Status: "Approved", ProjectKey: "OTHER"},
+	}); err != nil {
+		t.Fatalf("seed external: %v", err)
+	}
+
+	// With cross-project members included, the external member's sub-task
+	// execution is drawn (its parent, exec and status nodes all appear).
+	on, err := r.GetSubTaskTraceability(p, nil, true)
+	if err != nil {
+		t.Fatalf("crossProject=true: %v", err)
+	}
+	if !hasNode(on, "exec:DEMO-STE-X") {
+		t.Errorf("crossProject=true should draw the sub-task exec of the external member: %+v", on.Nodes)
+	}
+	if !hasNode(on, "parent:DEMO-S-9") {
+		t.Errorf("crossProject=true should draw the external member's parent node")
+	}
+
+	// With cross-project members excluded, the external-only membership is
+	// dropped; its sub-task execution has no remaining members and disappears.
+	off, err := r.GetSubTaskTraceability(p, nil, false)
+	if err != nil {
+		t.Fatalf("crossProject=false: %v", err)
+	}
+	if hasNode(off, "exec:DEMO-STE-X") {
+		t.Errorf("crossProject=false should exclude the external-only sub-task exec: %+v", off.Nodes)
+	}
+	if len(off.Nodes) != 0 {
+		t.Errorf("crossProject=false should yield an empty flow (only member was external), got %d nodes", len(off.Nodes))
 	}
 }
 
