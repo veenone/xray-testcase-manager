@@ -249,7 +249,8 @@ export function Dashboard({
         />
       </div>
 
-      {(stats.testSets > 0 ||
+      <div className="stat-grid">
+        {(stats.testSets > 0 ||
         stats.testPlans > 0 ||
         stats.testExecutions > 0) && (
         <div className="stat-panel">
@@ -301,7 +302,10 @@ export function Dashboard({
         />
       )}
 
-      <TrendPanel buckets={stats.updatedTrend} />
+        <div className="dashboard-trend-span">
+          <TrendPanel buckets={stats.updatedTrend} />
+        </div>
+      </div>
 
       <p className="muted dashboard-note">
         Computed from the local cache (FR-9.5). Execution coverage and Test

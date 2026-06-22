@@ -694,6 +694,17 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
+/* Let a grid item span the full width of the stat-grid (used for the monthly
+   trend, which reads better wide) and prevent its content from overflowing. */
+.dashboard-trend-span {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: flex;
+}
+.dashboard-trend-span > * {
+  flex: 1;
+  min-width: 0;
+}
 .stat-panel {
   background: var(--surface);
   border: 1px solid var(--border);
