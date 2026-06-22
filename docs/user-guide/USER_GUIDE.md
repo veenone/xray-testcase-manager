@@ -484,8 +484,9 @@ execution list can be filtered to a chosen environment. The execution's Jira
 sub-task executions are covered.
 
 ![Figure 41: Test Environments and Fix Versions on an execution](images/41-execution-environments.png)
-*Figure 41 — A Test Execution showing its editable Test Environments chips and
-its read-only Fix Version(s).*
+*Figure 41 — A sub-task Test Execution showing its editable Test Environments
+chips and the batch environment controls. (Fix Version(s) render as read-only
+chips when the execution has them.)*
 
 **Cross-project members.** A Test Execution can include member tests that live in
 a *different* Jira project. These are cached locally and shown on the board with
@@ -602,23 +603,27 @@ Set up the comparison at the top of the tab:
 - **Download template** — get a ready-made CSV / XLSX template (full, summary, or
   summary + folder) to fill in as the reference or target.
 
-Click **Run** to produce the result.
+Click **Run analysis** to produce the result.
 
 ![Figure 39: Gap Analysis setup](images/39-gap-analysis.png)
 *Figure 39 — The Gap Analysis tab: choose the reference and target, the match
 mode, and run.*
 
-The result shows an overview plus two lists — **missing from the reference** and
-**missing from the target** — each paginated and selectable:
+The result shows summary cards (**Matched**, **Orphaned in reference**, **Orphaned
+in target**, **Total gap**) plus two lists:
 
-- Tick the gaps you want and **Add tests** to create them as pending new tests
-  (commit them later from the Pending list).
-- **Export report** writes a formatted **CSV or Excel** report with a section per
-  list (and the folder mismatches, when comparing by summary + folder).
+- **Target → Reference** — tests in the target that are missing from the
+  reference. These are addable: tick the ones you want and **Add selected as
+  tests** to create them as pending new tests (commit them later from the Pending
+  list).
+- **Reference → Target** — tests in the reference that are missing from the target
+  (report only).
+- **Export CSV** / **Export Excel** writes a formatted report with a section per
+  list (plus the folder mismatches, when comparing by summary + folder).
 
 ![Figure 40: Gap Analysis results](images/40-gap-analysis-result.png)
-*Figure 40 — Gap Analysis results: the missing-from-each-side lists with
-select-and-add and the export-report action.*
+*Figure 40 — Gap Analysis results: the summary cards, the Target → Reference list
+(addable) and Reference → Target list (report only), with the export actions.*
 
 ---
 
