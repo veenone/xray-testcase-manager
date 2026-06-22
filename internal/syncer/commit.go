@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -400,6 +401,21 @@ testLoop:
 				updates[c.Field] = c.AfterVal
 			}
 			fields := jira.FieldsForJira(updates)
+			// exec_type (Xray Test Type) is a custom field whose id varies per
+			// instance, so FieldsForJira leaves it out: resolve the field id here
+			// and inject {"value": ...}. Best-effort - if the field can't be
+			// resolved, log and push the rest of the update rather than fail
+			// the whole commit.
+			if execType, ok := updates["exec_type"]; ok {
+				fieldID, value, resolved, ferr := e.client.ExecTypeFieldValue(ctx, execType)
+				if ferr != nil {
+					log.Printf("xtm: resolve Test Type field for %s failed, committing without exec_type: %v", testKey, ferr)
+				} else if resolved {
+					fields[fieldID] = value
+				} else {
+					log.Printf("xtm: no Test Type custom field on this instance, committing %s without exec_type", testKey)
+				}
+			}
 			for fieldID, value := range customFields {
 				fields[fieldID] = value
 			}

@@ -3,7 +3,69 @@ package jira
 import (
 	"context"
 	"fmt"
+	"strings"
 )
+
+// resolveCustomFieldID resolves a Jira custom field id (e.g. "customfield_10100")
+// from its display name via GET /rest/api/2/field, matching the first field whose
+// name equals fieldName (case-insensitive, trimmed) and which is a custom field.
+// The result is cached per fieldName on the Client so repeated lookups during one
+// sync or commit do not re-fetch.
+//
+// It returns ("", nil) when no field matches, so callers can degrade gracefully
+// (skip the field) rather than failing the whole sync or commit. Demo mode never
+// reaches the network here: it returns ("", nil) immediately, which is harmless
+// because the demo read/write paths do not call this resolver.
+func (c *Client) resolveCustomFieldID(ctx context.Context, fieldName string) (string, error) {
+	want := strings.ToLower(strings.TrimSpace(fieldName))
+	if want == "" {
+		return "", nil
+	}
+	if isDemoURL(c.baseURL) {
+		return "", nil
+	}
+
+	c.customFieldMu.Lock()
+	if c.customFieldIDs != nil {
+		if id, ok := c.customFieldIDs[want]; ok {
+			c.customFieldMu.Unlock()
+			return id, nil
+		}
+	}
+	c.customFieldMu.Unlock()
+
+	var fields []struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Custom bool   `json:"custom"`
+	}
+	if err := c.get(ctx, "/rest/api/2/field", &fields); err != nil {
+		return "", err
+	}
+
+	id := ""
+	for _, f := range fields {
+		if f.Custom && strings.EqualFold(strings.TrimSpace(f.Name), strings.TrimSpace(fieldName)) {
+			id = f.ID
+			break
+		}
+	}
+
+	c.customFieldMu.Lock()
+	if c.customFieldIDs == nil {
+		c.customFieldIDs = make(map[string]string)
+	}
+	c.customFieldIDs[want] = id
+	c.customFieldMu.Unlock()
+	return id, nil
+}
+
+// testTypeFieldID resolves and caches the custom field id of the Xray "Test Type"
+// field (the app's exec_type) for this instance, returning "" (no error) when the
+// instance has no such field so the caller can proceed without it.
+func (c *Client) testTypeFieldID(ctx context.Context) (string, error) {
+	return c.resolveCustomFieldID(ctx, "Test Type")
+}
 
 // CustomFieldDef describes a Jira custom field configured for the Test issue
 // type (FR-2.6): its Jira id (e.g. "customfield_10001"), display name and a

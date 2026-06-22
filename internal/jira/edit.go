@@ -42,6 +42,10 @@ func (c *Client) GetIssueUpdated(ctx context.Context, key string) (string, error
 //   - priority:             wrapped in {"name": ...}
 //   - labels:               space-separated string split into a string array
 //
+// exec_type (the Xray Test Type) is NOT mapped here because it targets an
+// instance-specific custom field id that needs the Client to resolve. It is
+// handled at the commit call site (internal/syncer/commit.go), which resolves
+// the Test Type field id and adds {"value": ...} under that id before the PUT.
 // Unknown fields are silently dropped so the payload stays defensive against
 // a stale or corrupted pending_change row.
 func FieldsForJira(updates map[string]string) map[string]any {
@@ -58,13 +62,25 @@ func FieldsForJira(updates map[string]string) map[string]any {
 				labels = []string{}
 			}
 			out["labels"] = labels
-		case "exec_type":
-			// TODO(xtm): map exec_type (Xray Test Type) to its instance-specific
-			// custom field id, e.g. out["customfield_XXXXX"] = {"value": v}. The
-			// field id varies per Jira/Xray instance and is unverified against a
-			// live server (Phase 7), so the edit is journaled + cleared locally
-			// but not yet pushed. Dropped here until the live field is wired.
 		}
 	}
 	return out
+}
+
+// ExecTypeFieldValue resolves this instance's Xray "Test Type" custom field id
+// and returns it together with the option-shaped value Jira expects
+// ({"value": execType}) for a field-update PUT. It returns ok=false (no error)
+// when the field id cannot be resolved on this instance, so the commit can push
+// the rest of the field update and skip exec_type rather than fail. Demo mode
+// short-circuits in testTypeFieldID, so this also returns ok=false there (demo
+// UpdateIssue is a no-op anyway).
+func (c *Client) ExecTypeFieldValue(ctx context.Context, execType string) (fieldID string, value any, ok bool, err error) {
+	id, err := c.testTypeFieldID(ctx)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if id == "" {
+		return "", nil, false, nil
+	}
+	return id, map[string]string{"value": execType}, true, nil
 }

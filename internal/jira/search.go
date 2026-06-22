@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -26,37 +27,111 @@ type Test struct {
 	FolderID    string
 	// ExecType is the Xray Test Type (a.k.a. execution type): Manual /
 	// Automated / Generic / Cucumber. It is a Jira custom field; the live
-	// search pull does not request it yet (see SearchTestsPage), so it is
-	// populated only in demo mode for now. TODO(xtm): resolve the Test Type
-	// custom field id per instance and read it on the live test pull (Phase 7).
+	// pull resolves the "Test Type" custom field id per instance
+	// (Client.testTypeFieldID), requests it, and parses the option value
+	// (parseOptionValue). Best-effort: if the field id cannot be resolved the
+	// pull proceeds without ExecType. Demo mode populates it via the generator.
 	ExecType string
 }
 
 // testFields are the issue fields requested from Jira's search API.
 const testFields = "summary,description,status,priority,labels,components,updated"
 
-// searchResponse is the /rest/api/2/search payload.
+// testIssueFields is the typed subset of a Test issue's `fields` object the app
+// caches. It is decoded from the raw fields message (testIssue.Fields) so the
+// same raw bytes can also yield a dynamically-named custom field (the Xray Test
+// Type, whose id varies per instance) without a duplicate-tag decode conflict.
+type testIssueFields struct {
+	Summary     string   `json:"summary"`
+	Description string   `json:"description"`
+	Updated     string   `json:"updated"`
+	Labels      []string `json:"labels"`
+	Status      *struct {
+		Name string `json:"name"`
+	} `json:"status"`
+	Priority *struct {
+		Name string `json:"name"`
+	} `json:"priority"`
+	Components []struct {
+		Name string `json:"name"`
+	} `json:"components"`
+}
+
+// searchResponse is the /rest/api/2/search payload. Each issue keeps its `fields`
+// object as a raw message; the typed fields and the custom Test Type field are
+// both decoded from it (see parseIssueTest / execTypeFromRawFields).
 type searchResponse struct {
 	Total  int `json:"total"`
 	Issues []struct {
-		ID     string `json:"id"`
-		Key    string `json:"key"`
-		Fields struct {
-			Summary     string   `json:"summary"`
-			Description string   `json:"description"`
-			Updated     string   `json:"updated"`
-			Labels      []string `json:"labels"`
-			Status      *struct {
-				Name string `json:"name"`
-			} `json:"status"`
-			Priority *struct {
-				Name string `json:"name"`
-			} `json:"priority"`
-			Components []struct {
-				Name string `json:"name"`
-			} `json:"components"`
-		} `json:"fields"`
+		ID     string          `json:"id"`
+		Key    string          `json:"key"`
+		Fields json.RawMessage `json:"fields"`
 	} `json:"issues"`
+}
+
+// parseIssueTest maps one search/issue payload (raw `fields` plus key/id) into a
+// Test, decoding the typed fields and reading the Xray Test Type option value at
+// execTypeID (when non-empty) onto ExecType. Pure: no network, so it is unit
+// tested via the SearchTestsPage / GetTestFields httptest paths.
+func parseIssueTest(id, key string, rawFields json.RawMessage, execTypeID string) Test {
+	var f testIssueFields
+	_ = json.Unmarshal(rawFields, &f)
+	t := Test{
+		Key:         key,
+		ID:          id,
+		Summary:     f.Summary,
+		Description: f.Description,
+		Updated:     f.Updated,
+		Labels:      f.Labels,
+	}
+	if f.Status != nil {
+		t.Status = f.Status.Name
+	}
+	if f.Priority != nil {
+		t.Priority = f.Priority.Name
+	}
+	for _, comp := range f.Components {
+		if comp.Name != "" {
+			t.Components = append(t.Components, comp.Name)
+		}
+	}
+	t.ExecType = execTypeFromRawFields(rawFields, execTypeID)
+	return t
+}
+
+// parseOptionValue extracts the string value of a Jira single-select custom field
+// from its raw JSON. Xray Test Type is typically an option object
+// ({"value": "Manual"}) but some instances return a bare string; anything else
+// (null, absent, an object without a string "value", malformed JSON) yields "".
+func parseOptionValue(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var obj struct {
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.Value
+	}
+	return ""
+}
+
+// execTypeFromRawFields pulls the Test Type option value out of an issue's raw
+// `fields` object given the resolved custom field id. Returns "" when fieldID is
+// empty, the fields object is absent/malformed, or the field has no option value.
+func execTypeFromRawFields(rawFields json.RawMessage, fieldID string) string {
+	if fieldID == "" || len(rawFields) == 0 {
+		return ""
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(rawFields, &fields); err != nil {
+		return ""
+	}
+	return parseOptionValue(fields[fieldID])
 }
 
 // SearchTestsPage fetches one page of Test issues for a project, beginning
@@ -87,11 +162,24 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 	// is unique, so pagination is stable and every Test is fetched exactly once.
 	jql += " ORDER BY key ASC"
 
+	// Resolve the Test Type custom field id so we can request and read it
+	// (FR-2 / exec_type). Best-effort: on error, log and pull without it rather
+	// than fail the whole sync.
+	fields := testFields
+	execTypeID, err := c.testTypeFieldID(ctx)
+	if err != nil {
+		log.Printf("xtm: resolve Test Type custom field failed, syncing without exec_type: %v", err)
+		execTypeID = ""
+	}
+	if execTypeID != "" {
+		fields = testFields + "," + execTypeID
+	}
+
 	q := url.Values{}
 	q.Set("jql", jql)
 	q.Set("startAt", strconv.Itoa(startAt))
 	q.Set("maxResults", strconv.Itoa(maxResults))
-	q.Set("fields", testFields)
+	q.Set("fields", fields)
 
 	var resp searchResponse
 	if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
@@ -100,26 +188,7 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 
 	tests := make([]Test, 0, len(resp.Issues))
 	for _, iss := range resp.Issues {
-		t := Test{
-			Key:         iss.Key,
-			ID:          iss.ID,
-			Summary:     iss.Fields.Summary,
-			Description: iss.Fields.Description,
-			Updated:     iss.Fields.Updated,
-			Labels:      iss.Fields.Labels,
-		}
-		if iss.Fields.Status != nil {
-			t.Status = iss.Fields.Status.Name
-		}
-		if iss.Fields.Priority != nil {
-			t.Priority = iss.Fields.Priority.Name
-		}
-		for _, comp := range iss.Fields.Components {
-			if comp.Name != "" {
-				t.Components = append(t.Components, comp.Name)
-			}
-		}
-		tests = append(tests, t)
+		tests = append(tests, parseIssueTest(iss.ID, iss.Key, iss.Fields, execTypeID))
 	}
 	return tests, resp.Total, nil
 }
@@ -360,47 +429,27 @@ func (c *Client) GetTestFields(ctx context.Context, key string) (Test, error) {
 	if isDemoURL(c.baseURL) {
 		return demoTestForKey(key), nil
 	}
-	var resp struct {
-		ID     string `json:"id"`
-		Key    string `json:"key"`
-		Fields struct {
-			Summary     string   `json:"summary"`
-			Description string   `json:"description"`
-			Updated     string   `json:"updated"`
-			Labels      []string `json:"labels"`
-			Status      *struct {
-				Name string `json:"name"`
-			} `json:"status"`
-			Priority *struct {
-				Name string `json:"name"`
-			} `json:"priority"`
-			Components []struct {
-				Name string `json:"name"`
-			} `json:"components"`
-		} `json:"fields"`
+	// Resolve and request the Test Type custom field so the conflict re-fetch
+	// carries exec_type too (consistency with the bulk pull). Best-effort.
+	fields := testFields
+	execTypeID, err := c.testTypeFieldID(ctx)
+	if err != nil {
+		log.Printf("xtm: resolve Test Type custom field failed, re-fetching without exec_type: %v", err)
+		execTypeID = ""
 	}
-	if err := c.get(ctx, "/rest/api/2/issue/"+key+"?fields="+testFields, &resp); err != nil {
+	if execTypeID != "" {
+		fields = testFields + "," + execTypeID
+	}
+
+	var resp struct {
+		ID     string          `json:"id"`
+		Key    string          `json:"key"`
+		Fields json.RawMessage `json:"fields"`
+	}
+	if err := c.get(ctx, "/rest/api/2/issue/"+key+"?fields="+fields, &resp); err != nil {
 		return Test{}, err
 	}
-	t := Test{
-		Key:         orFallback(resp.Key, key),
-		ID:          resp.ID,
-		Summary:     resp.Fields.Summary,
-		Description: resp.Fields.Description,
-		Updated:     resp.Fields.Updated,
-		Labels:      resp.Fields.Labels,
-	}
-	if resp.Fields.Status != nil {
-		t.Status = resp.Fields.Status.Name
-	}
-	if resp.Fields.Priority != nil {
-		t.Priority = resp.Fields.Priority.Name
-	}
-	for _, comp := range resp.Fields.Components {
-		if comp.Name != "" {
-			t.Components = append(t.Components, comp.Name)
-		}
-	}
+	t := parseIssueTest(resp.ID, orFallback(resp.Key, key), resp.Fields, execTypeID)
 	return t, nil
 }
 
