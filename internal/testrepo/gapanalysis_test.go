@@ -234,3 +234,27 @@ func TestBuildGapReportXLSXHasSectionSheets(t *testing.T) {
 		t.Errorf("Missing from Reference A2 = %q (err %v), want \"SSO login\"", summary, err)
 	}
 }
+
+func TestParseGapRowsToleratesUTF8BOM(t *testing.T) {
+	// Excel/Windows-saved CSVs prepend a UTF-8 BOM, which otherwise fuses onto
+	// the first header cell and breaks Summary auto-mapping.
+	csv := string(utf8BOMBytes) + "Summary\nLogin with valid credentials\nLogout clears the session\n"
+	recs, err := ParseRecords([]byte(csv), false)
+	if err != nil {
+		t.Fatalf("ParseRecords: %v", err)
+	}
+	tests, err := ParseGapRows(recs)
+	if err != nil {
+		t.Fatalf("ParseGapRows with BOM: %v", err)
+	}
+	if len(tests) != 2 {
+		t.Fatalf("got %d tests, want 2", len(tests))
+	}
+	if tests[0].Summary != "Login with valid credentials" {
+		t.Errorf("tests[0].Summary = %q, want \"Login with valid credentials\"", tests[0].Summary)
+	}
+	// Unmapped optional fields are null/empty, not an error.
+	if tests[0].Description != "" || tests[0].Priority != "" {
+		t.Errorf("unmapped fields should be empty, got desc=%q prio=%q", tests[0].Description, tests[0].Priority)
+	}
+}

@@ -315,7 +315,18 @@ func ParseRecords(data []byte, isXlsx bool) ([][]string, error) {
 	if isXlsx {
 		return parseXLSX(data)
 	}
-	return readCSV(string(data))
+	return readCSV(string(stripUTF8BOM(data)))
+}
+
+// utf8BOMBytes is the UTF-8 byte-order mark (EF BB BF) that Excel and Windows
+// editors prepend to saved CSVs. Left in place it fuses onto the first header
+// cell, so column auto-mapping no longer recognizes "Summary".
+var utf8BOMBytes = []byte{0xEF, 0xBB, 0xBF}
+
+// stripUTF8BOM removes a leading UTF-8 BOM so the first column header (commonly
+// Summary) maps cleanly and gap analysis can proceed.
+func stripUTF8BOM(data []byte) []byte {
+	return bytes.TrimPrefix(data, utf8BOMBytes)
 }
 
 // readCSV parses CSV content leniently (variable field counts allowed).
