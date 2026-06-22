@@ -120,6 +120,49 @@ func parseOptionValue(raw json.RawMessage) string {
 	return ""
 }
 
+// parseOptionValues extracts the string values of a Jira multi-select custom
+// field (the Xray Test Environments field) from its raw JSON. Such a field is
+// typically an array of option objects ([{"value":"Staging"},{"value":"Chrome"}])
+// but some instances return an array of bare strings (["Staging","Chrome"]);
+// both shapes are handled. Empty entries are skipped, and null / absent /
+// malformed JSON yields a nil slice.
+func parseOptionValues(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	// Array of option objects: [{"value": "Staging"}, ...].
+	var objs []struct {
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &objs); err == nil {
+		out := make([]string, 0, len(objs))
+		for _, o := range objs {
+			if v := strings.TrimSpace(o.Value); v != "" {
+				out = append(out, v)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+		// Fall through: an array that decoded into objects with no values may have
+		// actually been an array of bare strings.
+	}
+	// Array of bare strings: ["Staging", "Chrome"].
+	var strs []string
+	if err := json.Unmarshal(raw, &strs); err == nil {
+		out := make([]string, 0, len(strs))
+		for _, s := range strs {
+			if v := strings.TrimSpace(s); v != "" {
+				out = append(out, v)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return nil
+}
+
 // execTypeFromRawFields pulls the Test Type option value out of an issue's raw
 // `fields` object given the resolved custom field id. Returns "" when fieldID is
 // empty, the fields object is absent/malformed, or the field has no option value.

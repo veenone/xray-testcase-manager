@@ -33,9 +33,10 @@ type Container struct {
 	ParentKey string // parent issue key for a sub-task Test Execution; else ""
 	IssueType string // Jira issuetype name (e.g. "Sub Test Execution"); informational
 	// Environments is the Xray Test Environments field on a Test Execution
-	// (empty for Test Sets / Plans). TODO(xtm): the real container search must
-	// read the configured Test Environments custom field and populate this once
-	// verified on a live Xray Server/DC instance; demo mode seeds it.
+	// (empty for Test Sets / Plans). The live container search resolves the
+	// configured "Test Environments" custom field id per instance
+	// (Client.testEnvironmentsFieldID), requests it on testexec issues, and
+	// parses the multi-value option list (parseOptionValues). Demo mode seeds it.
 	Environments []string
 }
 
@@ -153,6 +154,22 @@ func (c *Client) searchContainers(ctx context.Context, projectKey, kind string) 
 func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, kind, issueType string) ([]Container, error) {
 	jql := fmt.Sprintf(`project = "%s" AND issuetype = "%s" ORDER BY key ASC`, projectKey, issueType)
 
+	// Test Environments live on Test Executions only (Sets / Plans do not carry
+	// them). Resolve the custom field id once and, when present, request it so the
+	// read path can populate Container.Environments. Best-effort: on a resolver
+	// error, log and proceed without environments rather than fail the sync.
+	fields := "summary,status,issuetype,parent"
+	envFieldID := ""
+	if kind == KindTestExec {
+		id, err := c.testEnvironmentsFieldID(ctx)
+		if err != nil {
+			log.Printf("xtm: resolve Test Environments custom field failed, syncing executions without environments: %v", err)
+		} else if id != "" {
+			envFieldID = id
+			fields = fields + "," + envFieldID
+		}
+	}
+
 	out := []Container{}
 	startAt := 0
 	for {
@@ -163,24 +180,16 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 		q.Set("jql", jql)
 		q.Set("startAt", strconv.Itoa(startAt))
 		q.Set("maxResults", "100")
-		q.Set("fields", "summary,status,issuetype,parent")
+		q.Set("fields", fields)
 
 		var resp struct {
 			Total  int `json:"total"`
 			Issues []struct {
-				Key    string `json:"key"`
-				Fields struct {
-					Summary string `json:"summary"`
-					Status  *struct {
-						Name string `json:"name"`
-					} `json:"status"`
-					IssueType *struct {
-						Name string `json:"name"`
-					} `json:"issuetype"`
-					Parent *struct {
-						Key string `json:"key"`
-					} `json:"parent"`
-				} `json:"fields"`
+				Key string `json:"key"`
+				// Fields is kept raw so the typed container fields and the
+				// instance-specific Test Environments custom field can both be
+				// decoded from the same object without a duplicate-tag conflict.
+				Fields json.RawMessage `json:"fields"`
 			} `json:"issues"`
 		}
 		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
@@ -194,17 +203,7 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 			return nil, err
 		}
 		for _, iss := range resp.Issues {
-			ct := Container{Key: iss.Key, Kind: kind, Summary: iss.Fields.Summary}
-			if iss.Fields.Status != nil {
-				ct.Status = iss.Fields.Status.Name
-			}
-			if iss.Fields.IssueType != nil {
-				ct.IssueType = iss.Fields.IssueType.Name
-			}
-			if iss.Fields.Parent != nil {
-				ct.ParentKey = iss.Fields.Parent.Key
-			}
-			out = append(out, ct)
+			out = append(out, parseContainerIssue(iss.Key, kind, iss.Fields, envFieldID))
 		}
 		startAt += len(resp.Issues)
 		if len(resp.Issues) == 0 || startAt >= resp.Total {
@@ -213,6 +212,60 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 		time.Sleep(throttleContainers)
 	}
 	return out, nil
+}
+
+// containerIssueFields is the typed subset of a container issue's `fields` object
+// the app caches. It is decoded from the raw fields message so the same bytes can
+// also yield the instance-specific Test Environments custom field.
+type containerIssueFields struct {
+	Summary string `json:"summary"`
+	Status  *struct {
+		Name string `json:"name"`
+	} `json:"status"`
+	IssueType *struct {
+		Name string `json:"name"`
+	} `json:"issuetype"`
+	Parent *struct {
+		Key string `json:"key"`
+	} `json:"parent"`
+}
+
+// parseContainerIssue maps one container search issue (raw `fields` plus key) into
+// a Container, decoding the typed fields and, for Test Executions with a resolved
+// envFieldID, the multi-value Test Environments custom field onto Environments.
+// Pure: no network, so it is unit tested via the search httptest path.
+func parseContainerIssue(key, kind string, rawFields json.RawMessage, envFieldID string) Container {
+	var f containerIssueFields
+	_ = json.Unmarshal(rawFields, &f)
+	ct := Container{Key: key, Kind: kind, Summary: f.Summary}
+	if f.Status != nil {
+		ct.Status = f.Status.Name
+	}
+	if f.IssueType != nil {
+		ct.IssueType = f.IssueType.Name
+	}
+	if f.Parent != nil {
+		ct.ParentKey = f.Parent.Key
+	}
+	if kind == KindTestExec && envFieldID != "" {
+		ct.Environments = environmentsFromRawFields(rawFields, envFieldID)
+	}
+	return ct
+}
+
+// environmentsFromRawFields pulls the Test Environments multi-select values out of
+// a container issue's raw `fields` object given the resolved custom field id.
+// Returns nil when fieldID is empty, the fields object is absent / malformed, or
+// the field has no values.
+func environmentsFromRawFields(rawFields json.RawMessage, fieldID string) []string {
+	if fieldID == "" || len(rawFields) == 0 {
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(rawFields, &fields); err != nil {
+		return nil
+	}
+	return parseOptionValues(fields[fieldID])
 }
 
 // throttleContainers paces container issue-search pages.
@@ -481,18 +534,38 @@ func (c *Client) resolveTestRunID(ctx context.Context, execKey, testKey string) 
 // Execution issue. Demo URLs short-circuit to a no-op success so a demo commit
 // clears the pending change.
 //
-// TODO(xtm): maps to PUT /rest/api/2/issue/{key} updating the configured Test
-// Environments custom field (a multi-select). The field id varies per instance
-// and must be resolved/configured; verify the payload shape on a live Xray
-// Server/DC instance before wiring the real call.
+// Live path: resolves the configured "Test Environments" custom field id for
+// this instance and PUTs /rest/api/2/issue/{key} with {"fields": {<id>: value}}.
+// Unlike the read path (which degrades), an unresolvable field returns an error
+// so the user's edit is not silently dropped. An empty envs list clears the
+// field (sends an empty array).
+//
+// NOTE(xtm): the multi-select write shape (an array of option objects,
+// [{"value": "Staging"}, ...]) and the field NAME ("Test Environments") should be
+// verified against the live Xray Server/DC 8.4.0 instance. Some Xray versions
+// expose Test Environments through a dedicated raven endpoint rather than a plain
+// custom field; if the PUT is rejected, that is the thing to check.
 func (c *Client) SetContainerEnvironments(ctx context.Context, execKey string, envs []string) error {
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
-	// NOTE(xtm): real path intentionally unimplemented until verified live. The
-	// custom-field id and value shape (array of {value} vs array of strings)
-	// differ across Xray configurations.
-	return fmt.Errorf("setting Test Environments against a live Jira is not yet supported")
+	fieldID, err := c.testEnvironmentsFieldID(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve Test Environments custom field: %w", err)
+	}
+	if fieldID == "" {
+		return fmt.Errorf("no Test Environments custom field found on this Jira instance")
+	}
+	// A multi-select write value is an array of option objects; an empty list
+	// clears the field. Skip empty entries defensively.
+	value := make([]map[string]string, 0, len(envs))
+	for _, env := range envs {
+		if v := strings.TrimSpace(env); v != "" {
+			value = append(value, map[string]string{"value": v})
+		}
+	}
+	body := map[string]any{"fields": map[string]any{fieldID: value}}
+	return c.put(ctx, "/rest/api/2/issue/"+execKey, body)
 }
 
 // DeleteContainer deletes a Test Set, Test Plan or Test Execution issue

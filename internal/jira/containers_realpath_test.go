@@ -16,6 +16,10 @@ import (
 func TestRealSubTaskExecutionsCarryParent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/rest/api/2/field":
+			// The testexec search resolves the Test Environments custom field id;
+			// this instance has no such field, so the env read degrades to none.
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
 		case r.URL.Path == "/rest/api/2/search":
 			jql := r.URL.Query().Get("jql")
 			if strings.Contains(jql, `issuetype = "Sub Test Execution"`) {
