@@ -3948,6 +3948,14 @@ tr.row-checked:hover {
   margin-bottom: 8px;
 }
 
+/* Group the dashboard action buttons together on the right, mirroring the
+   board / duplicate toolbars (RND_P_4TFINT_05). */
+.dashboard-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Dashboard folder / component / status filters (RND_P_4TFINT_05-228). */
 .dashboard-filters {
   display: flex;

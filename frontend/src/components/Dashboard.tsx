@@ -193,21 +193,23 @@ export function Dashboard({
     <div className="dashboard">
       <div className="dashboard-head">
         {filterBar}
-        <button
-          className="btn"
-          onClick={exportDashboard}
-          disabled={exporting}
-          title="Export the dashboard (Summary + breakdowns) to XLSX, honouring the current filters"
-        >
-          {exporting ? "Exporting…" : "Export XLSX"}
-        </button>
-        <button
-          className="btn"
-          onClick={() => setNonce((n) => n + 1)}
-          title="Recompute the dashboard from the local cache"
-        >
-          ↻ Refresh
-        </button>
+        <div className="dashboard-head-actions">
+          <button
+            className="btn"
+            onClick={exportDashboard}
+            disabled={exporting}
+            title="Export the dashboard (Summary + breakdowns) to XLSX, honouring the current filters"
+          >
+            {exporting ? "Exporting…" : "Export XLSX"}
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => setNonce((n) => n + 1)}
+            title="Recompute the dashboard from the local cache"
+          >
+            ↻ Refresh
+          </button>
+        </div>
       </div>
       {exportErr && <p className="error-text">{exportErr}</p>}
       {exportNotice && <p className="muted">{exportNotice}</p>}
