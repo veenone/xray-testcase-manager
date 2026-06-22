@@ -17,6 +17,15 @@ hosts the Sankeys — they moved to the new **Traceability** tab), and **26/27**
 (now on the Traceability tab, not the Dashboard). New shots to add: **37**
 (Bugs panel) and **38** (Sub-task traceability Sankey).
 
+**Refresh for 1.6.0.** Re-shoot these because their UI changed: **06** (Browse
+now has an **Execution Type** column and filter), **18** (the Requirements detail
+gains **+ Add tests**), **20/21** (Duplicates adds **Compare summaries**), **25**
+(the Dashboard gains folder / component / status filters and **Export XLSX**),
+and **27** (the Traceability toolbar gains **Export XLSX** and the **include
+cross-project members** toggle). New shots to add: **39** (Gap Analysis setup),
+**40** (Gap Analysis results), and **41** (Test Environments and Fix Version(s)
+on a Test Execution).
+
 ## How to capture
 
 1. **Run the app on a demo profile** so every screen has rich data and no Jira is
@@ -78,6 +87,9 @@ hosts the Sankeys — they moved to the new **Traceability** tab), and **26/27**
 | 36 | `36-clone-steps.png` | Test detail → Steps → **Clone from…** | The clone-steps picker with a source test selected |
 | 37 | `37-bugs-panel.png` | **Containers** tab → **Bugs** toggle | The Bugs master list + a selected bug's detail and the tests it affects |
 | 38 | `38-subtask-sankey.png` | **Traceability** tab → **Sub-task** | The Parent → Execution → run-result Sankey with the Parent filter |
+| 39 | `39-gap-analysis.png` | **Gap Analysis** tab | The setup form: Reference (project / file), Target file, Compare by, Three-way, and Download template |
+| 40 | `40-gap-analysis-result.png` | Gap Analysis → fill a target → **Run** | The result: missing-from-reference and missing-from-target lists with select-and-**Add tests** and **Export report** |
+| 41 | `41-execution-environments.png` | **Containers** → kind **Test Execution**, select an execution | The execution detail showing editable **Test Environments** chips and read-only **Fix Version(s)** |
 
 To refresh a shot: run `wails dev`, open `http://localhost:34115/` in the
 `browse` tool, switch to the **Demo Project (DEMO)** profile, sync once, then

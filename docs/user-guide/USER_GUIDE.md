@@ -1,6 +1,6 @@
 # Xray Test Manager — User Guide
 
-**Version:** 1.x · **Platform:** Windows 10/11 (64-bit) · **Audience:** QA engineers,
+**Version:** 1.6.x · **Platform:** Windows 10/11 (64-bit) · **Audience:** QA engineers,
 test leads, and anyone managing Xray test cases in Jira Data Center.
 
 Xray Test Manager is a lightweight Windows desktop app for managing **Xray test
@@ -18,6 +18,41 @@ you commit.
 > see [Demo mode](#demo-mode-try-it-without-jira)).
 
 ---
+
+## What's new in 1.6.0
+
+- **Test Case Gap Analysis.** A new **Gap Analysis** tab compares a project (or
+  an imported CSV/XLSX list) against a target list and reports what is missing on
+  each side, with an optional folder-mismatch check, create-tests-from-gaps, and
+  a formatted Excel report. See [Gap analysis](#15-gap-analysis).
+- **Cross-project Test Executions.** Member tests that live in a *different* Jira
+  project now appear on the execution board and in the traceability flow (with an
+  **include cross-project members** toggle), and their linked bugs are harvested.
+  See [Containers](#11-test-sets-plans--executions-containers) and
+  [Traceability](#14-traceability).
+- **Execution Type.** The Xray **Test Type** (Manual / Automated / Generic /
+  Cucumber) is now a Browse column and filter, and is editable per test and in
+  bulk. See [Browsing tests](#4-browsing-tests).
+- **Test Environments & Fix Version(s) on executions.** A Test Execution shows
+  its **Test Environments** (editable, single and bulk) and its read-only Jira
+  **Fix Version(s)**. See [Containers](#11-test-sets-plans--executions-containers).
+- **Swap and multi-pick links.** Add several requirements or preconditions to a
+  test at once, or **Replace** (swap) the whole set in one step — per test and in
+  bulk. See [Bulk operations](#7-bulk-operations).
+- **Add tests to a requirement.** Link covering tests straight from the
+  Requirements view. See [Requirements & coverage](#9-requirements--coverage).
+- **Export to XLSX everywhere.** Export the **Dashboard** and the active
+  **Traceability** tab to Excel, on top of the existing CSV/XLSX exports, and
+  filter the Dashboard by folder / component / status.
+- **Duplicates: compare summaries.** Compare duplicate members' summaries side by
+  side (in addition to steps), with a scan progress bar. See
+  [Finding duplicates](#10-finding-duplicates).
+- **Live Jira/Xray wiring.** Every operation now runs against a live Jira Data
+  Center / Xray Server instance, not just demo data (see the note below).
+
+> **Live wiring (Phase 7).** The real Jira/Xray REST calls are now implemented
+> for every operation. A few instance-specific shapes are still being verified
+> against live servers; demo mode remains fully functional throughout.
 
 ## What's new in 1.5.0
 
@@ -67,11 +102,12 @@ Earlier releases added commit **conflict management** (three-way merge),
 13. [Defect tracking](#12-defect-tracking)
 14. [Dashboard](#13-dashboard)
 15. [Traceability](#14-traceability)
-16. [Committing changes to Jira](#15-committing-changes-to-jira)
-17. [Syncing](#16-syncing)
-18. [Settings & profile management](#17-settings--profile-management)
-19. [Diagnostics & troubleshooting](#18-diagnostics--troubleshooting)
-20. [Glossary](#glossary)
+16. [Gap analysis](#15-gap-analysis)
+17. [Committing changes to Jira](#16-committing-changes-to-jira)
+18. [Syncing](#17-syncing)
+19. [Settings & profile management](#18-settings--profile-management)
+20. [Diagnostics & troubleshooting](#19-diagnostics--troubleshooting)
+21. [Glossary](#glossary)
 
 ---
 
@@ -135,7 +171,7 @@ After connecting, the main window appears. It has four regions:
 1. **Top bar** — profile selector and menu (left), view tabs (center), and
    pending/New Test/More/Sync actions (right).
 2. **View tabs** — switch between Browse, Preconditions, Requirements,
-   Duplicates, Test Calls, Dashboard, Traceability, and Containers.
+   Duplicates, Gap Analysis, Test Calls, Dashboard, Traceability, and Containers.
 3. **Work area** — the content of the selected view.
 4. **Status bar** — sync progress and the test count / last-sync time.
 
@@ -176,6 +212,10 @@ The grid lists tests with sortable columns. Above it sits the toolbar:
 
 - **Search** — matches key, summary, and description.
 - **Status filter** — filter by workflow status.
+- **Execution Type filter** — narrow to a Xray **Test Type** (Manual / Automated
+  / Generic / Cucumber). Execution Type is also available as a sortable,
+  toggleable grid column (add it from **Columns**) and is editable per test and
+  in bulk.
 - **Saved views** — apply a saved filter; **Save view** stores the current
   filter + status combination for reuse.
 - **Export** — write the *currently filtered* tests to CSV or XLSX.
@@ -260,7 +300,10 @@ Xray and project custom fields also load on first open and can be edited inline.
 ### Preconditions & requirements on a test
 
 The detail panel also shows the **preconditions** the test depends on and the
-**requirements** it covers, with controls to link or unlink them.
+**requirements** it covers, with controls to link or unlink them. Use the
+searchable picker to **add several at once**, or **Replace** to swap the whole
+set (unlink the current ones and link the chosen ones) in a single step. The same
+applies in bulk — see [Bulk operations](#7-bulk-operations).
 
 ![Figure 11: Preconditions & requirements sections](images/11-detail-links.png)
 *Figure 11 — The preconditions and requirement-coverage sections of a test.*
@@ -305,12 +348,14 @@ columns to test fields and import; the rows are queued as new tests for commit.
 Select two or more tests (checkboxes, or **Select all matching**) and the **bulk
 toolbar** appears above the grid:
 
-- **Bulk edit…** — set a field across all selected tests.
+- **Bulk edit…** — set a field across all selected tests, including the
+  **Execution Type** (Xray Test Type), priority, labels, components, and custom
+  fields.
 - **Bulk transition…** — move all selected tests through a workflow transition.
 - **Allocate…** — add the selected tests to a Test Set / Plan / Execution.
 - **Move to folder…** — re-file into a Test Repository folder.
-- **Preconditions…** — link or unlink preconditions in bulk.
-- **Requirements…** — link or unlink requirement coverage in bulk.
+- **Preconditions…** — link, unlink, or **Replace** (swap) preconditions in bulk.
+- **Requirements…** — link, unlink, or **Replace** requirement coverage in bulk.
 
 ![Figure 14: Bulk toolbar](images/14-bulk-toolbar.png)
 *Figure 14 — The bulk toolbar after selecting several tests.*
@@ -363,6 +408,8 @@ tests with their run results.*
   test count.
 - The detail pane lists the **covering tests** (paginated) with run results, and
   lets you edit the summary or delete the requirement.
+- **+ Add tests** links covering tests to the selected requirement directly from
+  this view (a searchable multi-pick), queued for commit like any coverage edit.
 - **Export audit…** writes the coverage / sign-off audit to CSV or XLSX.
 
 ### Requirement sources
@@ -386,10 +433,13 @@ them. Results are grouped; each group lists its members with a detail panel.
 for the selected group.*
 
 Use **Compare steps** to see members' steps **side by side**, with differing
-rows highlighted — useful when deciding which copy to keep.
+rows highlighted — useful when deciding which copy to keep. **Compare summaries**
+does the same for the members' summaries. Re-running the scan (**Scan**) shows a
+progress bar in the status bar while it works.
 
 ![Figure 21: Step comparison](images/21-duplicates-compare.png)
-*Figure 21 — Side-by-side step comparison across the duplicated tests.*
+*Figure 21 — Side-by-side step comparison across the duplicated tests
+(**Compare summaries** offers the same view for summaries).*
 
 ---
 
@@ -425,6 +475,24 @@ as standalone ones; the **Standalone / Sub-task** filter narrows to either kind,
 sub-task entries are tinted in the picker, and the selected execution's card
 shows a **↳ parent** link that opens the parent issue in the browser. They use
 all the same run-result and create-bug features.
+
+**Test Environments & Fix Version(s).** A Test Execution's detail shows its Xray
+**Test Environments** as chips you can edit — add or remove an environment on the
+selected execution, or apply environments to several executions at once — and the
+execution list can be filtered to a chosen environment. The execution's Jira
+**Fix Version(s)** appear alongside as read-only chips. Both standalone and
+sub-task executions are covered.
+
+![Figure 41: Test Environments and Fix Versions on an execution](images/41-execution-environments.png)
+*Figure 41 — A Test Execution showing its editable Test Environments chips and
+its read-only Fix Version(s).*
+
+**Cross-project members.** A Test Execution can include member tests that live in
+a *different* Jira project. These are cached locally and shown on the board with
+their run results just like in-project members, and their linked bugs are
+harvested into the [Bugs panel](#12-defect-tracking) and the test detail. The
+[Traceability](#14-traceability) Execution flow can include or exclude them with
+the **include cross-project members** toggle.
 
 ### Generate a pytest scaffold
 
@@ -469,8 +537,11 @@ bar.
 The **Dashboard** tab summarizes the cached project from the local cache: total
 tests, pending changes, and breakdowns by status, priority, folder, label and
 component, plus execution coverage, requirement coverage, Test Set / Plan /
-Execution counts, a duplicates card, and a recently-updated trend. **Refresh**
-recomputes it from the cache without a sync. The traceability diagrams live in
+Execution counts, a duplicates card, and a recently-updated trend. Filter the
+whole dashboard by **folder**, **component**, and **status** to scope every card
+to a slice of the project. **Refresh** recomputes it from the cache without a
+sync, and **Export XLSX** writes a workbook with a summary sheet plus one sheet
+per breakdown (honouring the active filters). The traceability diagrams live in
 their own [Traceability](#14-traceability) tab.
 
 ![Figure 25: Dashboard](images/25-dashboard.png)
@@ -496,6 +567,11 @@ threads.
   sub-task Test Executions, with a **Parent** filter. Use it to see, per parent
   issue, which sub-task executions ran its tests and how they turned out.
 
+Each tab's toolbar offers **Export XLSX**, which writes the current diagram as a
+flow sheet plus a flat table of the same data. The **include cross-project
+members** toggle controls whether member tests that live in other Jira projects
+are drawn in the flow.
+
 ![Figure 27: Execution traceability](images/27-execution-sankey.png)
 *Figure 27 — The Execution tab: Test Plan → Test Execution → run status.*
 
@@ -508,7 +584,45 @@ Parent filter.*
 
 ---
 
-## 15. Committing changes to Jira
+## 15. Gap analysis
+
+The **Gap Analysis** tab compares two sets of tests and reports what each one is
+missing, so coverage gaps — between two projects, or between a spreadsheet and a
+project — are easy to spot.
+
+Set up the comparison at the top of the tab:
+
+- **Reference** — the baseline to compare against: the **active project** (its
+  cached tests) or an **uploaded** CSV / XLSX file.
+- **Target** — the CSV / XLSX file to check against the reference.
+- **Compare by** — match tests by **summary**, or by **summary + folder** (which
+  also flags tests that match by summary but sit in a different folder).
+- **Three-way** (file reference only) — also compare both files against the
+  active project, for a complete-project view.
+- **Download template** — get a ready-made CSV / XLSX template (full, summary, or
+  summary + folder) to fill in as the reference or target.
+
+Click **Run** to produce the result.
+
+![Figure 39: Gap Analysis setup](images/39-gap-analysis.png)
+*Figure 39 — The Gap Analysis tab: choose the reference and target, the match
+mode, and run.*
+
+The result shows an overview plus two lists — **missing from the reference** and
+**missing from the target** — each paginated and selectable:
+
+- Tick the gaps you want and **Add tests** to create them as pending new tests
+  (commit them later from the Pending list).
+- **Export report** writes a formatted **CSV or Excel** report with a section per
+  list (and the folder mismatches, when comparing by summary + folder).
+
+![Figure 40: Gap Analysis results](images/40-gap-analysis-result.png)
+*Figure 40 — Gap Analysis results: the missing-from-each-side lists with
+select-and-add and the export-report action.*
+
+---
+
+## 16. Committing changes to Jira
 
 All edits — field changes, steps, transitions, links, bugs, new entities,
 deletions — are queued locally as **pending changes**. Nothing reaches Jira
@@ -533,7 +647,7 @@ reported per test:
 
 ---
 
-## 16. Syncing
+## 17. Syncing
 
 **Sync** pulls the latest tests from Jira into the local cache. The status bar
 shows progress per phase (tests, folders, preconditions, containers,
@@ -565,7 +679,7 @@ full sync.
 
 ---
 
-## 17. Settings & profile management
+## 18. Settings & profile management
 
 The **Profile** menu (top-left) manages the active profile:
 
@@ -587,7 +701,7 @@ Switch the **color theme** from **More → Theme: Light / Dark / System**.
 
 ---
 
-## 18. Diagnostics & troubleshooting
+## 19. Diagnostics & troubleshooting
 
 **More → Diagnostics** shows the database path, log path, schema version, and
 environment details — useful when reporting an issue.
@@ -600,7 +714,7 @@ environment details — useful when reporting an issue.
 | Blank window on launch | Install the Microsoft WebView2 runtime, relaunch. |
 | "Backend failed to start" | Note the DB/log path shown, check the log; try removing the database file and relaunching. |
 | Sync shows 0 tests | Check the project key and that the PAT has access; confirm the scope JQL isn't excluding everything. |
-| Edits not in Jira | They are local until you **Commit** (see §15). Check the pending badge. |
+| Edits not in Jira | They are local until you **Commit** (see §16). Check the pending badge. |
 | A commit reports **Conflict** | Sync, then override or keep-remote in the Pending Changes dialog. |
 | Token rejected | Rotate it with **Profile → Set token…**. |
 
