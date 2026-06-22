@@ -798,6 +798,22 @@ export namespace testrepo {
 	        this.totalTestCount = source["totalTestCount"];
 	    }
 	}
+	export class FolderMismatch {
+	    summary: string;
+	    referenceFolder: string;
+	    targetFolder: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FolderMismatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.summary = source["summary"];
+	        this.referenceFolder = source["referenceFolder"];
+	        this.targetFolder = source["targetFolder"];
+	    }
+	}
 	export class GapTest {
 	    summary: string;
 	    description: string;
@@ -827,6 +843,10 @@ export namespace testrepo {
 	    matched: number;
 	    missingFromReference: GapTest[];
 	    missingFromTarget: GapTest[];
+	    threeWay: boolean;
+	    projectCount: number;
+	    missingFromProject: GapTest[];
+	    folderMismatches: FolderMismatch[];
 	
 	    static createFrom(source: any = {}) {
 	        return new GapResult(source);
@@ -840,6 +860,10 @@ export namespace testrepo {
 	        this.matched = source["matched"];
 	        this.missingFromReference = this.convertValues(source["missingFromReference"], GapTest);
 	        this.missingFromTarget = this.convertValues(source["missingFromTarget"], GapTest);
+	        this.threeWay = source["threeWay"];
+	        this.projectCount = source["projectCount"];
+	        this.missingFromProject = this.convertValues(source["missingFromProject"], GapTest);
+	        this.folderMismatches = this.convertValues(source["folderMismatches"], FolderMismatch);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

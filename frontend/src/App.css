@@ -4699,18 +4699,47 @@ tr.row-checked:hover {
 .gap-hint { font-size: 12px; flex: 1; margin: 0; }
 .gap-run > .btn { margin-left: auto; flex-shrink: 0; }
 
-.gap-stats {
+.gap-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.gap-dash {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.gap-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 104px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+}
+.gap-tile-n {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.gap-tile-l {
+  font-size: 12px;
+  color: var(--text-muted, #889);
+}
+.gap-tile-total { border-color: var(--accent, #3884de); }
+.gap-tile-total .gap-tile-n,
+.gap-tile-proj .gap-tile-n { color: var(--accent, #3884de); }
+.gap-dash-actions {
   display: flex;
   align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-  padding: 2px 4px;
+  gap: 8px;
+  margin-left: auto;
 }
-.gap-stat { font-size: 14px; }
-.gap-stat b { font-size: 16px; }
-.gap-stat-add b { color: var(--accent, #3884de); }
-.gap-stat-only b { color: var(--text-muted, #889); }
-.gap-export { margin-left: auto; }
 
 .gap-cols {
   display: grid;
@@ -4737,6 +4766,8 @@ tr.row-checked:hover {
 }
 .gap-dir-in { background: rgba(56, 132, 222, 0.14); color: var(--accent, #3884de); }
 .gap-dir-out { background: rgba(127, 127, 127, 0.14); color: var(--text); }
+.gap-dir-proj { background: rgba(56, 132, 222, 0.14); color: var(--accent, #3884de); }
+.gap-dir-folder { background: rgba(214, 158, 46, 0.16); color: var(--warning, #b7791f); }
 .gap-count {
   margin-left: auto;
   font-weight: 700;
@@ -4781,4 +4812,13 @@ tr.row-checked:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.gap-item-folder {
+  font-size: 11px;
+  font-family: var(--mono, ui-monospace, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .gap-panel-actions { margin-top: auto; }
+.gap-folder-table { width: 100%; }
+.gap-folder-table td { vertical-align: top; }

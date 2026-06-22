@@ -85,6 +85,7 @@ export {
   ExportTests,
   ExportImportTemplate,
   ExportSummaryTemplate,
+  ExportSummaryFolderTemplate,
   ExportRequirementAudit,
   ExportTraceability,
   ExportDashboard,
@@ -156,6 +157,14 @@ export interface GapTest {
   folder: string;
 }
 
+// FolderMismatch mirrors testrepo.FolderMismatch — a summary-matched test whose
+// folder differs between reference and target.
+export interface FolderMismatch {
+  summary: string;
+  referenceFolder: string;
+  targetFolder: string;
+}
+
 // GapResult mirrors testrepo.GapResult — a comparison outcome.
 export interface GapResult {
   referenceSource: string; // "project" | "file"
@@ -164,6 +173,10 @@ export interface GapResult {
   matched: number;
   missingFromReference: GapTest[];
   missingFromTarget: GapTest[];
+  threeWay: boolean;
+  projectCount: number;
+  missingFromProject: GapTest[];
+  folderMismatches: FolderMismatch[];
 }
 
 export interface HealthInfo {

@@ -2183,7 +2183,7 @@ func decodeImport(contentB64 string, isXlsx bool) ([][]string, error) {
 // AnalyzeGap diffs a reference test list against an uploaded target list by
 // normalized summary. refSource "project" uses the active project's cached
 // tests (refB64 ignored); "file" parses refB64. The target is always a file.
-func (a *App) AnalyzeGap(profileID, refSource, refB64 string, refXlsx bool, targetB64 string, targetXlsx bool) (testrepo.GapResult, error) {
+func (a *App) AnalyzeGap(profileID, refSource, refB64 string, refXlsx bool, targetB64 string, targetXlsx bool, threeWay, compareFolders bool) (testrepo.GapResult, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.GapResult{}, err
 	}
@@ -2215,7 +2215,20 @@ func (a *App) AnalyzeGap(profileID, refSource, refB64 string, refXlsx bool, targ
 	if err != nil {
 		return testrepo.GapResult{}, fmt.Errorf("target file: %w", err)
 	}
-	return testrepo.AnalyzeGap(reference, target, refSource), nil
+
+	// Three-way only applies when the reference is a file (otherwise the
+	// reference IS the project). Fetch the project list to diff against.
+	opts := testrepo.GapOptions{ReferenceSource: refSource, CompareFolders: compareFolders}
+	var project []testrepo.GapTest
+	if threeWay && refSource == "file" {
+		tests, err := a.repo.ListTestsForExport(profileID, testrepo.Query{})
+		if err != nil {
+			return testrepo.GapResult{}, err
+		}
+		project = testrepo.GapRowsFromTests(tests)
+		opts.ThreeWay = true
+	}
+	return testrepo.AnalyzeGap(reference, target, project, opts), nil
 }
 
 // CreateTestsFromGaps adds the selected gaps as local pending Tests (committed
@@ -2227,19 +2240,29 @@ func (a *App) CreateTestsFromGaps(profileID string, gaps []testrepo.GapTest) (te
 	return a.repo.CreateTestsFromGaps(profileID, gaps)
 }
 
-// ExportGapReport writes the gap-analysis report to a user-chosen CSV/XLSX file.
-// Returns the saved path, or "" if cancelled.
-func (a *App) ExportGapReport(result testrepo.GapResult) (string, error) {
+// ExportGapReport writes the gap-analysis report to a user-chosen file. format
+// is "csv" or "xlsx" and sets the default extension/filter; the actually-written
+// format follows the saved file's extension. Returns the saved path, or "".
+func (a *App) ExportGapReport(result testrepo.GapResult, format string) (string, error) {
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
+	defaultName := "gap-analysis-report.csv"
+	filters := []runtime.FileFilter{
+		{DisplayName: "CSV", Pattern: "*.csv"},
+		{DisplayName: "Excel", Pattern: "*.xlsx"},
+	}
+	if format == "xlsx" {
+		defaultName = "gap-analysis-report.xlsx"
+		filters = []runtime.FileFilter{
+			{DisplayName: "Excel", Pattern: "*.xlsx"},
+			{DisplayName: "CSV", Pattern: "*.csv"},
+		}
+	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export gap analysis report",
-		DefaultFilename: "gap-analysis-report.csv",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "CSV", Pattern: "*.csv"},
-			{DisplayName: "Excel", Pattern: "*.xlsx"},
-		},
+		DefaultFilename: defaultName,
+		Filters:         filters,
 	})
 	if err != nil {
 		return "", fmt.Errorf("save dialog: %w", err)
@@ -2247,11 +2270,11 @@ func (a *App) ExportGapReport(result testrepo.GapResult) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	format := "csv"
+	writeFormat := "csv"
 	if strings.HasSuffix(strings.ToLower(path), ".xlsx") {
-		format = "xlsx"
+		writeFormat = "xlsx"
 	}
-	data, err := testrepo.BuildGapReport(result, time.Now().Format(time.RFC3339), format)
+	data, err := testrepo.BuildGapReport(result, time.Now().Format(time.RFC3339), writeFormat)
 	if err != nil {
 		return "", err
 	}
@@ -2432,6 +2455,26 @@ func (a *App) ExportSummaryTemplate() (string, error) {
 		return "", nil
 	}
 	if err := os.WriteFile(path, []byte(testrepo.SummaryTemplateCSV()), 0o644); err != nil {
+		return "", fmt.Errorf("write template: %w", err)
+	}
+	return path, nil
+}
+
+// ExportSummaryFolderTemplate writes the summary + folder gap-analysis template
+// to a user-chosen file. Returns the saved path, or "" if cancelled.
+func (a *App) ExportSummaryFolderTemplate() (string, error) {
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save summary + folder template",
+		DefaultFilename: "gap-summary-folder-template.csv",
+		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(path, []byte(testrepo.SummaryFolderTemplateCSV()), 0o644); err != nil {
 		return "", fmt.Errorf("write template: %w", err)
 	}
 	return path, nil

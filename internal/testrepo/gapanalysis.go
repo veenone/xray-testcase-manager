@@ -17,23 +17,55 @@ type GapTest struct {
 	Folder      string   `json:"folder"`
 }
 
+// FolderMismatch is a test matched by summary on both sides whose folder
+// location differs — surfaced when folder comparison is enabled.
+type FolderMismatch struct {
+	Summary         string `json:"summary"`
+	ReferenceFolder string `json:"referenceFolder"`
+	TargetFolder    string `json:"targetFolder"`
+}
+
 // GapResult is the outcome of a comparison. MissingFromReference is in the
 // target but not the reference (addable as tests); MissingFromTarget is in the
 // reference but not the target (report-only). Both gap lists are deduplicated
-// by normalized summary.
+// by normalized summary. The ThreeWay fields are populated only when a project
+// list is supplied (reference-from-file three-way): MissingFromProject is every
+// summary in (reference ∪ target) not yet in the project, so the project can be
+// completed. FolderMismatches is populated when folder comparison is on.
 type GapResult struct {
-	ReferenceSource      string    `json:"referenceSource"` // "project" | "file"
-	ReferenceCount       int       `json:"referenceCount"`
-	TargetCount          int       `json:"targetCount"`
-	Matched              int       `json:"matched"`
-	MissingFromReference []GapTest `json:"missingFromReference"`
-	MissingFromTarget    []GapTest `json:"missingFromTarget"`
+	ReferenceSource      string           `json:"referenceSource"` // "project" | "file"
+	ReferenceCount       int              `json:"referenceCount"`
+	TargetCount          int              `json:"targetCount"`
+	Matched              int              `json:"matched"`
+	MissingFromReference []GapTest        `json:"missingFromReference"`
+	MissingFromTarget    []GapTest        `json:"missingFromTarget"`
+	ThreeWay             bool             `json:"threeWay"`
+	ProjectCount         int              `json:"projectCount"`
+	MissingFromProject   []GapTest        `json:"missingFromProject"`
+	FolderMismatches     []FolderMismatch `json:"folderMismatches"`
+}
+
+// GapOptions configures a comparison.
+type GapOptions struct {
+	ReferenceSource string // "project" | "file"
+	ThreeWay        bool   // also diff against the project list (reference-from-file only)
+	CompareFolders  bool   // report folder mismatches among summary-matched tests
 }
 
 // normalizeSummary is the match key: trim, collapse internal whitespace runs to
 // single spaces, lowercase. Blank stays blank.
 func normalizeSummary(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+}
+
+// normalizeFolder trims surrounding whitespace and a trailing slash so folder
+// paths compare cleanly. Case is preserved (folder paths are case-sensitive).
+func normalizeFolder(s string) string {
+	t := strings.TrimSpace(s)
+	if len(t) > 1 {
+		t = strings.TrimRight(t, "/")
+	}
+	return t
 }
 
 // summarySet returns the set of non-blank normalized summaries in a list.
@@ -63,8 +95,71 @@ func missing(tests []GapTest, other map[string]bool) []GapTest {
 	return out
 }
 
-// AnalyzeGap compares two lists by normalized summary.
-func AnalyzeGap(reference, target []GapTest, referenceSource string) GapResult {
+// unionBySummary merges two lists into one deduplicated by normalized summary,
+// preferring the target's row for a summary present in both (target is the
+// authoritative external list), blanks skipped.
+func unionBySummary(reference, target []GapTest) []GapTest {
+	out := []GapTest{}
+	seen := map[string]bool{}
+	add := func(t GapTest) {
+		k := normalizeSummary(t.Summary)
+		if k == "" || seen[k] {
+			return
+		}
+		seen[k] = true
+		out = append(out, t)
+	}
+	for _, t := range target {
+		add(t)
+	}
+	for _, t := range reference {
+		add(t)
+	}
+	return out
+}
+
+// folderMismatches returns summary-matched tests whose folders differ. Built
+// from the first folder seen per normalized summary on each side.
+func folderMismatches(reference, target []GapTest) []FolderMismatch {
+	refFolder := firstFolderBySummary(reference)
+	targetFolder := firstFolderBySummary(target)
+	out := []FolderMismatch{}
+	seen := map[string]bool{}
+	for _, t := range target {
+		k := normalizeSummary(t.Summary)
+		if k == "" || seen[k] {
+			continue
+		}
+		rf, ok := refFolder[k]
+		if !ok {
+			continue // not matched on the reference side
+		}
+		seen[k] = true
+		if normalizeFolder(rf) != normalizeFolder(targetFolder[k]) {
+			out = append(out, FolderMismatch{Summary: t.Summary, ReferenceFolder: rf, TargetFolder: targetFolder[k]})
+		}
+	}
+	return out
+}
+
+// firstFolderBySummary maps each normalized summary to the first folder seen.
+func firstFolderBySummary(tests []GapTest) map[string]string {
+	m := map[string]string{}
+	for _, t := range tests {
+		k := normalizeSummary(t.Summary)
+		if k == "" {
+			continue
+		}
+		if _, ok := m[k]; !ok {
+			m[k] = t.Folder
+		}
+	}
+	return m
+}
+
+// AnalyzeGap compares a reference and target list by normalized summary, with
+// optional three-way (against project) and folder comparison.
+func AnalyzeGap(reference, target, project []GapTest, opts GapOptions) GapResult {
 	refSet := summarySet(reference)
 	targetSet := summarySet(target)
 	matched := 0
@@ -73,14 +168,26 @@ func AnalyzeGap(reference, target []GapTest, referenceSource string) GapResult {
 			matched++
 		}
 	}
-	return GapResult{
-		ReferenceSource:      referenceSource,
+	res := GapResult{
+		ReferenceSource:      opts.ReferenceSource,
 		ReferenceCount:       len(reference),
 		TargetCount:          len(target),
 		Matched:              matched,
 		MissingFromReference: missing(target, refSet),
 		MissingFromTarget:    missing(reference, targetSet),
+		MissingFromProject:   []GapTest{},
+		FolderMismatches:     []FolderMismatch{},
 	}
+	if opts.ThreeWay {
+		projectSet := summarySet(project)
+		res.ThreeWay = true
+		res.ProjectCount = len(project)
+		res.MissingFromProject = missing(unionBySummary(reference, target), projectSet)
+	}
+	if opts.CompareFolders {
+		res.FolderMismatches = folderMismatches(reference, target)
+	}
+	return res
 }
 
 // gapAutoMapping builds an ImportMapping from a header row by matching each
@@ -240,16 +347,37 @@ func BuildGapReport(result GapResult, generatedAt, format string) ([]byte, error
 		{"Matched", fmt.Sprintf("%d", result.Matched)},
 		{"Missing from reference", fmt.Sprintf("%d", len(result.MissingFromReference))},
 		{"Missing from target", fmt.Sprintf("%d", len(result.MissingFromTarget))},
-		{},
-		{"Missing from reference (in target, not reference)"},
-		gapReportHeader,
 	}
+	if result.ThreeWay {
+		rows = append(rows,
+			[]string{"Project count", fmt.Sprintf("%d", result.ProjectCount)},
+			[]string{"Missing from project", fmt.Sprintf("%d", len(result.MissingFromProject))},
+		)
+	}
+	rows = append(rows,
+		[]string{},
+		[]string{"Missing from reference (in target, not reference)"},
+		gapReportHeader,
+	)
 	for _, g := range result.MissingFromReference {
 		rows = append(rows, gapRow(g))
 	}
 	rows = append(rows, []string{}, []string{"Missing from target (in reference, not target)"}, gapReportHeader)
 	for _, g := range result.MissingFromTarget {
 		rows = append(rows, gapRow(g))
+	}
+	if result.ThreeWay {
+		rows = append(rows, []string{}, []string{"Missing from project (in reference or target, not project)"}, gapReportHeader)
+		for _, g := range result.MissingFromProject {
+			rows = append(rows, gapRow(g))
+		}
+	}
+	if len(result.FolderMismatches) > 0 {
+		rows = append(rows, []string{}, []string{"Folder mismatches (matched by summary, different folder)"},
+			[]string{"Summary", "Reference folder", "Target folder"})
+		for _, m := range result.FolderMismatches {
+			rows = append(rows, []string{m.Summary, m.ReferenceFolder, m.TargetFolder})
+		}
 	}
 	if format == "xlsx" {
 		return writeXLSX(rows)

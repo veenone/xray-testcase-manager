@@ -38,7 +38,7 @@ func TestAnalyzeGapDirectionsAndMatch(t *testing.T) {
 	reference := []GapTest{{Summary: "Login"}, {Summary: "Logout"}, {Summary: "Reset password"}}
 	target := []GapTest{{Summary: "login  "}, {Summary: "SSO login"}, {Summary: "Reset Password"}}
 
-	res := AnalyzeGap(reference, target, "project")
+	res := AnalyzeGap(reference, target, nil, GapOptions{ReferenceSource: "project"})
 	if res.Matched != 2 { // Login + Reset password (case/space-insensitive)
 		t.Errorf("Matched = %d, want 2", res.Matched)
 	}
@@ -56,13 +56,44 @@ func TestAnalyzeGapDirectionsAndMatch(t *testing.T) {
 func TestAnalyzeGapDedupAndBlank(t *testing.T) {
 	reference := []GapTest{}
 	target := []GapTest{{Summary: "Dup"}, {Summary: "dup"}, {Summary: "  "}}
-	res := AnalyzeGap(reference, target, "file")
+	res := AnalyzeGap(reference, target, nil, GapOptions{ReferenceSource: "file"})
 	// "Dup"/"dup" collapse to one gap; blank summary skipped.
 	if len(res.MissingFromReference) != 1 {
 		t.Errorf("MissingFromReference = %+v, want 1 deduped entry", res.MissingFromReference)
 	}
 	if len(res.MissingFromTarget) != 0 {
 		t.Errorf("MissingFromTarget = %+v, want none", res.MissingFromTarget)
+	}
+}
+
+func TestAnalyzeGapThreeWayMissingFromProject(t *testing.T) {
+	reference := []GapTest{{Summary: "Login"}, {Summary: "Bulk export"}}
+	target := []GapTest{{Summary: "Login"}, {Summary: "SSO login"}}
+	project := []GapTest{{Summary: "Login"}} // project only has Login
+	res := AnalyzeGap(reference, target, project, GapOptions{ReferenceSource: "file", ThreeWay: true})
+	if !res.ThreeWay || res.ProjectCount != 1 {
+		t.Fatalf("ThreeWay/%v ProjectCount/%d, want true/1", res.ThreeWay, res.ProjectCount)
+	}
+	// union(reference,target) = {Login, Bulk export, SSO login}; minus project{Login} = {Bulk export, SSO login}
+	got := map[string]bool{}
+	for _, g := range res.MissingFromProject {
+		got[g.Summary] = true
+	}
+	if len(res.MissingFromProject) != 2 || !got["Bulk export"] || !got["SSO login"] {
+		t.Errorf("MissingFromProject = %+v, want [Bulk export, SSO login]", res.MissingFromProject)
+	}
+}
+
+func TestAnalyzeGapFolderMismatch(t *testing.T) {
+	reference := []GapTest{{Summary: "Login", Folder: "/Auth/Login"}, {Summary: "Logout", Folder: "/Auth"}}
+	target := []GapTest{{Summary: "Login", Folder: "/Smoke/Login"}, {Summary: "Logout", Folder: "/Auth/"}}
+	res := AnalyzeGap(reference, target, nil, GapOptions{ReferenceSource: "file", CompareFolders: true})
+	// Login: /Auth/Login vs /Smoke/Login -> mismatch. Logout: /Auth vs /Auth/ -> same after normalize.
+	if len(res.FolderMismatches) != 1 || res.FolderMismatches[0].Summary != "Login" {
+		t.Fatalf("FolderMismatches = %+v, want [Login]", res.FolderMismatches)
+	}
+	if res.FolderMismatches[0].ReferenceFolder != "/Auth/Login" || res.FolderMismatches[0].TargetFolder != "/Smoke/Login" {
+		t.Errorf("mismatch folders = %+v, want /Auth/Login vs /Smoke/Login", res.FolderMismatches[0])
 	}
 }
 

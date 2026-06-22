@@ -18,8 +18,8 @@ export function AllocateTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['AllocateTests'](arg1, arg2, arg3);
 }
 
-export function AnalyzeGap(arg1, arg2, arg3, arg4, arg5, arg6) {
-  return window['go']['main']['App']['AnalyzeGap'](arg1, arg2, arg3, arg4, arg5, arg6);
+export function AnalyzeGap(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['AnalyzeGap'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function BulkAssociatePreconditions(arg1, arg2, arg3, arg4) {
@@ -198,8 +198,8 @@ export function ExportDiagnostics() {
   return window['go']['main']['App']['ExportDiagnostics']();
 }
 
-export function ExportGapReport(arg1) {
-  return window['go']['main']['App']['ExportGapReport'](arg1);
+export function ExportGapReport(arg1, arg2) {
+  return window['go']['main']['App']['ExportGapReport'](arg1, arg2);
 }
 
 export function ExportImportTemplate() {
@@ -220,6 +220,10 @@ export function ExportPytest(arg1, arg2, arg3) {
 
 export function ExportRequirementAudit(arg1) {
   return window['go']['main']['App']['ExportRequirementAudit'](arg1);
+}
+
+export function ExportSummaryFolderTemplate() {
+  return window['go']['main']['App']['ExportSummaryFolderTemplate']();
 }
 
 export function ExportSummaryTemplate() {

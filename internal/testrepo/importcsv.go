@@ -372,3 +372,12 @@ func SummaryTemplateCSV() string {
 		"Logout clears the session\n" +
 		"Password reset email is sent\n"
 }
+
+// SummaryFolderTemplateCSV returns a Summary + Folder template — for gap
+// analysis where folder locations are compared alongside summaries.
+func SummaryFolderTemplateCSV() string {
+	return "Summary,Folder\n" +
+		"Login with valid credentials,/Authentication/Login\n" +
+		"Logout clears the session,/Authentication/Login\n" +
+		"Password reset email is sent,/Authentication/Recovery\n"
+}
