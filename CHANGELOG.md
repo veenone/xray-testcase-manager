@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [1.6.0] - 2026-06-22
+
+### Added
+- **Cross-project Test Execution support.** Tests that live in another Jira
+  project now appear on the execution board (cached locally), their linked bugs
+  are harvested and shown, and an "include cross-project members" toggle controls
+  whether they are drawn in the execution traceability flow. (RND_P_4TFINT_05-219)
+- **Traceability XLSX export.** Export the active Traceability tab to an XLSX with
+  a Sankey flow sheet and a flat table sheet. (RND_P_4TFINT_05-221)
+- **Create a Test Execution from selected bugs**, to isolate a run that verifies
+  only those bugs. (RND_P_4TFINT_05-222)
+- **Execution Type field.** The Xray Test Type (Manual / Automated / Generic /
+  Cucumber) on tests, with a Browse column, a filter, bulk edit and detail edit.
+  (RND_P_4TFINT_05-230)
+- **Test Environments on executions** (standalone and sub-task): chips, a filter,
+  and single and bulk edit. (RND_P_4TFINT_05-229)
+- **Fix Version(s) on executions.** Read-only display of the Jira Fix Version(s)
+  field on Test Executions. (RND_P_4TFINT_05-234)
+- **Dashboard filters and export.** Folder / component / status filters, and an
+  Export to XLSX (summary plus per-breakdown sheets). (RND_P_4TFINT_05-228,
+  RND_P_4TFINT_05-235)
+- **Duplicates: compare summaries** side by side, plus a **scan-steps progress**
+  bar. (RND_P_4TFINT_05-225, RND_P_4TFINT_05-226)
+- **Multi-pick add** of requirements and preconditions on a test, and **swap
+  (replace)** preconditions and requirements in one step, single and bulk.
+  (RND_P_4TFINT_05-224, RND_P_4TFINT_05-231)
+- **Add tests to a requirement** directly from the Requirements view.
+  (RND_P_4TFINT_05-233)
+- **Test Case Gap Analysis.** Compare a project or an imported CSV / XLSX file
+  against a project, with a dashboard overview, three-way (complete-project) and
+  folder comparison, create-tests-from-gaps, and a formatted Excel report.
+  (RND_P_4TFINT_05-232)
+- **Live Jira / Xray REST wiring (Phase 7).** Every call in the Jira client now
+  has a real implementation behind the demo short-circuit (no demo-only stubs
+  remain): bug list and defect create / link, cross-project member fetch, Test
+  Type, Test Environments, requirement coverage links, generic custom fields,
+  Test Repository folder create / rename / delete, and issue comments. Instance-
+  specific shapes are flagged for verification against a live instance.
+  (RND_P_4TFINT_05-236)
+- **GNU GPL-3.0 license.**
+
+### Changed
+- **Test Calls** view shows per-caller sync progress and a toolbar aligned with
+  the other views. (RND_P_4TFINT_05-227)
+- **Dashboard** groups the Export / Refresh buttons and tiles the summary,
+  coverage and trend panels into a compact layout. (RND_P_4TFINT_05-235)
+
+### Fixed
+- The requirement / precondition picker dropdown in the test detail was truncated
+  by the panel's left border. (RND_P_4TFINT_05-223)
+- The Bugs search returned an empty list on a live Jira, because the live bug
+  list was not yet wired. (RND_P_4TFINT_05-220)
+
 ## [1.5.0] - 2026-06-19
 
 ### Added
@@ -173,6 +226,7 @@ with on-commit sync, bulk operations, Test Sets/Plans/Executions, Test
 Repository folders, preconditions, CSV/XLSX import & export, pytest scaffold,
 statistics dashboard, diagnostics, light/dark themes, profile management).
 
+[1.6.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.6.0
 [1.5.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.5.0
 [1.4.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.4.0
 [1.3.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.3.0
