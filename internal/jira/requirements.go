@@ -23,6 +23,14 @@ type Requirement struct {
 	Updated    string
 }
 
+// coverageLinkType is the Xray requirement-coverage issue-link type. "Tests"
+// is the conventional Xray name (inward "is tested by", outward "tests").
+// NOTE(xtm): the exact link-type name and its direction may vary per Xray
+// instance; verify against the live Xray Server/DC 8.4.0 instance and make this
+// configurable if needed. Like defectLinkType, we POST by type name without a
+// resolver.
+const coverageLinkType = "Tests"
+
 // RequirementLink is a Test <-> Requirement coverage link.
 type RequirementLink struct {
 	TestKey        string
@@ -204,21 +212,48 @@ func (c *Client) searchRequirements(ctx context.Context, spec RequirementSourceS
 
 // UpdateTestRequirements creates and removes Test<->Requirement coverage links.
 // add holds requirement keys to link; removeLinkIDs holds the Jira issueLink ids
-// to delete. Demo URLs short-circuit to a no-op.
+// to delete (captured into RequirementLink.LinkID during sync). Demo URLs
+// short-circuit to a no-op.
 //
-// TODO(xtm): real path — resolve the coverage issue-link type once
-// (GET /rest/api/2/issueLinkType, default "Tests"/"is tested by"); for each add,
-// POST /rest/api/2/issueLink {type, inwardIssue:test, outwardIssue:requirement}
-// (verify direction); for each removeLinkID, DELETE /rest/api/2/issueLink/{id}.
-// Verify on a live Xray Server 8.4.0 instance.
+// Live path: for each removeLinkID, DELETE /rest/api/2/issueLink/{id}; then for
+// each requirement key in add, POST /rest/api/2/issueLink with
+// {type:{name:coverageLinkType}, inwardIssue:{key:requirement},
+// outwardIssue:{key:test}} (Jira answers 201 with no body), mirroring
+// CreateBugLink. Blank keys/ids are skipped defensively. This is a commit write:
+// the first error encountered is returned so the pending change is retried
+// rather than silently reported as success.
+//
+// NOTE(xtm): the coverage link type (coverageLinkType, default "Tests") and its
+// direction (a Test "tests" a requirement, so outwardIssue = the Test,
+// inwardIssue = the requirement) should be verified against the live Xray
+// Server/DC 8.4.0 instance; the name and direction may differ per instance.
 func (c *Client) UpdateTestRequirements(ctx context.Context, testKey string, add []string, removeLinkIDs []string) error {
-	_ = ctx
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
-	_ = testKey
-	_ = add
-	_ = removeLinkIDs
+	for _, id := range removeLinkIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if err := c.delete(ctx, "/rest/api/2/issueLink/"+id); err != nil {
+			return err
+		}
+	}
+	for _, reqKey := range add {
+		reqKey = strings.TrimSpace(reqKey)
+		if reqKey == "" {
+			continue
+		}
+		body := map[string]any{
+			"type":         map[string]string{"name": coverageLinkType},
+			"inwardIssue":  map[string]string{"key": reqKey},
+			"outwardIssue": map[string]string{"key": testKey},
+		}
+		if err := c.writeJSONReturning(ctx, http.MethodPost, "/rest/api/2/issueLink", body, nil); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
