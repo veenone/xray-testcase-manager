@@ -2286,6 +2286,35 @@ func (a *App) ExportTraceability(profileID, kind string, planFilters, execFilter
 	return path, nil
 }
 
+// ExportDashboard exports the statistics Dashboard to an XLSX with a Summary
+// sheet and one sheet per breakdown distribution, respecting the current
+// folder/component/status filters (RND_P_4TFINT_05). Returns the saved path, or
+// "" if cancelled.
+func (a *App) ExportDashboard(profileID, folder, component, status string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export dashboard",
+		DefaultFilename: "dashboard.xlsx",
+		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	data, err := a.repo.ExportDashboardSheets(profileID, folder, component, status)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "", fmt.Errorf("write export: %w", err)
+	}
+	return path, nil
+}
+
 // ExportImportTemplate writes a starter CSV import template to a user-chosen
 // file (FR-10.3). Returns the saved path, or "" if cancelled.
 func (a *App) ExportImportTemplate() (string, error) {

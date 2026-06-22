@@ -86,6 +86,7 @@ export {
   ExportImportTemplate,
   ExportRequirementAudit,
   ExportTraceability,
+  ExportDashboard,
   CreateSavedView,
   ListSavedViews,
   DeleteSavedView,

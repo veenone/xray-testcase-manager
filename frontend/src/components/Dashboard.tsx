@@ -4,6 +4,7 @@ import {
   ListFolders,
   ListComponents,
   ListStatuses,
+  ExportDashboard,
   errMsg,
 } from "../api";
 import type { Statistics, Bucket } from "../api";
@@ -31,6 +32,10 @@ export function Dashboard({
   const [loading, setLoading] = useState(true);
   // Local refresh: recompute the dashboard from the cache without a full sync (#7).
   const [nonce, setNonce] = useState(0);
+  // XLSX export state (RND_P_4TFINT_05): mirror TraceabilityTabs' notice pattern.
+  const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
+  const [exportErr, setExportErr] = useState("");
 
   // Filter selections + their option lists, loaded from existing bindings.
   const [folder, setFolder] = useState("");
@@ -87,6 +92,22 @@ export function Dashboard({
       cancelled = true;
     };
   }, [profileId, refreshKey, nonce, folder, component, status]);
+
+  // Export the dashboard to XLSX honouring the current folder/component/status
+  // filters, so the workbook matches the on-screen scope.
+  async function exportDashboard() {
+    setExporting(true);
+    setExportErr("");
+    setExportNotice("");
+    try {
+      const path = await ExportDashboard(profileId, folder, component, status);
+      if (path) setExportNotice(`Saved to ${path}`);
+    } catch (e) {
+      setExportErr(errMsg(e));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (loading && !stats) {
     return <div className="dashboard muted">Loading…</div>;
@@ -174,12 +195,22 @@ export function Dashboard({
         {filterBar}
         <button
           className="btn"
+          onClick={exportDashboard}
+          disabled={exporting}
+          title="Export the dashboard (Summary + breakdowns) to XLSX, honouring the current filters"
+        >
+          {exporting ? "Exporting…" : "Export XLSX"}
+        </button>
+        <button
+          className="btn"
           onClick={() => setNonce((n) => n + 1)}
           title="Recompute the dashboard from the local cache"
         >
           ↻ Refresh
         </button>
       </div>
+      {exportErr && <p className="error-text">{exportErr}</p>}
+      {exportNotice && <p className="muted">{exportNotice}</p>}
       <DuplicatesCard
         profileId={profileId}
         refreshKey={refreshKey}

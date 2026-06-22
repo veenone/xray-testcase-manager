@@ -19,15 +19,15 @@ export function BulkAssociatePreconditions(arg1:string,arg2:Array<string>,arg3:A
 
 export function BulkAssociateRequirements(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:boolean):Promise<testrepo.BulkEditResult>;
 
-export function BulkReplacePreconditions(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:Array<string>):Promise<testrepo.BulkEditResult>;
-
-export function BulkReplaceRequirements(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:Array<string>):Promise<testrepo.BulkEditResult>;
-
 export function BulkEditContainers(arg1:string,arg2:Array<string>,arg3:testrepo.BulkEdit):Promise<testrepo.BulkEditResult>;
 
 export function BulkEditTests(arg1:string,arg2:Array<string>,arg3:testrepo.BulkEdit):Promise<testrepo.BulkEditResult>;
 
 export function BulkMoveToFolder(arg1:string,arg2:Array<string>,arg3:string):Promise<testrepo.BulkEditResult>;
+
+export function BulkReplacePreconditions(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:Array<string>):Promise<testrepo.BulkEditResult>;
+
+export function BulkReplaceRequirements(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:Array<string>):Promise<testrepo.BulkEditResult>;
 
 export function BulkReviewTests(arg1:string,arg2:Array<string>,arg3:string,arg4:string,arg5:string):Promise<testrepo.BulkEditResult>;
 
@@ -98,6 +98,8 @@ export function EditTestField(arg1:string,arg2:string,arg3:string,arg4:string):P
 export function EditTestStepField(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
 
 export function ExcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
+
+export function ExportDashboard(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function ExportDiagnostics():Promise<string>;
 
@@ -235,11 +237,11 @@ export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;
 
 export function SeedSampleContainers(arg1:string):Promise<testrepo.SeedResult>;
 
+export function SetContainerEnvironments(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
+
 export function SetDefaultProfile(arg1:string):Promise<void>;
 
 export function SetRequirementSource(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
-
-export function SetContainerEnvironments(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function SetTestPreconditions(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 

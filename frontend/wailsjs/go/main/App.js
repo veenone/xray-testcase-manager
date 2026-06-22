@@ -26,14 +26,6 @@ export function BulkAssociateRequirements(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BulkAssociateRequirements'](arg1, arg2, arg3, arg4);
 }
 
-export function BulkReplacePreconditions(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['BulkReplacePreconditions'](arg1, arg2, arg3, arg4);
-}
-
-export function BulkReplaceRequirements(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['BulkReplaceRequirements'](arg1, arg2, arg3, arg4);
-}
-
 export function BulkEditContainers(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkEditContainers'](arg1, arg2, arg3);
 }
@@ -44,6 +36,14 @@ export function BulkEditTests(arg1, arg2, arg3) {
 
 export function BulkMoveToFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkMoveToFolder'](arg1, arg2, arg3);
+}
+
+export function BulkReplacePreconditions(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BulkReplacePreconditions'](arg1, arg2, arg3, arg4);
+}
+
+export function BulkReplaceRequirements(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BulkReplaceRequirements'](arg1, arg2, arg3, arg4);
 }
 
 export function BulkReviewTests(arg1, arg2, arg3, arg4, arg5) {
@@ -196,6 +196,10 @@ export function ExportImportTemplate() {
 
 export function ExportProfile(arg1) {
   return window['go']['main']['App']['ExportProfile'](arg1);
+}
+
+export function ExportDashboard(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ExportDashboard'](arg1, arg2, arg3, arg4);
 }
 
 export function ExportPytest(arg1, arg2, arg3) {
@@ -458,16 +462,16 @@ export function SeedSampleContainers(arg1) {
   return window['go']['main']['App']['SeedSampleContainers'](arg1);
 }
 
+export function SetContainerEnvironments(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetContainerEnvironments'](arg1, arg2, arg3);
+}
+
 export function SetDefaultProfile(arg1) {
   return window['go']['main']['App']['SetDefaultProfile'](arg1);
 }
 
 export function SetRequirementSource(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetRequirementSource'](arg1, arg2, arg3, arg4);
-}
-
-export function SetContainerEnvironments(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SetContainerEnvironments'](arg1, arg2, arg3);
 }
 
 export function SetTestPreconditions(arg1, arg2, arg3) {
