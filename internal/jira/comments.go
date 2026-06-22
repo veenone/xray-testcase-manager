@@ -6,12 +6,12 @@ import "context"
 // Test issue (test review). Demo URLs short-circuit to a no-op.
 //
 // Maps to POST /rest/api/2/issue/{key}/comment with a {"body": "..."} payload.
-// NOTE(xtm): verify the comment body shape on a live Jira DC instance (plain
-// text vs. Atlassian document format differs across versions).
+// NOTE(xtm): implemented against the Jira DC 8.x shape, where the comment "body"
+// is a plain-text string. Atlassian document format (a nested object) is a Jira
+// Cloud concern; confirm the plain-text shape on the target live instance.
 func (c *Client) AddComment(ctx context.Context, issueKey, body string) error {
-	_ = ctx
 	if isDemoURL(c.baseURL) {
 		return nil
 	}
-	return nil
+	return c.post(ctx, "/rest/api/2/issue/"+issueKey+"/comment", map[string]any{"body": body})
 }
