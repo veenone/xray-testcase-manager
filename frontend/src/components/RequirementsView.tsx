@@ -6,10 +6,12 @@ import {
   DeleteRequirement,
   ExportRequirementAudit,
   SyncRequirements,
+  BulkAssociateRequirements,
   errMsg,
 } from "../api";
 import type { RequirementCoverage, RequirementTest } from "../api";
 import { RequirementSourcesModal } from "./RequirementSourcesModal";
+import { AddTestsModal } from "./AddTestsModal";
 import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
@@ -73,6 +75,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showSources, setShowSources] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
   const [draftSummary, setDraftSummary] = useState("");
   const [busy, setBusy] = useState(false);
@@ -445,9 +448,17 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               </h2>
             )}
 
-            <h4>
-              Covering tests ({tests.length})
-            </h4>
+            <div className="precond-tests-head">
+              <h4>Covering tests ({tests.length})</h4>
+              <button
+                className="btn"
+                onClick={() => setShowAdd(true)}
+                disabled={!sel}
+                title="Link tests to this requirement"
+              >
+                + Add tests
+              </button>
+            </div>
             {tests.length === 0 ? (
               <p className="muted">No tests cover this requirement.</p>
             ) : (
@@ -509,6 +520,25 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
         <RequirementSourcesModal
           profileId={profileId}
           onClose={() => setShowSources(false)}
+        />
+      )}
+
+      {showAdd && sel && (
+        <AddTestsModal
+          profileId={profileId}
+          containerKey={selected}
+          targetLabel={sel.key}
+          existingKeys={tests.map((t) => t.key)}
+          onAdd={(keys) =>
+            BulkAssociateRequirements(profileId, keys, [selected], true).then(
+              () => undefined,
+            )
+          }
+          onCancel={() => setShowAdd(false)}
+          onDone={() => {
+            setShowAdd(false);
+            onChanged?.();
+          }}
         />
       )}
 
