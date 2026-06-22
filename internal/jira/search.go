@@ -2,7 +2,9 @@ package jira
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -126,9 +128,9 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 // issue's key and issue type (so the cross-project harvest can keep only the
 // links whose target is a defect matching the profile's configured bug issue
 // type), plus the linked issue's basics so the harvested bug row carries a
-// summary/status/priority instead of a bare key (#219). The live path resolves
-// the basics from a batch fetch of the linked issues; the demo fills them
-// deterministically.
+// summary/status/priority instead of a bare key (#219). Populated by both the
+// demo generator and the live path, which reads the basics from each Test's
+// issuelink expansion (the same shape ListBugs consumes).
 type BugLinkRef struct {
 	Key        string
 	IssueType  string
@@ -149,9 +151,107 @@ type TestBasic struct {
 	Status     string
 	ProjectKey string
 	// IssueLinks are the issues this Test links to (key + issue type), used to
-	// harvest bugs reached through cross-project member Tests. Populated only in
-	// demo mode for now; the live read is a documented TODO(xtm).
+	// harvest bugs reached through cross-project member Tests. Populated by both
+	// the demo generator and the live `key in (...)` search (it requests
+	// fields=...,issuelinks and maps each link's linked issue).
 	IssueLinks []BugLinkRef
+}
+
+// testBasicLinkedFields are the linked-issue fields carried inside an issuelink
+// expansion that a TestBasic needs: summary plus the name-bearing status /
+// priority / issuetype objects. Mirrors bugLinkedFields (bugs.go); kept separate
+// only so the field set reads with the TestBasic mapping.
+type testBasicLinkedFields struct {
+	Summary   string    `json:"summary"`
+	Status    *nameOnly `json:"status"`
+	Priority  *nameOnly `json:"priority"`
+	IssueType *nameOnly `json:"issuetype"`
+}
+
+// testBasicLinkedIssue is the inward/outward issue carried on an issuelink: its
+// key plus the basic fields above.
+type testBasicLinkedIssue struct {
+	Key    string                `json:"key"`
+	Fields testBasicLinkedFields `json:"fields"`
+}
+
+// testBasicIssueLink is one entry of a Test's issuelinks: the link id and
+// whichever of inward/outward issue is the linked counterpart.
+type testBasicIssueLink struct {
+	ID           string                `json:"id"`
+	InwardIssue  *testBasicLinkedIssue `json:"inwardIssue"`
+	OutwardIssue *testBasicLinkedIssue `json:"outwardIssue"`
+}
+
+// testBasicFields is the fields object of a Test issue in the basics search: the
+// Test-level summary / status / project plus its issuelinks.
+type testBasicFields struct {
+	Summary string    `json:"summary"`
+	Status  *nameOnly `json:"status"`
+	Project *struct {
+		Key string `json:"key"`
+	} `json:"project"`
+	IssueLinks []testBasicIssueLink `json:"issuelinks"`
+}
+
+// testBasicIssue is one Test issue returned by the basics search.
+type testBasicIssue struct {
+	Key    string          `json:"key"`
+	Fields testBasicFields `json:"fields"`
+}
+
+// testBasicResponse is the /rest/api/2/search payload for ListTestsBasic.
+type testBasicResponse struct {
+	Total  int              `json:"total"`
+	Issues []testBasicIssue `json:"issues"`
+}
+
+// testBasicFieldList are the issue fields requested by the basics search: enough
+// for the board (summary, status), the owning project, and the issuelinks the
+// cross-project bug harvest walks.
+const testBasicFieldList = "summary,status,project,issuelinks"
+
+// parseTestBasics is the pure mapping from search issues to TestBasic rows: it
+// is unit-tested without a network call. Each issue's summary / status / project
+// become the TestBasic basics (ProjectKey falls back to the key prefix via
+// bugProjectKey when the project object is absent), and every issuelink's
+// non-nil inward/outward issue becomes a BugLinkRef carrying the linked issue's
+// key, issuetype, link id, project, summary, status, and priority - exactly the
+// fields harvestExternalBugs (internal/syncer/engine.go) reads.
+func parseTestBasics(issues []testBasicIssue) []TestBasic {
+	out := make([]TestBasic, 0, len(issues))
+	for _, iss := range issues {
+		tb := TestBasic{
+			Key:        iss.Key,
+			Summary:    iss.Fields.Summary,
+			Status:     iss.Fields.Status.nameOr(),
+			ProjectKey: bugProjectKey(iss.Key),
+		}
+		if iss.Fields.Project != nil && iss.Fields.Project.Key != "" {
+			tb.ProjectKey = iss.Fields.Project.Key
+		}
+		for _, lk := range iss.Fields.IssueLinks {
+			linked := lk.InwardIssue
+			if linked == nil {
+				linked = lk.OutwardIssue
+			}
+			if linked == nil || linked.Key == "" {
+				continue
+			}
+			projectKey := bugProjectKey(linked.Key)
+			tb.IssueLinks = append(tb.IssueLinks, BugLinkRef{
+				Key:        linked.Key,
+				IssueType:  linked.Fields.IssueType.nameOr(),
+				LinkID:     lk.ID,
+				ProjectKey: projectKey,
+				Summary:    linked.Fields.Summary,
+				Status:     linked.Fields.Status.nameOr(),
+				Priority:   linked.Fields.Priority.nameOr(),
+			})
+		}
+		out = append(out, tb)
+	}
+	return out
 }
 
 // ListTestsBasic fetches the basics (summary, status, project, issue links) of
@@ -163,10 +263,24 @@ type TestBasic struct {
 //
 // Demo mode returns deterministic entries for the seeded XRAYINT-* keys (and any
 // other key it can parse), including a bug link on at least one member so the
-// harvest is exercised offline. The real path is a documented TODO(xtm): a live
-// `key in (...)` search (fields=summary,status,project,issuelinks) is plausible
-// but unverified against an Xray Server/DC instance, so it returns empty rather
-// than issuing an unverified call from tests.
+// harvest is exercised offline.
+//
+// Live path: the keys are chunked (cap bugSearchKeyChunk, ~50 per clause) into
+// `key in (...)` JQL searches requesting fields=summary,status,project,
+// issuelinks, paged to the reported total. Each returned issue maps to a
+// TestBasic (summary, status, project; ProjectKey falls back to the key prefix),
+// and every issuelink's non-nil inward/outward issue becomes a BugLinkRef with
+// the linked issue's basics, which feeds the cross-project bug harvest. A chunk
+// rejected with 400 logs and is skipped (best-effort), mirroring ListBugs; other
+// errors abort.
+//
+// NOTE(xtm): the `key in (...)` search and the issuelink expansion shape (the
+// linked issue carrying summary / status / priority / issuetype under fields)
+// were implemented per Jira DC conventions and should be verified against the
+// live Xray Server/DC 8.4.0 instance. Like ListBugs, if a given instance omits
+// the linked-issue fields from the issuelink expansion, a second `key in
+// (...)&fields=summary,status,priority,issuetype,project` enrich pass would be
+// needed for the linked issues.
 func (c *Client) ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic, error) {
 	if len(keys) == 0 {
 		return []TestBasic{}, nil
@@ -179,15 +293,63 @@ func (c *Client) ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic
 		return out, nil
 	}
 
-	// TODO(xtm): wire the live chunked `key in (...)` search once verified on a
-	// real Xray Server/DC instance. The intended shape is:
-	//
-	//   for each chunk of keys (cap ~50 per `key in (...)`):
-	//     jql := `key in (` + strings.Join(chunk, ",") + `)`
-	//     GET /rest/api/2/search?jql=...&fields=summary,status,project,issuelinks
-	//     map issues -> TestBasic{Key, Summary, Status, ProjectKey, IssueLinks}
-	//       where IssueLinks = each issuelink's inward/outward issue {key, issuetype}
-	return []TestBasic{}, nil
+	out := []TestBasic{}
+	for _, chunk := range chunkKeys(keys, bugSearchKeyChunk) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		issues, err := c.searchTestBasics(ctx, chunk)
+		if err != nil {
+			var he *HTTPError
+			if errors.As(err, &he) && he.Code == http.StatusBadRequest {
+				// Bad chunk (e.g. a key the instance rejects); skip it rather
+				// than abort the whole pull.
+				log.Printf("xtm: test-basics search rejected for chunk of %d keys: %v", len(chunk), err)
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, parseTestBasics(issues)...)
+	}
+	return out, nil
+}
+
+// searchTestBasics pages a `key in (...)` search over one chunk of Test keys,
+// requesting the basics plus issuelinks, and returns the decoded issues.
+func (c *Client) searchTestBasics(ctx context.Context, keys []string) ([]testBasicIssue, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	quoted := make([]string, len(keys))
+	for i, k := range keys {
+		quoted[i] = `"` + strings.TrimSpace(k) + `"`
+	}
+	jql := "key in (" + strings.Join(quoted, ", ") + ") ORDER BY key ASC"
+
+	issues := []testBasicIssue{}
+	startAt := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		q := url.Values{}
+		q.Set("jql", jql)
+		q.Set("startAt", strconv.Itoa(startAt))
+		q.Set("maxResults", "100")
+		q.Set("fields", testBasicFieldList)
+
+		var resp testBasicResponse
+		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
+			return nil, err
+		}
+		issues = append(issues, resp.Issues...)
+		startAt += len(resp.Issues)
+		if len(resp.Issues) == 0 || startAt >= resp.Total {
+			break
+		}
+		time.Sleep(throttleContainers)
+	}
+	return issues, nil
 }
 
 // GetTestFields fetches one Test's current field values from Jira — the
