@@ -442,11 +442,11 @@ export namespace testrepo {
 	    status: string;
 	    priority: string;
 	    updated: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Bug(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
@@ -591,6 +591,7 @@ export namespace testrepo {
 	    parentKey: string;
 	    issueType: string;
 	    environments: string[];
+	    fixVersions: string[];
 
 	    static createFrom(source: any = {}) {
 	        return new Container(source);
@@ -605,6 +606,7 @@ export namespace testrepo {
 	        this.parentKey = source["parentKey"];
 	        this.issueType = source["issueType"];
 	        this.environments = source["environments"];
+	        this.fixVersions = source["fixVersions"];
 	    }
 	}
 	export class ContainerMembership {
@@ -679,11 +681,11 @@ export namespace testrepo {
 	    description: string;
 	    status: string;
 	    folderId: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new DuplicateMember(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
@@ -898,11 +900,11 @@ export namespace testrepo {
 	    updated: string;
 	    folderId: string;
 	    execType: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new TestCase(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
@@ -1042,11 +1044,11 @@ export namespace testrepo {
 	    desc: boolean;
 	    limit: number;
 	    offset: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Query(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.search = source["search"];
@@ -1493,11 +1495,11 @@ export namespace testrepo {
 	    status: string;
 	    runStatus: string;
 	    isExternal: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new TestPlanBoardRow(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.testKey = source["testKey"];

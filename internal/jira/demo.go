@@ -429,6 +429,18 @@ func demoEnvironments(i int) []string {
 	return subsets[i%len(subsets)]
 }
 
+// demoFixVersions returns a deterministic Jira Fix Version(s) set for the i-th
+// execution, cycling a few small subsets so the read-only chips show offline.
+// Test Sets / Plans are left empty (they carry no Fix Version field here).
+func demoFixVersions(i int) []string {
+	subsets := [][]string{
+		{"1.5.0"},
+		{"1.6.0"},
+		{"1.5.0", "1.6.0"},
+	}
+	return subsets[i%len(subsets)]
+}
+
 // demoLinkedTests caps how many of the low-numbered demo Tests get container
 // memberships, keeping the demo link table small while still giving the most
 // commonly-opened Tests (DEMO-1…) sets, plans and executions to display.
@@ -481,6 +493,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			Summary:      fmt.Sprintf("Cycle %d execution", i+1),
 			Status:       demoExecStatuses[i%len(demoExecStatuses)],
 			Environments: demoEnvironments(i),
+			FixVersions:  demoFixVersions(i),
 		})
 	}
 
@@ -498,6 +511,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			Summary:      fmt.Sprintf("%s integration cycle %d", crossProject, i+1),
 			Status:       demoExecStatuses[i%len(demoExecStatuses)],
 			Environments: demoEnvironments(execCount + i),
+			FixVersions:  demoFixVersions(execCount + i),
 		})
 	}
 
@@ -513,6 +527,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		Summary:      "Cross-project integration cycle",
 		Status:       demoExecStatuses[0],
 		Environments: demoEnvironments(0),
+		FixVersions:  demoFixVersions(0),
 	})
 	for i := 1; i <= demoExternalMembers; i++ {
 		links = append(links, ContainerLink{
@@ -538,6 +553,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			ParentKey:    fmt.Sprintf("%s-S-%d", projectKey, i+1),
 			IssueType:    "Sub Test Execution",
 			Environments: demoEnvironments(execCount + len(crossExecKeys) + i),
+			FixVersions:  demoFixVersions(execCount + len(crossExecKeys) + i),
 		})
 	}
 

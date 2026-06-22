@@ -21,6 +21,23 @@ func encodeEnvironments(envs []string) string {
 	return string(b)
 }
 
+// encodeFixVersions serialises the Jira Fix Version(s) of an execution into the
+// stored JSON array string, preserving the order Jira returned them in (unlike
+// environments, these are read-only display values, never edited or filtered, so
+// there is no need to sort/dedupe for stable comparison). An empty set stores ""
+// so the column default and "no fix versions" coincide.
+func encodeFixVersions(versions []string) string {
+	if len(versions) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(versions)
+	return string(b)
+}
+
+// decodeFixVersions parses the stored JSON array back into a slice (reusing the
+// environments decoder, which returns an empty slice for "" / malformed input).
+func decodeFixVersions(stored string) []string { return decodeEnvironments(stored) }
+
 // decodeEnvironments parses the stored JSON array back into a slice, returning
 // an empty slice for "" / malformed input.
 func decodeEnvironments(stored string) []string {

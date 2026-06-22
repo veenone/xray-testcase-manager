@@ -1308,6 +1308,11 @@ i.sankey-node-l2 {
   background: #1d4ed8;
   color: #fff;
 }
+/* Fix version(s) are read-only display chips; a distinct (slate) color marks
+   them apart from the editable blue environment chips. */
+.fix-version-chip {
+  background: #475569;
+}
 .env-chip-remove {
   border: none;
   background: transparent;

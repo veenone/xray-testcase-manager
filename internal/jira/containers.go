@@ -38,6 +38,11 @@ type Container struct {
 	// (Client.testEnvironmentsFieldID), requests it on testexec issues, and
 	// parses the multi-value option list (parseOptionValues). Demo mode seeds it.
 	Environments []string
+	// FixVersions is the standard Jira Fix Version(s) field on a Test Execution
+	// (empty for Test Sets / Plans). It is a plain Jira field (array of {name}),
+	// requested by literal name on the testexec search and shown read-only, with
+	// no custom-field resolution and no editing. Demo mode seeds it.
+	FixVersions []string
 }
 
 // ContainerLink is one Test's membership in a Container. RunStatus carries the
@@ -161,6 +166,9 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 	fields := "summary,status,issuetype,parent"
 	envFieldID := ""
 	if kind == KindTestExec {
+		// Fix Version(s) is a standard Jira field, requested by its literal name
+		// (no resolver). It is shown read-only on executions.
+		fields = fields + ",fixVersions"
 		id, err := c.testEnvironmentsFieldID(ctx)
 		if err != nil {
 			log.Printf("xtm: resolve Test Environments custom field failed, syncing executions without environments: %v", err)
@@ -228,6 +236,9 @@ type containerIssueFields struct {
 	Parent *struct {
 		Key string `json:"key"`
 	} `json:"parent"`
+	FixVersions []struct {
+		Name string `json:"name"`
+	} `json:"fixVersions"`
 }
 
 // parseContainerIssue maps one container search issue (raw `fields` plus key) into
@@ -249,6 +260,13 @@ func parseContainerIssue(key, kind string, rawFields json.RawMessage, envFieldID
 	}
 	if kind == KindTestExec && envFieldID != "" {
 		ct.Environments = environmentsFromRawFields(rawFields, envFieldID)
+	}
+	if kind == KindTestExec {
+		for _, v := range f.FixVersions {
+			if name := strings.TrimSpace(v.Name); name != "" {
+				ct.FixVersions = append(ct.FixVersions, name)
+			}
+		}
 	}
 	return ct
 }

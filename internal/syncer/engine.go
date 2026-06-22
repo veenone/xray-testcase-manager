@@ -301,6 +301,7 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 			ParentKey:    c.ParentKey,
 			IssueType:    c.IssueType,
 			Environments: c.Environments,
+			FixVersions:  c.FixVersions,
 		}
 	}
 	if err := e.repo.UpsertContainers(profileID, repoContainers); err != nil {

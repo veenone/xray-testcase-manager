@@ -73,6 +73,10 @@ type Container struct {
 	// Environments are the Xray Test Environments assigned to a Test Execution
 	// (empty for Test Sets / Plans, which have no such field).
 	Environments []string `json:"environments"`
+	// FixVersions are the standard Jira Fix Version(s) on a Test Execution
+	// (empty for Test Sets / Plans). Read-only display values pulled from Jira;
+	// never edited locally, so they are overwritten on every sync.
+	FixVersions []string `json:"fixVersions"`
 }
 
 // ContainerQuery filters a ListContainersQuery call. Kind is required (one of
@@ -1140,15 +1144,19 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	// environments is preserved when a pending container_env edit exists, so a
 	// sync can't clobber an uncommitted local edit (mirrors the per-field guard
 	// in UpsertTests).
+	// fix_versions is a plain synced field (read-only, never locally edited), so
+	// it is overwritten unconditionally on conflict (unlike environments, which
+	// is preserved when a pending container_env edit exists).
 	stmt, err := tx.Prepare(
-		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, environments)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, environments, fix_versions)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
-		   kind       = excluded.kind,
-		   summary    = excluded.summary,
-		   status     = excluded.status,
-		   parent_key = excluded.parent_key,
-		   issue_type = excluded.issue_type,
+		   kind         = excluded.kind,
+		   summary      = excluded.summary,
+		   status       = excluded.status,
+		   parent_key   = excluded.parent_key,
+		   issue_type   = excluded.issue_type,
+		   fix_versions = excluded.fix_versions,
 		   environments = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
@@ -1161,7 +1169,7 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	defer stmt.Close()
 
 	for _, c := range containers {
-		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, encodeEnvironments(c.Environments)); err != nil {
+		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, encodeEnvironments(c.Environments), encodeFixVersions(c.FixVersions)); err != nil {
 			return fmt.Errorf("upsert container %s: %w", c.Key, err)
 		}
 	}
@@ -1604,7 +1612,7 @@ func (r *Repository) ListContainers(profileID, kind string) ([]Container, error)
 // filter matches the JSON-quoted token so "Prod" does not collide with
 // "Production" (see environmentFilterPattern).
 func (r *Repository) ListContainersQuery(profileID string, q ContainerQuery) ([]Container, error) {
-	sqlStr := `SELECT jira_key, kind, summary, status, parent_key, issue_type, environments
+	sqlStr := `SELECT jira_key, kind, summary, status, parent_key, issue_type, environments, fix_versions
 		 FROM test_container WHERE profile_id = ? AND kind = ?`
 	args := []any{profileID, q.Kind}
 	if q.Environment != "" {
@@ -1622,11 +1630,12 @@ func (r *Repository) ListContainersQuery(profileID string, q ContainerQuery) ([]
 	out := []Container{}
 	for rows.Next() {
 		var c Container
-		var environments string
-		if err := rows.Scan(&c.Key, &c.Kind, &c.Summary, &c.Status, &c.ParentKey, &c.IssueType, &environments); err != nil {
+		var environments, fixVersions string
+		if err := rows.Scan(&c.Key, &c.Kind, &c.Summary, &c.Status, &c.ParentKey, &c.IssueType, &environments, &fixVersions); err != nil {
 			return nil, err
 		}
 		c.Environments = decodeEnvironments(environments)
+		c.FixVersions = decodeFixVersions(fixVersions)
 		out = append(out, c)
 	}
 	return out, rows.Err()

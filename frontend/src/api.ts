@@ -321,6 +321,7 @@ export interface Container {
   parentKey: string;  // parent issue key for a sub-task Test Execution; "" for standalone
   issueType: string;  // Jira issuetype name (e.g. "Sub Test Execution"); informational
   environments: string[]; // Xray Test Environments (Test Executions only; empty otherwise)
+  fixVersions: string[]; // Jira Fix Version(s), read-only (Test Executions only; empty otherwise)
 }
 
 // AllocateResult mirrors testrepo.AllocateResult — the outcome of a bulk

@@ -881,6 +881,20 @@ export function ContainersView({
             </div>
           )}
 
+          {kind === "testexec" &&
+            (selectedContainer.fixVersions ?? []).length > 0 && (
+              <div className="container-environments">
+                <span className="container-env-label">Fix version(s)</span>
+                <div className="container-env-chips">
+                  {(selectedContainer.fixVersions ?? []).map((fv) => (
+                    <span key={fv} className="env-chip fix-version-chip">
+                      {fv}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
           {editingName ? (
             <input
               className="container-card-name-edit"

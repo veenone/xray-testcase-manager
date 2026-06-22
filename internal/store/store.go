@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 26
+const schemaVersion = 27
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS test_container (
 	parent_key TEXT NOT NULL DEFAULT '',
 	issue_type TEXT NOT NULL DEFAULT '',
 	environments TEXT NOT NULL DEFAULT '',
+	fix_versions TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -507,6 +508,18 @@ func applyMigrations(db *sql.DB) error {
 	}
 	// v26: external_test cache for cross-project execution members (additive,
 	// covered by CREATE TABLE IF NOT EXISTS, no ALTER needed).
+	// v27: add fix_versions to test_container for the standard Jira Fix Version(s)
+	// field on Test Executions (a JSON array of version names), shown read-only.
+	// Fresh installs get it from the CREATE above; this ALTER catches pre-v27
+	// databases. The "duplicate column" error is tolerated so the migration is
+	// idempotent.
+	if current < 27 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_container ADD COLUMN fix_versions TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v27 add fix_versions: %w", err)
+		}
+	}
 	return nil
 }
 
