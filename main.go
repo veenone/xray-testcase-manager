@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	goruntime "runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -55,6 +56,12 @@ func main() {
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
 		Menu:             appMenu(app),
+		// NOTE(xtm): EnableDefaultContextMenu restores the WKWebView right-click
+		// context menu (Cut/Copy/Paste/Select All) for input elements on macOS.
+		// It is also harmless on Windows (WebView2 shows its own menu by default).
+		// Verify on a real macOS + WKWebView build that the context menu appears
+		// inside text inputs and the TextEdit submenu works as expected.
+		EnableDefaultContextMenu: true,
 		Bind: []interface{}{
 			app,
 		},
@@ -70,6 +77,18 @@ func main() {
 // buttons); Quit and Documentation are handled directly via the Wails runtime,
 // and About opens an in-app dialog. The callbacks close over app so they can use
 // app.ctx, which is set by the time any menu item can be clicked.
+//
+// On macOS the menu bar is prepended with the standard App menu
+// (menu.AppMenu: About / Services / Hide / Quit, etc.) and appended with the
+// standard Edit menu (menu.EditMenu: Undo / Redo / Cut / Copy / Paste /
+// Select All). Without the Edit menu, Cmd+C/V/X/A and Cmd+Z/Shift+Cmd+Z do
+// not route to the WKWebView responder chain and clipboard operations silently
+// fail inside text inputs (RND_P_4TFINT_05-241).
+//
+// NOTE(xtm): The darwin-specific menu additions must be verified on a real
+// macOS + Wails build. Confirm that: (a) the App menu shows the correct app
+// name, (b) Cmd+C/V/X/A work in every text input, and (c) Cmd+Z/Shift+Cmd+Z
+// undo/redo work in the markdown editor.
 func appMenu(app *App) *menu.Menu {
 	emit := func(event string) func(*menu.CallbackData) {
 		return func(*menu.CallbackData) {
@@ -80,6 +99,13 @@ func appMenu(app *App) *menu.Menu {
 	}
 
 	m := menu.NewMenu()
+
+	// On macOS, prepend the standard App menu so the menu bar is well-formed
+	// (app name, Services, Hide, Quit, etc.). This is skipped on Windows/Linux
+	// because AppMenu is a macOS-only Wails role.
+	if goruntime.GOOS == "darwin" {
+		m.Append(menu.AppMenu())
+	}
 
 	file := m.AddSubmenu("File")
 	file.AddText("New Profile…", nil, emit("menu:new-profile"))
@@ -118,6 +144,14 @@ func appMenu(app *App) *menu.Menu {
 	})
 	help.AddSeparator()
 	help.AddText("About Xray Test Manager", nil, emit("menu:about"))
+
+	// On macOS, append the standard Edit menu so clipboard keyboard shortcuts
+	// (Cmd+C/V/X/A, Cmd+Z, Shift+Cmd+Z) are wired into the responder chain
+	// and reach the focused WKWebView input. Without this, WKWebView silently
+	// consumes the key events but does not act on them.
+	if goruntime.GOOS == "darwin" {
+		m.Append(menu.EditMenu())
+	}
 
 	return m
 }
