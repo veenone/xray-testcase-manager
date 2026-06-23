@@ -4366,6 +4366,24 @@ tr.row-checked:hover {
   display: flex;
   gap: 8px;
 }
+.pat-field {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.pat-field input {
+  flex: 1;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
+}
+.pat-toggle {
+  border: 1px solid var(--border-strong);
+  border-radius: 0 4px 4px 0;
+  padding: 4px 8px;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
 .bug-link-key {
   background: none;
   border: none;

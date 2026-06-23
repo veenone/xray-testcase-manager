@@ -81,6 +81,7 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
     profile?.bugProjectKey ?? "",
   );
   const [token, setToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
   // Reuse a stored PAT from an existing profile (create only). "" = enter a new
   // token below.
   const [reuseFrom, setReuseFrom] = useState("");
@@ -271,16 +272,28 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
       {(isEdit || reuseFrom === "") && (
         <label>
           {others.length > 0 && !isEdit ? "New token" : "Personal Access Token"}
-          <input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder={
-              isEdit
-                ? "Leave blank to keep the current token"
-                : "Jira PAT — stored in Windows Credential Manager"
-            }
-          />
+          <div className="pat-field">
+            <input
+              type={showToken ? "text" : "password"}
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={
+                isEdit
+                  ? "Leave blank to keep the current token"
+                  : "Jira PAT — stored in Windows Credential Manager"
+              }
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="btn btn-ghost pat-toggle"
+              onClick={() => setShowToken((v) => !v)}
+              title={showToken ? "Hide token" : "Show token"}
+              aria-label={showToken ? "Hide token" : "Show token"}
+            >
+              {showToken ? "🙈" : "👁"}
+            </button>
+          </div>
         </label>
       )}
 
