@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 28
+const schemaVersion = 29
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -43,7 +43,9 @@ CREATE TABLE IF NOT EXISTS profiles (
 	scope_jql   TEXT NOT NULL DEFAULT '',
 	bug_issue_type TEXT NOT NULL DEFAULT 'Bug',
 	bug_project_mode TEXT NOT NULL DEFAULT 'test',
-	bug_project_key TEXT NOT NULL DEFAULT ''
+	bug_project_key TEXT NOT NULL DEFAULT '',
+	ca_cert TEXT NOT NULL DEFAULT '',
+	allow_untrusted_tls INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS sync_state (
@@ -571,6 +573,21 @@ func applyMigrations(db *sql.DB) error {
 		} {
 			if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "already exists") {
 				return fmt.Errorf("v28 create test_run/exec_plan: %w", err)
+			}
+		}
+	}
+	// v29: per-profile TLS trust options for connecting through internal CAs or
+	// self-signed certificates (RND_P_4TFINT_05-243). ca_cert holds a PEM-encoded
+	// CA certificate (optional); allow_untrusted_tls disables certificate
+	// verification when set (1). Fresh installs get these from the CREATE above;
+	// these ALTERs catch pre-v29 databases.
+	if current < 29 {
+		for _, stmt := range []string{
+			`ALTER TABLE profiles ADD COLUMN ca_cert TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE profiles ADD COLUMN allow_untrusted_tls INTEGER NOT NULL DEFAULT 0`,
+		} {
+			if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("v29 add TLS columns: %w", err)
 			}
 		}
 	}

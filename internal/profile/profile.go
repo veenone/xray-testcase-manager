@@ -33,9 +33,18 @@ type Profile struct {
 	// BugProjectMode is where a filed defect lands: "test" (the test's project,
 	// the default), "execution" (the Test Execution's project), or "dedicated"
 	// (BugProjectKey).
-	BugProjectMode string    `json:"bugProjectMode"`
-	BugProjectKey  string    `json:"bugProjectKey"`
-	CreatedAt      time.Time `json:"createdAt"`
+	BugProjectMode string `json:"bugProjectMode"`
+	BugProjectKey  string `json:"bugProjectKey"`
+	// CACert is the PEM-encoded CA certificate to add to the TLS trust pool
+	// when connecting to this profile's Jira instance (optional). When set,
+	// the system roots are extended with this certificate. Takes effect on
+	// the next client creation.
+	CACert string `json:"caCert"`
+	// AllowUntrustedTLS disables TLS certificate verification for this
+	// profile's Jira connection. Only use this for trusted internal servers
+	// where no CA certificate is available.
+	AllowUntrustedTLS bool      `json:"allowUntrustedTls"`
+	CreatedAt         time.Time `json:"createdAt"`
 }
 
 // Manager is the profile CRUD service backed by the local store (FR-5.1).
@@ -51,7 +60,7 @@ func NewManager(s *store.Store) *Manager {
 // List returns all profiles, ordered by name.
 func (m *Manager) List() ([]Profile, error) {
 	rows, err := m.db.Query(
-		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, created_at FROM profiles ORDER BY name`)
+		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, created_at FROM profiles ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list profiles: %w", err)
 	}
@@ -71,7 +80,7 @@ func (m *Manager) List() ([]Profile, error) {
 // Get returns one profile by id, or ErrNotFound.
 func (m *Manager) Get(id string) (Profile, error) {
 	row := m.db.QueryRow(
-		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, created_at FROM profiles WHERE id = ?`, id)
+		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, created_at FROM profiles WHERE id = ?`, id)
 	p, err := scanProfile(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Profile{}, ErrNotFound
@@ -83,23 +92,27 @@ func (m *Manager) Get(id string) (Profile, error) {
 // scopeJQL is an optional JQL fragment that narrows which Tests sync (FR-5.4).
 // bugIssueType is the Jira issuetype used when filing a defect (blank defaults
 // to "Bug"); bugProjectMode / bugProjectKey choose which project a filed defect
-// lands in (blank mode defaults to "test").
-func (m *Manager) Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey string) (Profile, error) {
+// lands in (blank mode defaults to "test"). caCert is an optional PEM-encoded CA
+// certificate to trust when connecting; allowUntrustedTLS disables certificate
+// verification (RND_P_4TFINT_05-243).
+func (m *Manager) Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert string, allowUntrustedTLS bool) (Profile, error) {
 	p := Profile{
-		ID:             uuid.NewString(),
-		Name:           name,
-		JiraURL:        jiraURL,
-		ProjectKey:     projectKey,
-		ScopeJQL:       scopeJQL,
-		BugIssueType:   bugIssueTypeOrDefault(bugIssueType),
-		BugProjectMode: bugProjectModeOrDefault(bugProjectMode),
-		BugProjectKey:  strings.TrimSpace(bugProjectKey),
-		CreatedAt:      time.Now().UTC(),
+		ID:                uuid.NewString(),
+		Name:              name,
+		JiraURL:           jiraURL,
+		ProjectKey:        projectKey,
+		ScopeJQL:          scopeJQL,
+		BugIssueType:      bugIssueTypeOrDefault(bugIssueType),
+		BugProjectMode:    bugProjectModeOrDefault(bugProjectMode),
+		BugProjectKey:     strings.TrimSpace(bugProjectKey),
+		CACert:            strings.TrimSpace(caCert),
+		AllowUntrustedTLS: allowUntrustedTLS,
+		CreatedAt:         time.Now().UTC(),
 	}
 	_, err := m.db.Exec(
-		`INSERT INTO profiles (id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.Name, p.JiraURL, p.ProjectKey, p.ScopeJQL, p.BugIssueType, p.BugProjectMode, p.BugProjectKey, p.CreatedAt.Format(time.RFC3339))
+		`INSERT INTO profiles (id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Name, p.JiraURL, p.ProjectKey, p.ScopeJQL, p.BugIssueType, p.BugProjectMode, p.BugProjectKey, p.CACert, boolToInt(p.AllowUntrustedTLS), p.CreatedAt.Format(time.RFC3339))
 	if err != nil {
 		return Profile{}, fmt.Errorf("create profile: %w", err)
 	}
@@ -127,15 +140,17 @@ func bugProjectModeOrDefault(mode string) string {
 }
 
 // Update changes a profile's editable fields — name, Jira URL, project key, JQL
-// scope, bug issue type, and bug project (FR-5) — e.g. to correct a wrong
-// project key. Returns ErrNotFound if the id doesn't exist. Credentials are
-// managed separately. A blank bugIssueType defaults to "Bug"; a blank
-// bugProjectMode defaults to "test".
-func (m *Manager) Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey string) error {
+// scope, bug issue type, bug project, and TLS settings (FR-5) — e.g. to correct
+// a wrong project key. Returns ErrNotFound if the id doesn't exist. Credentials
+// are managed separately. A blank bugIssueType defaults to "Bug"; a blank
+// bugProjectMode defaults to "test". caCert and allowUntrustedTLS update the
+// TLS trust settings (RND_P_4TFINT_05-243).
+func (m *Manager) Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert string, allowUntrustedTLS bool) error {
 	res, err := m.db.Exec(
-		`UPDATE profiles SET name = ?, jira_url = ?, project_key = ?, scope_jql = ?, bug_issue_type = ?, bug_project_mode = ?, bug_project_key = ? WHERE id = ?`,
+		`UPDATE profiles SET name = ?, jira_url = ?, project_key = ?, scope_jql = ?, bug_issue_type = ?, bug_project_mode = ?, bug_project_key = ?, ca_cert = ?, allow_untrusted_tls = ? WHERE id = ?`,
 		name, jiraURL, projectKey, scopeJQL, bugIssueTypeOrDefault(bugIssueType),
-		bugProjectModeOrDefault(bugProjectMode), strings.TrimSpace(bugProjectKey), id)
+		bugProjectModeOrDefault(bugProjectMode), strings.TrimSpace(bugProjectKey),
+		strings.TrimSpace(caCert), boolToInt(allowUntrustedTLS), id)
 	if err != nil {
 		return fmt.Errorf("update profile: %w", err)
 	}
@@ -178,12 +193,22 @@ type scanner interface {
 
 func scanProfile(s scanner) (Profile, error) {
 	var (
-		p       Profile
-		created string
+		p                Profile
+		allowUntrustedInt int
+		created          string
 	)
-	if err := s.Scan(&p.ID, &p.Name, &p.JiraURL, &p.ProjectKey, &p.ScopeJQL, &p.BugIssueType, &p.BugProjectMode, &p.BugProjectKey, &created); err != nil {
+	if err := s.Scan(&p.ID, &p.Name, &p.JiraURL, &p.ProjectKey, &p.ScopeJQL, &p.BugIssueType, &p.BugProjectMode, &p.BugProjectKey, &p.CACert, &allowUntrustedInt, &created); err != nil {
 		return Profile{}, err
 	}
+	p.AllowUntrustedTLS = allowUntrustedInt != 0
 	p.CreatedAt, _ = time.Parse(time.RFC3339, created)
 	return p, nil
+}
+
+// boolToInt converts a bool to a SQLite-compatible integer (1 / 0).
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

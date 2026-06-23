@@ -7,6 +7,8 @@ package jira
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -83,14 +85,76 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("jira: %s %s -> %s", e.Method, e.Path, e.Status)
 }
 
+// clientConfig holds optional TLS settings for a Jira client.
+type clientConfig struct {
+	caCertPEM string
+	insecure  bool
+}
+
+// Option is a functional option for NewClient.
+type Option func(*clientConfig)
+
+// WithCACert returns an Option that adds a PEM-encoded CA certificate to the
+// TLS trust pool. The system certificate pool is used as the base, so existing
+// trusted roots are preserved. The certificate is appended; if the PEM is
+// empty or unparseable no certificate is added.
+func WithCACert(pem string) Option {
+	return func(c *clientConfig) { c.caCertPEM = pem }
+}
+
+// WithInsecureTLS returns an Option that disables TLS certificate verification.
+// NOTE(xtm): InsecureSkipVerify suppresses all certificate checks including
+// hostname verification. Only use for trusted internal servers where no CA
+// certificate is available. Needs live verification against a real macOS +
+// internal-CA environment (RND_P_4TFINT_05-243).
+func WithInsecureTLS(b bool) Option {
+	return func(c *clientConfig) { c.insecure = b }
+}
+
+// buildHTTPClient constructs the http.Client for a Jira client. When no TLS
+// options are set (caCertPEM == "" and !insecure) it returns the plain
+// &http.Client{Timeout: 30 * time.Second} that the app has always used, so
+// the default path is byte-for-byte identical to the old behaviour. Otherwise
+// it clones http.DefaultTransport and sets a custom TLSClientConfig so other
+// transport defaults (connection pooling, keep-alives, etc.) are preserved.
+//
+// NOTE(xtm): The custom-CA and insecure paths have not been exercised against
+// a real macOS + internal-CA environment. Verify before declaring the feature
+// complete (RND_P_4TFINT_05-243).
+func buildHTTPClient(cfg clientConfig) *http.Client {
+	if cfg.caCertPEM == "" && !cfg.insecure {
+		return &http.Client{Timeout: 30 * time.Second}
+	}
+
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if cfg.caCertPEM != "" {
+		pool.AppendCertsFromPEM([]byte(cfg.caCertPEM))
+	}
+
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	base.TLSClientConfig = &tls.Config{
+		RootCAs:            pool,
+		InsecureSkipVerify: cfg.insecure, //nolint:gosec // user-controlled escape hatch
+	}
+	return &http.Client{Timeout: 30 * time.Second, Transport: base}
+}
+
 // NewClient builds a client for the given Jira base URL authenticated with a
 // Personal Access Token. baseURL is the instance root, e.g.
-// https://jira.example.com.
-func NewClient(baseURL, token string) *Client {
+// https://jira.example.com. Pass WithCACert or WithInsecureTLS to override the
+// default system TLS trust (FR-8.4 / RND_P_4TFINT_05-243).
+func NewClient(baseURL, token string, opts ...Option) *Client {
+	var cfg clientConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http:    buildHTTPClient(cfg),
 	}
 }
 

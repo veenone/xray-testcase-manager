@@ -21,7 +21,7 @@ func newManager(t *testing.T) *profile.Manager {
 func TestCreateProfileStoresScopeJQL(t *testing.T) {
 	m := newManager(t)
 
-	p, err := m.Create("QA", "https://jira.example.com", "QA", "labels = smoke", "Defect", "", "")
+	p, err := m.Create("QA", "https://jira.example.com", "QA", "labels = smoke", "Defect", "", "", "", false)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestBugIssueTypeDefaultsAndPersists(t *testing.T) {
 	m := newManager(t)
 
 	// A blank issue type defaults to "Bug".
-	def, err := m.Create("Prod", "https://jira.example.com", "PROJ", "", "", "", "")
+	def, err := m.Create("Prod", "https://jira.example.com", "PROJ", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -51,14 +51,14 @@ func TestBugIssueTypeDefaultsAndPersists(t *testing.T) {
 	}
 
 	// A configured issue type persists, and Update can change it.
-	got, err := m.Create("Stg", "https://jira.example.com", "STG", "", "Defect", "", "")
+	got, err := m.Create("Stg", "https://jira.example.com", "STG", "", "Defect", "", "", "", false)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if reread, _ := m.Get(got.ID); reread.BugIssueType != "Defect" {
 		t.Errorf("persisted BugIssueType = %q, want 'Defect'", reread.BugIssueType)
 	}
-	if err := m.Update(got.ID, "Stg", "https://jira.example.com", "STG", "", "Incident", "", ""); err != nil {
+	if err := m.Update(got.ID, "Stg", "https://jira.example.com", "STG", "", "Incident", "", "", "", false); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if reread, _ := m.Get(got.ID); reread.BugIssueType != "Incident" {
@@ -70,7 +70,7 @@ func TestBugProjectModeDefaultsAndPersists(t *testing.T) {
 	m := newManager(t)
 
 	// A blank mode defaults to "test".
-	def, err := m.Create("Prod", "https://jira.example.com", "PROJ", "", "", "", "")
+	def, err := m.Create("Prod", "https://jira.example.com", "PROJ", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -79,13 +79,13 @@ func TestBugProjectModeDefaultsAndPersists(t *testing.T) {
 	}
 
 	// An unknown mode is normalised to "test".
-	bad, _ := m.Create("Bad", "https://jira.example.com", "BAD", "", "", "garbage", "")
+	bad, _ := m.Create("Bad", "https://jira.example.com", "BAD", "", "", "garbage", "", "", false)
 	if bad.BugProjectMode != "test" {
 		t.Errorf("unknown mode = %q, want 'test'", bad.BugProjectMode)
 	}
 
 	// Dedicated mode + key persist, and Update can change them.
-	got, err := m.Create("Stg", "https://jira.example.com", "STG", "", "", "dedicated", "DEFECTS")
+	got, err := m.Create("Stg", "https://jira.example.com", "STG", "", "", "dedicated", "DEFECTS", "", false)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestBugProjectModeDefaultsAndPersists(t *testing.T) {
 		t.Errorf("persisted bug project = (%q, %q), want (dedicated, DEFECTS)",
 			reread.BugProjectMode, reread.BugProjectKey)
 	}
-	if err := m.Update(got.ID, "Stg", "https://jira.example.com", "STG", "", "", "execution", ""); err != nil {
+	if err := m.Update(got.ID, "Stg", "https://jira.example.com", "STG", "", "", "execution", "", "", false); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if reread, _ := m.Get(got.ID); reread.BugProjectMode != "execution" {
@@ -103,7 +103,7 @@ func TestBugProjectModeDefaultsAndPersists(t *testing.T) {
 
 func TestUpdateScopeChangesJQL(t *testing.T) {
 	m := newManager(t)
-	p, err := m.Create("QA", "https://jira.example.com", "QA", "", "", "", "")
+	p, err := m.Create("QA", "https://jira.example.com", "QA", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}

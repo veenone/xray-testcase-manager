@@ -204,6 +204,8 @@ export interface Profile {
   bugIssueType: string;
   bugProjectMode: string; // "test" | "execution" | "dedicated"
   bugProjectKey: string;
+  caCert: string;
+  allowUntrustedTls: boolean;
   createdAt: string;
 }
 

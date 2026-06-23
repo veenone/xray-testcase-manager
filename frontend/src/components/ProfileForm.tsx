@@ -85,6 +85,8 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
   // Reuse a stored PAT from an existing profile (create only). "" = enter a new
   // token below.
   const [reuseFrom, setReuseFrom] = useState("");
+  const [caCert, setCaCert] = useState(profile?.caCert ?? "");
+  const [allowUntrustedTLS, setAllowUntrustedTLS] = useState(profile?.allowUntrustedTls ?? false);
 
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState("");
@@ -118,7 +120,7 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
     setTestResult("");
     setTestOk(false);
     try {
-      const user = await TestConnection(normalizeJiraUrl(jiraUrl), token.trim());
+      const user = await TestConnection(normalizeJiraUrl(jiraUrl), token.trim(), caCert.trim(), allowUntrustedTLS);
       setTestResult(`Connected as ${user}`);
       setTestOk(true);
     } catch (e) {
@@ -149,6 +151,8 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
           bugProjectMode,
           bugProjKey,
           token.trim(),
+          caCert.trim(),
+          allowUntrustedTLS,
         );
       } else if (reuseFrom !== "") {
         p = await CreateProfileReusingToken(
@@ -171,6 +175,8 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
           bugProjectMode,
           bugProjKey,
           token.trim(),
+          caCert.trim(),
+          allowUntrustedTLS,
         );
       }
       onCreated(p);
@@ -296,6 +302,38 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
           </div>
         </label>
       )}
+
+      <details className="profile-form-advanced">
+        <summary>Advanced: TLS / certificate settings</summary>
+        <label>
+          CA certificate (PEM, optional)
+          <textarea
+            value={caCert}
+            onChange={(e) => setCaCert(e.target.value)}
+            placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"}
+            rows={5}
+            spellCheck={false}
+          />
+          <span className="field-hint">
+            Paste a PEM-encoded CA certificate to trust when connecting to this Jira
+            instance. Required when the server uses a private or internal CA that is
+            not in the system trust store (e.g. on macOS with a corporate CA).
+          </span>
+        </label>
+        <label className="profile-form-checkbox">
+          <input
+            type="checkbox"
+            checked={allowUntrustedTLS}
+            onChange={(e) => setAllowUntrustedTLS(e.target.checked)}
+          />
+          Allow untrusted certificate (skip TLS verification)
+          <span className="field-hint field-hint-warn">
+            Disables all TLS certificate checks. Only enable this for trusted
+            internal servers where no CA certificate is available. This is insecure
+            and should not be used in production.
+          </span>
+        </label>
+      </details>
 
       {willClearCache && (
         <div className="form-warning">

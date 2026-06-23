@@ -106,8 +106,8 @@ export function CreatePreconditionDetailed(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CreatePreconditionDetailed'](arg1, arg2, arg3, arg4);
 }
 
-export function CreateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
-  return window['go']['main']['App']['CreateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+export function CreateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
+  return window['go']['main']['App']['CreateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
 }
 
 export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
@@ -550,8 +550,8 @@ export function SyncTestCalls(arg1) {
   return window['go']['main']['App']['SyncTestCalls'](arg1);
 }
 
-export function TestConnection(arg1, arg2) {
-  return window['go']['main']['App']['TestConnection'](arg1, arg2);
+export function TestConnection(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4);
 }
 
 export function TransitionTest(arg1, arg2, arg3) {
@@ -562,8 +562,8 @@ export function UnexcludeFromDuplicates(arg1, arg2) {
   return window['go']['main']['App']['UnexcludeFromDuplicates'](arg1, arg2);
 }
 
-export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
-  return window['go']['main']['App']['UpdateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+  return window['go']['main']['App']['UpdateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
 export function UpdateProfileScope(arg1, arg2) {

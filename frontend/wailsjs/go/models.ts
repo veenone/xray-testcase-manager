@@ -176,6 +176,8 @@ export namespace profile {
 	    bugIssueType: string;
 	    bugProjectMode: string;
 	    bugProjectKey: string;
+	    caCert: string;
+	    allowUntrustedTls: boolean;
 	    // Go type: time
 	    createdAt: any;
 	
@@ -193,6 +195,8 @@ export namespace profile {
 	        this.bugIssueType = source["bugIssueType"];
 	        this.bugProjectMode = source["bugProjectMode"];
 	        this.bugProjectKey = source["bugProjectKey"];
+	        this.caCert = source["caCert"];
+	        this.allowUntrustedTls = source["allowUntrustedTls"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	    }
 	

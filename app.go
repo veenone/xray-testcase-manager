@@ -236,12 +236,13 @@ func (a *App) ListProfiles() ([]profile.Profile, error) {
 
 // CreateProfile stores a new profile and saves its PAT to the OS credential
 // manager. The token is never written to the database. scopeJQL is an optional
-// JQL fragment that narrows which Tests sync (FR-5.4).
-func (a *App) CreateProfile(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token string) (profile.Profile, error) {
+// JQL fragment that narrows which Tests sync (FR-5.4). caCert and
+// allowUntrustedTLS configure TLS trust for the new profile (RND_P_4TFINT_05-243).
+func (a *App) CreateProfile(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token, caCert string, allowUntrustedTLS bool) (profile.Profile, error) {
 	if err := a.requireStore(); err != nil {
 		return profile.Profile{}, err
 	}
-	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey)
+	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS)
 	if err != nil {
 		return profile.Profile{}, err
 	}
@@ -267,7 +268,7 @@ func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bug
 	if strings.TrimSpace(token) == "" {
 		return profile.Profile{}, fmt.Errorf("the selected profile has no stored token to reuse")
 	}
-	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey)
+	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, "", false)
 	if err != nil {
 		return profile.Profile{}, err
 	}
@@ -283,7 +284,8 @@ func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bug
 // belongs to the old project) is purged so the next sync pulls the correct
 // project cleanly, and the per-session status/priority caches are dropped. A
 // non-empty token replaces the stored PAT; an empty token leaves it unchanged.
-func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token string) (profile.Profile, error) {
+// caCert and allowUntrustedTLS update the TLS trust settings (RND_P_4TFINT_05-243).
+func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token, caCert string, allowUntrustedTLS bool) (profile.Profile, error) {
 	if err := a.requireStore(); err != nil {
 		return profile.Profile{}, err
 	}
@@ -291,7 +293,7 @@ func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, bugIssueTyp
 	if err != nil {
 		return profile.Profile{}, err
 	}
-	if err := a.profiles.Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey); err != nil {
+	if err := a.profiles.Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS); err != nil {
 		return profile.Profile{}, err
 	}
 	if strings.TrimSpace(token) != "" {
@@ -395,7 +397,7 @@ func (a *App) ImportProfile() (profile.Profile, error) {
 	if strings.TrimSpace(cfg.Name) == "" || strings.TrimSpace(cfg.JiraURL) == "" || strings.TrimSpace(cfg.ProjectKey) == "" {
 		return profile.Profile{}, fmt.Errorf("profile file is missing name, URL or project key")
 	}
-	return a.profiles.Create(cfg.Name, cfg.JiraURL, cfg.ProjectKey, cfg.ScopeJQL, cfg.BugIssueType, cfg.BugProjectMode, cfg.BugProjectKey)
+	return a.profiles.Create(cfg.Name, cfg.JiraURL, cfg.ProjectKey, cfg.ScopeJQL, cfg.BugIssueType, cfg.BugProjectMode, cfg.BugProjectKey, "", false)
 }
 
 // UpdateProfileToken replaces a profile's stored PAT in the OS credential
@@ -423,6 +425,21 @@ func sanitizeFilename(name string) string {
 		return "profile"
 	}
 	return out
+}
+
+// tlsOptions derives jira.Option values from a profile's TLS settings. When
+// neither CACert nor AllowUntrustedTLS is set the returned slice is empty and
+// NewClient uses the default system trust -- identical to the pre-feature
+// behaviour (RND_P_4TFINT_05-243).
+func tlsOptions(p profile.Profile) []jira.Option {
+	var opts []jira.Option
+	if p.CACert != "" {
+		opts = append(opts, jira.WithCACert(p.CACert))
+	}
+	if p.AllowUntrustedTLS {
+		opts = append(opts, jira.WithInsecureTLS(true))
+	}
+	return opts
 }
 
 // DeleteProfile removes a profile and its stored credentials.
@@ -480,10 +497,19 @@ func (a *App) SetTheme(theme string) error {
 // --- Connection & sync (FR-1, FR-8) ---
 
 // TestConnection verifies a Jira URL and PAT, returning the display name of
-// the authenticated user (FR-8.4). It does not depend on the local store —
+// the authenticated user (FR-8.4). It does not depend on the local store --
 // useful for diagnosing PAT issues even if the store failed to initialise.
-func (a *App) TestConnection(jiraURL, token string) (string, error) {
-	user, err := jira.NewClient(jiraURL, token).TestConnection(a.ctx)
+// caCert and allowUntrustedTLS are applied directly so the connection test
+// reflects the profile's TLS settings before the profile is saved.
+func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bool) (string, error) {
+	var opts []jira.Option
+	if caCert != "" {
+		opts = append(opts, jira.WithCACert(caCert))
+	}
+	if allowUntrustedTLS {
+		opts = append(opts, jira.WithInsecureTLS(true))
+	}
+	user, err := jira.NewClient(jiraURL, token, opts...).TestConnection(a.ctx)
 	if err != nil {
 		return "", err
 	}
@@ -516,7 +542,7 @@ func (a *App) runPartialSync(profileID, stage string, fn func(*syncer.Engine, st
 	if err != nil {
 		return fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token), a.repo)
+	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
 
 	onProgress := func(pr syncer.Progress) {
 		runtime.EventsEmit(a.ctx, "sync:progress", pr)
@@ -588,7 +614,7 @@ func (a *App) SyncTestCalls(profileID string) error {
 	if err != nil {
 		return fmt.Errorf("load credentials: %w", err)
 	}
-	client := jira.NewClient(p.JiraURL, token)
+	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
 
 	// Per-caller progress on a dedicated channel (not the global "sync:progress")
 	// so the Test Calls view shows its own bar without touching the footer sync
@@ -661,7 +687,7 @@ func (a *App) runSync(profileID string, forceFull bool) error {
 	if forceFull {
 		since = ""
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token), a.repo)
+	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
 	started := time.Now().UTC()
 	var lastFetched int
 	syncErr := engine.Sync(a.ctx, profileID, p.ProjectKey, p.ScopeJQL, since, func(pr syncer.Progress) {
@@ -1192,7 +1218,7 @@ func (a *App) CommitPendingChanges(profileID string) (syncer.CommitResult, error
 	if err != nil {
 		return empty, fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token), a.repo)
+	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
 	return engine.CommitChanges(a.ctx, profileID, p.ProjectKey)
 }
 
@@ -1220,7 +1246,7 @@ func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (sy
 	if err != nil {
 		return empty, fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token), a.repo)
+	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
 	return engine.CommitChangesForIDs(a.ctx, profileID, p.ProjectKey, changeIDs)
 }
 
@@ -1251,7 +1277,7 @@ func (a *App) GetTestTransitions(profileID, testKey string) ([]jira.Transition, 
 	if err != nil {
 		return nil, fmt.Errorf("load credentials: %w", err)
 	}
-	return jira.NewClient(p.JiraURL, token).GetTransitions(a.ctx, testKey, test.Status)
+	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTransitions(a.ctx, testKey, test.Status)
 }
 
 // TransitionTest queues a workflow transition locally (FR-4.2). The change
@@ -1395,7 +1421,7 @@ func (a *App) GetTestSteps(profileID, testKey string, forceRefresh bool) ([]test
 	if err != nil {
 		return nil, fmt.Errorf("load credentials: %w", err)
 	}
-	remote, err := jira.NewClient(p.JiraURL, token).GetTestSteps(a.ctx, testKey)
+	remote, err := jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTestSteps(a.ctx, testKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1445,7 +1471,7 @@ func (a *App) CheckJiraTestSteps(profileID, testKey string) (JiraStepInfo, error
 	if err != nil {
 		return JiraStepInfo{}, fmt.Errorf("load credentials: %w", err)
 	}
-	remote, err := jira.NewClient(p.JiraURL, token).GetTestSteps(a.ctx, testKey)
+	remote, err := jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTestSteps(a.ctx, testKey)
 	if err != nil {
 		return JiraStepInfo{}, err
 	}
@@ -1492,7 +1518,7 @@ func (a *App) GetTestCustomFields(profileID, testKey string, forceRefresh bool) 
 	if err != nil {
 		return nil, fmt.Errorf("load credentials: %w", err)
 	}
-	values, err := jira.NewClient(p.JiraURL, token).GetTestCustomFields(a.ctx, testKey)
+	values, err := jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTestCustomFields(a.ctx, testKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1598,7 +1624,7 @@ func (a *App) GetBulkTransitionOptions(profileID string, testKeys []string) (Bul
 	if err != nil {
 		return out, fmt.Errorf("load credentials: %w", err)
 	}
-	client := jira.NewClient(p.JiraURL, token)
+	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
 
 	// We need a representative key per status to call GetTransitions for
 	// real Jira — the demo path ignores the key. Walk testKeys once and
@@ -1664,7 +1690,7 @@ func (a *App) BulkTransitionTests(profileID string, testKeys []string, targetSta
 	if err != nil {
 		return result, fmt.Errorf("load credentials: %w", err)
 	}
-	client := jira.NewClient(p.JiraURL, token)
+	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
 
 	transitionsByStatus := make(map[string][]jira.Transition)
 
