@@ -1016,6 +1016,8 @@
   right: 0;
   min-width: 240px;
   max-width: 360px;
+  max-height: 70vh;
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -3399,7 +3401,11 @@ tr.row-checked:hover {
   display: flex;
   flex-direction: column;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
+}
+/* Restore rounded corners on the footer now that overflow:visible no longer clips them. */
+.bulk-modal .pending-actions {
+  border-radius: 0 0 8px 8px;
 }
 .bulk-body {
   padding: 14px 16px;
