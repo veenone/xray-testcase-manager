@@ -4597,15 +4597,20 @@ tr.row-checked:hover {
 }
 .bugs-md-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   margin-bottom: 8px;
   flex: 0 0 auto;
 }
 .bugs-md-title {
   font-weight: 600;
   font-size: 13px;
+}
+.bugs-md-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .bugs-md-filter {
   margin-bottom: 8px;

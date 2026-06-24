@@ -389,54 +389,56 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
       <div className="bugs-md-list">
         <div className="bugs-md-head">
           <span className="bugs-md-title">Bugs</span>
-          <button
-            className="btn"
-            onClick={createExecFromBugs}
-            disabled={creating || unionTestKeys.length === 0}
-            title={
-              checked.size === 0
-                ? "Tick one or more bugs to create a Test Execution from their linked tests"
-                : unionTestKeys.length === 0
-                  ? "The checked bugs have no linked tests"
-                  : `Create a Test Execution containing the ${unionTestKeys.length} test${
-                      unionTestKeys.length === 1 ? "" : "s"
-                    } linked to the ${checked.size} checked bug${
-                      checked.size === 1 ? "" : "s"
-                    }`
-            }
-          >
-            {creating
-              ? "Creating…"
-              : `Create Test Execution${
-                  unionTestKeys.length > 0 ? ` (${unionTestKeys.length})` : ""
-                }`}
-          </button>
-          <button
-            className="btn"
-            onClick={openAddToExec}
-            disabled={unionTestKeys.length === 0}
-            title={
-              checked.size === 0
-                ? "Tick one or more bugs to add their linked tests to an existing Test Execution"
-                : unionTestKeys.length === 0
-                  ? "The checked bugs have no linked tests"
-                  : `Add the ${unionTestKeys.length} test${
-                      unionTestKeys.length === 1 ? "" : "s"
-                    } linked to the ${checked.size} checked bug${
-                      checked.size === 1 ? "" : "s"
-                    } to an existing Test Execution`
-            }
-          >
-            {`Add to execution${unionTestKeys.length > 0 ? ` (${unionTestKeys.length})` : ""}`}
-          </button>
-          <button
-            className="btn"
-            onClick={syncBugs}
-            disabled={syncing}
-            title="Refresh just the linked bugs from Jira (partial sync)"
-          >
-            {syncing ? "Syncing…" : "Sync"}
-          </button>
+          <div className="bugs-md-actions">
+            <button
+              className="btn"
+              onClick={createExecFromBugs}
+              disabled={creating || unionTestKeys.length === 0}
+              title={
+                checked.size === 0
+                  ? "Tick one or more bugs to create a Test Execution from their linked tests"
+                  : unionTestKeys.length === 0
+                    ? "The checked bugs have no linked tests"
+                    : `Create a Test Execution containing the ${unionTestKeys.length} test${
+                        unionTestKeys.length === 1 ? "" : "s"
+                      } linked to the ${checked.size} checked bug${
+                        checked.size === 1 ? "" : "s"
+                      }`
+              }
+            >
+              {creating
+                ? "Creating…"
+                : `Create Test Execution${
+                    unionTestKeys.length > 0 ? ` (${unionTestKeys.length})` : ""
+                  }`}
+            </button>
+            <button
+              className="btn"
+              onClick={openAddToExec}
+              disabled={unionTestKeys.length === 0}
+              title={
+                checked.size === 0
+                  ? "Tick one or more bugs to add their linked tests to an existing Test Execution"
+                  : unionTestKeys.length === 0
+                    ? "The checked bugs have no linked tests"
+                    : `Add the ${unionTestKeys.length} test${
+                        unionTestKeys.length === 1 ? "" : "s"
+                      } linked to the ${checked.size} checked bug${
+                        checked.size === 1 ? "" : "s"
+                      } to an existing Test Execution`
+              }
+            >
+              {`Add to execution${unionTestKeys.length > 0 ? ` (${unionTestKeys.length})` : ""}`}
+            </button>
+            <button
+              className="btn"
+              onClick={syncBugs}
+              disabled={syncing}
+              title="Refresh just the linked bugs from Jira (partial sync)"
+            >
+              {syncing ? "Syncing…" : "Sync"}
+            </button>
+          </div>
         </div>
         {error && <div className="error-text">{error}</div>}
         {notice && <p className="reqs-notice muted">{notice}</p>}
