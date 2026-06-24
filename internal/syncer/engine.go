@@ -295,14 +295,15 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 	repoContainers := make([]testrepo.Container, len(containers))
 	for i, c := range containers {
 		repoContainers[i] = testrepo.Container{
-			Key:          c.Key,
-			Kind:         c.Kind,
-			Summary:      c.Summary,
-			Status:       c.Status,
-			ParentKey:    c.ParentKey,
-			IssueType:    c.IssueType,
-			Environments: c.Environments,
-			FixVersions:  c.FixVersions,
+			Key:           c.Key,
+			Kind:          c.Kind,
+			Summary:       c.Summary,
+			Status:        c.Status,
+			ParentKey:     c.ParentKey,
+			ParentSummary: c.ParentSummary,
+			IssueType:     c.IssueType,
+			Environments:  c.Environments,
+			FixVersions:   c.FixVersions,
 		}
 	}
 	if err := e.repo.UpsertContainers(profileID, repoContainers); err != nil {
