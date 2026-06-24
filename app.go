@@ -2758,12 +2758,51 @@ func mergeStatuses(workflow, synced []string) []string {
 	return append(out, extra...)
 }
 
-// GetTest returns one Test by its Jira key.
+// GetTest returns one Test by its Jira key. For tests not in the local cache
+// (e.g. cross-project members), it falls back to a live Jira fetch so the
+// detail panel can show real data (FR-2).
 func (a *App) GetTest(profileID, key string) (testrepo.TestCase, error) {
 	if err := a.requireStore(); err != nil {
 		return testrepo.TestCase{}, err
 	}
-	return a.repo.GetTest(profileID, key)
+	tc, err := a.repo.GetTest(profileID, key)
+	if err == nil {
+		return tc, nil
+	}
+	if !errors.Is(err, testrepo.ErrNotFound) || isLocalTestKey(key) {
+		return testrepo.TestCase{}, err
+	}
+	// Not in cache and not a local placeholder -- try a live Jira fetch so
+	// cross-project member Tests can be shown in the detail panel.
+	p, profileErr := a.profiles.Get(profileID)
+	if profileErr != nil {
+		return testrepo.TestCase{}, err // return original ErrNotFound
+	}
+	if p.JiraURL == "demo" {
+		return testrepo.TestCase{}, err // demo profiles have no real Jira to call
+	}
+	token, credErr := a.creds.Load(profileID)
+	if credErr != nil {
+		return testrepo.TestCase{}, err // return original ErrNotFound
+	}
+	t, fetchErr := jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTestFields(a.ctx, key)
+	if fetchErr != nil {
+		return testrepo.TestCase{}, err // return original ErrNotFound on live failure
+	}
+	return testrepo.TestCase{
+		Key:         t.Key,
+		ID:          t.ID,
+		Summary:     t.Summary,
+		Description: t.Description,
+		Status:      t.Status,
+		Priority:    t.Priority,
+		Labels:      t.Labels,
+		Components:  t.Components,
+		Updated:     t.Updated,
+		FolderID:    t.FolderID,
+		ExecType:    t.ExecType,
+		FixVersions: t.FixVersions,
+	}, nil
 }
 
 // GetTestMeta fetches a Test's created / creator / updated / last-updated-by
