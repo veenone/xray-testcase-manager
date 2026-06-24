@@ -17,10 +17,10 @@ export function JUnitImportModal({ profileId, execKey, onCancel, onApplied }: Pr
   const [analyzeError, setAnalyzeError] = useState("");
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState("");
-  // filePicked tracks whether the hidden input already opened; if the user
-  // dismissed it without picking a file the change event never fires, so we
-  // rely on a window focus event to detect the cancel.
-  const [filePicked, setFilePicked] = useState(false);
+  // filePickedRef tracks whether the user selected a file; using a ref so the
+  // window-focus cancel-detection handler always reads the current value and
+  // does not close over a stale initial false.
+  const filePickedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Open the native file picker as soon as the modal mounts.
@@ -30,10 +30,10 @@ export function JUnitImportModal({ profileId, execKey, onCancel, onApplied }: Pr
     }
     // Detect file-picker cancel: when window regains focus without a file being
     // picked, close the modal after a short delay (the change event fires first
-    // if a file is chosen, setting filePicked=true before this runs).
+    // if a file is chosen, setting filePickedRef.current = true before this runs).
     function onFocus() {
       setTimeout(() => {
-        if (!filePicked) onCancel();
+        if (!filePickedRef.current) onCancel();
       }, 300);
     }
     window.addEventListener("focus", onFocus, { once: true });
@@ -46,7 +46,7 @@ export function JUnitImportModal({ profileId, execKey, onCancel, onApplied }: Pr
       onCancel();
       return;
     }
-    setFilePicked(true);
+    filePickedRef.current = true;
     setAnalyzeError("");
     try {
       const { b64 } = await fileToBase64(file);
