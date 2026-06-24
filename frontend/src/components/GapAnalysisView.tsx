@@ -12,6 +12,7 @@ import {
 import type { GapResult, GapTest } from "../api";
 import { useNotice } from "./useNotice";
 import { Pager } from "./Pager";
+import { fileToBase64 } from "../files";
 
 interface Props {
   profileId: string;
@@ -20,23 +21,6 @@ interface Props {
 
 type Picked = { name: string; b64: string; xlsx: boolean };
 type TemplateKind = "full" | "summary" | "folder";
-
-function fileToBase64(file: File): Promise<{ b64: string; xlsx: boolean }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("could not read file"));
-    reader.onload = () => {
-      const bytes = new Uint8Array(reader.result as ArrayBuffer);
-      let binary = "";
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-      }
-      resolve({ b64: btoa(binary), xlsx: file.name.toLowerCase().endsWith(".xlsx") });
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
 
 // GapList renders a GapTest list with a pinned (static) pager below a scrollable
 // body, 15 per page by default. When selectable, it shows per-row checkboxes and

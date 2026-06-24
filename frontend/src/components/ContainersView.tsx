@@ -28,6 +28,7 @@ import { keyCompare, cmpStr, applyDir } from "../sort";
 import { Menu } from "./Menu";
 import { AddTestsModal } from "./AddTestsModal";
 import { BugsPanel } from "./BugsPanel";
+import { JUnitImportModal } from "./JUnitImportModal";
 import { CreateBugModal } from "./CreateBugModal";
 import { TestDetail } from "./TestDetail";
 import { usePrompt } from "./usePrompt";
@@ -105,6 +106,7 @@ export function ContainersView({
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [showJUnitImport, setShowJUnitImport] = useState(false);
   const [boardPage, setBoardPage] = useState(0);
   // Run details for the selected Test Execution's member rows (keyed by testKey).
   const [memberRuns, setMemberRuns] = useState<Map<string, ExecMemberRun>>(new Map());
@@ -901,6 +903,15 @@ export function ContainersView({
             >
               + Add tests
             </button>
+            {kind === "testexec" && (
+              <button
+                className="btn"
+                onClick={() => setShowJUnitImport(true)}
+                title="Import test run results from a JUnit XML report"
+              >
+                Import results (JUnit XML)
+              </button>
+            )}
           </div>
 
           {selectedContainer.parentKey && (
@@ -1345,6 +1356,24 @@ export function ContainersView({
           onCreated={() => {
             setBugFor(null);
             onChanged();
+          }}
+        />
+      )}
+
+      {showJUnitImport && selected && kind === "testexec" && (
+        <JUnitImportModal
+          profileId={profileId}
+          execKey={selected}
+          onCancel={() => setShowJUnitImport(false)}
+          onApplied={(succeeded, failed) => {
+            setShowJUnitImport(false);
+            onChanged();
+            notice({
+              title: "JUnit import applied",
+              message:
+                `${succeeded} result${succeeded !== 1 ? "s" : ""} queued; commit from the Pending list.` +
+                (failed > 0 ? ` (${failed} failed)` : ""),
+            });
           }}
         />
       )}
