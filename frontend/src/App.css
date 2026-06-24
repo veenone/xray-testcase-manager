@@ -4468,6 +4468,7 @@ tr.row-checked:hover {
   gap: 18px;
   width: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 /* When the in-view read-only test detail is open, add a third column on the
    right (sized to the detail panel's own width) so the test detail sits beside
@@ -4482,6 +4483,7 @@ tr.row-checked:hover {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 .bugs-md-head {
   display: flex;
@@ -4513,6 +4515,22 @@ tr.row-checked:hover {
   overflow-y: auto;
   min-height: 0;
 }
+/* Visible scrollbar on macOS (overlay scrollbars are hidden by default there).
+   Subtle styling that works in both light and dark themes. */
+.bugs-md-items::-webkit-scrollbar {
+  width: 6px;
+}
+.bugs-md-items::-webkit-scrollbar-track {
+  background: var(--surface-2);
+  border-radius: 3px;
+}
+.bugs-md-items::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+.bugs-md-items::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
 .bugs-md-item {
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -4538,6 +4556,16 @@ tr.row-checked:hover {
   margin: 0;
   flex: 0 0 auto;
   cursor: pointer;
+}
+.bugs-md-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px 4px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  user-select: none;
 }
 .bugs-md-key {
   font-size: 12px;

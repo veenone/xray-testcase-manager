@@ -65,7 +65,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [addToExecWorking, setAddToExecWorking] = useState(false);
   const [addToExecError, setAddToExecError] = useState("");
   const [page, setPage] = useViewState(profileId, "bugs", "page", 0); // 0-based
-  const [pageSize, setPageSize] = useViewState(profileId, "bugs", "pageSize", 15);
+  const [pageSize, setPageSize] = useViewState(profileId, "bugs", "pageSize", 5);
   const [sortField, setSortField] = useViewState(profileId, "bugs", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "bugs", "sortDesc", true);
   const [syncing, setSyncing] = useState(false);
@@ -326,6 +326,24 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const paged = shown.slice(safePage * pageSize, safePage * pageSize + pageSize);
   const sel = bugs.find((b) => b.key === selected) ?? null;
 
+  // Select-all state for the current page.
+  const allPageChecked = paged.length > 0 && paged.every((b) => checked.has(b.key));
+  const somePageChecked = paged.some((b) => checked.has(b.key)) && !allPageChecked;
+
+  function toggleSelectAll() {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (allPageChecked) {
+        // Deselect all on this page.
+        for (const b of paged) next.delete(b.key);
+      } else {
+        // Select all on this page.
+        for (const b of paged) next.add(b.key);
+      }
+      return next;
+    });
+  }
+
   return (
     <div className={`bugs-md${detailKey ? " bugs-md-with-detail" : ""}`}>
       {promptUI}
@@ -411,6 +429,23 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           </p>
         ) : (
           <>
+            <label className="bugs-md-select-all">
+              <input
+                type="checkbox"
+                checked={allPageChecked}
+                ref={(el) => {
+                  if (el) el.indeterminate = somePageChecked;
+                }}
+                onChange={toggleSelectAll}
+                title={allPageChecked ? "Deselect all on this page" : "Select all on this page"}
+              />
+              {allPageChecked ? "Deselect all on page" : "Select all on page"}
+              {checked.size > 0 && (
+                <span className="muted" style={{ marginLeft: 4 }}>
+                  ({checked.size} total selected)
+                </span>
+              )}
+            </label>
             <ul className="bugs-md-items">
               {paged.map((b) => (
                 <li
@@ -450,6 +485,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
               pageSize={pageSize}
               total={shown.length}
               onPage={setPage}
+              pageSizeOptions={[5, 10, 15, 25, 50]}
               onPageSize={(n) => {
                 setPageSize(n);
                 setPage(0);
