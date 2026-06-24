@@ -4060,6 +4060,21 @@ tr.row-checked:hover {
 .pager-compact .board-pager-range { flex: none; text-align: left; }
 .pager-compact .board-pager-nav { justify-content: flex-start; flex-wrap: wrap; }
 
+/* Make enabled pager nav buttons visually distinct from disabled ones.
+   Without this the Prev/Go/Next buttons look identically grey in narrow panels. */
+.board-pager-nav .btn:not(:disabled) {
+  border-color: var(--accent, #2563eb);
+  color: var(--accent, #2563eb);
+  cursor: pointer;
+}
+.board-pager-nav .btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent, #2563eb) 10%, var(--surface));
+}
+.board-pager-nav .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* Dashboard per-view refresh (#7). */
 .dashboard-head {
   display: flex;
