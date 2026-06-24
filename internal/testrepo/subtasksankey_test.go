@@ -1,6 +1,9 @@
 package testrepo
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestGetSubTaskTraceability(t *testing.T) {
 	r := newTestRepo(t) // shared helper in sankey_crossproject_test.go
@@ -108,5 +111,48 @@ func setContainerParent(t *testing.T, r *Repository, profileID, key, parent stri
 		`UPDATE test_container SET parent_key = ? WHERE profile_id = ? AND jira_key = ?`,
 		parent, profileID, key); err != nil {
 		t.Fatalf("set parent on %s: %v", key, err)
+	}
+}
+
+// setContainerParentSummary sets parent_summary on a seeded container.
+func setContainerParentSummary(t *testing.T, r *Repository, profileID, key, summary string) {
+	t.Helper()
+	if _, err := r.db.Exec(
+		`UPDATE test_container SET parent_summary = ? WHERE profile_id = ? AND jira_key = ?`,
+		summary, profileID, key); err != nil {
+		t.Fatalf("set parent_summary on %s: %v", key, err)
+	}
+}
+
+func TestSubTaskParentNodeIncludesSummary(t *testing.T) {
+	r := newTestRepo(t)
+	const p = "p1"
+
+	seedContainer(t, r, p, "DEMO-STE-1", "testexec", "Sub 1", "Open")
+	setContainerParent(t, r, p, "DEMO-STE-1", "DEMO-S-1")
+	setContainerParentSummary(t, r, p, "DEMO-STE-1", "Story One")
+	seedContainerTest(t, r, p, "DEMO-STE-1", "DEMO-1", "PASS")
+
+	sk, err := r.GetSubTaskTraceability(p, nil, true)
+	if err != nil {
+		t.Fatalf("GetSubTaskTraceability: %v", err)
+	}
+
+	// The parent node label should contain the summary text.
+	var parentLabel string
+	for _, n := range sk.Nodes {
+		if n.ID == "parent:DEMO-S-1" {
+			parentLabel = n.Label
+			break
+		}
+	}
+	if parentLabel == "" {
+		t.Fatalf("parent node not found; nodes: %+v", sk.Nodes)
+	}
+	if !strings.Contains(parentLabel, "Story One") {
+		t.Errorf("parent node label %q should contain the summary %q", parentLabel, "Story One")
+	}
+	if !strings.HasPrefix(parentLabel, "DEMO-S-1") {
+		t.Errorf("parent node label %q should start with the key %q", parentLabel, "DEMO-S-1")
 	}
 }

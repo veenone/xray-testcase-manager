@@ -5,6 +5,33 @@ import (
 	"sort"
 )
 
+// parentSummaries returns a map of parent_key -> parent_summary for all
+// sub-task Test Executions that have a parent. Used to label parent nodes in
+// the sub-task traceability diagram.
+func (r *Repository) parentSummaries(profileID string) (map[string]string, error) {
+	rows, err := r.db.Query(
+		`SELECT DISTINCT parent_key, parent_summary
+		   FROM test_container
+		  WHERE profile_id = ? AND parent_key != ''`,
+		profileID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("read parent summaries: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var key, summary string
+		if err := rows.Scan(&key, &summary); err != nil {
+			return nil, err
+		}
+		if summary != "" {
+			out[key] = summary
+		}
+	}
+	return out, rows.Err()
+}
+
 // GetSubTaskTraceability builds a Parent issue -> Test Execution -> run status
 // flow over sub-task Test Executions only (kind = 'testexec' with a non-empty
 // parent_key). Each sub-task execution has exactly one parent, so the parent is
@@ -22,6 +49,11 @@ func (r *Repository) GetSubTaskTraceability(profileID string, parentFilters []st
 	out := Sankey{Nodes: []SankeyNode{}, Links: []SankeyLink{}}
 
 	summaryByKey, err := r.containerSummaries(profileID)
+	if err != nil {
+		return out, err
+	}
+
+	parentSummByKey, err := r.parentSummaries(profileID)
 	if err != nil {
 		return out, err
 	}
@@ -75,7 +107,11 @@ func (r *Repository) GetSubTaskTraceability(profileID string, parentFilters []st
 		execID := "exec:" + execKey
 		statusID := "status:" + status
 
-		note(parentID, parentKey, 0, 1)
+		parentLbl := parentKey
+		if s := parentSummByKey[parentKey]; s != "" {
+			parentLbl = parentKey + " — " + truncateRunes(s, 48)
+		}
+		note(parentID, parentLbl, 0, 1)
 		note(execID, orKey(summaryByKey[execKey], execKey), 1, 1)
 		note(statusID, status, 2, 1)
 		parentExec[[2]string{parentID, execID}]++
