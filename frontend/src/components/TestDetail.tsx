@@ -188,6 +188,38 @@ export function TestDetail({
   const [runHistory, setRunHistory] = useState<TestRunEntry[] | null>(null);
   const [runHistoryLoading, setRunHistoryLoading] = useState(false);
   const [runHistoryError, setRunHistoryError] = useState("");
+  // Sort state for the run history table. Default: updatedAt descending.
+  const [runHistorySort, setRunHistorySort] = useState<{ field: string; desc: boolean }>(
+    { field: "updatedAt", desc: true },
+  );
+
+  function toggleRunHistorySort(field: string) {
+    setRunHistorySort((prev) =>
+      prev.field === field
+        ? { field, desc: !prev.desc }
+        : { field, desc: true },
+    );
+  }
+
+  function sortedRunHistory(runs: TestRunEntry[]): TestRunEntry[] {
+    return [...runs].sort((a, b) => {
+      let cmp = 0;
+      switch (runHistorySort.field) {
+        case "runStatus":
+          cmp = (a.runStatus ?? "").localeCompare(b.runStatus ?? "");
+          break;
+        case "createdAt":
+          cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+          break;
+        case "updatedAt":
+          cmp = (a.updatedAt ?? "").localeCompare(b.updatedAt ?? "");
+          break;
+        default:
+          cmp = 0;
+      }
+      return runHistorySort.desc ? -cmp : cmp;
+    });
+  }
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState("");
@@ -1157,17 +1189,36 @@ export function TestDetail({
                 <thead>
                   <tr>
                     <th>Execution</th>
-                    <th>Result</th>
-                    <th>Date</th>
+                    <th
+                      style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                      onClick={() => toggleRunHistorySort("runStatus")}
+                      title="Sort by result"
+                    >
+                      Result{runHistorySort.field === "runStatus" ? (runHistorySort.desc ? " ▾" : " ▴") : ""}
+                    </th>
                     <th>By</th>
                     <th>Environment</th>
                     <th>Plan(s)</th>
                     <th>Fix Version(s)</th>
+                    <th
+                      style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                      onClick={() => toggleRunHistorySort("createdAt")}
+                      title="Sort by created date"
+                    >
+                      Created{runHistorySort.field === "createdAt" ? (runHistorySort.desc ? " ▾" : " ▴") : ""}
+                    </th>
+                    <th
+                      style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                      onClick={() => toggleRunHistorySort("updatedAt")}
+                      title="Sort by updated date"
+                    >
+                      Updated{runHistorySort.field === "updatedAt" ? (runHistorySort.desc ? " ▾" : " ▴") : ""}
+                    </th>
                     <th>Defects</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {runHistory.map((r, i) => (
+                  {sortedRunHistory(runHistory).map((r, i) => (
                     <tr key={`${r.execKey}-${i}`}>
                       <td>
                         {canLinkToJira && r.execKey && !r.execKey.startsWith("NEW-") ? (
@@ -1188,13 +1239,16 @@ export function TestDetail({
                       <td>
                         {r.runStatus ? <RunStatusBadge status={r.runStatus} /> : <span className="muted">—</span>}
                       </td>
-                      <td className="muted run-history-date">
-                        {formatDateTime(r.finishedAt || r.startedAt)}
-                      </td>
                       <td>{r.executedBy || <span className="muted">—</span>}</td>
                       <td>{r.environment || <span className="muted">—</span>}</td>
                       <td>{r.planKeys?.length ? r.planKeys.join(", ") : <span className="muted">—</span>}</td>
                       <td>{r.fixVersions?.length ? r.fixVersions.join(", ") : <span className="muted">—</span>}</td>
+                      <td className="muted run-history-date" style={{ whiteSpace: "nowrap" }}>
+                        {formatDateTime(r.createdAt) || "—"}
+                      </td>
+                      <td className="muted run-history-date" style={{ whiteSpace: "nowrap" }}>
+                        {formatDateTime(r.updatedAt) || "—"}
+                      </td>
                       <td>
                         {r.defects?.length ? (
                           <span className="run-history-defects">

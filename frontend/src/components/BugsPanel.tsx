@@ -87,6 +87,45 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [runHistoryCache, setRunHistoryCache] = useState<Map<string, TestRunEntry[]>>(new Map());
   // Set of test keys whose run history is currently loading.
   const [runHistoryLoading, setRunHistoryLoading] = useState<Set<string>>(new Set());
+  // Per-test sort state for the run-history breakdown. Keyed by test key.
+  // Default: updatedAt descending (newest first).
+  type RunSort = { field: string; desc: boolean };
+  const [runSortMap, setRunSortMap] = useState<Map<string, RunSort>>(new Map());
+
+  function getRunSort(testKey: string): RunSort {
+    return runSortMap.get(testKey) ?? { field: "updatedAt", desc: true };
+  }
+
+  function toggleRunSort(testKey: string, field: string) {
+    setRunSortMap((prev) => {
+      const current = prev.get(testKey) ?? { field: "updatedAt", desc: true };
+      const next: RunSort =
+        current.field === field
+          ? { field, desc: !current.desc }
+          : { field, desc: true };
+      return new Map(prev).set(testKey, next);
+    });
+  }
+
+  function sortedRuns(runs: TestRunEntry[], sort: RunSort): TestRunEntry[] {
+    return [...runs].sort((a, b) => {
+      let cmp = 0;
+      switch (sort.field) {
+        case "runStatus":
+          cmp = (a.runStatus ?? "").localeCompare(b.runStatus ?? "");
+          break;
+        case "createdAt":
+          cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+          break;
+        case "updatedAt":
+          cmp = (a.updatedAt ?? "").localeCompare(b.updatedAt ?? "");
+          break;
+        default:
+          cmp = 0;
+      }
+      return sort.desc ? -cmp : cmp;
+    });
+  }
 
   // syncBugs refreshes only the defect issues from Jira (partial sync), so the
   // Bugs panel can update without re-running preconditions / containers /
@@ -501,7 +540,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                     <th>Project</th>
                     <th>Summary</th>
                     <th>Status</th>
-                    <th>Result</th>
+                    <th>Latest result</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -569,19 +608,39 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                               ) : (
                                 <table className="board-table" style={{ fontSize: "0.85em" }}>
                                   <thead>
-                                    <tr>
-                                      <th>Execution</th>
-                                      <th>Result</th>
-                                      <th>Fix Version(s)</th>
-                                      <th>Plan(s)</th>
-                                      <th>Environment</th>
-                                      <th>Date</th>
-                                      <th>By</th>
-                                      <th>Defects</th>
-                                    </tr>
+                                    {(() => {
+                                      const sort = getRunSort(t.key);
+                                      function SortTh({ field, children }: { field: string; children: React.ReactNode }) {
+                                        const active = sort.field === field;
+                                        return (
+                                          <th
+                                            style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                                            onClick={() => toggleRunSort(t.key, field)}
+                                            title={`Sort by ${field}`}
+                                          >
+                                            {children}
+                                            {active ? (sort.desc ? " ▾" : " ▴") : ""}
+                                          </th>
+                                        );
+                                      }
+                                      return (
+                                        <tr>
+                                          <th>Execution</th>
+                                          <SortTh field="runStatus">Result</SortTh>
+                                          <th>Fix Version(s)</th>
+                                          <th>Plan(s)</th>
+                                          <th>Environment</th>
+                                          <th>Date</th>
+                                          <th>By</th>
+                                          <SortTh field="createdAt">Created</SortTh>
+                                          <SortTh field="updatedAt">Updated</SortTh>
+                                          <th>Defects</th>
+                                        </tr>
+                                      );
+                                    })()}
                                   </thead>
                                   <tbody>
-                                    {history.map((r, i) => (
+                                    {sortedRuns(history, getRunSort(t.key)).map((r, i) => (
                                       <tr key={`${r.execKey}-${i}`}>
                                         <td>
                                           {canLink && r.execKey && !r.execKey.startsWith("NEW-") ? (
@@ -614,6 +673,8 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                         <td>{r.environment || <span className="muted">—</span>}</td>
                                         <td className="muted">{formatDateTime(r.finishedAt || r.startedAt)}</td>
                                         <td>{r.executedBy || <span className="muted">—</span>}</td>
+                                        <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.createdAt) || <span>—</span>}</td>
+                                        <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.updatedAt) || <span>—</span>}</td>
                                         <td>
                                           {r.defects?.length ? (
                                             <span>
