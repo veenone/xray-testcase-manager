@@ -361,3 +361,46 @@ func TestGetTestRunsLiveStub(t *testing.T) {
 		t.Errorf("expected exactly 2 HTTP calls (2 pages), got %d", calls)
 	}
 }
+
+// TestParseTestExecTestsLiveSample locks in the exact shape returned by a live
+// Xray Server/DC instance (GET /rest/raven/1.0/api/testexec/{key}/test?detailed=true):
+// a plain array with key, status, executedBy, startedOn, finishedOn, defects[],
+// evidences[], rank, id. No testEnvironments and no created/updated timestamps.
+func TestParseTestExecTestsLiveSample(t *testing.T) {
+	body := []byte(`[
+		{"id":3153818,"status":"PASS","executedBy":"muhamakb","startedOn":"2026-04-02T03:42:17+02:00","finishedOn":"2026-04-02T03:42:17+02:00","defects":[],"evidences":[],"key":"RND_P_4JKTEE_05-2429","rank":1},
+		{"id":3153819,"status":"FAIL","executedBy":"muhamakb","startedOn":"2026-04-02T08:44:44+02:00","finishedOn":"2026-04-02T08:44:44+02:00","defects":[],"evidences":[],"key":"RND_P_4JKTEE_05-2432","rank":2}
+	]`)
+	runs, err := parseTestExecTests(body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected 2 runs, got %d", len(runs))
+	}
+	r0 := runs[0]
+	if r0.TestKey != "RND_P_4JKTEE_05-2429" {
+		t.Errorf("TestKey = %q", r0.TestKey)
+	}
+	if r0.Status != "PASS" {
+		t.Errorf("Status = %q, want PASS", r0.Status)
+	}
+	if r0.ExecutedBy != "muhamakb" {
+		t.Errorf("ExecutedBy = %q", r0.ExecutedBy)
+	}
+	if r0.StartedAt != "2026-04-02T03:42:17+02:00" {
+		t.Errorf("StartedAt = %q", r0.StartedAt)
+	}
+	if r0.FinishedAt != "2026-04-02T03:42:17+02:00" {
+		t.Errorf("FinishedAt = %q", r0.FinishedAt)
+	}
+	if r0.Environment != "" {
+		t.Errorf("Environment = %q, want empty (no testEnvironments in response)", r0.Environment)
+	}
+	if len(r0.Defects) != 0 {
+		t.Errorf("Defects = %v, want empty", r0.Defects)
+	}
+	if runs[1].Status != "FAIL" {
+		t.Errorf("runs[1].Status = %q, want FAIL", runs[1].Status)
+	}
+}

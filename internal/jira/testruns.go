@@ -33,18 +33,20 @@ type TestRun struct {
 // calls the Xray Server/DC REST API.
 //
 // Live endpoint: GET /rest/raven/1.0/api/testexec/{execKey}/test?detailed=true
-// The endpoint is paginated: query params page (1-based) and limit select each
-// page; the loop stops when a page returns fewer items than the requested limit
-// or when maxTestExecPages is reached to guard against runaway loops.
+// returning a JSON array of the execution's tests. The field names key, status,
+// executedBy, startedOn, finishedOn, and defects (an array) are confirmed
+// against a live Xray Server/DC instance. The loop pages with page (1-based) and
+// limit, de-duplicating by test key and stopping when a page is short or adds no
+// new tests (so a server that ignores the page param cannot loop), capped by
+// maxTestExecPages.
 //
-// NOTE(xtm): the detailed field names below (startedOn, finishedOn, assignee,
-// executedBy, testEnvironments, defects) are best-effort mappings from the
-// Xray Server/DC 8.4.0 documentation. Verify spelling and casing against a
-// live Xray Server/DC 8.4.0 instance and adjust before removing this marker.
-// In particular confirm: the pagination param names (page/limit vs
-// pageStart/limit vs offset/limit), whether "assignee" or "executedBy" carries
-// the executor, and whether defects are plain strings or objects with a "key"
-// field in the response from that version.
+// NOTE(xtm): a few details remain unconfirmed because the sampled execution did
+// not exercise them: the pagination param names (page/limit vs an offset
+// scheme), the shape of a non-empty defects element (the parser tolerates both
+// plain "KEY" strings and {"key":...} objects), and the field carrying test
+// environments (assumed testEnvironments; absent when no environment is set).
+// The endpoint does not return per-run created/updated timestamps, so those stay
+// empty on live (startedOn/finishedOn are used for the run dates instead).
 func (c *Client) GetTestRuns(ctx context.Context, execKey string) ([]TestRun, error) {
 	if isDemoURL(c.baseURL) {
 		return demoTestRuns(execKey), nil
@@ -52,6 +54,7 @@ func (c *Client) GetTestRuns(ctx context.Context, execKey string) ([]TestRun, er
 	const limit = 100
 	base := "/rest/raven/1.0/api/testexec/" + url.PathEscape(execKey) + "/test"
 	var all []TestRun
+	seen := make(map[string]bool)
 	for page := 1; page <= maxTestExecPages; page++ {
 		q := url.Values{}
 		q.Set("detailed", "true")
@@ -65,8 +68,18 @@ func (c *Client) GetTestRuns(ctx context.Context, execKey string) ([]TestRun, er
 		if err != nil {
 			return nil, err
 		}
-		all = append(all, pageRuns...)
-		if len(pageRuns) < limit {
+		added := 0
+		for _, r := range pageRuns {
+			if seen[r.TestKey] {
+				continue
+			}
+			seen[r.TestKey] = true
+			all = append(all, r)
+			added++
+		}
+		// Stop when the page is short (pagination exhausted) or added nothing new
+		// (the server ignored the page param and re-returned the same set).
+		if len(pageRuns) < limit || added == 0 {
 			break
 		}
 	}
@@ -98,9 +111,10 @@ func (c *Client) ExecPlans(ctx context.Context, execKey string) ([]string, error
 // execution. The parser is tolerant: unknown fields are ignored, missing
 // optional fields are left empty, and objects with an empty "key" are skipped.
 //
-// NOTE(xtm): the detailed field names (startedOn, finishedOn, assignee,
-// executedBy, testEnvironments, defects) are best-effort from Xray Server/DC
-// docs. Verify the exact names against a live Xray Server/DC 8.4.0 instance.
+// The key, status, executedBy, startedOn, finishedOn, and defects fields are
+// confirmed against a live Xray Server/DC instance. testEnvironments is assumed
+// (absent when no environment is set) and the defects element shape is tolerated
+// both as plain strings and as {"key":...} objects.
 func parseTestExecTests(body []byte) ([]TestRun, error) {
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" || trimmed == "null" || trimmed == "[]" {
@@ -108,8 +122,9 @@ func parseTestExecTests(body []byte) ([]TestRun, error) {
 	}
 
 	// rawTest is a tolerant shape for one element of the testexec/test array.
-	// NOTE(xtm): field names have not been verified against a live Xray
-	// Server/DC 8.4.0 instance -- adjust if the server uses different spelling.
+	// key, status, executedBy, startedOn, finishedOn, and defects are confirmed
+	// against a live instance; testEnvironments and the defects element shape are
+	// tolerated defensively.
 	type rawTest struct {
 		Key              string            `json:"key"`
 		Status           string            `json:"status"`
