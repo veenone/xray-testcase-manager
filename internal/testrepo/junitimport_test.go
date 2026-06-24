@@ -278,7 +278,7 @@ func TestAnalyzeJUnitImportNormalization(t *testing.T) {
 		t.Fatalf("seed link: %v", err)
 	}
 
-	// The JUnit report uses all-upper-case with a leading space — would fail a
+	// The JUnit report uses all-upper-case with a leading space - would fail a
 	// raw string comparison against the stored summary "Login Flow".
 	xmlStr := `<?xml version="1.0"?><testsuite><testcase name="  LOGIN FLOW  "/></testsuite>`
 	b64 := base64.StdEncoding.EncodeToString([]byte(xmlStr))
@@ -326,5 +326,37 @@ func TestApplyJUnitImportRejectsNonMember(t *testing.T) {
 	}
 	if len(result.Succeeded) != 0 {
 		t.Errorf("Succeeded = %d, want 0", len(result.Succeeded))
+	}
+}
+
+func TestAnalyzeJUnitImportEmptyXML(t *testing.T) {
+	repo := newRepo(t)
+	// A valid XML document with no <testcase> elements should return an error.
+	empty := base64.StdEncoding.EncodeToString([]byte("<testsuites></testsuites>"))
+	_, err := repo.AnalyzeJUnitImport("p1", "TE-1", empty)
+	if err == nil {
+		t.Error("expected error for XML with no testcase elements, got nil")
+	}
+}
+
+func TestApplyJUnitImportRejectsInvalidResult(t *testing.T) {
+	repo := seedJUnitRepo(t)
+
+	// Pass a match with an invalid Result value - should be rejected as a failure.
+	matches := []testrepo.JUnitMatch{
+		{Testcase: "Pass Test", TestKey: "TC-1", Summary: "Pass Test", Result: "SKIP"},
+	}
+	result, err := repo.ApplyJUnitImport("p1", "TE-1", matches)
+	if err != nil {
+		t.Fatalf("ApplyJUnitImport: %v", err)
+	}
+	if len(result.Failed) != 1 {
+		t.Errorf("Failed = %d, want 1 (invalid result should fail)", len(result.Failed))
+	}
+	if len(result.Succeeded) != 0 {
+		t.Errorf("Succeeded = %d, want 0", len(result.Succeeded))
+	}
+	if len(result.Failed) == 1 && result.Failed[0].TestKey != "TC-1" {
+		t.Errorf("Failed[0].TestKey = %q, want TC-1", result.Failed[0].TestKey)
 	}
 }

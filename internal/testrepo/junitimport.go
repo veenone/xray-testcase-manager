@@ -172,6 +172,9 @@ func (r *Repository) AnalyzeJUnitImport(profileID, execKey, xmlBase64 string) (J
 	if err != nil {
 		return preview, err
 	}
+	if len(testcases) == 0 {
+		return JUnitImportPreview{}, fmt.Errorf("JUnit XML contained no testcase elements")
+	}
 	preview.Total = len(testcases)
 
 	members, err := r.loadExecMembers(profileID, execKey)
@@ -231,6 +234,17 @@ func (r *Repository) ApplyJUnitImport(profileID, execKey string, matches []JUnit
 	result := BulkEditResult{Succeeded: []string{}, Failed: []BulkFailure{}}
 
 	for _, m := range matches {
+		switch m.Result {
+		case "PASS", "FAIL":
+			// valid
+		default:
+			result.Failed = append(result.Failed, BulkFailure{
+				TestKey: m.TestKey,
+				Error:   fmt.Sprintf("invalid result %q: must be PASS or FAIL", m.Result),
+			})
+			continue
+		}
+
 		ok, err := isExecMember(r.db, profileID, execKey, m.TestKey)
 		if err != nil {
 			result.Failed = append(result.Failed, BulkFailure{TestKey: m.TestKey, Error: err.Error()})
