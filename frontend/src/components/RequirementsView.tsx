@@ -266,7 +266,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   }
 
   return (
-    <div className="reqs">
+    <div className={`reqs${detailKey ? " reqs-with-detail" : ""}`}>
       <div className="reqs-list">
         <div className="reqs-list-head">
           <span className="reqs-list-title">Requirements</span>
@@ -549,25 +549,18 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
       )}
 
       {detailKey && (
-        <div
-          className="reqs-detail-overlay"
-          onClick={() => setDetailKey("")}
-        >
-          <div onClick={(e) => e.stopPropagation()}>
-            <TestDetail
-              profileId={profileId}
-              testKey={detailKey}
-              version={detailVersion}
-              pendingForTest={[]}
-              folders={[]}
-              onClose={() => setDetailKey("")}
-              onEdited={() => {
-                setDetailVersion((v) => v + 1);
-                onChanged?.();
-              }}
-            />
-          </div>
-        </div>
+        <TestDetail
+          profileId={profileId}
+          testKey={detailKey}
+          version={detailVersion}
+          pendingForTest={[]}
+          folders={[]}
+          onClose={() => setDetailKey("")}
+          onEdited={() => {
+            setDetailVersion((v) => v + 1);
+            onChanged?.();
+          }}
+        />
       )}
       {confirmUI}
     </div>
