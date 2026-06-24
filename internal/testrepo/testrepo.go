@@ -68,12 +68,13 @@ type Precondition struct {
 // Kind is one of "testset" / "testplan" / "testexec" — the three share a shape
 // and differ only in how they relate to Tests.
 type Container struct {
-	Key       string `json:"key"`
-	Kind      string `json:"kind"`
-	Summary   string `json:"summary"`
-	Status    string `json:"status"`
-	ParentKey string `json:"parentKey"`
-	IssueType string `json:"issueType"`
+	Key           string `json:"key"`
+	Kind          string `json:"kind"`
+	Summary       string `json:"summary"`
+	Status        string `json:"status"`
+	ParentKey     string `json:"parentKey"`
+	ParentSummary string `json:"parentSummary"`
+	IssueType     string `json:"issueType"`
 	// Environments are the Xray Test Environments assigned to a Test Execution
 	// (empty for Test Sets / Plans, which have no such field).
 	Environments []string `json:"environments"`
@@ -1154,16 +1155,17 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	// it is overwritten unconditionally on conflict (unlike environments, which
 	// is preserved when a pending container_env edit exists).
 	stmt, err := tx.Prepare(
-		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, environments, fix_versions)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, parent_summary, environments, fix_versions)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
-		   kind         = excluded.kind,
-		   summary      = excluded.summary,
-		   status       = excluded.status,
-		   parent_key   = excluded.parent_key,
-		   issue_type   = excluded.issue_type,
-		   fix_versions = excluded.fix_versions,
-		   environments = CASE WHEN EXISTS (
+		   kind           = excluded.kind,
+		   summary        = excluded.summary,
+		   status         = excluded.status,
+		   parent_key     = excluded.parent_key,
+		   issue_type     = excluded.issue_type,
+		   parent_summary = excluded.parent_summary,
+		   fix_versions   = excluded.fix_versions,
+		   environments   = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
 		         AND pending_change.entity_type = 'container_env'
@@ -1175,7 +1177,7 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	defer stmt.Close()
 
 	for _, c := range containers {
-		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, encodeEnvironments(c.Environments), encodeFixVersions(c.FixVersions)); err != nil {
+		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, c.ParentSummary, encodeEnvironments(c.Environments), encodeFixVersions(c.FixVersions)); err != nil {
 			return fmt.Errorf("upsert container %s: %w", c.Key, err)
 		}
 	}
@@ -1619,7 +1621,7 @@ func (r *Repository) ListContainers(profileID, kind string) ([]Container, error)
 // filter matches the JSON-quoted token so "Prod" does not collide with
 // "Production" (see environmentFilterPattern).
 func (r *Repository) ListContainersQuery(profileID string, q ContainerQuery) ([]Container, error) {
-	sqlStr := `SELECT jira_key, kind, summary, status, parent_key, issue_type, environments, fix_versions
+	sqlStr := `SELECT jira_key, kind, summary, status, parent_key, issue_type, parent_summary, environments, fix_versions
 		 FROM test_container WHERE profile_id = ? AND kind = ?`
 	args := []any{profileID, q.Kind}
 	if q.Environment != "" {
@@ -1638,7 +1640,7 @@ func (r *Repository) ListContainersQuery(profileID string, q ContainerQuery) ([]
 	for rows.Next() {
 		var c Container
 		var environments, fixVersions string
-		if err := rows.Scan(&c.Key, &c.Kind, &c.Summary, &c.Status, &c.ParentKey, &c.IssueType, &environments, &fixVersions); err != nil {
+		if err := rows.Scan(&c.Key, &c.Kind, &c.Summary, &c.Status, &c.ParentKey, &c.IssueType, &c.ParentSummary, &environments, &fixVersions); err != nil {
 			return nil, err
 		}
 		c.Environments = decodeEnvironments(environments)
