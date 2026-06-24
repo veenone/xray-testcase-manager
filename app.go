@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -24,6 +25,21 @@ import (
 	"xray-test-manager/internal/syncer"
 	"xray-test-manager/internal/testrepo"
 )
+
+// recoverToError converts a panic in a bound App method into a returned error
+// instead of crashing the whole app. Wails runs each bound call in a goroutine,
+// so an unrecovered panic would terminate the process. The helper logs the panic
+// with a full stack trace (so the root cause is diagnosable from the logs) and,
+// when the method has a named error return that is still nil, sets it to a
+// generic internal error. Use as: defer recoverToError("MethodName", &err).
+func recoverToError(method string, errp *error) {
+	if r := recover(); r != nil {
+		log.Printf("xtm: PANIC recovered in %s: %v\n%s", method, r, debug.Stack())
+		if errp != nil && *errp == nil {
+			*errp = fmt.Errorf("internal error in %s: %v", method, r)
+		}
+	}
+}
 
 // App is the Wails application backend. Exported methods on App are bound and
 // callable from the React frontend.
@@ -820,7 +836,8 @@ func (a *App) ListAllPreconditions(profileID string) ([]testrepo.Precondition, e
 
 // SetTestPreconditions replaces a Test's Precondition associations with the
 // given set and queues the change for commit (FR-13.5).
-func (a *App) SetTestPreconditions(profileID, testKey string, precondKeys []string) error {
+func (a *App) SetTestPreconditions(profileID, testKey string, precondKeys []string) (err error) {
+	defer recoverToError("SetTestPreconditions", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -852,7 +869,8 @@ func (a *App) CreatePrecondition(profileID, summary string) (string, error) {
 
 // BulkAssociatePreconditions adds (add=true) or removes (add=false) the given
 // Preconditions across a batch of Tests (FR-13.6).
-func (a *App) BulkAssociatePreconditions(profileID string, testKeys, precondKeys []string, add bool) (testrepo.BulkEditResult, error) {
+func (a *App) BulkAssociatePreconditions(profileID string, testKeys, precondKeys []string, add bool) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkAssociatePreconditions", &err)
 	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -862,7 +880,8 @@ func (a *App) BulkAssociatePreconditions(profileID string, testKeys, precondKeys
 
 // BulkReplacePreconditions swaps Preconditions across a batch of Tests: per Test
 // it removes toRemove and adds toAdd in one apply (FR-13.6).
-func (a *App) BulkReplacePreconditions(profileID string, testKeys, toRemove, toAdd []string) (testrepo.BulkEditResult, error) {
+func (a *App) BulkReplacePreconditions(profileID string, testKeys, toRemove, toAdd []string) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkReplacePreconditions", &err)
 	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -955,7 +974,8 @@ func (a *App) GetTestRequirements(profileID, testKey string) ([]testrepo.Require
 
 // SetTestRequirements replaces the set of requirements a Test covers and queues
 // the link changes for commit (FR-13 traceability).
-func (a *App) SetTestRequirements(profileID, testKey string, requirementKeys []string) error {
+func (a *App) SetTestRequirements(profileID, testKey string, requirementKeys []string) (err error) {
+	defer recoverToError("SetTestRequirements", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -964,7 +984,8 @@ func (a *App) SetTestRequirements(profileID, testKey string, requirementKeys []s
 
 // BulkAssociateRequirements adds or removes requirement links across many Tests
 // at once.
-func (a *App) BulkAssociateRequirements(profileID string, testKeys, requirementKeys []string, add bool) (testrepo.BulkEditResult, error) {
+func (a *App) BulkAssociateRequirements(profileID string, testKeys, requirementKeys []string, add bool) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkAssociateRequirements", &err)
 	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -974,7 +995,8 @@ func (a *App) BulkAssociateRequirements(profileID string, testKeys, requirementK
 
 // BulkReplaceRequirements swaps requirement links across a batch of Tests: per
 // Test it removes toRemove and adds toAdd in one apply.
-func (a *App) BulkReplaceRequirements(profileID string, testKeys, toRemove, toAdd []string) (testrepo.BulkEditResult, error) {
+func (a *App) BulkReplaceRequirements(profileID string, testKeys, toRemove, toAdd []string) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkReplaceRequirements", &err)
 	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -1033,7 +1055,8 @@ func (a *App) RemoveRequirementSource(profileID, projectKey string) error {
 // CreateBugForTest queues a new Bug issue linked to a failed Test, committed to
 // Jira on the next sync. The bug's project and issue type come from the profile.
 // Returns the placeholder key.
-func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description, priority string, labels []string) (string, error) {
+func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description, priority string, labels []string) (key string, err error) {
+	defer recoverToError("CreateBugForTest", &err)
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
@@ -1141,7 +1164,8 @@ func (a *App) GetExecutionMembersWithRuns(profileID, execKey string) ([]testrepo
 // change for commit. Editable fields: summary, description, priority, labels.
 // Repeated edits to the same field are coalesced; reverting to the original
 // value drops the pending change.
-func (a *App) EditTestField(profileID, testKey, field, newValue string) error {
+func (a *App) EditTestField(profileID, testKey, field, newValue string) (err error) {
+	defer recoverToError("EditTestField", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -1226,7 +1250,8 @@ func (a *App) ListAuditEntries(profileID string, limit int) ([]testrepo.AuditEnt
 // Returns a per-Test result describing what succeeded and what failed —
 // failed entries stay in the local pending list so the user can retry or
 // discard them.
-func (a *App) CommitPendingChanges(profileID string) (syncer.CommitResult, error) {
+func (a *App) CommitPendingChanges(profileID string) (out syncer.CommitResult, err error) {
+	defer recoverToError("CommitPendingChanges", &err)
 	empty := syncer.CommitResult{
 		Succeeded:  []string{},
 		Conflicted: []syncer.Conflict{},
@@ -1251,7 +1276,8 @@ func (a *App) CommitPendingChanges(profileID string) (syncer.CommitResult, error
 // (selective commit). The frontend passes all of one item's change ids together
 // (e.g. every row of a single Test) so a partial push doesn't strand sibling
 // edits against an advanced remote version.
-func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (syncer.CommitResult, error) {
+func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (out syncer.CommitResult, err error) {
+	defer recoverToError("CommitPendingChangesByIDs", &err)
 	empty := syncer.CommitResult{
 		Succeeded:  []string{},
 		Conflicted: []syncer.Conflict{},
@@ -1307,7 +1333,8 @@ func (a *App) GetTestTransitions(profileID, testKey string) ([]jira.Transition, 
 
 // TransitionTest queues a workflow transition locally (FR-4.2). The change
 // is pushed to Jira on commit via POST /rest/api/2/issue/{key}/transitions.
-func (a *App) TransitionTest(profileID, testKey, targetStatus string) error {
+func (a *App) TransitionTest(profileID, testKey, targetStatus string) (err error) {
+	defer recoverToError("TransitionTest", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -1317,7 +1344,8 @@ func (a *App) TransitionTest(profileID, testKey, targetStatus string) error {
 // EditTestStepField queues a local edit to one field of one Test Step
 // (FR-2.5). The change is pushed to Xray on commit via PUT
 // /rest/raven/2.0/api/test/{key}/steps/{stepId}.
-func (a *App) EditTestStepField(profileID, testKey, xrayID, field, newValue string) error {
+func (a *App) EditTestStepField(profileID, testKey, xrayID, field, newValue string) (err error) {
+	defer recoverToError("EditTestStepField", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -1557,7 +1585,8 @@ func (a *App) GetTestCustomFields(profileID, testKey string, forceRefresh bool) 
 
 // EditTestCustomField queues a local edit to one custom field of a Test
 // (FR-2.6). The change is pushed to Jira on commit as an issue field update.
-func (a *App) EditTestCustomField(profileID, testKey, fieldID, newValue string) error {
+func (a *App) EditTestCustomField(profileID, testKey, fieldID, newValue string) (err error) {
+	defer recoverToError("EditTestCustomField", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -1569,7 +1598,8 @@ func (a *App) EditTestCustomField(profileID, testKey, fieldID, newValue string) 
 // BulkEditTests applies a single field-level operation to a batch of Tests,
 // queuing a pending change for each modified Test. The changes are then
 // pushed to Jira through the existing commit flow.
-func (a *App) BulkEditTests(profileID string, testKeys []string, op testrepo.BulkEdit) (testrepo.BulkEditResult, error) {
+func (a *App) BulkEditTests(profileID string, testKeys []string, op testrepo.BulkEdit) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkEditTests", &err)
 	empty := testrepo.BulkEditResult{
 		Succeeded: []string{},
 		Failed:    []testrepo.BulkFailure{},
@@ -1691,7 +1721,8 @@ func (a *App) GetBulkTransitionOptions(profileID string, testKeys []string) (Bul
 // Transitions are looked up once per distinct current status and cached
 // for the duration of the call — see GetBulkTransitionOptions for the
 // caveat about conditional transitions.
-func (a *App) BulkTransitionTests(profileID string, testKeys []string, targetStatus string) (BulkTransitionResult, error) {
+func (a *App) BulkTransitionTests(profileID string, testKeys []string, targetStatus string) (_ BulkTransitionResult, err error) {
+	defer recoverToError("BulkTransitionTests", &err)
 	result := BulkTransitionResult{
 		Succeeded: []string{},
 		Skipped:   []BulkTransitionSkip{},
@@ -1911,7 +1942,8 @@ func (a *App) ListContainers(profileID, kind string) ([]testrepo.Container, erro
 // AllocateTests adds Tests to an existing Container locally and queues the
 // membership for commit (FR-3.4–3.6, add-only). Tests already in the Container
 // are reported back without being re-queued.
-func (a *App) AllocateTests(profileID, containerKey string, testKeys []string) (testrepo.AllocateResult, error) {
+func (a *App) AllocateTests(profileID, containerKey string, testKeys []string) (result testrepo.AllocateResult, err error) {
+	defer recoverToError("AllocateTests", &err)
 	empty := testrepo.AllocateResult{Added: []string{}, AlreadyMembers: []string{}}
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -1921,7 +1953,8 @@ func (a *App) AllocateTests(profileID, containerKey string, testKeys []string) (
 
 // DeallocateTests removes Tests from a Container locally and queues the removal
 // for commit (FR-3.4–3.6). Tests that weren't members are reported back.
-func (a *App) DeallocateTests(profileID, containerKey string, testKeys []string) (testrepo.DeallocateResult, error) {
+func (a *App) DeallocateTests(profileID, containerKey string, testKeys []string) (result testrepo.DeallocateResult, err error) {
+	defer recoverToError("DeallocateTests", &err)
 	empty := testrepo.DeallocateResult{Removed: []string{}, NotMembers: []string{}}
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -1937,7 +1970,8 @@ func (a *App) RunStatuses() []string {
 
 // SetTestRunStatus updates a Test's run result within a Test Execution and
 // queues it for commit to Xray.
-func (a *App) SetTestRunStatus(profileID, execKey, testKey, status string) error {
+func (a *App) SetTestRunStatus(profileID, execKey, testKey, status string) (err error) {
+	defer recoverToError("SetTestRunStatus", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -1946,7 +1980,8 @@ func (a *App) SetTestRunStatus(profileID, execKey, testKey, status string) error
 
 // BulkSetTestRunStatus applies one run result to several Tests in a Test
 // Execution at once (FR-3 bulk), queued for commit to Xray like single updates.
-func (a *App) BulkSetTestRunStatus(profileID, execKey string, testKeys []string, status string) (testrepo.BulkEditResult, error) {
+func (a *App) BulkSetTestRunStatus(profileID, execKey string, testKeys []string, status string) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkSetTestRunStatus", &err)
 	if err := a.requireStore(); err != nil {
 		return testrepo.BulkEditResult{}, err
 	}
@@ -1965,7 +2000,8 @@ func (a *App) AnalyzeJUnitImport(profileID, execKey, xmlBase64 string) (testrepo
 
 // ApplyJUnitImport sets the run result for each matched testcase in the given
 // execution, queuing pending changes for commit.
-func (a *App) ApplyJUnitImport(profileID, execKey string, matches []testrepo.JUnitMatch) (testrepo.BulkEditResult, error) {
+func (a *App) ApplyJUnitImport(profileID, execKey string, matches []testrepo.JUnitMatch) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("ApplyJUnitImport", &err)
 	if err := a.requireStore(); err != nil {
 		return testrepo.BulkEditResult{}, err
 	}
@@ -1989,7 +2025,8 @@ func (a *App) AnalyzeJUnitImportNewExec(profileID, xmlBase64 string, createMissi
 // with Create=true, all tests are allocated to the execution, and run results
 // are set for rows with a non-empty Result. The projectKey is resolved from
 // the active profile so the commit engine can create the execution in Jira.
-func (a *App) ApplyJUnitImportNewExec(profileID, summary string, rows []testrepo.JUnitNewExecRow) (testrepo.JUnitNewExecResult, error) {
+func (a *App) ApplyJUnitImportNewExec(profileID, summary string, rows []testrepo.JUnitNewExecRow) (out testrepo.JUnitNewExecResult, err error) {
+	defer recoverToError("ApplyJUnitImportNewExec", &err)
 	var empty testrepo.JUnitNewExecResult
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -2032,7 +2069,8 @@ func (a *App) SetContainerEnvironments(profileID, containerKey string, envs []st
 // BulkEditContainers applies a Test Environments operation (set_env / add_env /
 // remove_env) across a batch of containers, queuing a pending change per
 // container (RND_P_4TFINT_05-229).
-func (a *App) BulkEditContainers(profileID string, containerKeys []string, op testrepo.BulkEdit) (testrepo.BulkEditResult, error) {
+func (a *App) BulkEditContainers(profileID string, containerKeys []string, op testrepo.BulkEdit) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkEditContainers", &err)
 	empty := testrepo.BulkEditResult{
 		Succeeded: []string{},
 		Failed:    []testrepo.BulkFailure{},
@@ -2047,7 +2085,8 @@ func (a *App) BulkEditContainers(profileID string, containerKeys []string, op te
 // and allocates the given Tests to it (FR-3.4–3.6). The Container is created in
 // Jira on commit; until then it carries a temporary key. The project comes
 // from the active profile.
-func (a *App) CreateContainerAndAllocate(profileID, kind, summary string, testKeys []string) (testrepo.CreateContainerResult, error) {
+func (a *App) CreateContainerAndAllocate(profileID, kind, summary string, testKeys []string) (out testrepo.CreateContainerResult, err error) {
+	defer recoverToError("CreateContainerAndAllocate", &err)
 	var empty testrepo.CreateContainerResult
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -2159,7 +2198,8 @@ func (a *App) UnexcludeFromDuplicates(profileID, testKey string) error {
 // MoveTestToFolder relocates a Test in the Test Repository tree locally and
 // queues the move for commit (FR-13.3). folderID is the full folder path, or
 // empty for the repository root.
-func (a *App) MoveTestToFolder(profileID, testKey, folderID string) error {
+func (a *App) MoveTestToFolder(profileID, testKey, folderID string) (err error) {
+	defer recoverToError("MoveTestToFolder", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -2168,7 +2208,8 @@ func (a *App) MoveTestToFolder(profileID, testKey, folderID string) error {
 
 // BulkMoveToFolder moves a batch of Tests to one Test Repository folder
 // (FR-13.3 bulk), queuing a pending change per moved Test.
-func (a *App) BulkMoveToFolder(profileID string, testKeys []string, folderID string) (testrepo.BulkEditResult, error) {
+func (a *App) BulkMoveToFolder(profileID string, testKeys []string, folderID string) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkMoveToFolder", &err)
 	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -2215,7 +2256,8 @@ func (a *App) GetTestReview(profileID, testKey string) (testrepo.Review, error) 
 
 // SetTestReview records a review verdict (approved / rejected / pending, or ""
 // to clear) for a Test and queues it for commit as a Jira comment.
-func (a *App) SetTestReview(profileID, testKey, verdict, reviewer, note string) error {
+func (a *App) SetTestReview(profileID, testKey, verdict, reviewer, note string) (err error) {
+	defer recoverToError("SetTestReview", &err)
 	if err := a.requireStore(); err != nil {
 		return err
 	}
@@ -2232,7 +2274,8 @@ func (a *App) AddTestComment(profileID, testKey, body string) error {
 }
 
 // BulkReviewTests applies one review verdict to many Tests at once.
-func (a *App) BulkReviewTests(profileID string, testKeys []string, verdict, reviewer, note string) (testrepo.BulkEditResult, error) {
+func (a *App) BulkReviewTests(profileID string, testKeys []string, verdict, reviewer, note string) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkReviewTests", &err)
 	empty := testrepo.BulkEditResult{Succeeded: []string{}, Failed: []testrepo.BulkFailure{}}
 	if err := a.requireStore(); err != nil {
 		return empty, err
@@ -2273,7 +2316,8 @@ func (a *App) ImportTests(profileID, contentB64 string, isXlsx bool, mapping tes
 // CreateTest queues a brand-new Test locally (temp NEW-N key) with optional
 // steps, folder and precondition links, pushed to Jira on commit (FR-1).
 // Returns the temp key so the frontend can open the new Test in the detail panel.
-func (a *App) CreateTest(profileID string, draft testrepo.TestDraft) (string, error) {
+func (a *App) CreateTest(profileID string, draft testrepo.TestDraft) (key string, err error) {
+	defer recoverToError("CreateTest", &err)
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
@@ -2358,7 +2402,8 @@ func (a *App) AnalyzeGap(profileID, refSource, refB64 string, refXlsx bool, targ
 
 // CreateTestsFromGaps adds the selected gaps as local pending Tests (committed
 // on the next sync), reusing the import create path.
-func (a *App) CreateTestsFromGaps(profileID string, gaps []testrepo.GapTest) (testrepo.ImportResult, error) {
+func (a *App) CreateTestsFromGaps(profileID string, gaps []testrepo.GapTest) (result testrepo.ImportResult, err error) {
+	defer recoverToError("CreateTestsFromGaps", &err)
 	if err := a.requireStore(); err != nil {
 		return testrepo.ImportResult{}, err
 	}
