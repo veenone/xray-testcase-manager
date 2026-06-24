@@ -516,6 +516,33 @@ func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bo
 	return user.DisplayName, nil
 }
 
+// TestProfileConnection verifies a saved profile's connection using the stored
+// PAT, so users can test connection when editing a profile (where the token
+// field is blank -- the PAT is held in the credential manager, not shown).
+// It loads the stored token via the credential manager and runs the same
+// connection test as TestConnection with the supplied jiraURL/caCert/allowUntrustedTLS.
+// jiraURL, caCert and allowUntrustedTLS are taken from the form, not the saved
+// profile, so the test reflects unsaved edits. Returns the authenticated user's
+// display name.
+func (a *App) TestProfileConnection(profileID, jiraURL, caCert string, allowUntrustedTLS bool) (string, error) {
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return "", fmt.Errorf("load credentials for profile %s: %w", profileID, err)
+	}
+	var opts []jira.Option
+	if caCert != "" {
+		opts = append(opts, jira.WithCACert(caCert))
+	}
+	if allowUntrustedTLS {
+		opts = append(opts, jira.WithInsecureTLS(true))
+	}
+	user, err := jira.NewClient(jiraURL, token, opts...).TestConnection(a.ctx)
+	if err != nil {
+		return "", err
+	}
+	return user.DisplayName, nil
+}
+
 // SyncProfile syncs a profile, emitting "sync:progress" events to the
 // frontend as pages complete. The first sync (no watermark) is a full pull;
 // subsequent syncs use the previous sync's timestamp as a watermark for an

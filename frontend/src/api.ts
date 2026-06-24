@@ -23,6 +23,7 @@ export {
   UpdateProfileToken,
   DeleteProfile,
   TestConnection,
+  TestProfileConnection,
   SyncProfile,
   SyncRequirements,
   SyncContainers,

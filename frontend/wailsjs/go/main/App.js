@@ -570,6 +570,10 @@ export function TestConnection(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4);
 }
 
+export function TestProfileConnection(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['TestProfileConnection'](arg1, arg2, arg3, arg4);
+}
+
 export function TransitionTest(arg1, arg2, arg3) {
   return window['go']['main']['App']['TransitionTest'](arg1, arg2, arg3);
 }
