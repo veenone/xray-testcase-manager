@@ -393,6 +393,8 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 					ExecutedBy:  tr.ExecutedBy,
 					Environment: tr.Environment,
 					Defects:     defectsJSON,
+					CreatedAt:   tr.CreatedAt,
+					UpdatedAt:   tr.UpdatedAt,
 				})
 			}
 			if err := e.repo.ReplaceRunsForExec(profileID, execKey, rows); err != nil {

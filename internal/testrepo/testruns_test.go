@@ -134,14 +134,18 @@ func TestGetTestRunHistory(t *testing.T) {
 		t.Fatalf("seed containers: %v", err)
 	}
 
-	// Seed test_run rows for QA-1 in each execution.
+	// Seed test_run rows for QA-1 in each execution (with timestamps).
 	if err := repo.ReplaceRunsForExec("p1", "QA-TE-1", []testrepo.TestRunRow{
-		{ExecKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "FAIL", FinishedAt: "2026-05-01T10:00:00Z", Environment: "Staging"},
+		{ExecKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "FAIL",
+			FinishedAt: "2026-05-01T10:00:00Z", Environment: "Staging",
+			CreatedAt: "2026-05-01T08:00:00Z", UpdatedAt: "2026-05-01T10:00:00Z"},
 	}); err != nil {
 		t.Fatalf("seed runs for QA-TE-1: %v", err)
 	}
 	if err := repo.ReplaceRunsForExec("p1", "QA-TE-2", []testrepo.TestRunRow{
-		{ExecKey: "QA-TE-2", TestKey: "QA-1", RunStatus: "PASS", FinishedAt: "2026-06-01T09:00:00Z"},
+		{ExecKey: "QA-TE-2", TestKey: "QA-1", RunStatus: "PASS",
+			FinishedAt: "2026-06-01T09:00:00Z",
+			CreatedAt:  "2026-06-01T07:00:00Z", UpdatedAt: "2026-06-01T09:00:00Z"},
 	}); err != nil {
 		t.Fatalf("seed runs for QA-TE-2: %v", err)
 	}
@@ -159,10 +163,10 @@ func TestGetTestRunHistory(t *testing.T) {
 		t.Fatalf("expected 2 run history entries, got %d", len(hist))
 	}
 
-	// Newest finished_at should be first (QA-TE-2 finished 2026-06-01).
+	// Newest updated_at should be first (QA-TE-2 updated 2026-06-01).
 	first := hist[0]
 	if first.ExecKey != "QA-TE-2" {
-		t.Errorf("hist[0].ExecKey = %q, want QA-TE-2 (newest first)", first.ExecKey)
+		t.Errorf("hist[0].ExecKey = %q, want QA-TE-2 (newest updated_at first)", first.ExecKey)
 	}
 	if first.RunStatus != "PASS" {
 		t.Errorf("hist[0].RunStatus = %q, want PASS", first.RunStatus)
@@ -173,8 +177,14 @@ func TestGetTestRunHistory(t *testing.T) {
 	if len(first.PlanKeys) != 0 {
 		t.Errorf("hist[0].PlanKeys = %v, want empty", first.PlanKeys)
 	}
+	if first.CreatedAt != "2026-06-01T07:00:00Z" {
+		t.Errorf("hist[0].CreatedAt = %q, want 2026-06-01T07:00:00Z", first.CreatedAt)
+	}
+	if first.UpdatedAt != "2026-06-01T09:00:00Z" {
+		t.Errorf("hist[0].UpdatedAt = %q, want 2026-06-01T09:00:00Z", first.UpdatedAt)
+	}
 
-	// Second entry: QA-TE-1 (finished 2026-05-01).
+	// Second entry: QA-TE-1 (updated 2026-05-01).
 	second := hist[1]
 	if second.ExecKey != "QA-TE-1" {
 		t.Errorf("hist[1].ExecKey = %q, want QA-TE-1", second.ExecKey)
@@ -193,5 +203,11 @@ func TestGetTestRunHistory(t *testing.T) {
 	}
 	if len(second.PlanKeys) != 1 || second.PlanKeys[0] != "QA-TP-1" {
 		t.Errorf("hist[1].PlanKeys = %v, want [QA-TP-1]", second.PlanKeys)
+	}
+	if second.CreatedAt != "2026-05-01T08:00:00Z" {
+		t.Errorf("hist[1].CreatedAt = %q, want 2026-05-01T08:00:00Z", second.CreatedAt)
+	}
+	if second.UpdatedAt != "2026-05-01T10:00:00Z" {
+		t.Errorf("hist[1].UpdatedAt = %q, want 2026-05-01T10:00:00Z", second.UpdatedAt)
 	}
 }

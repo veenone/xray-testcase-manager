@@ -158,6 +158,8 @@ func (r *Repository) GetExecutionMembersWithRuns(profileID, execKey string) ([]E
 }
 
 // TestRunEntry is one execution-run of a test, with the execution's context.
+// CreatedAt and UpdatedAt carry the run's creation and last-update timestamps
+// from Xray (ISO-8601, empty when unknown) and drive sort order.
 type TestRunEntry struct {
 	ExecKey     string   `json:"execKey"`
 	ExecSummary string   `json:"execSummary"`
@@ -169,12 +171,14 @@ type TestRunEntry struct {
 	FinishedAt  string   `json:"finishedAt"`
 	ExecutedBy  string   `json:"executedBy"`
 	Defects     []string `json:"defects"`
+	CreatedAt   string   `json:"createdAt"`
+	UpdatedAt   string   `json:"updatedAt"`
 }
 
-// GetTestRunHistory returns every execution-run of a test, newest finished_at
-// first (then exec_key for a stable secondary order), enriched with the
-// execution summary, fix versions, and associated Test Plans from the local
-// cache.
+// GetTestRunHistory returns every execution-run of a test, sorted by
+// updated_at descending (then finished_at, then exec_key for a stable
+// secondary order), enriched with the execution summary, fix versions, and
+// associated Test Plans from the local cache.
 func (r *Repository) GetTestRunHistory(profileID, testKey string) ([]TestRunEntry, error) {
 	rows, err := r.db.Query(`
 		SELECT tr.exec_key,
@@ -185,12 +189,14 @@ func (r *Repository) GetTestRunHistory(profileID, testKey string) ([]TestRunEntr
 		       tr.executed_by,
 		       tr.environment,
 		       tr.defects,
-		       COALESCE(c.fix_versions, '')
+		       COALESCE(c.fix_versions, ''),
+		       tr.created_at,
+		       tr.updated_at
 		FROM test_run tr
 		LEFT JOIN test_container c
 		       ON c.profile_id = tr.profile_id AND c.jira_key = tr.exec_key
 		WHERE tr.profile_id = ? AND tr.test_key = ?
-		ORDER BY tr.finished_at DESC, tr.exec_key`,
+		ORDER BY tr.updated_at DESC, tr.finished_at DESC, tr.exec_key`,
 		profileID, testKey)
 	if err != nil {
 		return nil, err
@@ -205,6 +211,7 @@ func (r *Repository) GetTestRunHistory(profileID, testKey string) ([]TestRunEntr
 			&e.ExecKey, &e.ExecSummary, &e.RunStatus,
 			&e.StartedAt, &e.FinishedAt, &e.ExecutedBy, &e.Environment,
 			&defectsJSON, &fixJSON,
+			&e.CreatedAt, &e.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

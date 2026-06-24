@@ -96,6 +96,30 @@ func TestGetTestRunsDemoFailRunsHaveDefects(t *testing.T) {
 	}
 }
 
+// TestGetTestRunsDemoHasTimestamps verifies that demo runs carry non-empty
+// CreatedAt and UpdatedAt timestamps derived deterministically from the exec
+// key and run position.
+func TestGetTestRunsDemoHasTimestamps(t *testing.T) {
+	c := NewClient("demo", "token")
+	for _, execKey := range []string{"DEMO-TE-1", "DEMO-TE-3", "DEMO-TE-5"} {
+		runs, err := c.GetTestRuns(context.Background(), execKey)
+		if err != nil {
+			t.Fatalf("%s: %v", execKey, err)
+		}
+		if len(runs) == 0 {
+			t.Fatalf("%s: expected at least one run", execKey)
+		}
+		for i, r := range runs {
+			if r.CreatedAt == "" {
+				t.Errorf("%s run[%d] (%s): CreatedAt is empty", execKey, i, r.TestKey)
+			}
+			if r.UpdatedAt == "" {
+				t.Errorf("%s run[%d] (%s): UpdatedAt is empty", execKey, i, r.TestKey)
+			}
+		}
+	}
+}
+
 // TestExecPlansDemo verifies that demo executions return plan keys.
 func TestExecPlansDemo(t *testing.T) {
 	c := NewClient("demo", "token")

@@ -10,7 +10,8 @@ import (
 
 // TestRun is one test's run record within a Test Execution as returned by the
 // Xray Test Run REST endpoint. It carries the run status, timing, the executor
-// identity, the environment label (if set), and any defect keys linked to the run.
+// identity, the environment label (if set), any defect keys linked to the run,
+// and the run's creation / last-update timestamps (ISO-8601, empty if absent).
 type TestRun struct {
 	TestKey     string
 	Status      string
@@ -19,6 +20,8 @@ type TestRun struct {
 	ExecutedBy  string
 	Environment string
 	Defects     []string
+	CreatedAt   string
+	UpdatedAt   string
 }
 
 // GetTestRuns returns the test runs recorded for one Test Execution. Demo mode
@@ -72,6 +75,9 @@ func parseTestRuns(body []byte) ([]TestRun, error) {
 	}
 
 	// Xray may return different field names across versions.
+	// NOTE(xtm): live created/updated field names for Xray Server/DC 8.4.0 are
+	// assumed to be "createdOn"/"updatedOn" (matching the run detail endpoint).
+	// Verify against a live instance and adjust before removing this marker.
 	type rawRun struct {
 		TestKey     string   `json:"testKey"`
 		Status      string   `json:"status"`
@@ -82,6 +88,10 @@ func parseTestRuns(body []byte) ([]TestRun, error) {
 		ExecutedBy  string   `json:"executedBy"`
 		Environment string   `json:"testEnvironment"`
 		Defects     []string `json:"defects"`
+		CreatedOn   string   `json:"createdOn"`
+		CreatedAt   string   `json:"createdAt"`
+		UpdatedOn   string   `json:"updatedOn"`
+		UpdatedAt   string   `json:"updatedAt"`
 	}
 	var raw []rawRun
 	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
@@ -101,6 +111,15 @@ func parseTestRuns(body []byte) ([]TestRun, error) {
 		if finished == "" {
 			finished = r.FinishedAt
 		}
+		// Prefer createdOn over createdAt; same for updated.
+		created := r.CreatedOn
+		if created == "" {
+			created = r.CreatedAt
+		}
+		updated := r.UpdatedOn
+		if updated == "" {
+			updated = r.UpdatedAt
+		}
 		defects := r.Defects
 		if defects == nil {
 			defects = []string{}
@@ -113,6 +132,8 @@ func parseTestRuns(body []byte) ([]TestRun, error) {
 			ExecutedBy:  r.ExecutedBy,
 			Environment: r.Environment,
 			Defects:     defects,
+			CreatedAt:   created,
+			UpdatedAt:   updated,
 		})
 	}
 	return out, nil
@@ -232,6 +253,11 @@ func demoTestRuns(execKey string) []TestRun {
 			defects = []string{}
 		}
 
+		// created_at is one hour before started_at; updated_at equals finished_at.
+		// Both are deterministic (no time.Now(), no rand) so demo data is stable.
+		createdAt := demoRunDate(execIdx, pos-1)
+		updatedAt := finished
+
 		runs = append(runs, TestRun{
 			TestKey:     testKey,
 			Status:      status,
@@ -240,6 +266,8 @@ func demoTestRuns(execKey string) []TestRun {
 			ExecutedBy:  executor,
 			Environment: env,
 			Defects:     defects,
+			CreatedAt:   createdAt,
+			UpdatedAt:   updatedAt,
 		})
 		pos++
 	}

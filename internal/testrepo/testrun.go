@@ -9,6 +9,7 @@ import (
 
 // TestRunRow holds per-execution run details for a single Test, as stored in
 // the test_run table. Defects is a JSON array string (e.g. `["PROJ-1"]`).
+// CreatedAt and UpdatedAt are ISO-8601 strings from Xray (empty when unknown).
 type TestRunRow struct {
 	ExecKey     string
 	TestKey     string
@@ -18,6 +19,8 @@ type TestRunRow struct {
 	ExecutedBy  string
 	Environment string
 	Defects     string
+	CreatedAt   string
+	UpdatedAt   string
 }
 
 // ReplaceRunsForExec atomically replaces all test_run rows for the given
@@ -38,10 +41,12 @@ func (r *Repository) ReplaceRunsForExec(profileID, execKey string, runs []TestRu
 	for _, row := range runs {
 		if _, err := tx.Exec(
 			`INSERT INTO test_run
-			  (profile_id, exec_key, test_key, run_status, started_at, finished_at, executed_by, environment, defects)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			  (profile_id, exec_key, test_key, run_status, started_at, finished_at,
+			   executed_by, environment, defects, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			profileID, row.ExecKey, row.TestKey, row.RunStatus,
 			row.StartedAt, row.FinishedAt, row.ExecutedBy, row.Environment, row.Defects,
+			row.CreatedAt, row.UpdatedAt,
 		); err != nil {
 			return fmt.Errorf("insert test run: %w", err)
 		}
@@ -76,13 +81,15 @@ func (r *Repository) ReplaceExecPlans(profileID, execKey string, planKeys []stri
 }
 
 // RunsForTest returns all test_run rows for the given test key, ordered by
-// finished_at descending then exec_key so the most recent run appears first.
+// updated_at descending (then finished_at, then exec_key) so the most recently
+// updated run appears first.
 func (r *Repository) RunsForTest(profileID, testKey string) ([]TestRunRow, error) {
 	rows, err := r.db.Query(
-		`SELECT exec_key, test_key, run_status, started_at, finished_at, executed_by, environment, defects
+		`SELECT exec_key, test_key, run_status, started_at, finished_at,
+		        executed_by, environment, defects, created_at, updated_at
 		 FROM test_run
 		 WHERE profile_id = ? AND test_key = ?
-		 ORDER BY finished_at DESC, exec_key`,
+		 ORDER BY updated_at DESC, finished_at DESC, exec_key`,
 		profileID, testKey,
 	)
 	if err != nil {
@@ -95,6 +102,7 @@ func (r *Repository) RunsForTest(profileID, testKey string) ([]TestRunRow, error
 		if err := rows.Scan(
 			&row.ExecKey, &row.TestKey, &row.RunStatus,
 			&row.StartedAt, &row.FinishedAt, &row.ExecutedBy, &row.Environment, &row.Defects,
+			&row.CreatedAt, &row.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

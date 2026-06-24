@@ -799,6 +799,8 @@ export interface BugTest {
 
 // TestRunEntry mirrors testrepo.TestRunEntry — one execution-run of a test,
 // with the execution's context (plan keys, fix versions, defects, run detail).
+// createdAt and updatedAt are ISO-8601 strings from Xray (empty when unknown)
+// and drive sort order (newest updated first).
 export interface TestRunEntry {
   execKey: string;
   execSummary: string;
@@ -810,6 +812,8 @@ export interface TestRunEntry {
   finishedAt: string;
   executedBy: string;
   defects: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 // RunRollup mirrors testrepo.RunRollup — run-result roll-up for a Test Plan or
