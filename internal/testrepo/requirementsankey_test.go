@@ -18,8 +18,8 @@ func TestRequirementTraceabilityFlowBalances(t *testing.T) {
 	for _, n := range sk.Nodes {
 		layerTotal[n.Layer] += n.Value
 	}
-	// Four layers: requirement -> coverage -> Test plan -> run result.
-	for layer := 0; layer <= 3; layer++ {
+	// Five layers: requirement(0) -> coverage(1) -> Test plan(2) -> Test(3) -> run result(4).
+	for layer := 0; layer <= 4; layer++ {
 		if layerTotal[layer] != wantTotal {
 			t.Errorf("layer %d total = %d, want %d (balanced flow)", layer, layerTotal[layer], wantTotal)
 		}
@@ -40,7 +40,7 @@ func TestRequirementTraceabilityNodesAndLinks(t *testing.T) {
 		layerOf[n.ID] = n.Layer
 	}
 
-	// Every requirement is its own first-layer node ("KEY — summary").
+	// Every requirement is its own layer-0 node ("KEY — summary").
 	for _, key := range []string{"PRD-10", "PRD-11", "PRD-12"} {
 		if layerOf["req:"+key] != 0 {
 			t.Errorf("req:%s missing from layer 0; nodes: %+v", key, sk.Nodes)
@@ -50,8 +50,7 @@ func TestRequirementTraceabilityNodesAndLinks(t *testing.T) {
 		t.Errorf("req:PRD-10 = %d, want 2 covering tests", val["req:PRD-10"])
 	}
 
-	// PRD-10 is FAILED and covered by QA-1 (PASS) + QA-2 (FAIL); PRD-11 NOTRUN
-	// (QA-3 TODO); PRD-12 UNCOVERED.
+	// Coverage nodes at layer 1.
 	if val["cov:FAILED"] != 2 {
 		t.Errorf("cov:FAILED = %d, want 2", val["cov:FAILED"])
 	}
@@ -61,28 +60,50 @@ func TestRequirementTraceabilityNodesAndLinks(t *testing.T) {
 	if val["cov:UNCOVERED"] != 1 {
 		t.Errorf("cov:UNCOVERED = %d, want 1", val["cov:UNCOVERED"])
 	}
-	// No test plans seeded, so every thread buckets to "No plan".
+
+	// No test plans seeded; every thread buckets to "No plan" at layer 2.
 	if val["plan:__none__"] != 4 {
 		t.Errorf("plan:__none__ = %d, want 4 (no plans seeded)", val["plan:__none__"])
 	}
+	if layerOf["plan:__none__"] != 2 {
+		t.Errorf("plan:__none__ layer = %d, want 2", layerOf["plan:__none__"])
+	}
+
+	// Test nodes at layer 3: QA-1, QA-2, QA-3 covered; synthetic "No test" for PRD-12.
+	for _, tk := range []string{"QA-1", "QA-2", "QA-3"} {
+		if layerOf["test:"+tk] != 3 {
+			t.Errorf("test:%s layer = %d, want 3", tk, layerOf["test:"+tk])
+		}
+	}
+	if layerOf["test:__none__"] != 3 {
+		t.Errorf("test:__none__ layer = %d, want 3 (uncovered)", layerOf["test:__none__"])
+	}
+
+	// Run results at layer 4.
 	if val["res:PASS"] != 1 || val["res:FAIL"] != 1 {
 		t.Errorf("run results = PASS %d / FAIL %d, want 1 / 1", val["res:PASS"], val["res:FAIL"])
 	}
 	if val["res:__notest__"] != 1 {
 		t.Errorf("res:__notest__ = %d, want 1 (uncovered)", val["res:__notest__"])
 	}
+	if layerOf["res:PASS"] != 4 {
+		t.Errorf("res:PASS layer = %d, want 4", layerOf["res:PASS"])
+	}
 
-	// The uncovered thread links UNCOVERED -> No plan -> No test.
-	hasCovPlan, hasPlanRes := false, false
+	// The uncovered thread: UNCOVERED -> No plan -> No test (test:__none__) -> No test (res).
+	hasCovPlan, hasPlanTest, hasTestRes := false, false, false
 	for _, l := range sk.Links {
 		if l.Source == "cov:UNCOVERED" && l.Target == "plan:__none__" {
 			hasCovPlan = true
 		}
-		if l.Source == "plan:__none__" && l.Target == "res:__notest__" {
-			hasPlanRes = true
+		if l.Source == "plan:__none__" && l.Target == "test:__none__" {
+			hasPlanTest = true
+		}
+		if l.Source == "test:__none__" && l.Target == "res:__notest__" {
+			hasTestRes = true
 		}
 	}
-	if !hasCovPlan || !hasPlanRes {
+	if !hasCovPlan || !hasPlanTest || !hasTestRes {
 		t.Errorf("missing UNCOVERED -> No plan -> No test thread; links: %+v", sk.Links)
 	}
 }

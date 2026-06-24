@@ -1,19 +1,18 @@
 package testrepo
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
 
-// GetRequirementTraceability builds a four-layer requirement traceability flow:
-// requirement -> coverage status -> Test plan -> covering Test run result. The
-// flow unit is a coverage link (a requirement<->Test pair); each uncovered
+// GetRequirementTraceability builds a five-layer requirement traceability flow:
+// requirement -> coverage status -> Test plan -> Test -> covering Test run result.
+// The flow unit is a coverage link (a requirement<->Test pair); each uncovered
 // requirement contributes one synthetic thread ("No plan" / "No test") so it
-// still appears in the diagram. Because every link is counted once per layer,
-// the layers sum to the same total and the diagram balances. Computed entirely
-// from the local store, so it tracks the cache without a Jira call.
+// still appears in the diagram. Computed entirely from the local store.
 //
-// The requirement is always the labelled first node ("KEY — summary").
+// The requirement is always the labelled first node ("KEY - summary").
 // reqFilters narrows the flow to the listed requirement keys; an empty list
 // shows every requirement as its own first-layer node.
 func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []string) (Sankey, error) {
@@ -39,6 +38,10 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 	if err != nil {
 		return out, err
 	}
+	testSummariesMap, err := r.testSummaries(profileID)
+	if err != nil {
+		return out, err
+	}
 
 	filterSet := map[string]bool{}
 	for _, k := range reqFilters {
@@ -52,7 +55,8 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 	layer := map[string]int{}
 	reqCov := map[[2]string]int{}
 	covPlan := map[[2]string]int{}
-	planResult := map[[2]string]int{}
+	planTest := map[[2]string]int{}
+	testResult := map[[2]string]int{}
 
 	note := func(id, lbl string, lyr int) {
 		value[id]++
@@ -60,16 +64,18 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 		layer[id] = lyr
 	}
 
-	// addThread records one coverage link across all four layers: requirement
-	// (0) -> coverage (1) -> Test plan (2) -> run result (3).
-	addThread := func(reqID, reqLbl, covID, covLbl, planID, planLbl, resID, resLbl string) {
+	// addThread records one coverage link across all five layers:
+	// requirement(0) -> coverage(1) -> Test plan(2) -> Test(3) -> run result(4).
+	addThread := func(reqID, reqLbl, covID, covLbl, planID, planLbl, testID, testLbl, resID, resLbl string) {
 		note(reqID, reqLbl, 0)
 		note(covID, covLbl, 1)
 		note(planID, planLbl, 2)
-		note(resID, resLbl, 3)
+		note(testID, testLbl, 3)
+		note(resID, resLbl, 4)
 		reqCov[[2]string{reqID, covID}]++
 		covPlan[[2]string{covID, planID}]++
-		planResult[[2]string{planID, resID}]++
+		planTest[[2]string{planID, testID}]++
+		testResult[[2]string{testID, resID}]++
 	}
 
 	for _, rq := range reqs {
@@ -85,13 +91,23 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 		covLbl := requirementCoverageLabel(rq.Coverage)
 		tests := testsByReq[rq.Key]
 		if len(tests) == 0 {
-			addThread(reqID, reqLbl, covID, covLbl, "plan:__none__", "No plan", "res:__notest__", "No test")
+			addThread(reqID, reqLbl, covID, covLbl,
+				"plan:__none__", "No plan",
+				"test:__none__", "No test",
+				"res:__notest__", "No test")
 			continue
 		}
 		for _, tk := range tests {
 			planID, planLbl := planBucket(plansByTest[tk], summaryByKey)
 			resID, resLbl := runResultNode(runByTest[tk])
-			addThread(reqID, reqLbl, covID, covLbl, planID, planLbl, resID, resLbl)
+			testLbl := tk
+			if s := strings.TrimSpace(testSummariesMap[tk]); s != "" {
+				testLbl = tk + " — " + truncateRunes(s, 48)
+			}
+			addThread(reqID, reqLbl, covID, covLbl,
+				planID, planLbl,
+				"test:"+tk, testLbl,
+				resID, resLbl)
 		}
 	}
 
@@ -109,8 +125,31 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 	})
 	out.Links = append(out.Links, flatten(reqCov)...)
 	out.Links = append(out.Links, flatten(covPlan)...)
-	out.Links = append(out.Links, flatten(planResult)...)
+	out.Links = append(out.Links, flatten(planTest)...)
+	out.Links = append(out.Links, flatten(testResult)...)
 	return out, nil
+}
+
+// testSummaries returns a map of test_case jira_key -> summary for a profile.
+// Used to build the Test node label in the requirement traceability diagram.
+func (r *Repository) testSummaries(profileID string) (map[string]string, error) {
+	rows, err := r.db.Query(
+		`SELECT jira_key, summary FROM test_case WHERE profile_id = ?`,
+		profileID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("read test summaries: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var key, summary string
+		if err := rows.Scan(&key, &summary); err != nil {
+			return nil, err
+		}
+		out[key] = summary
+	}
+	return out, rows.Err()
 }
 
 // truncateRunes shortens s to at most n runes, appending an ellipsis.
