@@ -26,6 +26,12 @@ cross-project members** toggle). New shots to add: **39** (Gap Analysis setup),
 **40** (Gap Analysis results), and **41** (Test Environments and Fix Version(s)
 on a Test Execution).
 
+**New for 1.7.0a.** Add: **42** (Run history on a test), **43** (execution run
+columns: date / tester / environment), **44** (Plan / Set run roll-up), **45**
+(bug affected-tests breakdown), **46** (read-only test detail in the Bugs view),
+**47** (add tests to an existing execution), **48** (PAT show/hide toggle), and
+**49** (TLS / certificate settings).
+
 ## How to capture
 
 1. **Run the app on a demo profile** so every screen has rich data and no Jira is
@@ -90,6 +96,14 @@ on a Test Execution).
 | 39 | `39-gap-analysis.png` | **Gap Analysis** tab | The setup form: Reference (project / file), Target file, Compare by, Three-way, and Download template |
 | 40 | `40-gap-analysis-result.png` | Gap Analysis → fill a target → **Run** | The result: missing-from-reference and missing-from-target lists with select-and-**Add tests** and **Export report** |
 | 41 | `41-execution-environments.png` | **Containers** → kind **Test Execution**, select an execution | The execution detail showing editable **Test Environments** chips and read-only **Fix Version(s)** |
+| 42 | `42-run-history.png` | Browse → open a test → **Run history** section | The Run history table: execution, result, date, tester, environment, plan, fix versions, defects |
+| 43 | `43-execution-runs.png` | **Containers** → kind **Test Execution**, select one | Member table showing the run **Date / By / Environment** columns beside the editable result |
+| 44 | `44-plan-rollup.png` | **Containers** → kind **Test Plan**, select a plan | The run roll-up bar above the board (passed / failed / not-run / executing / aborted / blocked) |
+| 45 | `45-bug-breakdown.png` | **Containers → Bugs**, select a bug, expand an affected test | The affected-tests table with the **Project** column and an expanded per-test run breakdown |
+| 46 | `46-bug-test-detail.png` | Bugs → affected test → open-detail (↗) icon | The read-only test detail open as a side panel to the right of the bug detail |
+| 47 | `47-add-to-execution.png` | Bugs → check one or more bugs → **Add to execution…** | The picker modal listing existing Test Executions with a search box |
+| 48 | `48-pat-toggle.png` | **Profile → New profile…** (or Edit) | The Personal Access Token field with its show/hide (eye) toggle |
+| 49 | `49-tls-settings.png` | Profile form → expand **Advanced: TLS / certificate settings** | The CA certificate (PEM) textarea and the allow-untrusted checkbox |
 
 To refresh a shot: run `wails dev`, open `http://localhost:34115/` in the
 `browse` tool, switch to the **Demo Project (DEMO)** profile, sync once, then

@@ -1,6 +1,6 @@
 # Xray Test Manager — User Guide
 
-**Version:** 1.6.x · **Platform:** Windows 10/11 (64-bit) · **Audience:** QA engineers,
+**Version:** 1.7.x · **Platform:** Windows 10/11 (64-bit) · **Audience:** QA engineers,
 test leads, and anyone managing Xray test cases in Jira Data Center.
 
 Xray Test Manager is a lightweight Windows desktop app for managing **Xray test
@@ -18,6 +18,33 @@ you commit.
 > see [Demo mode](#demo-mode-try-it-without-jira)).
 
 ---
+
+## What's new in 1.7.0a (alpha)
+
+- **Test run history.** Each test now has a **Run history** section: every
+  execution it ran in, with the result, date, who ran it, environment, Test
+  Plan(s), Fix Version(s), and linked defects. Test Executions gain run date /
+  tester / environment columns, and Test Plans / Sets show a run roll-up. See
+  [Run history](#run-history) and [Containers](#11-test-sets-plans--executions-containers).
+- **View sessions.** Switching tabs no longer resets a view: your selection,
+  filters, search, pagination, and sub-tab are restored when you return to it
+  (until you restart the app or change profile).
+- **Richer bug detail.** A bug's affected-tests table gains a **Project** column
+  and an expandable per-test breakdown (fix version / execution / plan /
+  environment / date / tester / defects). From there you can open a test's
+  **read-only detail** in a side panel without leaving the Bugs view, or add the
+  bug's tests to an **existing** Test Execution. See
+  [Defect tracking](#12-defect-tracking).
+- **Read-only detail side panels.** The read-only test detail also opens beside
+  the Test Execution member list in Containers.
+- **macOS fixes.** Copy/paste and right-click now work in text inputs (a standard
+  Edit menu is wired in); a profile can supply a **custom CA certificate** or
+  **allow an untrusted certificate** to connect through an internal CA; and the
+  Personal Access Token field has a **show/hide** toggle. See
+  [Connecting to Jira](#2-connecting-to-jira-profiles).
+
+> This is an **alpha** build (`1.7.0a`) for validation. The live Xray run data
+> and the macOS TLS / menu fixes still need verifying against a real instance.
 
 ## What's new in 1.6.0
 
@@ -152,6 +179,23 @@ Manager, never in the local database or logs.*
 
 > **Security:** your PAT is saved to the **Windows Credential Manager** only. It
 > is never written to the local database, exported profile files, or logs.
+
+The PAT field has a **show/hide** toggle so you can reveal what you typed while
+pasting or checking it.
+
+![Figure 48: PAT show/hide toggle](images/48-pat-toggle.png)
+*Figure 48 — The Personal Access Token field with its show/hide toggle.*
+
+**Advanced: TLS / certificate settings.** If your Jira uses an internal or
+self-signed certificate and the connection test fails with a certificate error
+(`x509: certificate signed by unknown authority`), expand **Advanced: TLS /
+certificate settings** and either paste a **CA certificate (PEM)** to trust, or
+tick **Allow untrusted certificate (skip TLS verification)** (insecure; only for
+a trusted internal server).
+
+![Figure 49: TLS / certificate settings](images/49-tls-settings.png)
+*Figure 49 — Advanced TLS settings: a custom CA certificate, or the
+allow-untrusted escape hatch.*
 
 ### Demo mode — try it without Jira
 
@@ -318,6 +362,18 @@ panel; the transition is queued for commit like any other edit.
 If a test has defects linked to it (including bugs filed in a different Jira
 project), they appear in a **Linked bugs** section on the detail panel as
 clickable keys that open in the browser. See [Defect tracking](#12-defect-tracking).
+
+### Run history
+
+The detail panel's **Run history** section lists every Test Execution this test
+ran in, with the result, date, who ran it, environment, Test Plan(s), Fix
+Version(s), and any linked defects. It is pulled from Xray during sync, so you
+see a test's run trajectory without opening Xray; execution and defect keys open
+in the browser.
+
+![Figure 42: Run history](images/42-run-history.png)
+*Figure 42 — The Run history section: each execution run with result, date,
+tester, environment, plan, fix versions, and defects.*
 
 ---
 
@@ -495,6 +551,27 @@ harvested into the [Bugs panel](#12-defect-tracking) and the test detail. The
 [Traceability](#14-traceability) Execution flow can include or exclude them with
 the **include cross-project members** toggle.
 
+**Run details on executions.** A Test Execution's member table also shows, per
+test, the run **Date**, the **tester**, and the **environment** the run used,
+beside the editable run-result control.
+
+![Figure 43: Execution run details](images/43-execution-runs.png)
+*Figure 43 — A Test Execution's members with run date, tester, and environment
+columns alongside the editable result.*
+
+**Plan / Set run roll-up.** Selecting a Test Plan or Test Set shows a **run
+roll-up** bar above the board: passed / failed / not-run / executing / aborted /
+blocked counts across the executions that ran its tests.
+
+![Figure 44: Plan run roll-up](images/44-plan-rollup.png)
+*Figure 44 — The run roll-up on a Test Plan, summarizing results across its
+executions.*
+
+**Open a test read-only.** The open-detail icon on a member test opens that
+test's **read-only** detail in a side panel beside the board (the same panel the
+Bugs view uses, see [Defect tracking](#12-defect-tracking)), so you can read its
+steps and fields without leaving Containers.
+
 ### Generate a pytest scaffold
 
 From a Test Plan or Execution you can generate a **pytest** scaffold for its
@@ -530,6 +607,34 @@ Which Jira project a new bug lands in, and its issue type, are configurable per
 profile (the test project, the execution's project, or a dedicated defect
 project). Bug sync respects the profile's scope and shows progress in the status
 bar.
+
+**Affected-tests breakdown.** The affected-tests table shows each test's
+**Project**, and each row expands to a per-test run breakdown — fix version,
+execution, Test Plan, environment, date, tester, and defects — drawn from the
+test's run history, so you can see how each affected test fared without opening
+Xray.
+
+![Figure 45: Affected-tests breakdown](images/45-bug-breakdown.png)
+*Figure 45 — A bug's affected tests with the Project column and an expanded
+per-test run breakdown.*
+
+**Open a test read-only.** The open-detail icon on an affected test opens that
+test's **read-only** detail in a side panel beside the bug detail, mirroring the
+Duplicates description/steps panel — so you can inspect its steps and fields
+without leaving the Bugs view. The test key still opens the test in Browse, and
+your Bugs selection and filters are restored when you return.
+
+![Figure 46: Read-only test detail in the Bugs view](images/46-bug-test-detail.png)
+*Figure 46 — The read-only test detail opened to the right of the bug detail.*
+
+**Add affected tests to an execution.** Alongside **Create Test Execution**
+(which builds a new execution from the checked bugs' tests), **Add to
+execution…** allocates those tests to an **existing** Test Execution picked from
+a searchable list.
+
+![Figure 47: Add tests to an existing execution](images/47-add-to-execution.png)
+*Figure 47 — Adding the checked bugs' affected tests to an existing Test
+Execution.*
 
 ---
 
