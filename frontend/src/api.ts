@@ -369,6 +369,7 @@ export interface Container {
   summary: string;
   status: string;
   parentKey: string;  // parent issue key for a sub-task Test Execution; "" for standalone
+  parentSummary: string;  // parent issue summary; "" when no parent or not fetched
   issueType: string;  // Jira issuetype name (e.g. "Sub Test Execution"); informational
   environments: string[]; // Xray Test Environments (Test Executions only; empty otherwise)
   fixVersions: string[]; // Jira Fix Version(s), read-only (Test Executions only; empty otherwise)

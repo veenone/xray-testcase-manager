@@ -595,14 +595,15 @@ export namespace testrepo {
 	    summary: string;
 	    status: string;
 	    parentKey: string;
+	    parentSummary: string;
 	    issueType: string;
 	    environments: string[];
 	    fixVersions: string[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new Container(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
@@ -610,6 +611,7 @@ export namespace testrepo {
 	        this.summary = source["summary"];
 	        this.status = source["status"];
 	        this.parentKey = source["parentKey"];
+	        this.parentSummary = source["parentSummary"];
 	        this.issueType = source["issueType"];
 	        this.environments = source["environments"];
 	        this.fixVersions = source["fixVersions"];
