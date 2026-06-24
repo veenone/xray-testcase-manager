@@ -77,6 +77,14 @@ func (c *Client) testEnvironmentsFieldID(ctx context.Context) (string, error) {
 	return c.resolveCustomFieldID(ctx, "Test Environments")
 }
 
+// testPlanFieldID resolves and caches the custom field id of the Xray "Test
+// Plan" field on a Test Execution issue (the plan(s) the execution belongs to)
+// for this instance, returning "" (no error) when the instance has no such
+// field so the read path can proceed without it.
+func (c *Client) testPlanFieldID(ctx context.Context) (string, error) {
+	return c.resolveCustomFieldID(ctx, "Test Plan")
+}
+
 // CustomFieldDef describes a Jira custom field configured for the Test issue
 // type (FR-2.6): its Jira id (e.g. "customfield_10001"), display name and a
 // coarse type hint.

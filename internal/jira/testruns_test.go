@@ -404,3 +404,27 @@ func TestParseTestExecTestsLiveSample(t *testing.T) {
 		t.Errorf("runs[1].Status = %q, want FAIL", runs[1].Status)
 	}
 }
+
+// TestParsePlanKeys covers the Xray Test Plan custom field value: the confirmed
+// live shape (array of key strings), an array-of-objects fallback, and empty.
+func TestParsePlanKeys(t *testing.T) {
+	// Confirmed live shape: ["RND_P_4JKTEE_05-2804"].
+	if got := parsePlanKeys([]byte(`["RND_P_4JKTEE_05-2804"]`)); len(got) != 1 || got[0] != "RND_P_4JKTEE_05-2804" {
+		t.Errorf("string array: got %v", got)
+	}
+	// Multiple keys.
+	if got := parsePlanKeys([]byte(`["A-1","A-2"]`)); len(got) != 2 || got[1] != "A-2" {
+		t.Errorf("multi: got %v", got)
+	}
+	// Array of objects with a key field (tolerated fallback).
+	if got := parsePlanKeys([]byte(`[{"key":"B-9"}]`)); len(got) != 1 || got[0] != "B-9" {
+		t.Errorf("object array: got %v", got)
+	}
+	// Null / empty.
+	if got := parsePlanKeys([]byte(`null`)); got != nil {
+		t.Errorf("null: got %v", got)
+	}
+	if got := parsePlanKeys([]byte(``)); got != nil {
+		t.Errorf("empty: got %v", got)
+	}
+}

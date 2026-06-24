@@ -88,21 +88,68 @@ func (c *Client) GetTestRuns(ctx context.Context, execKey string) ([]TestRun, er
 
 // ExecPlans returns the Test Plan keys that a Test Execution is associated
 // with. Demo mode derives the association deterministically from the execution
-// key; the live path calls the Xray raven REST API.
+// key; the live path reads the Xray "Test Plan" custom field off the Test
+// Execution issue.
 //
-// NOTE(xtm): Xray Server/DC does not expose a dedicated "plans for exec"
-// endpoint. The most reliable approach on a live instance is to read the Test
-// Plan custom field on the Test Execution issue via the Jira issue REST API
-// (GET /rest/api/2/issue/<execKey>?fields=<testPlanFieldId>), where
-// testPlanFieldId must be resolved per instance. Verify against a live Xray
-// Server/DC 8.4.0 instance before removing the TODO marker.
+// Xray Server/DC has no dedicated "plans for exec" endpoint; the association
+// lives in the Test Plan custom field on the execution issue, whose value is an
+// array of plan issue keys (confirmed against a live instance). The field id is
+// instance-specific, so it is resolved by name and cached. The path degrades
+// gracefully (returns nil, no error) when the field cannot be resolved so the
+// sync proceeds without plan grouping rather than failing.
 func (c *Client) ExecPlans(ctx context.Context, execKey string) ([]string, error) {
 	if isDemoURL(c.baseURL) {
 		return demoExecPlans(execKey), nil
 	}
-	// TODO(xtm): resolve the Test Plan custom field id and read it from the
-	// exec issue. Return nil for now so the sync path degrades gracefully.
-	return nil, nil
+	fieldID, err := c.testPlanFieldID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if fieldID == "" {
+		return nil, nil
+	}
+	var resp struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	path := "/rest/api/2/issue/" + url.PathEscape(execKey) + "?fields=" + fieldID
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return parsePlanKeys(resp.Fields[fieldID]), nil
+}
+
+// parsePlanKeys decodes the Xray Test Plan custom field value into plan issue
+// keys. The confirmed live shape is a JSON array of key strings
+// (e.g. ["PROJ-123"]); an array of objects with a "key" field is also tolerated
+// in case a version returns issue links instead. Null/empty yields nil.
+func parsePlanKeys(raw json.RawMessage) []string {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	var keys []string
+	if err := json.Unmarshal(raw, &keys); err == nil {
+		out := make([]string, 0, len(keys))
+		for _, k := range keys {
+			if s := strings.TrimSpace(k); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	var objs []struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(raw, &objs); err == nil {
+		out := make([]string, 0, len(objs))
+		for _, o := range objs {
+			if s := strings.TrimSpace(o.Key); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // parseTestExecTests decodes the JSON array returned by the Xray Server/DC
