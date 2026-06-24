@@ -40,3 +40,32 @@ func TestHTTPErrorSurfacesJiraMessage(t *testing.T) {
 		t.Errorf("Code = %d, want 400", httpErr.Code)
 	}
 }
+
+// TestHTTPErrorFallsBackWithoutJiraMessage verifies that a non-200 response
+// whose body is not a recognisable Jira error object falls back to the compact
+// method/path/status form rather than producing an empty message.
+func TestHTTPErrorFallsBackWithoutJiraMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte("Unauthorized"))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv)
+	var out struct{}
+	err := c.get(context.Background(), "/rest/api/2/myself", &out)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	httpErr, ok := err.(*HTTPError)
+	if !ok {
+		t.Fatalf("expected *HTTPError, got %T", err)
+	}
+	if httpErr.Message != "" {
+		t.Errorf("Message = %q, want empty for an unrecognisable body", httpErr.Message)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "GET") || !strings.Contains(msg, "/rest/api/2/myself") {
+		t.Errorf("fallback error should include method and path: %q", msg)
+	}
+}

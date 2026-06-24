@@ -516,14 +516,12 @@ func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bo
 	return user.DisplayName, nil
 }
 
-// TestProfileConnection verifies a saved profile's connection using the stored
-// PAT, so users can test connection when editing a profile (where the token
-// field is blank -- the PAT is held in the credential manager, not shown).
-// It loads the stored token via the credential manager and runs the same
-// connection test as TestConnection with the supplied jiraURL/caCert/allowUntrustedTLS.
-// jiraURL, caCert and allowUntrustedTLS are taken from the form, not the saved
-// profile, so the test reflects unsaved edits. Returns the authenticated user's
-// display name.
+// TestProfileConnection verifies a saved profile's connection using its stored
+// PAT. Unlike TestConnection, no token is required from the caller -- it is
+// loaded from the credential manager so the button works when editing a profile
+// (where the token field is blank). jiraURL, caCert, and allowUntrustedTLS
+// reflect unsaved form edits, not the saved profile (FR-8.4). Returns the
+// authenticated user's display name.
 func (a *App) TestProfileConnection(profileID, jiraURL, caCert string, allowUntrustedTLS bool) (string, error) {
 	token, err := a.creds.Load(profileID)
 	if err != nil {
