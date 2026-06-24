@@ -32,10 +32,18 @@ type Test struct {
 	// (parseOptionValue). Best-effort: if the field id cannot be resolved the
 	// pull proceeds without ExecType. Demo mode populates it via the generator.
 	ExecType string
+	// FixVersions are the standard Jira Fix Version(s) assigned to this Test
+	// issue. Populated by the live pull (fields=...,fixVersions) and the demo
+	// generator. Read-only display values; never edited locally.
+	FixVersions []string
 }
 
 // testFields are the issue fields requested from Jira's search API.
-const testFields = "summary,description,status,priority,labels,components,updated"
+// NOTE(xtm): fixVersions is a standard Jira field (issue.fields.fixVersions,
+// an array of {id, name, ...} objects); the name field carries the version
+// name string. This shape matches Jira DC REST API 2 conventions and should
+// be verified against the live Xray Server/DC 8.4.0 instance.
+const testFields = "summary,description,status,priority,labels,components,updated,fixVersions"
 
 // testIssueFields is the typed subset of a Test issue's `fields` object the app
 // caches. It is decoded from the raw fields message (testIssue.Fields) so the
@@ -55,6 +63,13 @@ type testIssueFields struct {
 	Components []struct {
 		Name string `json:"name"`
 	} `json:"components"`
+	// FixVersions is the standard Jira Fix Version(s) array. Each element is a
+	// version object; only the Name field is stored.
+	// NOTE(xtm): the shape {name: "1.5.0", ...} is standard Jira DC; verify
+	// against the live Xray Server/DC 8.4.0 instance.
+	FixVersions []struct {
+		Name string `json:"name"`
+	} `json:"fixVersions"`
 }
 
 // searchResponse is the /rest/api/2/search payload. Each issue keeps its `fields`
@@ -93,6 +108,11 @@ func parseIssueTest(id, key string, rawFields json.RawMessage, execTypeID string
 	for _, comp := range f.Components {
 		if comp.Name != "" {
 			t.Components = append(t.Components, comp.Name)
+		}
+	}
+	for _, fv := range f.FixVersions {
+		if fv.Name != "" {
+			t.FixVersions = append(t.FixVersions, fv.Name)
 		}
 	}
 	t.ExecType = execTypeFromRawFields(rawFields, execTypeID)

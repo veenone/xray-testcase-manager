@@ -36,6 +36,10 @@ type TestCase struct {
 	// ExecType is the Xray Test Type (a.k.a. execution type): Manual /
 	// Automated / Generic / Cucumber. Empty when unknown / not yet synced.
 	ExecType string `json:"execType"`
+	// FixVersions are the standard Jira Fix Version(s) assigned to this Test
+	// issue. Populated on sync from test_case.fix_versions (JSON array). Empty
+	// when none are set or the Test has not yet been synced.
+	FixVersions []string `json:"fixVersions"`
 }
 
 // Folder is one node in the Xray Test Repository tree (FR-13.1). The ID is
@@ -314,55 +318,56 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 	// local value instead of overwriting from the incoming sync.
 	stmt, err := tx.Prepare(
 		`INSERT INTO test_case
-		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id, components, exec_type)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id, components, exec_type, fix_versions)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
-		   jira_id     = excluded.jira_id,
-		   components  = excluded.components,
-		   exec_type   = CASE WHEN EXISTS (
+		   jira_id      = excluded.jira_id,
+		   components   = excluded.components,
+		   fix_versions = excluded.fix_versions,
+		   exec_type    = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
 		         AND pending_change.entity_type = 'test_case'
 		         AND pending_change.entity_key  = excluded.jira_key
 		         AND pending_change.field       = 'exec_type'
 		     ) THEN test_case.exec_type ELSE excluded.exec_type END,
-		   summary     = CASE WHEN EXISTS (
+		   summary      = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
 		         AND pending_change.entity_type = 'test_case'
 		         AND pending_change.entity_key  = excluded.jira_key
 		         AND pending_change.field       = 'summary'
 		     ) THEN test_case.summary ELSE excluded.summary END,
-		   description = CASE WHEN EXISTS (
+		   description  = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
 		         AND pending_change.entity_type = 'test_case'
 		         AND pending_change.entity_key  = excluded.jira_key
 		         AND pending_change.field       = 'description'
 		     ) THEN test_case.description ELSE excluded.description END,
-		   status      = CASE WHEN EXISTS (
+		   status       = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
 		         AND pending_change.entity_type = 'test_case'
 		         AND pending_change.entity_key  = excluded.jira_key
 		         AND pending_change.field       = 'status'
 		     ) THEN test_case.status ELSE excluded.status END,
-		   priority    = CASE WHEN EXISTS (
+		   priority     = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
 		         AND pending_change.entity_type = 'test_case'
 		         AND pending_change.entity_key  = excluded.jira_key
 		         AND pending_change.field       = 'priority'
 		     ) THEN test_case.priority ELSE excluded.priority END,
-		   labels      = CASE WHEN EXISTS (
+		   labels       = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
 		         AND pending_change.entity_type = 'test_case'
 		         AND pending_change.entity_key  = excluded.jira_key
 		         AND pending_change.field       = 'labels'
 		     ) THEN test_case.labels ELSE excluded.labels END,
-		   updated_at  = excluded.updated_at,
-		   folder_id   = CASE WHEN EXISTS (
+		   updated_at   = excluded.updated_at,
+		   folder_id    = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
 		         AND pending_change.entity_type = 'test_case'
@@ -379,6 +384,7 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 			profileID, t.Key, t.ID, t.Summary, t.Description,
 			t.Status, t.Priority, strings.Join(t.Labels, " "),
 			t.Updated, t.FolderID, encodeComponents(t.Components), t.ExecType,
+			encodeFixVersions(t.FixVersions),
 		); err != nil {
 			return fmt.Errorf("upsert %s: %w", t.Key, err)
 		}
@@ -2235,7 +2241,7 @@ func (r *Repository) ListTests(profileID string, q Query) (Page, error) {
 	}
 
 	listSQL := fmt.Sprintf(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, fix_versions
 		 FROM test_case %s ORDER BY %s LIMIT ? OFFSET ?`,
 		whereSQL, orderSQL)
 
@@ -2363,7 +2369,7 @@ func (r *Repository) ListTestStatuses(profileID string) ([]string, error) {
 // GetTest returns one Test by its Jira key, or ErrNotFound.
 func (r *Repository) GetTest(profileID, key string) (TestCase, error) {
 	row := r.db.QueryRow(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, fix_versions
 		 FROM test_case WHERE profile_id = ? AND jira_key = ?`, profileID, key)
 	t, err := scanTest(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -4469,13 +4475,15 @@ type scanner interface {
 
 func scanTest(s scanner) (TestCase, error) {
 	var (
-		t          TestCase
-		labels     string
-		components string
+		t            TestCase
+		labels       string
+		components   string
+		fixVersions  string
 	)
 	if err := s.Scan(
 		&t.Key, &t.ID, &t.Summary, &t.Description,
 		&t.Status, &t.Priority, &labels, &components, &t.Updated, &t.FolderID, &t.ExecType,
+		&fixVersions,
 	); err != nil {
 		return TestCase{}, err
 	}
@@ -4483,6 +4491,7 @@ func scanTest(s scanner) (TestCase, error) {
 		t.Labels = strings.Fields(labels)
 	}
 	t.Components = decodeComponents(components)
+	t.FixVersions = decodeFixVersions(fixVersions)
 	return t, nil
 }
 

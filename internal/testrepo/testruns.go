@@ -17,14 +17,18 @@ type RunRollup struct {
 
 // ExecMemberRun is one member test of an execution with its run details.
 type ExecMemberRun struct {
-	TestKey     string `json:"testKey"`
-	Summary     string `json:"summary"`
-	Status      string `json:"status"`
-	RunStatus   string `json:"runStatus"`
-	StartedAt   string `json:"startedAt"`
-	FinishedAt  string `json:"finishedAt"`
-	ExecutedBy  string `json:"executedBy"`
-	Environment string `json:"environment"`
+	TestKey     string   `json:"testKey"`
+	Summary     string   `json:"summary"`
+	Status      string   `json:"status"`
+	RunStatus   string   `json:"runStatus"`
+	StartedAt   string   `json:"startedAt"`
+	FinishedAt  string   `json:"finishedAt"`
+	ExecutedBy  string   `json:"executedBy"`
+	Environment string   `json:"environment"`
+	// FixVersions are the Jira Fix Version(s) assigned to this member Test
+	// issue itself (from test_case.fix_versions), not the execution's fix
+	// versions. Empty when the Test has none or has not been synced locally.
+	FixVersions []string `json:"fixVersions"`
 }
 
 // GetRunRollup returns a run-status rollup for the member tests of a Test Plan
@@ -127,7 +131,8 @@ func (r *Repository) GetExecutionMembersWithRuns(profileID, execKey string) ([]E
 		        COALESCE(tr.started_at,   '') AS started_at,
 		        COALESCE(tr.finished_at,  '') AS finished_at,
 		        COALESCE(tr.executed_by,  '') AS executed_by,
-		        COALESCE(tr.environment,  '') AS environment
+		        COALESCE(tr.environment,  '') AS environment,
+		        COALESCE(t.fix_versions,  '') AS fix_versions
 		 FROM test_container_test l
 		 LEFT JOIN test_case     t  ON t.profile_id  = l.profile_id AND t.jira_key = l.test_key
 		 LEFT JOIN external_test x  ON x.profile_id  = l.profile_id AND x.jira_key = l.test_key
@@ -145,13 +150,15 @@ func (r *Repository) GetExecutionMembersWithRuns(profileID, execKey string) ([]E
 	var out []ExecMemberRun
 	for rows.Next() {
 		var m ExecMemberRun
+		var fixVersionsJSON string
 		if err := rows.Scan(
 			&m.TestKey, &m.Summary, &m.Status,
 			&m.RunStatus, &m.StartedAt, &m.FinishedAt,
-			&m.ExecutedBy, &m.Environment,
+			&m.ExecutedBy, &m.Environment, &fixVersionsJSON,
 		); err != nil {
 			return nil, err
 		}
+		m.FixVersions = decodeFixVersions(fixVersionsJSON)
 		out = append(out, m)
 	}
 	return out, rows.Err()

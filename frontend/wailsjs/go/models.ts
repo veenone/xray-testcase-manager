@@ -791,6 +791,7 @@ export namespace testrepo {
 	    finishedAt: string;
 	    executedBy: string;
 	    environment: string;
+	    fixVersions: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ExecMemberRun(source);
@@ -806,6 +807,7 @@ export namespace testrepo {
 	        this.finishedAt = source["finishedAt"];
 	        this.executedBy = source["executedBy"];
 	        this.environment = source["environment"];
+	        this.fixVersions = source["fixVersions"];
 	    }
 	}
 	export class Folder {
@@ -1091,6 +1093,7 @@ export namespace testrepo {
 	    updated: string;
 	    folderId: string;
 	    execType: string;
+	    fixVersions: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new TestCase(source);
@@ -1109,6 +1112,7 @@ export namespace testrepo {
 	        this.updated = source["updated"];
 	        this.folderId = source["folderId"];
 	        this.execType = source["execType"];
+	        this.fixVersions = source["fixVersions"];
 	    }
 	}
 	export class Page {

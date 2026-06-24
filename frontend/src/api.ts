@@ -237,6 +237,8 @@ export interface TestCase {
   updated: string;
   folderId: string;
   execType: string;
+  /** Jira Fix Version(s) assigned to this Test issue. Empty when none are set. */
+  fixVersions: string[];
 }
 
 export interface TestPage {
@@ -842,6 +844,8 @@ export interface ExecMemberRun {
   finishedAt: string;
   executedBy: string;
   environment: string;
+  /** Jira Fix Version(s) of this member Test issue (from test_case), not the execution's. */
+  fixVersions: string[];
 }
 
 // JUnitMatch mirrors testrepo.JUnitMatch -- a testcase matched to an execution member.

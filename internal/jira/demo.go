@@ -774,6 +774,7 @@ func makeDemoTest(projectKey string, i int) Test {
 		Updated:     updated,
 		FolderID:    demoFolderForFeature(feature),
 		ExecType:    demoExecTypeForIndex(i),
+		FixVersions: demoTestFixVersionsForIndex(i),
 	}
 }
 
@@ -788,6 +789,34 @@ var demoExecTypes = []string{"Manual", "Automated", "Generic", "Cucumber"}
 // custom field value set).
 func demoExecTypeForIndex(i int) string {
 	return demoExecTypes[i%len(demoExecTypes)]
+}
+
+// demoTestFixVersionPool is the small set of Fix Version names used for demo
+// Test issues. Indices cycle deterministically so members across an execution
+// genuinely differ, exercising the per-member fix-version column in the UI.
+var demoTestFixVersionPool = []string{"1.5.0", "1.6.0", "1.7.0"}
+
+// demoTestFixVersionsForIndex returns a deterministic 0-2 Fix Version set for
+// a demo Test by index. About a third of tests carry no fix version, another
+// third carry one, and the remainder carry two (always distinct). The result
+// is derived purely from i, so repeated syncs are idempotent.
+func demoTestFixVersionsForIndex(i int) []string {
+	switch i % 3 {
+	case 0:
+		// No fix version on this test.
+		return nil
+	case 1:
+		// One fix version.
+		return []string{demoTestFixVersionPool[i%len(demoTestFixVersionPool)]}
+	default:
+		// Two distinct fix versions.
+		first := demoTestFixVersionPool[i%len(demoTestFixVersionPool)]
+		second := demoTestFixVersionPool[(i+1)%len(demoTestFixVersionPool)]
+		if second == first {
+			second = demoTestFixVersionPool[(i+2)%len(demoTestFixVersionPool)]
+		}
+		return []string{first, second}
+	}
 }
 
 // demoComponentNames is the demo Jira components vocabulary (the multi-valued

@@ -28,7 +28,7 @@ func (r *Repository) ListTestsForExport(profileID string, q Query) ([]TestCase, 
 		dir = "DESC"
 	}
 	listSQL := fmt.Sprintf(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, fix_versions
 		 FROM test_case %s ORDER BY %s %s`, whereSQL, sortCol, dir)
 
 	rows, err := r.db.Query(listSQL, args...)

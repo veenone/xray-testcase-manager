@@ -138,3 +138,41 @@ func TestIncrementalSinceClauseToleratesBadInput(t *testing.T) {
 		t.Errorf("bad input should yield empty clause, got %q", got)
 	}
 }
+
+// TestMakeDemoTestFixVersionsDeterministic asserts that FixVersions on demo
+// Tests are deterministic (same index always returns the same slice) and that
+// the first 30 tests include at least one test with a non-empty FixVersions
+// slice and at least one with an empty one, so both paths are exercised.
+func TestMakeDemoTestFixVersionsDeterministic(t *testing.T) {
+	for i := range 10 {
+		a := makeDemoTest("QA", i)
+		b := makeDemoTest("QA", i)
+		if len(a.FixVersions) != len(b.FixVersions) {
+			t.Errorf("index %d: FixVersions not deterministic: %v vs %v", i, a.FixVersions, b.FixVersions)
+			continue
+		}
+		for j := range a.FixVersions {
+			if a.FixVersions[j] != b.FixVersions[j] {
+				t.Errorf("index %d: FixVersions[%d] not deterministic: %q vs %q", i, j, a.FixVersions[j], b.FixVersions[j])
+			}
+		}
+	}
+
+	// The first 30 demo tests must include at least one with FixVersions and one
+	// without, so both paths are exercised in the UI.
+	hasVersioned, hasEmpty := false, false
+	for i := range 30 {
+		fv := makeDemoTest("QA", i).FixVersions
+		if len(fv) > 0 {
+			hasVersioned = true
+		} else {
+			hasEmpty = true
+		}
+	}
+	if !hasVersioned {
+		t.Error("no demo test in first 30 has a FixVersions entry")
+	}
+	if !hasEmpty {
+		t.Error("no demo test in first 30 has empty FixVersions")
+	}
+}

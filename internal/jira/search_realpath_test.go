@@ -201,3 +201,65 @@ func TestRealListTestsBasicSearchesAndMaps(t *testing.T) {
 		t.Errorf("XRAYINT-2 wrong: %+v", two)
 	}
 }
+
+// TestParseIssueTestFixVersions exercises the parseIssueTest path for the
+// standard Jira fixVersions field. It covers the expected [{name: "..."}]
+// shape, an empty array, and a missing field -- the live Jira DC shape that
+// should be verified against the real Xray Server/DC 8.4.0 instance.
+func TestParseIssueTestFixVersions(t *testing.T) {
+	cases := []struct {
+		name     string
+		rawJSON  string
+		wantFVs  []string
+	}{
+		{
+			name: "two fix versions",
+			rawJSON: `{
+				"summary": "login",
+				"status":  {"name": "Open"},
+				"fixVersions": [{"id":"1001","name":"1.5.0"},{"id":"1002","name":"1.6.0"}]
+			}`,
+			wantFVs: []string{"1.5.0", "1.6.0"},
+		},
+		{
+			name: "one fix version",
+			rawJSON: `{
+				"summary": "login",
+				"status":  {"name": "Open"},
+				"fixVersions": [{"id":"1001","name":"1.7.0"}]
+			}`,
+			wantFVs: []string{"1.7.0"},
+		},
+		{
+			name: "empty array",
+			rawJSON: `{
+				"summary": "login",
+				"status":  {"name": "Open"},
+				"fixVersions": []
+			}`,
+			wantFVs: nil,
+		},
+		{
+			name: "field absent",
+			rawJSON: `{
+				"summary": "login",
+				"status":  {"name": "Open"}
+			}`,
+			wantFVs: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseIssueTest("101", "QA-101", []byte(tc.rawJSON), "")
+			if len(got.FixVersions) != len(tc.wantFVs) {
+				t.Fatalf("FixVersions = %v, want %v", got.FixVersions, tc.wantFVs)
+			}
+			for i, v := range tc.wantFVs {
+				if got.FixVersions[i] != v {
+					t.Errorf("FixVersions[%d] = %q, want %q", i, got.FixVersions[i], v)
+				}
+			}
+		})
+	}
+}

@@ -574,6 +574,7 @@ func toRepoTests(in []jira.Test) []testrepo.TestCase {
 			Updated:     t.Updated,
 			FolderID:    t.FolderID,
 			ExecType:    t.ExecType,
+			FixVersions: t.FixVersions,
 		}
 	}
 	return out
