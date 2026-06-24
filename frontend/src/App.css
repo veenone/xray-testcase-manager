@@ -3456,6 +3456,44 @@ tr.row-checked:hover {
   margin: 0;
 }
 
+/* New-execution-from-JUnit params section */
+.junit-new-exec-params {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.junit-new-exec-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.junit-new-exec-input {
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.junit-new-exec-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.junit-new-exec-summary-line {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .link-btn {
   background: none;
   border: none;

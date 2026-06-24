@@ -29,6 +29,7 @@ import { Menu } from "./Menu";
 import { AddTestsModal } from "./AddTestsModal";
 import { BugsPanel } from "./BugsPanel";
 import { JUnitImportModal } from "./JUnitImportModal";
+import { JUnitNewExecModal } from "./JUnitNewExecModal";
 import { CreateBugModal } from "./CreateBugModal";
 import { TestDetail } from "./TestDetail";
 import { usePrompt } from "./usePrompt";
@@ -107,6 +108,7 @@ export function ContainersView({
   const [nameDraft, setNameDraft] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showJUnitImport, setShowJUnitImport] = useState(false);
+  const [showJUnitNewExec, setShowJUnitNewExec] = useState(false);
   const [boardPage, setBoardPage] = useState(0);
   // Run details for the selected Test Execution's member rows (keyed by testKey).
   const [memberRuns, setMemberRuns] = useState<Map<string, ExecMemberRun>>(new Map());
@@ -719,6 +721,15 @@ export function ContainersView({
           <button className="btn btn-primary" onClick={newContainer} title={`New ${kindLabel}`}>
             + New
           </button>
+          {kind === "testexec" && (
+            <button
+              className="btn"
+              onClick={() => setShowJUnitNewExec(true)}
+              title="Create a new Test Execution from a JUnit XML report"
+            >
+              New exec from JUnit XML
+            </button>
+          )}
           <Menu
             label="Actions"
             align="right"
@@ -1411,6 +1422,27 @@ export function ContainersView({
               message:
                 `${succeeded} result${succeeded !== 1 ? "s" : ""} queued; commit from the Pending list.` +
                 (failed > 0 ? ` (${failed} failed)` : ""),
+            });
+          }}
+        />
+      )}
+
+      {showJUnitNewExec && kind === "testexec" && (
+        <JUnitNewExecModal
+          profileId={profileId}
+          onCancel={() => setShowJUnitNewExec(false)}
+          onApplied={(result) => {
+            setShowJUnitNewExec(false);
+            onChanged();
+            notice({
+              title: "Execution created",
+              message:
+                `Created ${result.execKey}: ${result.created} test${result.created !== 1 ? "s" : ""} created, ` +
+                `${result.allocated} allocated, ${result.resultsSet} result${result.resultsSet !== 1 ? "s" : ""} set` +
+                (result.failed && result.failed.length > 0
+                  ? ` (${result.failed.length} failed)`
+                  : "") +
+                " — queued; commit from the Pending list.",
             });
           }}
         />
