@@ -384,6 +384,14 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 						defectsJSON = string(b)
 					}
 				}
+				// The Xray Server/DC testexec/test endpoint does not return a
+				// per-run environment; the environment is set on the Test
+				// Execution as a whole. Fall back to the execution's environments
+				// so the run history shows where each run executed.
+				env := tr.Environment
+				if env == "" && len(c.Environments) > 0 {
+					env = strings.Join(c.Environments, ", ")
+				}
 				rows = append(rows, testrepo.TestRunRow{
 					ExecKey:     execKey,
 					TestKey:     tr.TestKey,
@@ -391,7 +399,7 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 					StartedAt:   tr.StartedAt,
 					FinishedAt:  tr.FinishedAt,
 					ExecutedBy:  tr.ExecutedBy,
-					Environment: tr.Environment,
+					Environment: env,
 					Defects:     defectsJSON,
 					CreatedAt:   tr.CreatedAt,
 					UpdatedAt:   tr.UpdatedAt,
