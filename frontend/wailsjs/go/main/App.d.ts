@@ -17,6 +17,10 @@ export function AllocateTests(arg1:string,arg2:string,arg3:Array<string>):Promis
 
 export function AnalyzeGap(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5:string,arg6:boolean,arg7:boolean,arg8:boolean):Promise<testrepo.GapResult>;
 
+export function AnalyzeJUnitImport(arg1:string,arg2:string,arg3:string):Promise<testrepo.JUnitImportPreview>;
+
+export function ApplyJUnitImport(arg1:string,arg2:string,arg3:Array<testrepo.JUnitMatch>):Promise<testrepo.BulkEditResult>;
+
 export function BulkAssociatePreconditions(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:boolean):Promise<testrepo.BulkEditResult>;
 
 export function BulkAssociateRequirements(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:boolean):Promise<testrepo.BulkEditResult>;

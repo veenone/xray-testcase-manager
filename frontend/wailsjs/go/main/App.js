@@ -22,6 +22,14 @@ export function AnalyzeGap(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['main']['App']['AnalyzeGap'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
+export function AnalyzeJUnitImport(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AnalyzeJUnitImport'](arg1, arg2, arg3);
+}
+
+export function ApplyJUnitImport(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ApplyJUnitImport'](arg1, arg2, arg3);
+}
+
 export function BulkAssociatePreconditions(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BulkAssociatePreconditions'](arg1, arg2, arg3, arg4);
 }

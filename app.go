@@ -1928,6 +1928,25 @@ func (a *App) BulkSetTestRunStatus(profileID, execKey string, testKeys []string,
 	return a.repo.BulkSetTestRunStatus(profileID, execKey, testKeys, status), nil
 }
 
+// AnalyzeJUnitImport decodes a base64-encoded JUnit XML report and matches
+// its testcases to member tests of the given execution by summary, returning
+// a preview of what would be applied.
+func (a *App) AnalyzeJUnitImport(profileID, execKey, xmlBase64 string) (testrepo.JUnitImportPreview, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.JUnitImportPreview{}, err
+	}
+	return a.repo.AnalyzeJUnitImport(profileID, execKey, xmlBase64)
+}
+
+// ApplyJUnitImport sets the run result for each matched testcase in the given
+// execution, queuing pending changes for commit.
+func (a *App) ApplyJUnitImport(profileID, execKey string, matches []testrepo.JUnitMatch) (testrepo.BulkEditResult, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.BulkEditResult{}, err
+	}
+	return a.repo.ApplyJUnitImport(profileID, execKey, matches)
+}
+
 // EditContainer renames a Test Set / Plan / Execution and queues the change
 // for commit (container CRUD).
 func (a *App) EditContainer(profileID, key, summary string) error {

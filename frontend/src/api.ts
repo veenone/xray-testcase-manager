@@ -147,6 +147,8 @@ export {
   GetTestRunHistory,
   GetRunRollup,
   GetExecutionMembersWithRuns,
+  AnalyzeJUnitImport,
+  ApplyJUnitImport,
 } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
 
@@ -836,6 +838,29 @@ export interface ExecMemberRun {
   finishedAt: string;
   executedBy: string;
   environment: string;
+}
+
+// JUnitMatch mirrors testrepo.JUnitMatch -- a testcase matched to an execution member.
+export interface JUnitMatch {
+  testcase: string;
+  testKey: string;
+  summary: string;
+  result: string; // "PASS" | "FAIL"
+  currentRun: string;
+}
+
+// JUnitSkip mirrors testrepo.JUnitSkip -- a testcase skipped with a reason.
+export interface JUnitSkip {
+  testcase: string;
+  reason: string;
+}
+
+// JUnitImportPreview mirrors testrepo.JUnitImportPreview -- the analysis result.
+export interface JUnitImportPreview {
+  execKey: string;
+  total: number;
+  matched: JUnitMatch[];
+  skipped: JUnitSkip[];
 }
 
 // errMsg renders any thrown value (unknown in strict mode) as a string.
