@@ -29,13 +29,14 @@ function nodeColor(id: string): string {
   if (NODE_COLORS[id]) return NODE_COLORS[id];
   if (id.startsWith("req:")) return "#6366f1"; // requirement node
   if (id.startsWith("plan:")) return "#0891b2"; // Test plan bucket
+  if (id.startsWith("test:")) return "#0d9488"; // Test node
   if (id.startsWith("res:")) return "#6366f1"; // other Xray statuses (TODO, …)
   return "#64748b";
 }
 
-// The flow is always four layers: requirement → coverage status → Test plan →
-// run result.
-const COLUMNS = ["Requirement", "Coverage", "Test plan", "Test result"];
+// The flow is always five layers: requirement → coverage status → Test plan →
+// Test → run result.
+const COLUMNS = ["Requirement", "Coverage", "Test plan", "Test", "Test result"];
 
 interface Placed {
   id: string;

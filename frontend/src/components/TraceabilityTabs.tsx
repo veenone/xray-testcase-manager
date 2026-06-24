@@ -65,7 +65,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   // Sub-task (parent) traceability.
   const [subSankey, setSubSankey] = useState<Sankey | null>(null);
   const [subSankeyErr, setSubSankeyErr] = useState("");
-  const [parents, setParents] = useState<string[]>([]);
+  const [parents, setParents] = useState<{ key: string; summary: string }[]>([]);
   const [parentSel, setParentSel] = useViewState<string[]>(profileId, "traceability", "parentSel", []);
   // Include cross-project members: when on, sub-task executions whose member
   // Tests live in another project (cached locally) are drawn in the flow.
@@ -142,9 +142,15 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
     ListContainers(profileId, "testexec")
       .then((te) => {
         if (cancelled) return;
-        const ps = Array.from(
-          new Set((te ?? []).filter((c) => c.parentKey).map((c) => c.parentKey)),
-        ).sort();
+        const byKey = new Map<string, string>();
+        for (const c of te ?? []) {
+          if (c.parentKey && !byKey.has(c.parentKey)) {
+            byKey.set(c.parentKey, c.parentSummary ?? "");
+          }
+        }
+        const ps = Array.from(byKey.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, summary]) => ({ key, summary }));
         setParents(ps);
       })
       .catch((e) => console.error("list executions:", errMsg(e)));
@@ -504,7 +510,10 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
                     title="Filter by one or more parent issues"
                     selected={parentSel}
                     onChange={setParentSel}
-                    options={parents.map((p) => ({ value: p, label: p }))}
+                    options={parents.map((p) => ({
+                      value: p.key,
+                      label: p.summary ? `${p.key} — ${p.summary}` : p.key,
+                    }))}
                   />
                 </label>
               )}
