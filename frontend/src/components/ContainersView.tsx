@@ -110,6 +110,10 @@ export function ContainersView({
   const [boardPage, setBoardPage] = useState(0);
   // Run details for the selected Test Execution's member rows (keyed by testKey).
   const [memberRuns, setMemberRuns] = useState<Map<string, ExecMemberRun>>(new Map());
+  // Active fix-version filter for the member table (Test Execution only). Empty
+  // string means "All". Clicking an execution fix-version chip toggles it; a
+  // second click clears the filter (single-select toggle).
+  const [memberFvFilter, setMemberFvFilter] = useState("");
   // Run roll-up for the selected Test Plan / Test Set.
   const [rollup, setRollup] = useState<RunRollup | null>(null);
   const { prompt, promptUI } = usePrompt();
@@ -514,6 +518,7 @@ export function ContainersView({
     setError("");
     setBoardPage(0);
     setSelectedRuns(new Set());
+    setMemberFvFilter("");
     GetContainerBoard(profileId, selected)
       .then((b) => {
         if (!cancelled) setBoard(b);
@@ -593,7 +598,15 @@ export function ContainersView({
 
   // Client-side paging of the member table.
   const allRows = useMemo(() => {
-    const rows = board?.rows ?? [];
+    let rows = board?.rows ?? [];
+    // Apply the fix-version filter for Test Executions: keep only members whose
+    // own fixVersions array (from the memberRuns enrichment) contains the chosen
+    // value. When no filter is active every row is shown.
+    if (kind === "testexec" && memberFvFilter) {
+      rows = rows.filter((r) =>
+        (memberRuns.get(r.testKey)?.fixVersions ?? []).includes(memberFvFilter),
+      );
+    }
     return [...rows].sort((a, b) => {
       let cmp: number;
       switch (rowSortField) {
@@ -613,7 +626,7 @@ export function ContainersView({
       }
       return applyDir(cmp, rowSortDesc);
     });
-  }, [board, rowSortField, rowSortDesc]);
+  }, [board, kind, memberRuns, memberFvFilter, rowSortField, rowSortDesc]);
   const boardTotalPages = Math.max(
     1,
     Math.ceil(allRows.length / pageSize),
@@ -970,10 +983,31 @@ export function ContainersView({
               <div className="container-environments">
                 <span className="container-env-label">Fix version(s)</span>
                 <div className="container-env-chips">
+                  {memberFvFilter && (
+                    <button
+                      key="__all"
+                      className="env-chip fix-version-chip fix-version-chip--all"
+                      title="Clear fix-version filter (show all members)"
+                      onClick={() => setMemberFvFilter("")}
+                    >
+                      All
+                    </button>
+                  )}
                   {(selectedContainer.fixVersions ?? []).map((fv) => (
-                    <span key={fv} className="env-chip fix-version-chip">
+                    <button
+                      key={fv}
+                      className={`env-chip fix-version-chip${memberFvFilter === fv ? " fix-version-chip--active" : ""}`}
+                      title={
+                        memberFvFilter === fv
+                          ? `Showing only members with fix version ${fv} — click to clear`
+                          : `Filter member table to fix version ${fv}`
+                      }
+                      onClick={() =>
+                        setMemberFvFilter((cur) => (cur === fv ? "" : fv))
+                      }
+                    >
                       {fv}
-                    </span>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1175,13 +1209,14 @@ export function ContainersView({
               {kind === "testexec" && <th title="Run date (finished or started)">Date</th>}
               {kind === "testexec" && <th title="Executed by">By</th>}
               {kind === "testexec" && <th title="Environment">Environment</th>}
+              {kind === "testexec" && <th title="Member test's own Fix Version(s)">Fix Version</th>}
               <th aria-label="Remove" />
             </tr>
           </thead>
           <tbody>
             {allRows.length === 0 ? (
               <tr>
-                <td colSpan={kind === "testexec" ? 9 : 5} className="muted">
+                <td colSpan={kind === "testexec" ? 10 : 5} className="muted">
                   This {kindLabel.toLowerCase()} has no tests yet — use "+ Add
                   tests".
                 </td>
@@ -1253,7 +1288,10 @@ export function ContainersView({
                     )}
                   </td>
                   {kind === "testexec" && (
-                    <ExecRunCells run={memberRuns.get(r.testKey)} />
+                    <ExecRunCells
+                      run={memberRuns.get(r.testKey)}
+                      activeFixVersion={memberFvFilter}
+                    />
                   )}
                   <td className="board-remove-cell">
                     {kind === "testexec" &&
@@ -1400,11 +1438,20 @@ export function ContainersView({
   );
 }
 
-// ExecRunCells renders the three read-only run-context cells (Date, By,
-// Environment) for one member row in a Test Execution. Rendered as a fragment
-// so the cells sit inline in the <tr> alongside the editable result cell.
-function ExecRunCells({ run }: { run: ExecMemberRun | undefined }) {
+// ExecRunCells renders the four read-only run-context cells (Date, By,
+// Environment, Fix Version) for one member row in a Test Execution. Rendered
+// as a fragment so the cells sit inline in the <tr> alongside the editable
+// result cell.
+function ExecRunCells({
+  run,
+  activeFixVersion,
+}: {
+  run: ExecMemberRun | undefined;
+  activeFixVersion: string;
+}) {
   const dateStr = run?.finishedAt || run?.startedAt || "";
+  const fvs = run?.fixVersions ?? [];
+  const fvLabel = fvs.length > 0 ? fvs.join(", ") : "—";
   return (
     <>
       <td className="muted board-run-date">
@@ -1415,6 +1462,12 @@ function ExecRunCells({ run }: { run: ExecMemberRun | undefined }) {
       </td>
       <td className="muted board-run-env">
         {run?.environment || "—"}
+      </td>
+      <td
+        className={`muted board-run-fv${activeFixVersion && fvs.includes(activeFixVersion) ? " board-run-fv--match" : ""}`}
+        title={fvs.length > 1 ? fvs.join(", ") : undefined}
+      >
+        {fvLabel}
       </td>
     </>
   );

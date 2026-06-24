@@ -1361,10 +1361,40 @@ i.sankey-node-l2 {
   background: #1d4ed8;
   color: #fff;
 }
-/* Fix version(s) are read-only display chips; a distinct (slate) color marks
-   them apart from the editable blue environment chips. */
+/* Fix version(s) chips are clickable filter controls (unlike the editable blue
+   environment chips). A distinct slate color marks them as separate; the active
+   state uses an accent ring + brighter background so the selected filter is
+   immediately obvious. */
 .fix-version-chip {
   background: #475569;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s, box-shadow 0.1s;
+}
+.fix-version-chip:hover {
+  background: #334155;
+}
+.fix-version-chip--active {
+  background: #2563eb;
+  box-shadow: 0 0 0 2px #93c5fd;
+}
+.fix-version-chip--active:hover {
+  background: #1d4ed8;
+}
+/* "All" chip shown when a filter is active — slightly muted to indicate it
+   clears the current selection rather than being a data value. */
+.fix-version-chip--all {
+  background: #64748b;
+  font-weight: 400;
+}
+.fix-version-chip--all:hover {
+  background: #475569;
+}
+/* Highlight the Fix Version cell of a row whose fix version matches the active
+   filter, so it is easy to confirm which row qualified. */
+.board-run-fv--match {
+  color: var(--text-strong);
+  font-weight: 600;
 }
 .env-chip-remove {
   border: none;
