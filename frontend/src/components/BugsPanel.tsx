@@ -644,29 +644,108 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                               ) : !history || history.length === 0 ? (
                                 <span className="muted">No run history for this test.</span>
                               ) : (
-                                <table className="board-table" style={{ fontSize: "0.85em" }}>
-                                  <thead>
-                                    {(() => {
-                                      const sort = getRunSort(t.key);
-                                      function SortTh({ field, children }: { field: string; children: React.ReactNode }) {
-                                        const active = sort.field === field;
-                                        return (
-                                          <th
-                                            style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
-                                            onClick={() => toggleRunSort(t.key, field)}
-                                            title={`Sort by ${field}`}
+                                (() => {
+                                  const sort = getRunSort(t.key);
+                                  function SortTh({ field, children }: { field: string; children: React.ReactNode }) {
+                                    const active = sort.field === field;
+                                    return (
+                                      <th
+                                        style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                                        onClick={() => toggleRunSort(t.key, field)}
+                                        title={`Sort by ${field}`}
+                                      >
+                                        {children}
+                                        {active ? (sort.desc ? " ▾" : " ▴") : ""}
+                                      </th>
+                                    );
+                                  }
+                                  // Group runs by plan key. A run that appears in multiple plans
+                                  // shows up under each of them. Runs with no planKeys go last.
+                                  const planKeys: string[] = [];
+                                  const seenPlans = new Set<string>();
+                                  for (const r of history) {
+                                    for (const pk of (r.planKeys ?? [])) {
+                                      if (!seenPlans.has(pk)) { seenPlans.add(pk); planKeys.push(pk); }
+                                    }
+                                  }
+                                  const hasNoPlan = history.some(r => !r.planKeys?.length);
+                                  const groups: Array<{ planKey: string | null; runs: typeof history }> = [
+                                    ...planKeys.map(pk => ({
+                                      planKey: pk,
+                                      runs: history.filter(r => r.planKeys?.includes(pk)),
+                                    })),
+                                    ...(hasNoPlan ? [{ planKey: null, runs: history.filter(r => !r.planKeys?.length) }] : []),
+                                  ];
+                                  const RunRow = ({ r, i }: { r: typeof history[0]; i: number }) => (
+                                    <tr key={`${r.execKey}-${i}`}>
+                                      <td>
+                                        {canLink && r.execKey && !r.execKey.startsWith("NEW-") ? (
+                                          <button
+                                            className="mono bug-link-key"
+                                            onClick={() => {
+                                              const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
+                                              BrowserOpenURL(`${base}/browse/${r.execKey}`);
+                                            }}
+                                            title={r.execSummary || `Open ${r.execKey} in Jira`}
                                           >
-                                            {children}
-                                            {active ? (sort.desc ? " ▾" : " ▴") : ""}
-                                          </th>
-                                        );
-                                      }
-                                      return (
+                                            {r.execKey}
+                                          </button>
+                                        ) : (
+                                          <span className="mono" title={r.execSummary}>{r.execKey}</span>
+                                        )}
+                                        {r.execSummary && (
+                                          <span className="muted" style={{ display: "block", fontSize: "0.9em" }}>{r.execSummary}</span>
+                                        )}
+                                      </td>
+                                      <td>
+                                        {r.runStatus ? (
+                                          <span className={`run-badge run-${r.runStatus.toLowerCase()}`}>{r.runStatus}</span>
+                                        ) : (
+                                          <span className="muted">—</span>
+                                        )}
+                                      </td>
+                                      <td>{r.fixVersions?.length ? r.fixVersions.join(", ") : <span className="muted">—</span>}</td>
+                                      <td>{r.environment || <span className="muted">—</span>}</td>
+                                      <td className="muted">{formatDateTime(r.finishedAt || r.startedAt)}</td>
+                                      <td>{r.executedBy || <span className="muted">—</span>}</td>
+                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.createdAt) || <span>—</span>}</td>
+                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.updatedAt) || <span>—</span>}</td>
+                                      <td>
+                                        {r.defects?.length ? (
+                                          <span>
+                                            {r.defects.map((d, di) => (
+                                              <span key={d}>
+                                                {di > 0 && ", "}
+                                                {canLink && !d.startsWith("NEW-") ? (
+                                                  <button
+                                                    className="mono bug-link-key"
+                                                    onClick={() => {
+                                                      const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
+                                                      BrowserOpenURL(`${base}/browse/${d}`);
+                                                    }}
+                                                    title={`Open ${d} in Jira`}
+                                                  >
+                                                    {d}
+                                                  </button>
+                                                ) : (
+                                                  <span className="mono">{d}</span>
+                                                )}
+                                              </span>
+                                            ))}
+                                          </span>
+                                        ) : (
+                                          <span className="muted">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                  return (
+                                    <table className="board-table" style={{ fontSize: "0.85em" }}>
+                                      <thead>
                                         <tr>
                                           <th>Execution</th>
                                           <SortTh field="runStatus">Result</SortTh>
                                           <th>Fix Version(s)</th>
-                                          <th>Plan(s)</th>
                                           <th>Environment</th>
                                           <th>Date</th>
                                           <th>By</th>
@@ -674,76 +753,44 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                           <SortTh field="updatedAt">Updated</SortTh>
                                           <th>Defects</th>
                                         </tr>
-                                      );
-                                    })()}
-                                  </thead>
-                                  <tbody>
-                                    {sortedRuns(history, getRunSort(t.key)).map((r, i) => (
-                                      <tr key={`${r.execKey}-${i}`}>
-                                        <td>
-                                          {canLink && r.execKey && !r.execKey.startsWith("NEW-") ? (
-                                            <button
-                                              className="mono bug-link-key"
-                                              onClick={() => {
-                                                const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-                                                BrowserOpenURL(`${base}/browse/${r.execKey}`);
-                                              }}
-                                              title={r.execSummary || `Open ${r.execKey} in Jira`}
-                                            >
-                                              {r.execKey}
-                                            </button>
-                                          ) : (
-                                            <span className="mono" title={r.execSummary}>{r.execKey}</span>
-                                          )}
-                                          {r.execSummary && (
-                                            <span className="muted" style={{ display: "block", fontSize: "0.9em" }}>{r.execSummary}</span>
-                                          )}
-                                        </td>
-                                        <td>
-                                          {r.runStatus ? (
-                                            <span className={`run-badge run-${r.runStatus.toLowerCase()}`}>{r.runStatus}</span>
-                                          ) : (
-                                            <span className="muted">—</span>
-                                          )}
-                                        </td>
-                                        <td>{r.fixVersions?.length ? r.fixVersions.join(", ") : <span className="muted">—</span>}</td>
-                                        <td>{r.planKeys?.length ? r.planKeys.join(", ") : <span className="muted">—</span>}</td>
-                                        <td>{r.environment || <span className="muted">—</span>}</td>
-                                        <td className="muted">{formatDateTime(r.finishedAt || r.startedAt)}</td>
-                                        <td>{r.executedBy || <span className="muted">—</span>}</td>
-                                        <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.createdAt) || <span>—</span>}</td>
-                                        <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.updatedAt) || <span>—</span>}</td>
-                                        <td>
-                                          {r.defects?.length ? (
-                                            <span>
-                                              {r.defects.map((d, di) => (
-                                                <span key={d}>
-                                                  {di > 0 && ", "}
-                                                  {canLink && !d.startsWith("NEW-") ? (
+                                      </thead>
+                                      <tbody>
+                                        {groups.map((g) => (
+                                          <Fragment key={g.planKey ?? "__no_plan__"}>
+                                            <tr className="run-plan-group-header">
+                                              <td colSpan={9}>
+                                                {g.planKey ? (
+                                                  canLink && !g.planKey.startsWith("NEW-") ? (
                                                     <button
                                                       className="mono bug-link-key"
                                                       onClick={() => {
                                                         const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-                                                        BrowserOpenURL(`${base}/browse/${d}`);
+                                                        BrowserOpenURL(`${base}/browse/${g.planKey}`);
                                                       }}
-                                                      title={`Open ${d} in Jira`}
+                                                      title={`Open ${g.planKey} in Jira`}
                                                     >
-                                                      {d}
+                                                      Plan: {g.planKey}
                                                     </button>
                                                   ) : (
-                                                    <span className="mono">{d}</span>
-                                                  )}
+                                                    <span className="mono">Plan: {g.planKey}</span>
+                                                  )
+                                                ) : (
+                                                  <span className="muted">No test plan</span>
+                                                )}
+                                                <span className="muted" style={{ marginLeft: "0.5em" }}>
+                                                  ({g.runs.length} run{g.runs.length === 1 ? "" : "s"})
                                                 </span>
-                                              ))}
-                                            </span>
-                                          ) : (
-                                            <span className="muted">—</span>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                              </td>
+                                            </tr>
+                                            {sortedRuns(g.runs, sort).map((r, i) => (
+                                              <RunRow key={`${g.planKey ?? ""}:${r.execKey}-${i}`} r={r} i={i} />
+                                            ))}
+                                          </Fragment>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  );
+                                })()
                               )}
                             </td>
                           </tr>

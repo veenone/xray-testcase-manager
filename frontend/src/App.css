@@ -591,6 +591,18 @@
   color: #374151;
 }
 
+/* Run history plan-group sub-header row (Bugs panel nested breakdown). */
+.run-plan-group-header td {
+  background: var(--surface-2, #f1f5f9);
+  font-size: 0.82em;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+:root[data-theme="dark"] .run-plan-group-header td {
+  background: var(--surface-2, #1e2535);
+}
+
 /* Editable run-result select (Test Execution board) — full-colour highlight
    matching the run-badge palette so statuses are easy to scan at a glance. */
 .run-select {
