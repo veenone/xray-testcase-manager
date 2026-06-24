@@ -36,11 +36,32 @@ you commit.
   bug's tests to an **existing** Test Execution. See
   [Defect tracking](#12-defect-tracking).
 - **Read-only detail side panels.** The read-only test detail also opens beside
-  the Test Execution member list in Containers.
+  the Test Execution member list in Containers, and the same side-panel layout is
+  used from the **Requirements** view's covering-tests table (it no longer takes
+  over the whole screen). See [Requirements & coverage](#9-requirements--coverage).
+- **Import JUnit XML results.** Update a Test Execution's run results by importing
+  a JUnit-compatible report, matching each `<testcase name>` to a test by summary.
+  Import into the **selected execution**, or **create a new execution** from the
+  report (optionally creating any tests it does not find). See
+  [Containers](#11-test-sets-plans--executions-containers).
+- **Per-test Fix Version on executions.** Each member of a Test Execution shows
+  its **own** Jira Fix Version(s) in a column, and the execution's Fix Version
+  chips are clickable to filter the member list. See
+  [Containers](#11-test-sets-plans--executions-containers).
+- **Run history nested by Test Plan, sortable.** A bug's per-test run breakdown
+  groups runs under each **Test Plan** (a plan can span several executions and fix
+  versions), adds **Created / Updated** timestamps, and the run rows sort by them.
+  See [Defect tracking](#12-defect-tracking).
+- **Traceability detail.** The Requirement flow gains a **Test** column
+  (requirement → coverage → Test plan → **test** → result), and the Sub-task flow
+  labels each parent with its **summary**. See [Traceability](#14-traceability).
+- **Bugs panel polish.** A scrollable bug list with a **select-all** checkbox,
+  working rows-per-page (default 5), and full-colour run-status highlighting.
 - **macOS fixes.** Copy/paste and right-click now work in text inputs (a standard
   Edit menu is wired in); a profile can supply a **custom CA certificate** or
   **allow an untrusted certificate** to connect through an internal CA; and the
-  Personal Access Token field has a **show/hide** toggle. See
+  Personal Access Token field has a **show/hide** toggle. You can also **test the
+  connection while editing** a saved profile (it uses the stored token). See
   [Connecting to Jira](#2-connecting-to-jira-profiles).
 
 > This is an **alpha** build (`1.7.0a`) for validation. The live Xray run data
@@ -464,9 +485,16 @@ tests with their run results.*
   test count.
 - The detail pane lists the **covering tests** (paginated) with run results, and
   lets you edit the summary or delete the requirement.
+- Clicking a covering test opens its detail **read-only in a side panel** to the
+  right, so you can inspect its steps and fields without leaving the Requirements
+  view (the same side-panel layout used in the Bugs view).
 - **+ Add tests** links covering tests to the selected requirement directly from
   this view (a searchable multi-pick), queued for commit like any coverage edit.
 - **Export audit…** writes the coverage / sign-off audit to CSV or XLSX.
+
+![Figure 53: Requirement covering-test detail](images/53-requirement-test-detail.png)
+*Figure 53 — A covering test opened read-only in a side panel beside the
+requirement detail.*
 
 ### Requirement sources
 
@@ -572,6 +600,39 @@ test's **read-only** detail in a side panel beside the board (the same panel the
 Bugs view uses, see [Defect tracking](#12-defect-tracking)), so you can read its
 steps and fields without leaving Containers.
 
+**Per-test Fix Version filter.** Each member of a Test Execution shows its **own**
+Jira Fix Version(s) in a **Fix Version** column (members can differ from one
+another). The execution's Fix Version chips are clickable: select one to filter
+the member list to the tests carrying it, and click it again (or **All**) to
+clear.
+
+![Figure 52: Per-test Fix Version on an execution](images/52-exec-fixversion-filter.png)
+*Figure 52 — A Test Execution's member table with the per-test **Fix Version**
+column and the run-status results highlighted in full colour.*
+
+### Import JUnit XML results
+
+You can update run results in bulk by importing a **JUnit-compatible XML** report.
+Each `<testcase name>` is matched to a test by its **summary** (normalized), and
+the result maps as: no failure/error → **PASS**, a `<failure>`/`<error>` →
+**FAIL**, a `<skipped>` is left unchanged. Two entry points on the Test Execution
+view:
+
+- **Import results (JUnit XML)** updates the **selected** execution. Matched
+  member tests get the imported result; unmatched or ambiguous testcases are
+  reported and skipped.
+- **New exec from JUnit XML** **creates a new Test Execution** from the report:
+  enter the execution summary, optionally tick **Create missing tests** (any
+  testcase with no matching test is created first), then pick the file. All tests
+  are allocated to the new execution and given their results.
+
+Either way the work is queued as pending changes and a preview shows what will be
+applied before you commit. See [Committing changes](#15-committing-changes-to-jira).
+
+![Figure 50: Create a Test Execution from a JUnit report](images/50-junit-new-exec.png)
+*Figure 50 — The "New execution from JUnit XML" dialog: an execution summary, the
+**Create missing tests** option, and the file picker.*
+
 ### Generate a pytest scaffold
 
 From a Test Plan or Execution you can generate a **pytest** scaffold for its
@@ -609,14 +670,16 @@ project). Bug sync respects the profile's scope and shows progress in the status
 bar.
 
 **Affected-tests breakdown.** The affected-tests table shows each test's
-**Project**, and each row expands to a per-test run breakdown — fix version,
-execution, Test Plan, environment, date, tester, and defects — drawn from the
-test's run history, so you can see how each affected test fared without opening
-Xray.
+**Project**, and each row expands to a per-test run breakdown — execution,
+result, fix version, environment, date, tester, **Created / Updated**, and
+defects — drawn from the test's run history, so you can see how each affected
+test fared without opening Xray. The runs are **grouped by Test Plan** (a plan
+can span several executions and fix versions), and the run rows **sort** by
+result, Created, or Updated.
 
 ![Figure 45: Affected-tests breakdown](images/45-bug-breakdown.png)
-*Figure 45 — A bug's affected tests with the Project column and an expanded
-per-test run breakdown.*
+*Figure 45 — A bug's affected tests with the Project column and the expanded
+per-test run breakdown grouped by Test Plan, with Created / Updated columns.*
 
 **Open a test read-only.** The open-detail icon on an affected test opens that
 test's **read-only** detail in a side panel beside the bug detail, mirroring the
@@ -667,10 +730,12 @@ threads.
   whose Test Execution lives in a *different* Jira project than the current
   profile; while it's on, a **cross-project bugs** list appears beside the
   diagram.
-- **Requirement** — flows **Requirement → Coverage → Test plan → Test result**,
-  with a multi-select requirement filter.
+- **Requirement** — flows **Requirement → Coverage → Test plan → Test → Test
+  result** (the covering test case is shown explicitly), with a multi-select
+  requirement filter.
 - **Sub-task** — flows **Parent issue → Test Execution → run result** over
-  sub-task Test Executions, with a **Parent** filter. Use it to see, per parent
+  sub-task Test Executions, with a **Parent** filter (each parent is shown as
+  *key — summary*). Use it to see, per parent
   issue, which sub-task executions ran its tests and how they turned out.
 
 Each tab's toolbar offers **Export XLSX**, which writes the current diagram as a
@@ -682,10 +747,13 @@ are drawn in the flow.
 *Figure 27 — The Execution tab: Test Plan → Test Execution → run status.*
 
 ![Figure 26: Requirement traceability](images/26-requirement-sankey.png)
-*Figure 26 — The Requirement tab: requirement → coverage → Test plan → result.*
+*Figure 26 — The Requirement tab: requirement → coverage → Test plan → test →
+run result. The **Test** column shows the covering test case between its plan and
+its result.*
 
 ![Figure 38: Sub-task traceability](images/38-subtask-sankey.png)
-*Figure 38 — The Sub-task tab: parent issue → execution → run result, with the
+*Figure 38 — The Sub-task tab: parent issue (key — summary) → execution → run
+result, with the
 Parent filter.*
 
 ---

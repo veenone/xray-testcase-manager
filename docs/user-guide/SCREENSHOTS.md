@@ -104,6 +104,17 @@ columns: date / tester / environment), **44** (Plan / Set run roll-up), **45**
 | 47 | `47-add-to-execution.png` | Bugs → check one or more bugs → **Add to execution…** | The picker modal listing existing Test Executions with a search box |
 | 48 | `48-pat-toggle.png` | **Profile → New profile…** (or Edit) | The Personal Access Token field with its show/hide (eye) toggle |
 | 49 | `49-tls-settings.png` | Profile form → expand **Advanced: TLS / certificate settings** | The CA certificate (PEM) textarea and the allow-untrusted checkbox |
+| 50 | `50-junit-new-exec.png` | **Containers** → kind **Test Execution** → **New exec from JUnit XML** | The dialog: execution summary, **Create missing tests** checkbox, and the file picker |
+| 52 | `52-exec-fixversion-filter.png` | **Containers** → kind **Test Execution**, select one | The member table with the per-test **Fix Version** column and full-colour run-status results |
+| 53 | `53-requirement-test-detail.png` | **Requirements** → pick a requirement with covering tests → click a covering test | The covering test's read-only detail open as a right-side panel |
+
+**Refresh for 1.7.0a (post-alpha).** Re-shoot these because their UI changed:
+**26** (Requirement Sankey now has the **Test** column — 5 layers), **38**
+(Sub-task Sankey parents show **key — summary**), and **45** (the bug affected-test
+breakdown is now **grouped by Test Plan** with **Created / Updated** columns).
+Figure 51 (the JUnit import **preview** into an existing execution) is omitted —
+it needs a real JUnit file through a native file dialog, so the guide describes it
+in text instead.
 
 To refresh a shot: run `wails dev`, open `http://localhost:34115/` in the
 `browse` tool, switch to the **Demo Project (DEMO)** profile, sync once, then
