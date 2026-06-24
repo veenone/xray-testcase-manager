@@ -4,6 +4,7 @@ import {
   CreateProfileReusingToken,
   UpdateProfile,
   TestConnection,
+  TestProfileConnection,
   errMsg,
 } from "../api";
 import type { Profile } from "../api";
@@ -100,7 +101,7 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
   // edit a blank token keeps the stored PAT.
   const tokenSatisfied = isEdit || reuseFrom !== "" || token.trim() !== "";
   const canTest =
-    jiraUrl.trim() !== "" && urlError === "" && token.trim() !== "";
+    jiraUrl.trim() !== "" && urlError === "" && (token.trim() !== "" || isEdit);
   const canSave =
     name.trim() !== "" &&
     jiraUrl.trim() !== "" &&
@@ -120,7 +121,13 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
     setTestResult("");
     setTestOk(false);
     try {
-      const user = await TestConnection(normalizeJiraUrl(jiraUrl), token.trim(), caCert.trim(), allowUntrustedTLS);
+      let user: string;
+      if (isEdit && token.trim() === "") {
+        // Editing with no new token typed: test against the stored PAT.
+        user = await TestProfileConnection(profile!.id, normalizeJiraUrl(jiraUrl), caCert.trim(), allowUntrustedTLS);
+      } else {
+        user = await TestConnection(normalizeJiraUrl(jiraUrl), token.trim(), caCert.trim(), allowUntrustedTLS);
+      }
       setTestResult(`Connected as ${user}`);
       setTestOk(true);
     } catch (e) {
