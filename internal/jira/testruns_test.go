@@ -3,9 +3,9 @@ package jira
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -195,21 +195,152 @@ func TestParseTestRunsEmpty(t *testing.T) {
 	}
 }
 
-// TestGetTestRunsLiveStub exercises the live path against a mock Jira, asserting
-// the stub GETs the expected raven endpoint and the raw JSON is decoded.
+// TestParseTestExecTests exercises the Server/DC testexec endpoint parser.
+
+// TestParseTestExecTestsBasic verifies a minimal array with key and status.
+func TestParseTestExecTestsBasic(t *testing.T) {
+	body := []byte(`[{"id":1,"key":"DEMO-1","rank":1,"status":"PASS"},{"id":2,"key":"DEMO-2","rank":2,"status":"FAIL"}]`)
+	runs, err := parseTestExecTests(body)
+	if err != nil {
+		t.Fatalf("parseTestExecTests: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("want 2 runs, got %d", len(runs))
+	}
+	if runs[0].TestKey != "DEMO-1" || runs[0].Status != "PASS" {
+		t.Errorf("run[0] = %+v, want DEMO-1/PASS", runs[0])
+	}
+	if runs[1].TestKey != "DEMO-2" || runs[1].Status != "FAIL" {
+		t.Errorf("run[1] = %+v, want DEMO-2/FAIL", runs[1])
+	}
+}
+
+// TestParseTestExecTestsDetailed verifies detailed optional fields are mapped.
+func TestParseTestExecTestsDetailed(t *testing.T) {
+	body := []byte(`[{
+		"id":3,"key":"QA-5","rank":1,"status":"pass",
+		"startedOn":"2026-01-01T10:00:00Z",
+		"finishedOn":"2026-01-01T10:30:00Z",
+		"assignee":"alice",
+		"testEnvironments":["Staging"],
+		"defects":["BUG-1"]
+	}]`)
+	runs, err := parseTestExecTests(body)
+	if err != nil {
+		t.Fatalf("parseTestExecTests: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("want 1 run, got %d", len(runs))
+	}
+	r := runs[0]
+	if r.TestKey != "QA-5" {
+		t.Errorf("TestKey = %q, want QA-5", r.TestKey)
+	}
+	if r.Status != "PASS" {
+		t.Errorf("Status = %q, want PASS (uppercased)", r.Status)
+	}
+	if r.StartedAt != "2026-01-01T10:00:00Z" {
+		t.Errorf("StartedAt = %q, want 2026-01-01T10:00:00Z", r.StartedAt)
+	}
+	if r.FinishedAt != "2026-01-01T10:30:00Z" {
+		t.Errorf("FinishedAt = %q, want 2026-01-01T10:30:00Z", r.FinishedAt)
+	}
+	if r.ExecutedBy != "alice" {
+		t.Errorf("ExecutedBy = %q, want alice", r.ExecutedBy)
+	}
+	if r.Environment != "Staging" {
+		t.Errorf("Environment = %q, want Staging", r.Environment)
+	}
+	if len(r.Defects) != 1 || r.Defects[0] != "BUG-1" {
+		t.Errorf("Defects = %v, want [BUG-1]", r.Defects)
+	}
+}
+
+// TestParseTestExecTestsDefectsObjectForm verifies defects as objects with a
+// "key" field are extracted correctly alongside plain string defect keys.
+func TestParseTestExecTestsDefectsObjectForm(t *testing.T) {
+	body := []byte(`[{"id":4,"key":"QA-6","rank":1,"status":"FAIL","defects":[{"key":"BUG-2"}]}]`)
+	runs, err := parseTestExecTests(body)
+	if err != nil {
+		t.Fatalf("parseTestExecTests: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("want 1 run, got %d", len(runs))
+	}
+	if len(runs[0].Defects) != 1 || runs[0].Defects[0] != "BUG-2" {
+		t.Errorf("Defects = %v, want [BUG-2]", runs[0].Defects)
+	}
+}
+
+// TestParseTestExecTestsEmpty verifies empty/null/[] bodies return empty slice.
+func TestParseTestExecTestsEmpty(t *testing.T) {
+	for _, body := range [][]byte{[]byte("null"), []byte("  "), []byte("[]"), nil} {
+		runs, err := parseTestExecTests(body)
+		if err != nil {
+			t.Fatalf("parseTestExecTests(%q): %v", body, err)
+		}
+		if len(runs) != 0 {
+			t.Errorf("expected empty for %q, got %d runs", body, len(runs))
+		}
+	}
+}
+
+// TestParseTestExecTestsSkipsEmptyKey verifies objects with no key are dropped.
+func TestParseTestExecTestsSkipsEmptyKey(t *testing.T) {
+	body := []byte(`[{"id":5,"key":"","rank":1,"status":"PASS"},{"id":6,"key":"QA-7","rank":2,"status":"PASS"}]`)
+	runs, err := parseTestExecTests(body)
+	if err != nil {
+		t.Fatalf("parseTestExecTests: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("want 1 run (empty key skipped), got %d", len(runs))
+	}
+	if runs[0].TestKey != "QA-7" {
+		t.Errorf("TestKey = %q, want QA-7", runs[0].TestKey)
+	}
+}
+
+// TestGetTestRunsLiveStub exercises the live path against a mock Jira server,
+// asserting GetTestRuns calls the Xray Server/DC testexec endpoint, sends
+// detailed=true, and accumulates results across pages. The mock serves a full
+// first page (100 items, matching the internal page size) and a partial second
+// page (1 item) to confirm the pagination loop terminates on a short page.
 func TestGetTestRunsLiveStub(t *testing.T) {
+	// Build a full page of 100 items plus one extra item on page 2.
+	const pageSize = 100
+	page1 := make([]map[string]any, pageSize)
+	for i := 0; i < pageSize; i++ {
+		page1[i] = map[string]any{
+			"id": i + 1, "key": fmt.Sprintf("QA-%d", i+1), "rank": i + 1, "status": "PASS",
+		}
+	}
+	page2 := []map[string]any{
+		{"id": pageSize + 1, "key": fmt.Sprintf("QA-%d", pageSize+1), "rank": pageSize + 1, "status": "FAIL"},
+	}
+
+	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/rest/raven/2.0/api/testruns") {
-			t.Errorf("unexpected path %s", r.URL.Path)
+		wantPath := "/rest/raven/1.0/api/testexec/QA-TE-1/test"
+		if r.URL.Path != wantPath {
+			t.Errorf("unexpected path %s, want %s", r.URL.Path, wantPath)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		if r.URL.Query().Get("testExecIssueKey") != "QA-TE-1" {
-			t.Errorf("want testExecIssueKey=QA-TE-1, got %q", r.URL.Query().Get("testExecIssueKey"))
+		calls++
+		q := r.URL.Query()
+		if q.Get("detailed") != "true" {
+			t.Errorf("want detailed=true, got %q", q.Get("detailed"))
 		}
-		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{"testKey": "QA-1", "status": "PASS"},
-		})
+		switch calls {
+		case 1:
+			_ = json.NewEncoder(w).Encode(page1)
+		case 2:
+			_ = json.NewEncoder(w).Encode(page2)
+		default:
+			// Should not reach here.
+			t.Errorf("unexpected page request %d", calls)
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		}
 	}))
 	defer srv.Close()
 
@@ -217,7 +348,16 @@ func TestGetTestRunsLiveStub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTestRuns live: %v", err)
 	}
-	if len(runs) != 1 || runs[0].TestKey != "QA-1" || runs[0].Status != "PASS" {
-		t.Fatalf("unexpected runs: %+v", runs)
+	if len(runs) != pageSize+1 {
+		t.Fatalf("want %d runs (page1+page2), got %d", pageSize+1, len(runs))
+	}
+	if runs[0].TestKey != "QA-1" || runs[0].Status != "PASS" {
+		t.Errorf("run[0] = %+v, want QA-1/PASS", runs[0])
+	}
+	if runs[pageSize].TestKey != fmt.Sprintf("QA-%d", pageSize+1) || runs[pageSize].Status != "FAIL" {
+		t.Errorf("run[%d] = %+v, want QA-%d/FAIL", pageSize, runs[pageSize], pageSize+1)
+	}
+	if calls != 2 {
+		t.Errorf("expected exactly 2 HTTP calls (2 pages), got %d", calls)
 	}
 }

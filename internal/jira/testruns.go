@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+// maxTestExecPages is a safety cap on the pagination loop in GetTestRuns to
+// prevent runaway requests against a misbehaving server.
+const maxTestExecPages = 100
+
 // TestRun is one test's run record within a Test Execution as returned by the
 // Xray Test Run REST endpoint. It carries the run status, timing, the executor
 // identity, the environment label (if set), any defect keys linked to the run,
@@ -26,24 +30,47 @@ type TestRun struct {
 
 // GetTestRuns returns the test runs recorded for one Test Execution. Demo mode
 // synthesizes runs deterministically from the execution key; the live path
-// calls the Xray raven REST API.
+// calls the Xray Server/DC REST API.
 //
-// NOTE(xtm): the live endpoint and response shape are assumed to be
-// GET /rest/raven/2.0/api/testruns?testExecIssueKey=<execKey>, returning an
-// array of run objects. Verify field names (startedOn vs startedAt, etc.) and
-// pagination behaviour against a live Xray Server/DC 8.4.0 instance before
-// removing the TODO marker.
+// Live endpoint: GET /rest/raven/1.0/api/testexec/{execKey}/test?detailed=true
+// The endpoint is paginated: query params page (1-based) and limit select each
+// page; the loop stops when a page returns fewer items than the requested limit
+// or when maxTestExecPages is reached to guard against runaway loops.
+//
+// NOTE(xtm): the detailed field names below (startedOn, finishedOn, assignee,
+// executedBy, testEnvironments, defects) are best-effort mappings from the
+// Xray Server/DC 8.4.0 documentation. Verify spelling and casing against a
+// live Xray Server/DC 8.4.0 instance and adjust before removing this marker.
+// In particular confirm: the pagination param names (page/limit vs
+// pageStart/limit vs offset/limit), whether "assignee" or "executedBy" carries
+// the executor, and whether defects are plain strings or objects with a "key"
+// field in the response from that version.
 func (c *Client) GetTestRuns(ctx context.Context, execKey string) ([]TestRun, error) {
 	if isDemoURL(c.baseURL) {
 		return demoTestRuns(execKey), nil
 	}
-	q := url.Values{}
-	q.Set("testExecIssueKey", execKey)
-	body, err := c.getBytes(ctx, "/rest/raven/2.0/api/testruns?"+q.Encode())
-	if err != nil {
-		return nil, err
+	const limit = 100
+	base := "/rest/raven/1.0/api/testexec/" + url.PathEscape(execKey) + "/test"
+	var all []TestRun
+	for page := 1; page <= maxTestExecPages; page++ {
+		q := url.Values{}
+		q.Set("detailed", "true")
+		q.Set("page", fmt.Sprintf("%d", page))
+		q.Set("limit", fmt.Sprintf("%d", limit))
+		body, err := c.getBytes(ctx, base+"?"+q.Encode())
+		if err != nil {
+			return nil, err
+		}
+		pageRuns, err := parseTestExecTests(body)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, pageRuns...)
+		if len(pageRuns) < limit {
+			break
+		}
 	}
-	return parseTestRuns(body)
+	return all, nil
 }
 
 // ExecPlans returns the Test Plan keys that a Test Execution is associated
@@ -63,6 +90,100 @@ func (c *Client) ExecPlans(ctx context.Context, execKey string) ([]string, error
 	// TODO(xtm): resolve the Test Plan custom field id and read it from the
 	// exec issue. Return nil for now so the sync path degrades gracefully.
 	return nil, nil
+}
+
+// parseTestExecTests decodes the JSON array returned by the Xray Server/DC
+// GET /rest/raven/1.0/api/testexec/{execKey}/test endpoint into TestRun values.
+// Each element in the array represents one test and its run status within the
+// execution. The parser is tolerant: unknown fields are ignored, missing
+// optional fields are left empty, and objects with an empty "key" are skipped.
+//
+// NOTE(xtm): the detailed field names (startedOn, finishedOn, assignee,
+// executedBy, testEnvironments, defects) are best-effort from Xray Server/DC
+// docs. Verify the exact names against a live Xray Server/DC 8.4.0 instance.
+func parseTestExecTests(body []byte) ([]TestRun, error) {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" || trimmed == "null" || trimmed == "[]" {
+		return []TestRun{}, nil
+	}
+
+	// rawTest is a tolerant shape for one element of the testexec/test array.
+	// NOTE(xtm): field names have not been verified against a live Xray
+	// Server/DC 8.4.0 instance -- adjust if the server uses different spelling.
+	type rawTest struct {
+		Key              string            `json:"key"`
+		Status           string            `json:"status"`
+		StartedOn        string            `json:"startedOn"`
+		FinishedOn       string            `json:"finishedOn"`
+		Assignee         string            `json:"assignee"`
+		ExecutedBy       string            `json:"executedBy"`
+		TestEnvironments []string          `json:"testEnvironments"`
+		Defects          []json.RawMessage `json:"defects"`
+	}
+
+	var raw []rawTest
+	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
+		return nil, fmt.Errorf("parse testexec tests: %w", err)
+	}
+
+	out := make([]TestRun, 0, len(raw))
+	for _, r := range raw {
+		if r.Key == "" {
+			continue
+		}
+
+		// Executor: prefer executedBy, fall back to assignee.
+		executor := r.ExecutedBy
+		if executor == "" {
+			executor = r.Assignee
+		}
+
+		// Environment: take the first entry if present, join with ", " if multiple.
+		env := ""
+		if len(r.TestEnvironments) == 1 {
+			env = r.TestEnvironments[0]
+		} else if len(r.TestEnvironments) > 1 {
+			env = strings.Join(r.TestEnvironments, ", ")
+		}
+
+		// Defects: tolerate both plain string keys and objects with a "key" field.
+		var defects []string
+		for _, d := range r.Defects {
+			s := strings.TrimSpace(string(d))
+			if len(s) >= 2 && s[0] == '"' {
+				// Plain string: unquote it.
+				var key string
+				if err := json.Unmarshal(d, &key); err == nil && key != "" {
+					defects = append(defects, key)
+				}
+			} else if len(s) >= 2 && s[0] == '{' {
+				// Object form: extract the "key" field.
+				var obj struct {
+					Key string `json:"key"`
+				}
+				if err := json.Unmarshal(d, &obj); err == nil && obj.Key != "" {
+					defects = append(defects, obj.Key)
+				}
+			}
+		}
+		if defects == nil {
+			defects = []string{}
+		}
+
+		out = append(out, TestRun{
+			TestKey:     r.Key,
+			Status:      strings.ToUpper(strings.TrimSpace(r.Status)),
+			StartedAt:   r.StartedOn,
+			FinishedAt:  r.FinishedOn,
+			ExecutedBy:  executor,
+			Environment: env,
+			Defects:     defects,
+			// CreatedAt and UpdatedAt are not present on the testexec/test endpoint.
+			// NOTE(xtm): verify whether Xray Server/DC 8.4.0 includes created/updated
+			// timestamps in the detailed testexec/test response.
+		})
+	}
+	return out, nil
 }
 
 // parseTestRuns decodes the JSON body of the Xray test-runs response into
