@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 31
+const schemaVersion = 32
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS test_container (
 	status     TEXT NOT NULL DEFAULT '',
 	parent_key TEXT NOT NULL DEFAULT '',
 	issue_type TEXT NOT NULL DEFAULT '',
+	parent_summary TEXT NOT NULL DEFAULT '',
 	environments TEXT NOT NULL DEFAULT '',
 	fix_versions TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
@@ -620,6 +621,17 @@ func applyMigrations(db *sql.DB) error {
 			`ALTER TABLE test_case ADD COLUMN fix_versions TEXT NOT NULL DEFAULT ''`,
 		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("v31 add fix_versions to test_case: %w", err)
+		}
+	}
+	// v32: add parent_summary to test_container to store the parent issue's
+	// summary text for sub-task Test Executions, surfaced in the sub-task
+	// traceability parent node label and container list. Fresh installs get it
+	// from the CREATE above; this ALTER catches pre-v32 databases.
+	if current < 32 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_container ADD COLUMN parent_summary TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v32 add parent_summary: %w", err)
 		}
 	}
 	return nil
