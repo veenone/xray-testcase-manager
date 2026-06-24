@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // JUnitMatch is one testcase matched to a single member test of the execution,
@@ -178,10 +179,11 @@ func (r *Repository) AnalyzeJUnitImport(profileID, execKey, xmlBase64 string) (J
 		return preview, err
 	}
 
-	// Build summary -> []member map (case-sensitive, as Jira stores summaries).
+	// Build summary -> []member map (normalized: trimmed and lowercased for case-insensitive matching).
 	byName := make(map[string][]execMember, len(members))
 	for _, m := range members {
-		byName[m.summary] = append(byName[m.summary], m)
+		key := strings.ToLower(strings.TrimSpace(m.summary))
+		byName[key] = append(byName[key], m)
 	}
 
 	for _, tc := range testcases {
@@ -195,7 +197,7 @@ func (r *Repository) AnalyzeJUnitImport(profileID, execKey, xmlBase64 string) (J
 			continue
 		}
 
-		hits := byName[tc.Name]
+		hits := byName[strings.ToLower(strings.TrimSpace(tc.Name))]
 		switch len(hits) {
 		case 0:
 			preview.Skipped = append(preview.Skipped, JUnitSkip{

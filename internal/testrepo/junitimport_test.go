@@ -254,6 +254,52 @@ func TestAnalyzeJUnitImportBareTestsuiteRoot(t *testing.T) {
 	}
 }
 
+// TestAnalyzeJUnitImportNormalization verifies that testcase names are matched
+// to member summaries using case-insensitive, trimmed comparison so that minor
+// casing differences and surrounding whitespace in the JUnit report do not
+// prevent a match.
+func TestAnalyzeJUnitImportNormalization(t *testing.T) {
+	repo := newRepo(t)
+
+	// Seed one member whose summary uses mixed case and a trailing space.
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "TC-1", ID: "1", Summary: "Login Flow"},
+	}); err != nil {
+		t.Fatalf("seed tests: %v", err)
+	}
+	if err := repo.UpsertContainers("p1", []testrepo.Container{
+		{Key: "TE-1", Kind: "testexec"},
+	}); err != nil {
+		t.Fatalf("seed container: %v", err)
+	}
+	if err := repo.ReplaceAllContainerLinks("p1", []testrepo.ContainerLink{
+		{ContainerKey: "TE-1", TestKey: "TC-1", RunStatus: "TODO"},
+	}); err != nil {
+		t.Fatalf("seed link: %v", err)
+	}
+
+	// The JUnit report uses all-upper-case with a leading space — would fail a
+	// raw string comparison against the stored summary "Login Flow".
+	xmlStr := `<?xml version="1.0"?><testsuite><testcase name="  LOGIN FLOW  "/></testsuite>`
+	b64 := base64.StdEncoding.EncodeToString([]byte(xmlStr))
+
+	preview, err := repo.AnalyzeJUnitImport("p1", "TE-1", b64)
+	if err != nil {
+		t.Fatalf("AnalyzeJUnitImport: %v", err)
+	}
+	if preview.Total != 1 {
+		t.Errorf("Total = %d, want 1", preview.Total)
+	}
+	if len(preview.Matched) != 1 {
+		t.Errorf("Matched = %d, want 1 (normalization should have matched); skipped = %+v", len(preview.Matched), preview.Skipped)
+	} else if preview.Matched[0].TestKey != "TC-1" {
+		t.Errorf("matched key = %q, want TC-1", preview.Matched[0].TestKey)
+	}
+	if len(preview.Skipped) != 0 {
+		t.Errorf("Skipped = %d, want 0; skipped = %+v", len(preview.Skipped), preview.Skipped)
+	}
+}
+
 func TestApplyJUnitImportRejectsNonMember(t *testing.T) {
 	repo := newRepo(t)
 	if err := repo.UpsertTests("p1", []testrepo.TestCase{
