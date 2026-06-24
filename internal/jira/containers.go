@@ -30,8 +30,9 @@ type Container struct {
 	Kind      string
 	Summary   string
 	Status    string
-	ParentKey string // parent issue key for a sub-task Test Execution; else ""
-	IssueType string // Jira issuetype name (e.g. "Sub Test Execution"); informational
+	ParentKey     string // parent issue key for a sub-task Test Execution; else ""
+	ParentSummary string // parent issue summary; empty when no parent or not fetched
+	IssueType     string // Jira issuetype name (e.g. "Sub Test Execution"); informational
 	// Environments is the Xray Test Environments field on a Test Execution
 	// (empty for Test Sets / Plans). The live container search resolves the
 	// configured "Test Environments" custom field id per instance
@@ -234,7 +235,10 @@ type containerIssueFields struct {
 		Name string `json:"name"`
 	} `json:"issuetype"`
 	Parent *struct {
-		Key string `json:"key"`
+		Key    string `json:"key"`
+		Fields struct {
+			Summary string `json:"summary"`
+		} `json:"fields"`
 	} `json:"parent"`
 	FixVersions []struct {
 		Name string `json:"name"`
@@ -257,6 +261,7 @@ func parseContainerIssue(key, kind string, rawFields json.RawMessage, envFieldID
 	}
 	if f.Parent != nil {
 		ct.ParentKey = f.Parent.Key
+		ct.ParentSummary = f.Parent.Fields.Summary
 	}
 	if kind == KindTestExec && envFieldID != "" {
 		ct.Environments = environmentsFromRawFields(rawFields, envFieldID)
