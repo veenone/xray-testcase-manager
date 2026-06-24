@@ -1080,6 +1080,81 @@ export namespace testrepo {
 		}
 	}
 	
+	export class JUnitNewExecRow {
+	    testcase: string;
+	    testKey: string;
+	    summary: string;
+	    result: string;
+	    create: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new JUnitNewExecRow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.testcase = source["testcase"];
+	        this.testKey = source["testKey"];
+	        this.summary = source["summary"];
+	        this.result = source["result"];
+	        this.create = source["create"];
+	    }
+	}
+	export class JUnitNewExecPreview {
+	    total: number;
+	    rows: JUnitNewExecRow[];
+	    skipped: JUnitSkip[];
+	
+	    static createFrom(source: any = {}) {
+	        return new JUnitNewExecPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.rows = this.convertValues(source["rows"], JUnitNewExecRow);
+	        this.skipped = this.convertValues(source["skipped"], JUnitSkip);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class JUnitNewExecResult {
+	    execKey: string;
+	    created: number;
+	    allocated: number;
+	    resultsSet: number;
+	    failed: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new JUnitNewExecResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.execKey = source["execKey"];
+	        this.created = source["created"];
+	        this.allocated = source["allocated"];
+	        this.resultsSet = source["resultsSet"];
+	        this.failed = source["failed"];
+	    }
+	}
+	
 	
 	export class TestCase {
 	    key: string;

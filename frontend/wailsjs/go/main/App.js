@@ -26,8 +26,16 @@ export function AnalyzeJUnitImport(arg1, arg2, arg3) {
   return window['go']['main']['App']['AnalyzeJUnitImport'](arg1, arg2, arg3);
 }
 
+export function AnalyzeJUnitImportNewExec(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AnalyzeJUnitImportNewExec'](arg1, arg2, arg3);
+}
+
 export function ApplyJUnitImport(arg1, arg2, arg3) {
   return window['go']['main']['App']['ApplyJUnitImport'](arg1, arg2, arg3);
+}
+
+export function ApplyJUnitImportNewExec(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ApplyJUnitImportNewExec'](arg1, arg2, arg3);
 }
 
 export function BulkAssociatePreconditions(arg1, arg2, arg3, arg4) {

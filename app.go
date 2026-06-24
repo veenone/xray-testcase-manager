@@ -1947,6 +1947,35 @@ func (a *App) ApplyJUnitImport(profileID, execKey string, matches []testrepo.JUn
 	return a.repo.ApplyJUnitImport(profileID, execKey, matches)
 }
 
+// AnalyzeJUnitImportNewExec decodes a base64-encoded JUnit XML report and
+// classifies each testcase against all tests for the profile, returning a
+// preview of what a new Test Execution would contain. When createMissing is
+// true, unmatched testcases are queued for creation; otherwise they are
+// reported as skipped.
+func (a *App) AnalyzeJUnitImportNewExec(profileID, xmlBase64 string, createMissing bool) (testrepo.JUnitNewExecPreview, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.JUnitNewExecPreview{}, err
+	}
+	return a.repo.AnalyzeJUnitImportNewExec(profileID, xmlBase64, createMissing)
+}
+
+// ApplyJUnitImportNewExec queues pending changes to create a new Test
+// Execution from a JUnit analysis preview: new tests are created for rows
+// with Create=true, all tests are allocated to the execution, and run results
+// are set for rows with a non-empty Result. The projectKey is resolved from
+// the active profile so the commit engine can create the execution in Jira.
+func (a *App) ApplyJUnitImportNewExec(profileID, summary string, rows []testrepo.JUnitNewExecRow) (testrepo.JUnitNewExecResult, error) {
+	var empty testrepo.JUnitNewExecResult
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return empty, err
+	}
+	return a.repo.ApplyJUnitImportNewExec(profileID, p.ProjectKey, summary, rows)
+}
+
 // EditContainer renames a Test Set / Plan / Execution and queues the change
 // for commit (container CRUD).
 func (a *App) EditContainer(profileID, key, summary string) error {

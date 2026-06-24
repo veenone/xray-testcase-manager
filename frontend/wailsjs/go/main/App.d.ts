@@ -19,7 +19,11 @@ export function AnalyzeGap(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5
 
 export function AnalyzeJUnitImport(arg1:string,arg2:string,arg3:string):Promise<testrepo.JUnitImportPreview>;
 
+export function AnalyzeJUnitImportNewExec(arg1:string,arg2:string,arg3:boolean):Promise<testrepo.JUnitNewExecPreview>;
+
 export function ApplyJUnitImport(arg1:string,arg2:string,arg3:Array<testrepo.JUnitMatch>):Promise<testrepo.BulkEditResult>;
+
+export function ApplyJUnitImportNewExec(arg1:string,arg2:string,arg3:Array<testrepo.JUnitNewExecRow>):Promise<testrepo.JUnitNewExecResult>;
 
 export function BulkAssociatePreconditions(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:boolean):Promise<testrepo.BulkEditResult>;
 

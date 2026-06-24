@@ -50,10 +50,10 @@ type junitTestSuite struct {
 
 // junitTestCase holds the fields we care about from a <testcase> element.
 type junitTestCase struct {
-	Name    string          `xml:"name,attr"`
-	Failure *junitPresence  `xml:"failure"`
-	Error   *junitPresence  `xml:"error"`
-	Skipped *junitPresence  `xml:"skipped"`
+	Name    string         `xml:"name,attr"`
+	Failure *junitPresence `xml:"failure"`
+	Error   *junitPresence `xml:"error"`
+	Skipped *junitPresence `xml:"skipped"`
 }
 
 // junitPresence is used for child elements whose mere presence is meaningful
@@ -224,6 +224,220 @@ func (r *Repository) AnalyzeJUnitImport(profileID, execKey, xmlBase64 string) (J
 	}
 
 	return preview, nil
+}
+
+// JUnitNewExecRow is one testcase mapped to a test that will be placed in the
+// new execution. TestKey is the key of an existing test (when Create is false)
+// or empty for a test that will be created on commit (when Create is true).
+// Result is "PASS", "FAIL", or "" (skipped in the report; the test is still
+// allocated but its run result is left unset).
+type JUnitNewExecRow struct {
+	Testcase string `json:"testcase"`
+	TestKey  string `json:"testKey"`
+	Summary  string `json:"summary"`
+	Result   string `json:"result"`
+	Create   bool   `json:"create"`
+}
+
+// JUnitNewExecPreview is the analysis of a JUnit report for creating a new
+// Test Execution. Rows contains existing tests to allocate and tests to be
+// created; Skipped contains testcases that will not be included (ambiguous
+// summary match, or unmatched when createMissing is false).
+type JUnitNewExecPreview struct {
+	Total   int               `json:"total"`
+	Rows    []JUnitNewExecRow `json:"rows"`
+	Skipped []JUnitSkip       `json:"skipped"`
+}
+
+// JUnitNewExecResult summarizes what ApplyJUnitImportNewExec queued as pending
+// changes. ExecKey is the temporary key for the newly created execution (it
+// will be replaced with the real Jira key on commit). Created is the number of
+// brand-new tests queued. Allocated is the total number of tests linked to the
+// execution. ResultsSet counts the run-result pending changes queued (one per
+// row with a non-empty Result). Failed lists any row-level errors that did not
+// prevent the overall operation from completing.
+type JUnitNewExecResult struct {
+	ExecKey    string   `json:"execKey"`
+	Created    int      `json:"created"`
+	Allocated  int      `json:"allocated"`
+	ResultsSet int      `json:"resultsSet"`
+	Failed     []string `json:"failed"`
+}
+
+// AnalyzeJUnitImportNewExec decodes a base64-encoded JUnit XML report and
+// classifies each testcase against ALL tests in the profile's local cache.
+// Matching is case-insensitive and trims surrounding whitespace. Each testcase
+// is placed in one of three buckets:
+//   - exactly one summary match: added to Rows with Create=false and the
+//     resolved TestKey and Result ("PASS", "FAIL", or "" for skipped).
+//   - zero matches and createMissing=true: added to Rows with Create=true, an
+//     empty TestKey, and the computed Result.
+//   - zero matches and createMissing=false, or more than one match: added to
+//     Skipped with an explanatory reason.
+//
+// The caller passes Rows to ApplyJUnitImportNewExec to queue all pending
+// changes without further analysis.
+func (r *Repository) AnalyzeJUnitImportNewExec(profileID, xmlBase64 string, createMissing bool) (JUnitNewExecPreview, error) {
+	preview := JUnitNewExecPreview{
+		Rows:    []JUnitNewExecRow{},
+		Skipped: []JUnitSkip{},
+	}
+
+	xmlBytes, err := base64.StdEncoding.DecodeString(xmlBase64)
+	if err != nil {
+		return preview, fmt.Errorf("decode XML: %w", err)
+	}
+
+	testcases, err := parseJUnitXML(xmlBytes)
+	if err != nil {
+		return preview, err
+	}
+	if len(testcases) == 0 {
+		return preview, fmt.Errorf("JUnit XML contained no testcase elements")
+	}
+	preview.Total = len(testcases)
+
+	// Build normalized summary -> []testKey across all tests for this profile.
+	rows, err := r.db.Query(
+		`SELECT jira_key, summary FROM test_case WHERE profile_id = ?`,
+		profileID,
+	)
+	if err != nil {
+		return preview, fmt.Errorf("load tests for matching: %w", err)
+	}
+	defer rows.Close()
+
+	byName := make(map[string][]string) // normalized summary -> []testKey
+	for rows.Next() {
+		var key, summary string
+		if err := rows.Scan(&key, &summary); err != nil {
+			return preview, fmt.Errorf("scan test row: %w", err)
+		}
+		norm := strings.ToLower(strings.TrimSpace(summary))
+		byName[norm] = append(byName[norm], key)
+	}
+	if err := rows.Err(); err != nil {
+		return preview, fmt.Errorf("iterate tests: %w", err)
+	}
+
+	for _, tc := range testcases {
+		result, skipped := junitResult(tc)
+		norm := strings.ToLower(strings.TrimSpace(tc.Name))
+		hits := byName[norm]
+
+		switch {
+		case len(hits) == 1:
+			// Exactly one match: allocate existing test.
+			row := JUnitNewExecRow{
+				Testcase: tc.Name,
+				TestKey:  hits[0],
+				Summary:  tc.Name,
+				Result:   result,
+				Create:   false,
+			}
+			// Skipped in JUnit: allocated but result left unset.
+			if skipped {
+				row.Result = ""
+			}
+			preview.Rows = append(preview.Rows, row)
+
+		case len(hits) == 0:
+			if createMissing {
+				row := JUnitNewExecRow{
+					Testcase: tc.Name,
+					TestKey:  "",
+					Summary:  tc.Name,
+					Create:   true,
+				}
+				if !skipped {
+					row.Result = result
+				}
+				preview.Rows = append(preview.Rows, row)
+			} else {
+				preview.Skipped = append(preview.Skipped, JUnitSkip{
+					Testcase: tc.Name,
+					Reason:   "no matching test; create-missing disabled",
+				})
+			}
+
+		default:
+			// More than one match: ambiguous.
+			preview.Skipped = append(preview.Skipped, JUnitSkip{
+				Testcase: tc.Name,
+				Reason:   fmt.Sprintf("ambiguous: %d tests share this summary", len(hits)),
+			})
+		}
+	}
+
+	return preview, nil
+}
+
+// ApplyJUnitImportNewExec queues all pending changes needed to materialise a
+// new Test Execution from a JUnit analysis preview:
+//  1. For each row with Create=true, CreateTest is called and the returned temp
+//     key is used as the working test key.
+//  2. All working test keys (existing + created) are passed to
+//     CreateContainerAllocation to create the execution and allocate them.
+//  3. For each row with a non-empty Result, SetTestRunStatus is called with the
+//     new execution's temp key so the result is queued for commit.
+//
+// summary is the name for the new Test Execution; projectKey is the Jira
+// project key used when creating the container (resolved by the App binding
+// from the active profile). An error is returned if summary is blank.
+func (r *Repository) ApplyJUnitImportNewExec(profileID, projectKey, summary string, rows []JUnitNewExecRow) (JUnitNewExecResult, error) {
+	var res JUnitNewExecResult
+	if strings.TrimSpace(summary) == "" {
+		return res, fmt.Errorf("execution summary must not be blank")
+	}
+
+	// Step 1: create brand-new tests for rows marked Create=true.
+	workingKeys := make([]string, len(rows)) // parallel to rows
+	for i, row := range rows {
+		if !row.Create {
+			workingKeys[i] = row.TestKey
+			continue
+		}
+		tempKey, err := r.CreateTest(profileID, TestDraft{
+			Summary: row.Summary,
+		})
+		if err != nil {
+			res.Failed = append(res.Failed, fmt.Sprintf("create test %q: %v", row.Summary, err))
+			continue
+		}
+		workingKeys[i] = tempKey
+		res.Created++
+	}
+
+	// Collect all non-empty working keys in row order.
+	allKeys := make([]string, 0, len(workingKeys))
+	for _, k := range workingKeys {
+		if k != "" {
+			allKeys = append(allKeys, k)
+		}
+	}
+
+	// Step 2: create the execution and allocate all tests.
+	containerRes, err := r.CreateContainerAllocation(profileID, projectKey, "testexec", summary, allKeys)
+	if err != nil {
+		return res, fmt.Errorf("create execution: %w", err)
+	}
+	res.ExecKey = containerRes.TempKey
+	res.Allocated = containerRes.Added
+
+	// Step 3: set run results for rows with a non-empty Result.
+	for i, row := range rows {
+		wk := workingKeys[i]
+		if wk == "" || row.Result == "" {
+			continue
+		}
+		if err := r.SetTestRunStatus(profileID, res.ExecKey, wk, row.Result); err != nil {
+			res.Failed = append(res.Failed, fmt.Sprintf("set result for %q: %v", wk, err))
+			continue
+		}
+		res.ResultsSet++
+	}
+
+	return res, nil
 }
 
 // ApplyJUnitImport sets the run result for each matched testcase in the given

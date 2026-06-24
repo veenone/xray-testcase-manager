@@ -149,6 +149,8 @@ export {
   GetExecutionMembersWithRuns,
   AnalyzeJUnitImport,
   ApplyJUnitImport,
+  AnalyzeJUnitImportNewExec,
+  ApplyJUnitImportNewExec,
 } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
 
@@ -869,6 +871,37 @@ export interface JUnitImportPreview {
   total: number;
   matched: JUnitMatch[];
   skipped: JUnitSkip[];
+}
+
+// JUnitNewExecRow mirrors testrepo.JUnitNewExecRow -- one testcase row in a
+// new-execution JUnit import. When Create is true the test does not yet exist
+// and will be created on commit. Result is "PASS", "FAIL", or "" (skipped in
+// the report; the test is allocated but the run result is left unset).
+export interface JUnitNewExecRow {
+  testcase: string;
+  testKey: string;
+  summary: string;
+  result: string;
+  create: boolean;
+}
+
+// JUnitNewExecPreview mirrors testrepo.JUnitNewExecPreview -- the analysis of
+// a JUnit report for creating a brand-new Test Execution.
+export interface JUnitNewExecPreview {
+  total: number;
+  rows: JUnitNewExecRow[];
+  skipped: JUnitSkip[];
+}
+
+// JUnitNewExecResult mirrors testrepo.JUnitNewExecResult -- the outcome of
+// ApplyJUnitImportNewExec. ExecKey is the temporary key of the new execution
+// (replaced with the real Jira key on commit).
+export interface JUnitNewExecResult {
+  execKey: string;
+  created: number;
+  allocated: number;
+  resultsSet: number;
+  failed: string[];
 }
 
 // errMsg renders any thrown value (unknown in strict mode) as a string.
