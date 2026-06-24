@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 29
+const schemaVersion = 30
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -295,6 +295,8 @@ CREATE TABLE IF NOT EXISTS external_test (
 
 -- Per-execution run details for each Test: status, timing, executor,
 -- environment, and defect keys as returned by the Xray Test Run REST API.
+-- created_at and updated_at carry the run's creation and last-update timestamps
+-- from Xray (ISO-8601), enabling sorting by recency (schema v30).
 CREATE TABLE IF NOT EXISTS test_run (
 	profile_id  TEXT NOT NULL,
 	exec_key    TEXT NOT NULL,
@@ -305,6 +307,8 @@ CREATE TABLE IF NOT EXISTS test_run (
 	executed_by TEXT DEFAULT '',
 	environment TEXT DEFAULT '',
 	defects     TEXT DEFAULT '',
+	created_at  TEXT DEFAULT '',
+	updated_at  TEXT DEFAULT '',
 	PRIMARY KEY (profile_id, exec_key, test_key)
 );
 
@@ -588,6 +592,19 @@ func applyMigrations(db *sql.DB) error {
 		} {
 			if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 				return fmt.Errorf("v29 add TLS columns: %w", err)
+			}
+		}
+	}
+	// v30: add created_at and updated_at to test_run so runs can be sorted by
+	// recency (RND_P_4TFINT_05 run-info refinement). Both carry ISO-8601 strings
+	// from Xray (empty string when unknown). Fresh installs get the columns from
+	// the CREATE above; these ALTERs catch pre-v30 databases.
+	if current < 30 {
+		for _, col := range []string{"created_at", "updated_at"} {
+			if _, err := db.Exec(
+				fmt.Sprintf(`ALTER TABLE test_run ADD COLUMN %s TEXT DEFAULT ''`, col),
+			); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("v30 add %s to test_run: %w", col, err)
 			}
 		}
 	}
