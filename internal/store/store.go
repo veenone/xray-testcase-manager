@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 30
+const schemaVersion = 31
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -76,8 +76,9 @@ CREATE TABLE IF NOT EXISTS test_case (
 	labels      TEXT NOT NULL DEFAULT '',
 	updated_at  TEXT NOT NULL DEFAULT '',
 	folder_id   TEXT NOT NULL DEFAULT '',
-	components  TEXT NOT NULL DEFAULT '',
-	exec_type   TEXT NOT NULL DEFAULT '',
+	components   TEXT NOT NULL DEFAULT '',
+	exec_type    TEXT NOT NULL DEFAULT '',
+	fix_versions TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -606,6 +607,19 @@ func applyMigrations(db *sql.DB) error {
 			); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 				return fmt.Errorf("v30 add %s to test_run: %w", col, err)
 			}
+		}
+	}
+	// v31: add fix_versions to test_case for the standard Jira Fix Version(s)
+	// field on each Test issue (a JSON array of version names). Stored using the
+	// same encodeFixVersions helper as test_container.fix_versions, so per-member
+	// fix versions can be shown on the Test Execution board. Fresh installs get it
+	// from the CREATE above; this ALTER catches pre-v31 databases. The
+	// "duplicate column" error is tolerated so the migration is idempotent.
+	if current < 31 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_case ADD COLUMN fix_versions TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v31 add fix_versions to test_case: %w", err)
 		}
 	}
 	return nil
