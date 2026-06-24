@@ -71,17 +71,21 @@ type User struct {
 }
 
 // HTTPError carries the HTTP status of a failed Jira request so callers can
-// treat specific statuses as soft failures — e.g. a 400 from an issue-type
+// treat specific statuses as soft failures -- e.g. a 400 from an issue-type
 // search the instance/project doesn't support (no "Precondition" type)
 // shouldn't abort the whole sync.
 type HTTPError struct {
-	Method string
-	Path   string
-	Code   int
-	Status string
+	Method  string
+	Path    string
+	Code    int
+	Status  string
+	Message string // human-readable Jira error, parsed from the response body
 }
 
 func (e *HTTPError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("jira: %s: %s", e.Status, e.Message)
+	}
 	return fmt.Sprintf("jira: %s %s -> %s", e.Method, e.Path, e.Status)
 }
 
@@ -188,7 +192,9 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return &HTTPError{Method: http.MethodGet, Path: path, Code: resp.StatusCode, Status: resp.Status}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		msg := jiraErrorMessage(body)
+		return &HTTPError{Method: http.MethodGet, Path: path, Code: resp.StatusCode, Status: resp.Status, Message: msg}
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
