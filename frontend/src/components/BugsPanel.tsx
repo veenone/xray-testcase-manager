@@ -110,17 +110,17 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   // Set of test keys whose run history is currently loading.
   const [runHistoryLoading, setRunHistoryLoading] = useState<Set<string>>(new Set());
   // Per-test sort state for the run-history breakdown. Keyed by test key.
-  // Default: updatedAt descending (newest first).
+  // Default: finishedAt descending (newest run first).
   type RunSort = { field: string; desc: boolean };
   const [runSortMap, setRunSortMap] = useState<Map<string, RunSort>>(new Map());
 
   function getRunSort(testKey: string): RunSort {
-    return runSortMap.get(testKey) ?? { field: "updatedAt", desc: true };
+    return runSortMap.get(testKey) ?? { field: "finishedAt", desc: true };
   }
 
   function toggleRunSort(testKey: string, field: string) {
     setRunSortMap((prev) => {
-      const current = prev.get(testKey) ?? { field: "updatedAt", desc: true };
+      const current = prev.get(testKey) ?? { field: "finishedAt", desc: true };
       const next: RunSort =
         current.field === field
           ? { field, desc: !current.desc }
@@ -136,11 +136,8 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
         case "runStatus":
           cmp = (a.runStatus ?? "").localeCompare(b.runStatus ?? "");
           break;
-        case "createdAt":
-          cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
-          break;
-        case "updatedAt":
-          cmp = (a.updatedAt ?? "").localeCompare(b.updatedAt ?? "");
+        case "finishedAt":
+          cmp = (a.finishedAt || a.startedAt || "").localeCompare(b.finishedAt || b.startedAt || "");
           break;
         default:
           cmp = 0;
@@ -880,8 +877,6 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                       <td>{r.environment || <span className="muted">—</span>}</td>
                                       <td className="muted">{formatDateTime(r.finishedAt || r.startedAt)}</td>
                                       <td>{r.executedBy || <span className="muted">—</span>}</td>
-                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.createdAt) || <span>—</span>}</td>
-                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.updatedAt) || <span>—</span>}</td>
                                       <td>
                                         {r.defects?.length ? (
                                           <span>
@@ -920,10 +915,8 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                           <SortTh field="runStatus">Result</SortTh>
                                           <th>Fix Version(s)</th>
                                           <th>Environment</th>
-                                          <th>Date</th>
+                                          <SortTh field="finishedAt">Date</SortTh>
                                           <th>By</th>
-                                          <SortTh field="createdAt">Created</SortTh>
-                                          <SortTh field="updatedAt">Updated</SortTh>
                                           <th>Defects</th>
                                         </tr>
                                       </thead>
@@ -931,7 +924,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                         {groups.map((g) => (
                                           <Fragment key={g.planKey ?? "__no_plan__"}>
                                             <tr className="run-plan-group-header">
-                                              <td colSpan={9}>
+                                              <td colSpan={7}>
                                                 {g.planKey ? (
                                                   <button
                                                     className="mono bug-link-key"
