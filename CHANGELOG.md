@@ -25,7 +25,7 @@ Fourth alpha iteration of the 1.7.0 work: Bugs-view improvements, plus sub-task 
 
 ### Fixed
 - **"Latest result" now matches the run history.** The affected-tests "Latest result" reads the most recent run from the run table (the same source as the breakdown), falling back to the consolidated membership status, instead of a worst-wins value that could disagree with the runs shown.
-- **Removed the empty Created / Updated columns** from the run-history breakdown (the live Xray run endpoint does not return those timestamps, so they were always blank and redundant with the run Date). The Date column is now sortable and defaults to newest-first.
+- **Run-history breakdown date columns.** The **Date** column (the run's own date) is now sortable and defaults to newest-first. The **Created / Updated / Resolved** columns now show the Test Execution issue's own timestamps (created, updated, resolution date), fetched from the execution detail and cached on the container - the per-run Xray endpoint does not return them, so they were previously blank.
 
 ### Fixed
 - Bug list (and the Containers Test Execution / Plan / Set member lists) now scroll with the pager pinned, instead of the list growing unbounded with a hidden scrollbar.
