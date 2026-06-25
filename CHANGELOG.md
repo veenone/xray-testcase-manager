@@ -16,7 +16,8 @@ Fourth alpha iteration of the 1.7.0 work: Bugs-view improvements, plus sub-task 
 - **Bug list test-linkage filter.** Filter bugs by All / With tests / Without tests, with a per-card cue (a test-count badge, or a "no tests" chip).
 - **Sub-task executions in the run-history breakdown.** A test's run history and the bug breakdown now distinguish **Sub Test Executions** from standalone ones with a "Sub-task" badge and a link to the parent issue.
 - **Cross-project execution discovery.** Executions that live in another project (notably sub-task executions, which inherit their parent issue's project) are now discovered per test and cached, both during a full sync and lazily when a test's run history is opened, so their runs appear in the breakdown.
-- **Export bugs to Excel.** An "Export to Excel" action in the Bugs toolbar exports the checked bugs (or the open bug) to an XLSX workbook with two sheets: a "Bugs" sheet (one row per bug with all detail fields) and a "Run History" sheet (one row per affected-test run, including execution type and sub-task parent).
+- **Export bugs to Excel.** An "Export to Excel" action in the Bugs toolbar exports the checked bugs (or the open bug) to a single-sheet **collapsible outline** workbook that stacks **Bug > Test > Test Execution** using Excel row grouping (the +/- controls), so a bug collapses to hide its tests and a test collapses to hide its executions. Each level carries its own detail.
+- **Markdown in detail views.** The bug **Description**, **Defect Analysis**, and **Correction Details**, and the container / Test Execution **Description** in the detail sidebar, now render as GitHub-flavoured markdown.
 
 ### Changed
 - **Bug sync fetches ALL bugs in the project.** Previously only bugs linked to a synced test were found; the sync now also runs a project-wide `project = <bugProject> AND issuetype = <type>` search and merges it with the test-link harvest, so unlinked project bugs appear too.
@@ -25,7 +26,8 @@ Fourth alpha iteration of the 1.7.0 work: Bugs-view improvements, plus sub-task 
 
 ### Fixed
 - **"Latest result" now matches the run history.** The affected-tests "Latest result" reads the most recent run from the run table (the same source as the breakdown), falling back to the consolidated membership status, instead of a worst-wins value that could disagree with the runs shown.
-- **Run-history breakdown date columns.** The **Date** column (the run's own date) is now sortable and defaults to newest-first. The **Created / Updated / Resolved** columns now show the Test Execution issue's own timestamps (created, updated, resolution date), fetched from the execution detail and cached on the container - the per-run Xray endpoint does not return them, so they were previously blank.
+- **Run-history breakdown columns.** The run-date column is renamed **Run Date** (to distinguish it from the execution timestamps) and **every column is now sortable**. The **Created / Updated / Resolved** columns show the Test Execution issue's own timestamps (created, updated, resolution date), fetched from the execution detail and cached on the container - the per-run Xray endpoint does not return them, so they were previously blank.
+- **Defect Analysis is collapsible** in the bug detail card (collapsed by default), matching the Description field, so a long analysis no longer pushes the affected tests down.
 
 ### Fixed
 - Bug list (and the Containers Test Execution / Plan / Set member lists) now scroll with the pager pinned, instead of the list growing unbounded with a hidden scrollbar.
