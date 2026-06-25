@@ -466,6 +466,15 @@ func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string
 			continue
 		}
 
+		// Defensive: containers and links must be parallel slices (same length,
+		// same index). TestExecutionsForTest guarantees this, but guard here
+		// to prevent an out-of-bounds panic if that contract is ever relaxed.
+		if len(containers) != len(links) {
+			log.Printf("xtm: cross-project discovery: %s: container/link length mismatch (%d vs %d), skipping",
+				testKey, len(containers), len(links))
+			continue
+		}
+
 		// Filter to executions not already known from the project sync so we
 		// do not re-insert rows that ReplaceAllContainerLinks already covered.
 		var newContainers []testrepo.Container
