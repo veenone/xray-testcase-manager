@@ -421,7 +421,131 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 		}
 	}
 
+	emitStage(onProgress, "Discovering cross-project executions")
+	knownKeys, knownErr := e.repo.AllContainerKeys(profileID)
+	if knownErr != nil {
+		log.Printf("xtm: cross-project discovery: read container keys: %v (skipping)", knownErr)
+		return nil
+	}
+	e.discoverCrossProjectExecs(ctx, profileID, knownKeys, onProgress)
 	return nil
+}
+
+// discoverCrossProjectExecs performs a per-test cross-project execution
+// discovery pass after the main container sync. For each test key in the
+// profile, it calls jira.Client.TestExecutionsForTest to find Test Executions
+// in any project (not only the profile project) that include that test. Newly
+// found containers and links are written additively via UpsertContainerLinks
+// so they do not overwrite the project-scoped links that syncContainers already
+// wrote.
+//
+// Errors per test are logged and skipped; a failure on one test does not abort
+// the rest. This is intentionally best-effort: the caller (syncContainers) logs
+// a notice if we cannot read the initial key list, but otherwise continues.
+//
+// In demo mode, time.Sleep is skipped so the full 5000-test pass completes
+// without a 750-second delay.
+func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string, knownExecKeys map[string]bool, onProgress func(Progress)) {
+	testKeys, err := e.repo.AllTestKeys(profileID)
+	if err != nil {
+		log.Printf("xtm: cross-project discovery: list test keys: %v (skipping)", err)
+		return
+	}
+	isDemo := e.client.IsDemo()
+
+	for _, testKey := range testKeys {
+		if ctx.Err() != nil {
+			return
+		}
+		containers, links, err := e.client.TestExecutionsForTest(ctx, testKey)
+		if err != nil {
+			log.Printf("xtm: cross-project discovery: %s: %v (skipping)", testKey, err)
+			if !isDemo {
+				time.Sleep(throttle)
+			}
+			continue
+		}
+
+		// Filter to executions not already known from the project sync so we
+		// do not re-insert rows that ReplaceAllContainerLinks already covered.
+		var newContainers []testrepo.Container
+		var newLinks []testrepo.ContainerLink
+		for i, c := range containers {
+			if knownExecKeys[c.Key] {
+				continue
+			}
+			newContainers = append(newContainers, testrepo.Container{
+				Key:           c.Key,
+				Kind:          c.Kind,
+				Summary:       c.Summary,
+				Status:        c.Status,
+				ParentKey:     c.ParentKey,
+				ParentSummary: c.ParentSummary,
+				IssueType:     c.IssueType,
+				Environments:  c.Environments,
+				FixVersions:   c.FixVersions,
+			})
+			newLinks = append(newLinks, testrepo.ContainerLink{
+				ContainerKey: links[i].ContainerKey,
+				TestKey:      links[i].TestKey,
+				RunStatus:    links[i].RunStatus,
+			})
+		}
+
+		if len(newContainers) > 0 {
+			// Upsert the container rows first so the foreign-key side is satisfied.
+			if uErr := e.repo.UpsertContainers(profileID, newContainers); uErr != nil {
+				log.Printf("xtm: cross-project discovery: %s: upsert containers: %v (skipping)", testKey, uErr)
+			} else if lErr := e.repo.UpsertContainerLinks(profileID, newLinks); lErr != nil {
+				log.Printf("xtm: cross-project discovery: %s: upsert links: %v (skipping)", testKey, lErr)
+			} else {
+				// Also fetch and store runs for each newly discovered execution.
+				for _, ct := range newContainers {
+					if ctx.Err() != nil {
+						return
+					}
+					runs, rErr := e.client.GetTestRuns(ctx, ct.Key)
+					if rErr != nil {
+						log.Printf("xtm: cross-project discovery: %s: get runs for %s: %v (skipping)", testKey, ct.Key, rErr)
+					} else {
+						rows := make([]testrepo.TestRunRow, 0, len(runs))
+						for _, tr := range runs {
+							defectsJSON := "[]"
+							if len(tr.Defects) > 0 {
+								b, jerr := json.Marshal(tr.Defects)
+								if jerr == nil {
+									defectsJSON = string(b)
+								}
+							}
+							env := tr.Environment
+							if env == "" && len(ct.Environments) > 0 {
+								env = strings.Join(ct.Environments, ", ")
+							}
+							rows = append(rows, testrepo.TestRunRow{
+								ExecKey:     ct.Key,
+								TestKey:     tr.TestKey,
+								RunStatus:   tr.Status,
+								StartedAt:   tr.StartedAt,
+								FinishedAt:  tr.FinishedAt,
+								ExecutedBy:  tr.ExecutedBy,
+								Environment: env,
+								Defects:     defectsJSON,
+								CreatedAt:   tr.CreatedAt,
+								UpdatedAt:   tr.UpdatedAt,
+							})
+						}
+						_ = e.repo.ReplaceRunsForExec(profileID, ct.Key, rows)
+					}
+					if !isDemo {
+						time.Sleep(throttle)
+					}
+				}
+			}
+		}
+		if !isDemo {
+			time.Sleep(throttle)
+		}
+	}
 }
 
 // harvestExternalBugs upserts the defect issues (and their Test links) reached
