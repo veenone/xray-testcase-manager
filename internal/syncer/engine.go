@@ -516,8 +516,24 @@ func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey str
 	return e.repo.ReplaceAllRequirementLinks(profileID, repoLinks)
 }
 
-// syncBugs discovers the defect issues linked to the profile's Tests and
-// reconciles the local cache. Best-effort: failures log and continue.
+// syncBugs discovers the defect issues for the profile and reconciles the local
+// cache. It runs two complementary passes and merges the results:
+//
+//  1. A project-wide search (ListProjectBugs) that returns ALL bugs in the
+//     configured bug project, regardless of whether they are linked to any
+//     synced Test. This fills the Bugs panel with every defect the team has
+//     filed, not just those reachable from synced Tests.
+//
+//  2. The test-link harvest (ListBugs) that reaches bugs through the synced
+//     Tests' issuelinks. This is the only source of BugLink records (which
+//     Test each bug is linked to) and also captures cross-project bugs that
+//     may not live in the configured bug project.
+//
+// The two bug sets are merged (deduped by key); the project-wide record wins
+// when both sources carry the same key because it includes the Updated field.
+// The final merged bugs and the harvest links are stored via ReplaceAllBugs /
+// ReplaceAllBugLinks. If the project-wide search fails it is logged and the
+// sync continues with the link-harvest bugs only.
 func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
 	// testKeys is a non-nil slice (possibly empty). ListBugs/demoBugs treat nil
 	// as "no filter" and a non-nil empty slice as "nothing", so a profile with
@@ -527,12 +543,45 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 		return err
 	}
 	issueType := e.repo.ProfileBugIssueType(profileID)
-	bugs, links, err := e.client.ListBugs(ctx, projectKey, testKeys, issueType, nil)
+
+	// Resolve which project to search for all bugs. When the profile is set to
+	// "dedicated" mode with a non-empty key, search that project; otherwise use
+	// the test project (the default).
+	bugProject := projectKey
+	if e.repo.ProfileBugProjectMode(profileID) == "dedicated" {
+		if k := e.repo.ProfileBugProjectKey(profileID); k != "" {
+			bugProject = k
+		}
+	}
+
+	// Pass 1: project-wide bug search (best-effort).
+	projectBugs, projectBugErr := e.client.ListProjectBugs(ctx, bugProject, issueType)
+	if projectBugErr != nil {
+		log.Printf("xtm: project-wide bug search failed (continuing with link harvest only): %v", projectBugErr)
+		projectBugs = nil
+	}
+
+	// Pass 2: link-harvest (authoritative source for BugLink records).
+	harvestBugs, links, err := e.client.ListBugs(ctx, projectKey, testKeys, issueType, nil)
 	if err != nil {
 		return err
 	}
-	repoBugs := make([]testrepo.Bug, 0, len(bugs))
-	for _, b := range bugs {
+
+	// Merge: project-wide bugs seed the map (they have the Updated field);
+	// harvest bugs are added for any key not yet present (e.g. cross-project
+	// bugs linked to tests that are not in the bug project).
+	merged := make(map[string]jira.Bug, len(projectBugs)+len(harvestBugs))
+	for _, b := range projectBugs {
+		merged[b.Key] = b
+	}
+	for _, b := range harvestBugs {
+		if _, exists := merged[b.Key]; !exists {
+			merged[b.Key] = b
+		}
+	}
+
+	repoBugs := make([]testrepo.Bug, 0, len(merged))
+	for _, b := range merged {
 		repoBugs = append(repoBugs, testrepo.Bug{
 			Key: b.Key, ProjectKey: b.ProjectKey, IssueType: b.IssueType,
 			Summary: b.Summary, Status: b.Status, Priority: b.Priority, Updated: b.Updated,

@@ -85,6 +85,25 @@ func (r *Repository) ProfileBugIssueType(profileID string) string {
 	return t
 }
 
+// ProfileBugProjectMode returns the profile's bug-project mode
+// ("test" | "execution" | "dedicated"), defaulting to "test".
+func (r *Repository) ProfileBugProjectMode(profileID string) string {
+	var m string
+	err := r.db.QueryRow(`SELECT bug_project_mode FROM profiles WHERE id = ?`, profileID).Scan(&m)
+	if err != nil || strings.TrimSpace(m) == "" {
+		return "test"
+	}
+	return strings.TrimSpace(m)
+}
+
+// ProfileBugProjectKey returns the profile's dedicated bug project key (non-empty
+// only when bug_project_mode = "dedicated").
+func (r *Repository) ProfileBugProjectKey(profileID string) string {
+	var k string
+	_ = r.db.QueryRow(`SELECT bug_project_key FROM profiles WHERE id = ?`, profileID).Scan(&k)
+	return strings.TrimSpace(k)
+}
+
 // ReplaceAllBugs reconciles the cached bug issues for a profile (full replace on
 // sync). Mirrors ReplaceAllRequirements.
 func (r *Repository) ReplaceAllBugs(profileID string, bugs []Bug) error {
