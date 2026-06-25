@@ -169,6 +169,9 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 	}
 }
 
+// IsDemo reports whether this client is in demo mode (no Jira network calls).
+func (c *Client) IsDemo() bool { return isDemoURL(c.baseURL) }
+
 // TestConnection verifies the base URL and token by fetching the current user
 // (FR-8.4). It returns the authenticated user on success. Demo URLs
 // short-circuit to a fake user so the UI can be exercised without Jira.

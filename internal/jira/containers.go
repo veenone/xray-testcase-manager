@@ -141,6 +141,89 @@ func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgre
 	return containers, links, nil
 }
 
+// TestExecutionsForTest returns every Test Execution (standalone and sub-task,
+// any project) that testKey is a member of, as Containers and ContainerLinks.
+// This is the per-test cross-project discovery path: unlike ListContainers
+// (which is project-scoped), this lookup finds executions in ANY project that
+// include testKey, so cross-project sub-task executions are not missed.
+//
+// Demo mode returns deterministic data from the demo seed (one cross-project
+// sub-task exec for member tests at i%11 == 0). The live path is best-effort:
+// per-test and per-exec errors are logged and skipped; a top-level network
+// failure returns (nil, nil, nil) so the caller can degrade gracefully.
+//
+// NOTE(xtm): Live endpoint: GET /rest/raven/2.0/api/test/{testKey}/testexec
+// returns a JSON array of objects, each with at least a "key" field and
+// optionally a "status" field. The per-exec Container detail is fetched via
+// GET /rest/api/2/issue/{execKey}?fields=summary,status,issuetype,parent and
+// parsed the same way as searchContainersByIssueType. These shapes need
+// verification against a live Xray Server/DC 8.4.0 instance.
+func (c *Client) TestExecutionsForTest(ctx context.Context, testKey string) ([]Container, []ContainerLink, error) {
+	if isDemoURL(c.baseURL) {
+		containers, links := demoTestExecutionsForTest(testKey)
+		return containers, links, nil
+	}
+
+	// Live path: look up the executions this test belongs to.
+	// NOTE(xtm): GET /rest/raven/2.0/api/test/{testKey}/testexec is the assumed
+	// Xray Server/DC endpoint. Response shape: a JSON array of objects, each
+	// with at least a "key" field and an optional "status" field carrying the
+	// test's run status in that execution. Verify response shape on a live
+	// instance before removing this marker.
+	path := "/rest/raven/2.0/api/test/" + url.PathEscape(testKey) + "/testexec"
+	body, err := c.getBytes(ctx, path)
+	if err != nil {
+		log.Printf("xtm: TestExecutionsForTest %s: %v (skipping)", testKey, err)
+		return nil, nil, nil
+	}
+
+	type execRef struct {
+		Key    string `json:"key"`
+		Status string `json:"status"`
+	}
+	var refs []execRef
+	if err := json.Unmarshal(body, &refs); err != nil {
+		log.Printf("xtm: TestExecutionsForTest %s: decode: %v (skipping)", testKey, err)
+		return nil, nil, nil
+	}
+
+	containers := make([]Container, 0, len(refs))
+	links := make([]ContainerLink, 0, len(refs))
+
+	for _, ref := range refs {
+		if ref.Key == "" {
+			continue
+		}
+		if ctx.Err() != nil {
+			break
+		}
+
+		// Fetch the execution issue detail to populate the Container fields.
+		// NOTE(xtm): verify that the fields summary,status,issuetype,parent are
+		// always present and sufficient on Xray Server/DC 8.4.0.
+		issueURL := "/rest/api/2/issue/" + url.PathEscape(ref.Key) + "?fields=summary,status,issuetype,parent"
+		var issueResp struct {
+			Key    string          `json:"key"`
+			Fields json.RawMessage `json:"fields"`
+		}
+		if err := c.get(ctx, issueURL, &issueResp); err != nil {
+			log.Printf("xtm: TestExecutionsForTest %s: fetch exec %s: %v (skipping)", testKey, ref.Key, err)
+			time.Sleep(throttleContainers)
+			continue
+		}
+
+		ct := parseContainerIssue(ref.Key, KindTestExec, issueResp.Fields, "")
+		containers = append(containers, ct)
+		links = append(links, ContainerLink{
+			ContainerKey: ref.Key,
+			TestKey:      testKey,
+			RunStatus:    strings.ToUpper(strings.TrimSpace(ref.Status)),
+		})
+		time.Sleep(throttleContainers)
+	}
+	return containers, links, nil
+}
+
 // subTestExecIssueType is the default Jira issue type name for a sub-task Test
 // Execution in Xray Server/DC, used as the fallback when the instance issue type
 // list cannot be read or yields no match.
