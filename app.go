@@ -610,12 +610,22 @@ func (a *App) SyncContainers(profileID string) error {
 	})
 }
 
-// SyncBugs refreshes just the defect issues linked to the profile's tests from
-// Jira, so the Bugs panel can refresh without triggering a full profile sync
-// (RND_P_4TFINT_05-214).
+// SyncBugs reconciles defect issues linked to the profile's tests (partial
+// sync behind the Bugs panel's refresh button). It also refreshes the
+// run/execution data for all bug-affected tests so the run-history breakdown
+// updates without a full re-sync. The run-data pass is best-effort: an error
+// there does not fail the bug sync.
 func (a *App) SyncBugs(profileID string) error {
 	return a.runPartialSync(profileID, "Syncing bugs", func(e *syncer.Engine, projectKey string, onProgress func(syncer.Progress)) error {
-		return e.SyncBugs(a.ctx, profileID, projectKey, onProgress)
+		if err := e.SyncBugs(a.ctx, profileID, projectKey, onProgress); err != nil {
+			return err
+		}
+		// Best-effort: refresh run data for bug-affected tests. A failure here
+		// is logged internally by SyncBugRunData and does not fail the sync.
+		if runErr := e.SyncBugRunData(a.ctx, profileID, onProgress); runErr != nil {
+			log.Printf("xtm: SyncBugs: run-data refresh: %v (continuing)", runErr)
+		}
+		return nil
 	})
 }
 
