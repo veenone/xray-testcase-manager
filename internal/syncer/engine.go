@@ -221,9 +221,6 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if onProgress != nil {
-			onProgress(Progress{Stage: "Refreshing affected-test runs", Fetched: i, Total: len(testKeys)})
-		}
 		containers, links, err := e.client.TestExecutionsForTest(ctx, testKey)
 		if err != nil {
 			log.Printf("xtm: SyncBugRunData: %s: TestExecutionsForTest: %v (skipping)", testKey, err)
@@ -238,8 +235,11 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 			continue
 		}
 
-		// Upsert ALL executions additively (new ones get proper container rows;
-		// existing ones are no-ops due to INSERT OR IGNORE semantics).
+		// Upsert ALL executions returned by the API additively (new ones get
+		// proper container rows; existing ones are no-ops due to INSERT OR
+		// IGNORE semantics). TestExecutionsForTest returns every execution that
+		// contains testKey across all projects, so this set covers both new and
+		// pre-existing executions.
 		repoContainers := make([]testrepo.Container, 0, len(containers))
 		repoLinks := make([]testrepo.ContainerLink, 0, len(links))
 		for idx, c := range containers {
@@ -275,7 +275,7 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 			continue
 		}
 
-		// Refresh runs for ALL executions this test belongs to, including pre-existing ones.
+		// Refresh run rows for each execution returned by the API.
 		for _, ct := range repoContainers {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -292,12 +292,12 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 				time.Sleep(throttle)
 			}
 		}
+		if onProgress != nil {
+			onProgress(Progress{Stage: "Refreshing affected-test runs", Fetched: i + 1, Total: len(testKeys)})
+		}
 		if !isDemo {
 			time.Sleep(throttle)
 		}
-	}
-	if onProgress != nil {
-		onProgress(Progress{Stage: "Refreshing affected-test runs", Fetched: len(testKeys), Total: len(testKeys)})
 	}
 	return nil
 }
