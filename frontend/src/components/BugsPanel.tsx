@@ -81,6 +81,8 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   // when a bug is selected, bypassed for NEW- keys.
   const [bugDetail, setBugDetail] = useState<BugDetail | null>(null);
   const [bugDetailLoading, setBugDetailLoading] = useState(false);
+  // Collapsible description in the detail card — collapsed by default.
+  const [descOpen, setDescOpen] = useState(false);
 
   // In-view right sidebar: persists the open test key across sessions (test detail
   // only; plan/exec panels are ephemeral and reset to null on navigation).
@@ -363,8 +365,10 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
 
   // Clear the per-test expand state whenever the user switches to a different
   // bug, so stale expansions from the previous selection don't carry over.
+  // Also collapse the description so it doesn't stay open across navigations.
   useEffect(() => {
     setExpandedTests(new Set());
+    setDescOpen(false);
   }, [selected]);
 
   // Load the affected tests (with run status) for the selected bug.
@@ -657,8 +661,16 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                 <div className="bugs-md-detail-extra">
                   {bugDetail.description && (
                     <div className="bugs-md-detail-extra-field">
-                      <strong>Description</strong>
-                      <div className="bugs-md-detail-extra-text">{bugDetail.description}</div>
+                      <button
+                        className="bugs-md-desc-toggle"
+                        onClick={() => setDescOpen((o) => !o)}
+                        aria-expanded={descOpen}
+                      >
+                        {descOpen ? "▾" : "▸"} Description
+                      </button>
+                      {descOpen && (
+                        <div className="bugs-md-detail-extra-text">{bugDetail.description}</div>
+                      )}
                     </div>
                   )}
                   {bugDetail.defectOrigin && (
