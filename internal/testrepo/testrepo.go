@@ -82,6 +82,13 @@ type Container struct {
 	// (empty for Test Sets / Plans). Read-only display values pulled from Jira;
 	// never edited locally, so they are overwritten on every sync.
 	FixVersions []string `json:"fixVersions"`
+	// Created, Updated, and Resolved are the ISO-8601 timestamps from the Test
+	// Execution issue (Jira created/updated/resolutiondate fields). Empty for
+	// non-execution containers or when not yet fetched. Read-only; overwritten
+	// on every sync.
+	Created  string `json:"created"`
+	Updated  string `json:"updated"`
+	Resolved string `json:"resolved"`
 }
 
 // ContainerQuery filters a ListContainersQuery call. Kind is required (one of
@@ -1155,8 +1162,8 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	// it is overwritten unconditionally on conflict (unlike environments, which
 	// is preserved when a pending container_env edit exists).
 	stmt, err := tx.Prepare(
-		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, parent_summary, environments, fix_versions)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, parent_summary, environments, fix_versions, created, updated, resolved)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
 		   kind           = excluded.kind,
 		   summary        = excluded.summary,
@@ -1165,6 +1172,9 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 		   issue_type     = excluded.issue_type,
 		   parent_summary = excluded.parent_summary,
 		   fix_versions   = excluded.fix_versions,
+		   created        = excluded.created,
+		   updated        = excluded.updated,
+		   resolved       = excluded.resolved,
 		   environments   = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
@@ -1177,7 +1187,7 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	defer stmt.Close()
 
 	for _, c := range containers {
-		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, c.ParentSummary, encodeEnvironments(c.Environments), encodeFixVersions(c.FixVersions)); err != nil {
+		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, c.ParentSummary, encodeEnvironments(c.Environments), encodeFixVersions(c.FixVersions), c.Created, c.Updated, c.Resolved); err != nil {
 			return fmt.Errorf("upsert container %s: %w", c.Key, err)
 		}
 	}

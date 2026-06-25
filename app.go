@@ -1248,6 +1248,9 @@ func (a *App) refreshCrossProjectExecsForTest(profileID, testKey string) {
 			IssueType:     c.IssueType,
 			Environments:  c.Environments,
 			FixVersions:   c.FixVersions,
+			Created:       c.Created,
+			Updated:       c.Updated,
+			Resolved:      c.Resolved,
 		})
 		newLinks = append(newLinks, testrepo.ContainerLink{
 			ContainerKey: links[i].ContainerKey,

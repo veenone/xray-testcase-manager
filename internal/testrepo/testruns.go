@@ -188,6 +188,13 @@ type TestRunEntry struct {
 	ExecIssueType     string `json:"execIssueType"`
 	ExecParentKey     string `json:"execParentKey"`
 	ExecParentSummary string `json:"execParentSummary"`
+	// ExecCreated, ExecUpdated, and ExecResolved are the ISO-8601 timestamps
+	// from the Test Execution issue itself (Jira created/updated/resolutiondate
+	// fields), distinct from the run's own started_at/finished_at. Empty when
+	// not yet synced or for non-execution containers.
+	ExecCreated  string `json:"execCreated"`
+	ExecUpdated  string `json:"execUpdated"`
+	ExecResolved string `json:"execResolved"`
 }
 
 // GetTestRunHistory returns every execution-run of a test, sorted by
@@ -209,7 +216,10 @@ func (r *Repository) GetTestRunHistory(profileID, testKey string) ([]TestRunEntr
 		       tr.updated_at,
 		       COALESCE(c.issue_type, ''),
 		       COALESCE(c.parent_key, ''),
-		       COALESCE(c.parent_summary, '')
+		       COALESCE(c.parent_summary, ''),
+		       COALESCE(c.created, ''),
+		       COALESCE(c.updated, ''),
+		       COALESCE(c.resolved, '')
 		FROM test_run tr
 		LEFT JOIN test_container c
 		       ON c.profile_id = tr.profile_id AND c.jira_key = tr.exec_key
@@ -231,6 +241,7 @@ func (r *Repository) GetTestRunHistory(profileID, testKey string) ([]TestRunEntr
 			&defectsJSON, &fixJSON,
 			&e.CreatedAt, &e.UpdatedAt,
 			&e.ExecIssueType, &e.ExecParentKey, &e.ExecParentSummary,
+			&e.ExecCreated, &e.ExecUpdated, &e.ExecResolved,
 		); err != nil {
 			return nil, err
 		}

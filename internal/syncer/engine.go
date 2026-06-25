@@ -253,6 +253,9 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 				IssueType:     c.IssueType,
 				Environments:  c.Environments,
 				FixVersions:   c.FixVersions,
+				Created:       c.Created,
+				Updated:       c.Updated,
+				Resolved:      c.Resolved,
 			})
 			repoLinks = append(repoLinks, testrepo.ContainerLink{
 				ContainerKey: links[idx].ContainerKey,
@@ -440,6 +443,9 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 			IssueType:     c.IssueType,
 			Environments:  c.Environments,
 			FixVersions:   c.FixVersions,
+			Created:       c.Created,
+			Updated:       c.Updated,
+			Resolved:      c.Resolved,
 		}
 	}
 	if err := e.repo.UpsertContainers(profileID, repoContainers); err != nil {
@@ -601,6 +607,9 @@ func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string
 				IssueType:     c.IssueType,
 				Environments:  c.Environments,
 				FixVersions:   c.FixVersions,
+				Created:       c.Created,
+				Updated:       c.Updated,
+				Resolved:      c.Resolved,
 			})
 			newLinks = append(newLinks, testrepo.ContainerLink{
 				ContainerKey: links[i].ContainerKey,
