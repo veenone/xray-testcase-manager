@@ -2683,6 +2683,99 @@ func (a *App) ExportRequirementAudit(profileID string) (string, error) {
 	return path, nil
 }
 
+// ExportBugsWithRunHistory exports the selected bugs with their affected-test
+// run history to an XLSX file chosen by the user. Returns the saved path, or
+// "" (no error) when the user cancels the save dialog. Best-effort on the
+// live GetBugDetail per bug: if the fetch fails, the live-only fields are left
+// blank and the cached fields are still exported.
+func (a *App) ExportBugsWithRunHistory(profileID string, bugKeys []string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	if len(bugKeys) == 0 {
+		return "", fmt.Errorf("no bug keys provided")
+	}
+
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export bugs",
+		DefaultFilename: "bugs-run-history.xlsx",
+		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+
+	// Load profile and credentials for the live detail fetch.
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return "", err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return "", fmt.Errorf("load credentials: %w", err)
+	}
+	cl := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
+
+	exports := make([]testrepo.BugExport, 0, len(bugKeys))
+	for _, key := range bugKeys {
+		bug, err := a.repo.GetBug(profileID, key)
+		if err != nil {
+			log.Printf("xtm: ExportBugsWithRunHistory: get bug %s: %v (skipping)", key, err)
+			continue
+		}
+		ex := testrepo.BugExport{
+			Key:        bug.Key,
+			ProjectKey: bug.ProjectKey,
+			IssueType:  bug.IssueType,
+			Status:     bug.Status,
+			Priority:   bug.Priority,
+			Summary:    bug.Summary,
+		}
+
+		// Best-effort live fetch for extended fields.
+		if detail, dErr := cl.GetBugDetail(a.ctx, key); dErr != nil {
+			log.Printf("xtm: ExportBugsWithRunHistory: GetBugDetail %s: %v (leaving detail fields blank)", key, dErr)
+		} else {
+			ex.Description = detail.Description
+			ex.DefectOrigin = detail.DefectOrigin
+			ex.DefectAnalysis = detail.DefectAnalysis
+			ex.CorrectionDetails = detail.CorrectionDetails
+			ex.Reporter = detail.Reporter
+			ex.Severity = detail.Severity
+		}
+
+		affectedTests, tErr := a.repo.ListTestsForBug(profileID, key)
+		if tErr != nil {
+			log.Printf("xtm: ExportBugsWithRunHistory: list affected tests %s: %v (skipping)", key, tErr)
+			continue
+		}
+		ex.AffectedTests = affectedTests
+
+		ex.RunHistory = make(map[string][]testrepo.TestRunEntry, len(affectedTests))
+		for _, bt := range affectedTests {
+			hist, hErr := a.repo.GetTestRunHistory(profileID, bt.Key)
+			if hErr != nil {
+				log.Printf("xtm: ExportBugsWithRunHistory: run history %s/%s: %v (skipping)", key, bt.Key, hErr)
+				continue
+			}
+			ex.RunHistory[bt.Key] = hist
+		}
+		exports = append(exports, ex)
+	}
+
+	data, err := a.repo.BuildBugExportWorkbook(exports)
+	if err != nil {
+		return "", fmt.Errorf("build workbook: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "", fmt.Errorf("write export: %w", err)
+	}
+	return path, nil
+}
+
 // ExportTraceability exports the active Traceability tab (kind "requirement",
 // "execution", or "subtask") to an XLSX with a Flow sheet (the Sankey edge list
 // with resolved labels) and a Table sheet (flat one-row-per-thread records),
