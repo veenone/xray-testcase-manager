@@ -200,6 +200,108 @@ func (e *Engine) SyncBugs(ctx context.Context, profileID, projectKey string, onP
 	return e.syncBugs(ctx, profileID, projectKey, onProgress)
 }
 
+// SyncBugRunData refreshes the run/execution data for every test that has at
+// least one bug linked to it in the local store. It calls
+// TestExecutionsForTest per affected test, additively upserts any newly
+// discovered executions and their container links, then replaces the run rows
+// for EVERY execution that test belongs to (not only newly discovered ones) so
+// the run-history breakdown reflects up-to-date results.
+//
+// Errors per test or per execution are logged and skipped (best-effort).
+// The pass respects ctx cancellation between test iterations.
+// In demo mode, per-item throttle sleeps are skipped.
+func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgress func(Progress)) error {
+	emitStage(onProgress, "Refreshing affected-test runs")
+	testKeys, err := e.repo.BugAffectedTestKeys(profileID)
+	if err != nil {
+		return fmt.Errorf("bug affected test keys: %w", err)
+	}
+	isDemo := e.client.IsDemo()
+	for i, testKey := range testKeys {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if onProgress != nil {
+			onProgress(Progress{Stage: "Refreshing affected-test runs", Fetched: i, Total: len(testKeys)})
+		}
+		containers, links, err := e.client.TestExecutionsForTest(ctx, testKey)
+		if err != nil {
+			log.Printf("xtm: SyncBugRunData: %s: TestExecutionsForTest: %v (skipping)", testKey, err)
+			if !isDemo {
+				time.Sleep(throttle)
+			}
+			continue
+		}
+		if len(containers) != len(links) {
+			log.Printf("xtm: SyncBugRunData: %s: container/link length mismatch (%d vs %d), skipping",
+				testKey, len(containers), len(links))
+			continue
+		}
+
+		// Upsert ALL executions additively (new ones get proper container rows;
+		// existing ones are no-ops due to INSERT OR IGNORE semantics).
+		repoContainers := make([]testrepo.Container, 0, len(containers))
+		repoLinks := make([]testrepo.ContainerLink, 0, len(links))
+		for idx, c := range containers {
+			repoContainers = append(repoContainers, testrepo.Container{
+				Key:           c.Key,
+				Kind:          c.Kind,
+				Summary:       c.Summary,
+				Status:        c.Status,
+				ParentKey:     c.ParentKey,
+				ParentSummary: c.ParentSummary,
+				IssueType:     c.IssueType,
+				Environments:  c.Environments,
+				FixVersions:   c.FixVersions,
+			})
+			repoLinks = append(repoLinks, testrepo.ContainerLink{
+				ContainerKey: links[idx].ContainerKey,
+				TestKey:      links[idx].TestKey,
+				RunStatus:    links[idx].RunStatus,
+			})
+		}
+		if uErr := e.repo.UpsertContainers(profileID, repoContainers); uErr != nil {
+			log.Printf("xtm: SyncBugRunData: %s: upsert containers: %v (skipping runs)", testKey, uErr)
+			if !isDemo {
+				time.Sleep(throttle)
+			}
+			continue
+		}
+		if lErr := e.repo.UpsertContainerLinks(profileID, repoLinks); lErr != nil {
+			log.Printf("xtm: SyncBugRunData: %s: upsert links: %v (skipping runs)", testKey, lErr)
+			if !isDemo {
+				time.Sleep(throttle)
+			}
+			continue
+		}
+
+		// Refresh runs for ALL executions this test belongs to, including pre-existing ones.
+		for _, ct := range repoContainers {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			runs, rErr := e.client.GetTestRuns(ctx, ct.Key)
+			if rErr != nil {
+				log.Printf("xtm: SyncBugRunData: %s: get runs for %s: %v (skipping)", testKey, ct.Key, rErr)
+			} else {
+				if sErr := e.repo.ReplaceRunsForExec(profileID, ct.Key, mapRunRows(runs, ct.Key, ct.Environments)); sErr != nil {
+					log.Printf("xtm: SyncBugRunData: %s: replace runs for %s: %v (skipping)", testKey, ct.Key, sErr)
+				}
+			}
+			if !isDemo {
+				time.Sleep(throttle)
+			}
+		}
+		if !isDemo {
+			time.Sleep(throttle)
+		}
+	}
+	if onProgress != nil {
+		onProgress(Progress{Stage: "Refreshing affected-test runs", Fetched: len(testKeys), Total: len(testKeys)})
+	}
+	return nil
+}
+
 // the tree response (applied on every sync, free), and — on a full sync only —
 // a per-folder walk for instances whose tree doesn't carry Test keys. It is
 // best-effort: every failure is logged and swallowed so a folder-API problem

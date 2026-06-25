@@ -344,3 +344,26 @@ func (r *Repository) ListBugsWithTests(profileID string) ([]BugWithTests, error)
 	}
 	return out, lrows.Err()
 }
+
+// BugAffectedTestKeys returns the distinct test keys that have at least one
+// bug linked to them for this profile, in ascending key order.
+func (r *Repository) BugAffectedTestKeys(profileID string) ([]string, error) {
+	rows, err := r.db.Query(
+		`SELECT DISTINCT test_key FROM test_bug
+		 WHERE profile_id = ?
+		 ORDER BY test_key`,
+		profileID)
+	if err != nil {
+		return nil, fmt.Errorf("bug affected test keys: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
