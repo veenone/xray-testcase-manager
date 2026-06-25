@@ -568,7 +568,8 @@ func demoCrossProjectSubExecKeyIndex(execKey string) int {
 		}
 		n = n*10 + int(ch-'0')
 	}
-	if n < 1 {
+	if n < 1 || n > 1 {
+		// Only XRAYINT-STE-1 is seeded; reject any other suffix.
 		return -1
 	}
 	return n - 1
