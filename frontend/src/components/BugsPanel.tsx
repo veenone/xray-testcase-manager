@@ -16,6 +16,7 @@ import { formatDateTime } from "../dates";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
 import { TestDetail } from "./TestDetail";
+import { ContainerDetailPanel } from "./ContainerDetailPanel";
 import { usePrompt } from "./usePrompt";
 import { keyCompare, cmpStr, applyDir } from "../sort";
 
@@ -74,10 +75,15 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   // without forcing a full profile refresh.
   const [nonce, setNonce] = useState(0);
 
-  // In-view read-only test detail sidebar: detailKey is session-persisted so
-  // returning to the Bugs view restores the open detail; detailVersion is
-  // ephemeral (bumped to force a re-fetch on re-open).
+  // In-view right sidebar: persists the open test key across sessions (test detail
+  // only; plan/exec panels are ephemeral and reset to null on navigation).
   const [detailKey, setDetailKey] = useViewState<string | null>(profileId, "bugs", "detailKey", null);
+  // sidebarDetail drives which panel the right sidebar shows. kind=test uses
+  // detailKey + detailVersion; kind=plan/exec is ephemeral (not session-persisted).
+  type SidebarDetail = { kind: "test"; key: string } | { kind: "plan" | "exec"; key: string } | null;
+  const [sidebarDetail, setSidebarDetail] = useState<SidebarDetail>(
+    detailKey ? { kind: "test", key: detailKey } : null
+  );
   const [detailVersion, setDetailVersion] = useState(0);
 
   // Ephemeral expand state for the affected-tests table. Not session-persisted
@@ -384,7 +390,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   }
 
   return (
-    <div className={`bugs-md${detailKey ? " bugs-md-with-detail" : ""}`}>
+    <div className={`bugs-md${sidebarDetail ? " bugs-md-with-detail" : ""}`}>
       {promptUI}
       <div className="bugs-md-list">
         <div className="bugs-md-head">
@@ -635,6 +641,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                               onClick={() => {
                                 setDetailKey(t.key);
                                 setDetailVersion((v) => v + 1);
+                                setSidebarDetail({ kind: "test", key: t.key });
                               }}
                               style={{ fontSize: "0.75rem", padding: "0 0.25rem" }}
                             >
@@ -699,19 +706,16 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                   const RunRow = ({ r, i }: { r: typeof history[0]; i: number }) => (
                                     <tr key={`${r.execKey}-${i}`}>
                                       <td>
-                                        {canLink && r.execKey && !r.execKey.startsWith("NEW-") ? (
+                                        {r.execKey ? (
                                           <button
                                             className="mono bug-link-key"
-                                            onClick={() => {
-                                              const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-                                              BrowserOpenURL(`${base}/browse/${r.execKey}`);
-                                            }}
-                                            title={r.execSummary || `Open ${r.execKey} in Jira`}
+                                            onClick={() => setSidebarDetail({ kind: "exec", key: r.execKey })}
+                                            title={`Open Test Execution ${r.execKey}`}
                                           >
                                             {r.execKey}
                                           </button>
                                         ) : (
-                                          <span className="mono" title={r.execSummary}>{r.execKey}</span>
+                                          <span className="muted">—</span>
                                         )}
                                         {r.execSummary && (
                                           <span className="muted" style={{ display: "block", fontSize: "0.9em" }}>{r.execSummary}</span>
@@ -780,20 +784,13 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                             <tr className="run-plan-group-header">
                                               <td colSpan={9}>
                                                 {g.planKey ? (
-                                                  canLink && !g.planKey.startsWith("NEW-") ? (
-                                                    <button
-                                                      className="mono bug-link-key"
-                                                      onClick={() => {
-                                                        const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-                                                        BrowserOpenURL(`${base}/browse/${g.planKey}`);
-                                                      }}
-                                                      title={`Open ${g.planKey} in Jira`}
-                                                    >
-                                                      Plan: {g.planKey}
-                                                    </button>
-                                                  ) : (
-                                                    <span className="mono">Plan: {g.planKey}</span>
-                                                  )
+                                                  <button
+                                                    className="mono bug-link-key"
+                                                    onClick={() => setSidebarDetail({ kind: "plan", key: g.planKey! })}
+                                                    title={`Open Test Plan ${g.planKey}`}
+                                                  >
+                                                    Plan: {g.planKey}
+                                                  </button>
                                                 ) : (
                                                   <span className="muted">No test plan</span>
                                                 )}
@@ -825,17 +822,29 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
         )}
       </div>
 
-      {detailKey && (
+      {sidebarDetail?.kind === "test" && (
         <TestDetail
           profileId={profileId}
-          testKey={detailKey}
+          testKey={sidebarDetail.key}
           version={detailVersion}
           pendingForTest={[]}
           folders={[]}
           jiraUrl={jiraUrl}
           readOnly
-          onClose={() => setDetailKey(null)}
+          onClose={() => {
+            setSidebarDetail(null);
+            setDetailKey(null);
+          }}
           onEdited={() => {}}
+        />
+      )}
+      {(sidebarDetail?.kind === "plan" || sidebarDetail?.kind === "exec") && (
+        <ContainerDetailPanel
+          profileId={profileId}
+          containerKey={sidebarDetail.key}
+          kind={sidebarDetail.kind}
+          jiraUrl={jiraUrl}
+          onClose={() => setSidebarDetail(null)}
         />
       )}
 

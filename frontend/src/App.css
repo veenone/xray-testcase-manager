@@ -4785,6 +4785,13 @@ tr.row-checked:hover {
   margin: 8px 0 0;
   row-gap: 5px;
 }
+/* ContainerDetailPanel: run-status histogram chips. */
+.container-detail-run-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
 .sort-control {
   display: inline-flex;
   align-items: center;
