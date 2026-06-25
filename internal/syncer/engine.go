@@ -46,6 +46,40 @@ func emitStage(onProgress func(Progress), stage string) {
 	}
 }
 
+// mapRunRows converts a slice of jira.TestRun records (fetched from Xray) into
+// testrepo.TestRunRow values ready for storage. execKey is the owning
+// execution's Jira key. envFallback is joined and used when a run has no
+// Environment value of its own (the Xray testexec/test endpoint omits per-run
+// environments; they are set on the execution as a whole).
+func mapRunRows(runs []jira.TestRun, execKey string, envFallback []string) []testrepo.TestRunRow {
+	rows := make([]testrepo.TestRunRow, 0, len(runs))
+	for _, tr := range runs {
+		defectsJSON := "[]"
+		if len(tr.Defects) > 0 {
+			if b, jerr := json.Marshal(tr.Defects); jerr == nil {
+				defectsJSON = string(b)
+			}
+		}
+		env := tr.Environment
+		if env == "" && len(envFallback) > 0 {
+			env = strings.Join(envFallback, ", ")
+		}
+		rows = append(rows, testrepo.TestRunRow{
+			ExecKey:     execKey,
+			TestKey:     tr.TestKey,
+			RunStatus:   tr.Status,
+			StartedAt:   tr.StartedAt,
+			FinishedAt:  tr.FinishedAt,
+			ExecutedBy:  tr.ExecutedBy,
+			Environment: env,
+			Defects:     defectsJSON,
+			CreatedAt:   tr.CreatedAt,
+			UpdatedAt:   tr.UpdatedAt,
+		})
+	}
+	return rows
+}
+
 // Engine runs a pull sync for one profile.
 type Engine struct {
 	client *jira.Client
@@ -376,37 +410,9 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 		if err != nil {
 			log.Printf("xtm: get test runs for %s: %v (skipping)", execKey, err)
 		} else {
-			rows := make([]testrepo.TestRunRow, 0, len(runs))
-			for _, tr := range runs {
-				defectsJSON := "[]"
-				if len(tr.Defects) > 0 {
-					b, jerr := json.Marshal(tr.Defects)
-					if jerr == nil {
-						defectsJSON = string(b)
-					}
-				}
-				// The Xray Server/DC testexec/test endpoint does not return a
-				// per-run environment; the environment is set on the Test
-				// Execution as a whole. Fall back to the execution's environments
-				// so the run history shows where each run executed.
-				env := tr.Environment
-				if env == "" && len(c.Environments) > 0 {
-					env = strings.Join(c.Environments, ", ")
-				}
-				rows = append(rows, testrepo.TestRunRow{
-					ExecKey:     execKey,
-					TestKey:     tr.TestKey,
-					RunStatus:   tr.Status,
-					StartedAt:   tr.StartedAt,
-					FinishedAt:  tr.FinishedAt,
-					ExecutedBy:  tr.ExecutedBy,
-					Environment: env,
-					Defects:     defectsJSON,
-					CreatedAt:   tr.CreatedAt,
-					UpdatedAt:   tr.UpdatedAt,
-				})
-			}
-			if err := e.repo.ReplaceRunsForExec(profileID, execKey, rows); err != nil {
+			// The Xray Server/DC testexec/test endpoint does not return a
+			// per-run environment; fall back to the execution's environments.
+			if err := e.repo.ReplaceRunsForExec(profileID, execKey, mapRunRows(runs, execKey, c.Environments)); err != nil {
 				log.Printf("xtm: store test runs for %s: %v (skipping)", execKey, err)
 			}
 		}
@@ -517,33 +523,7 @@ func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string
 					if rErr != nil {
 						log.Printf("xtm: cross-project discovery: %s: get runs for %s: %v (skipping)", testKey, ct.Key, rErr)
 					} else {
-						rows := make([]testrepo.TestRunRow, 0, len(runs))
-						for _, tr := range runs {
-							defectsJSON := "[]"
-							if len(tr.Defects) > 0 {
-								b, jerr := json.Marshal(tr.Defects)
-								if jerr == nil {
-									defectsJSON = string(b)
-								}
-							}
-							env := tr.Environment
-							if env == "" && len(ct.Environments) > 0 {
-								env = strings.Join(ct.Environments, ", ")
-							}
-							rows = append(rows, testrepo.TestRunRow{
-								ExecKey:     ct.Key,
-								TestKey:     tr.TestKey,
-								RunStatus:   tr.Status,
-								StartedAt:   tr.StartedAt,
-								FinishedAt:  tr.FinishedAt,
-								ExecutedBy:  tr.ExecutedBy,
-								Environment: env,
-								Defects:     defectsJSON,
-								CreatedAt:   tr.CreatedAt,
-								UpdatedAt:   tr.UpdatedAt,
-							})
-						}
-						_ = e.repo.ReplaceRunsForExec(profileID, ct.Key, rows)
+						_ = e.repo.ReplaceRunsForExec(profileID, ct.Key, mapRunRows(runs, ct.Key, ct.Environments))
 					}
 					if !isDemo {
 						time.Sleep(throttle)
