@@ -4855,6 +4855,10 @@ tr.row-checked:hover {
   background: var(--surface-2);
   color: var(--text-muted);
 }
+/* 2-column detail fields grid: label value | label value per row. */
+.bugs-md-detail-fields-2col {
+  grid-template-columns: auto 1fr auto 1fr;
+}
 /* Collapsible description toggle button in bug detail extra. */
 .bugs-md-desc-toggle {
   display: inline-flex;

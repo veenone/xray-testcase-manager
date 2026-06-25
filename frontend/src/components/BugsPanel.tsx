@@ -630,7 +630,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
               <h2 className="bugs-md-detail-summary">
                 {sel.summary || "(no summary)"}
               </h2>
-              <dl className="detail-fields bugs-md-detail-fields">
+              <dl className="detail-fields bugs-md-detail-fields bugs-md-detail-fields-2col">
                 {sel.issueType && (
                   <>
                     <dt>Type</dt>
@@ -649,6 +649,18 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                   <>
                     <dt>Updated</dt>
                     <dd className="muted">{formatDateTime(sel.updated)}</dd>
+                  </>
+                )}
+                {bugDetail?.reporter && (
+                  <>
+                    <dt>Reporter</dt>
+                    <dd>{bugDetail.reporter}</dd>
+                  </>
+                )}
+                {bugDetail?.severity && (
+                  <>
+                    <dt>Severity</dt>
+                    <dd>{bugDetail.severity}</dd>
                   </>
                 )}
                 <dt>Affects</dt>
