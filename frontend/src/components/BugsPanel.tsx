@@ -150,6 +150,21 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
         case "execResolved":
           cmp = (a.execResolved || "").localeCompare(b.execResolved || "");
           break;
+        case "execKey":
+          cmp = (a.execKey || "").localeCompare(b.execKey || "");
+          break;
+        case "fixVersions":
+          cmp = ((a.fixVersions || []).join(", ")).localeCompare((b.fixVersions || []).join(", "));
+          break;
+        case "environment":
+          cmp = (a.environment || "").localeCompare(b.environment || "");
+          break;
+        case "executedBy":
+          cmp = (a.executedBy || "").localeCompare(b.executedBy || "");
+          break;
+        case "defects":
+          cmp = ((a.defects || []).join(", ")).localeCompare((b.defects || []).join(", "));
+          break;
         default:
           cmp = 0;
       }
@@ -969,16 +984,16 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                     <table className="board-table" style={{ fontSize: "0.85em" }}>
                                       <thead>
                                         <tr>
-                                          <th>Execution</th>
+                                          <SortTh field="execKey">Execution</SortTh>
                                           <SortTh field="runStatus">Result</SortTh>
-                                          <th>Fix Version(s)</th>
-                                          <th>Environment</th>
-                                          <SortTh field="finishedAt">Date</SortTh>
+                                          <SortTh field="fixVersions">Fix Version(s)</SortTh>
+                                          <SortTh field="environment">Environment</SortTh>
+                                          <SortTh field="finishedAt">Run Date</SortTh>
                                           <SortTh field="execCreated">Created</SortTh>
                                           <SortTh field="execUpdated">Updated</SortTh>
                                           <SortTh field="execResolved">Resolved</SortTh>
-                                          <th>By</th>
-                                          <th>Defects</th>
+                                          <SortTh field="executedBy">By</SortTh>
+                                          <SortTh field="defects">Defects</SortTh>
                                         </tr>
                                       </thead>
                                       <tbody>
