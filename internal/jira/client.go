@@ -39,6 +39,13 @@ type Client struct {
 	testTypeName string
 	testTypeErr  error
 
+	// subTaskTEOnce lazily resolves and caches the issue type name(s) used for
+	// sub-task Test Executions on this instance. Their name varies (default "Sub
+	// Test Execution", but instances may rename / localise it), so they are
+	// discovered from the instance issue type list rather than hardcoded.
+	subTaskTEOnce  sync.Once
+	subTaskTENames []string
+
 	// customFieldMu guards customFieldIDs, the per-instance cache of resolved
 	// custom field ids keyed by field name (see resolveCustomFieldID), so a sync
 	// or commit resolves a given field (e.g. "Test Type") from /rest/api/2/field

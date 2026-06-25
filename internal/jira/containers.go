@@ -26,10 +26,10 @@ const (
 // and differ only in how they relate to Tests, so one type with a Kind
 // discriminator avoids three near-identical structs.
 type Container struct {
-	Key       string
-	Kind      string
-	Summary   string
-	Status    string
+	Key           string
+	Kind          string
+	Summary       string
+	Status        string
 	ParentKey     string // parent issue key for a sub-task Test Execution; else ""
 	ParentSummary string // parent issue summary; empty when no parent or not fetched
 	IssueType     string // Jira issuetype name (e.g. "Sub Test Execution"); informational
@@ -102,18 +102,22 @@ func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgre
 
 	// Sub-task Test Executions are a separate Jira issue type that hangs off a
 	// parent issue. They are still Kind=testexec and use the same testexec
-	// membership endpoint; the extra datum is the parent key. Searched on their
-	// own issue type so a project that lacks it (a 400, handled as "none") can't
-	// affect the standalone Test Execution pass above.
-	subExecs, err := c.searchContainersByIssueType(ctx, projectKey, KindTestExec, subTestExecIssueType)
-	if err != nil {
-		return nil, nil, fmt.Errorf("search sub-task test executions: %w", err)
+	// membership endpoint; the extra datum is the parent key. Their issue type
+	// name is discovered from the instance (it defaults to "Sub Test Execution"
+	// but can be renamed / localised), so a renamed type is not silently missed.
+	// Searched on its own issue type so a project that lacks it (a 400, handled
+	// as "none") can't affect the standalone Test Execution pass above.
+	for _, steType := range c.subTaskTestExecIssueTypeNames(ctx) {
+		subExecs, err := c.searchContainersByIssueType(ctx, projectKey, KindTestExec, steType)
+		if err != nil {
+			return nil, nil, fmt.Errorf("search sub-task test executions (%q): %w", steType, err)
+		}
+		containers = append(containers, subExecs...)
+		for _, ct := range subExecs {
+			all = append(all, kindContainer{kind: KindTestExec, key: ct.Key})
+		}
+		log.Printf("xtm: containers sub-testexec %q: %d found for %s", steType, len(subExecs), projectKey)
 	}
-	containers = append(containers, subExecs...)
-	for _, ct := range subExecs {
-		all = append(all, kindContainer{kind: KindTestExec, key: ct.Key})
-	}
-	log.Printf("xtm: containers sub-testexec: %d found for %s", len(subExecs), projectKey)
 
 	// Pull each container's Test memberships. Best-effort per container so a
 	// single inaccessible container can't abort the whole sync.
@@ -137,10 +141,50 @@ func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgre
 	return containers, links, nil
 }
 
-// subTestExecIssueType is the Jira issue type name for a sub-task Test Execution
-// in Xray Server/DC. JQL matches issue-type names case-insensitively, so this
-// also matches "sub test execution" etc. If an instance renames it, change this.
+// subTestExecIssueType is the default Jira issue type name for a sub-task Test
+// Execution in Xray Server/DC, used as the fallback when the instance issue type
+// list cannot be read or yields no match.
 const subTestExecIssueType = "Sub Test Execution"
+
+// subTaskTestExecIssueTypeNames returns the issue type name(s) this instance uses
+// for sub-task Test Executions. Rather than hardcoding "Sub Test Execution"
+// (which fails silently when an instance renames or localises it, because the
+// JQL search then 400s and is treated as "none"), it lists the instance issue
+// types once and selects every subtask type whose letters-only name contains
+// "testexecution" (so "Sub Test Execution", "Test Execution Sub-task", localised
+// variants, etc. all match). It falls back to the default name when the listing
+// fails or matches nothing. Cached for the client's lifetime; never returns an
+// error so the container sync stays best-effort.
+func (c *Client) subTaskTestExecIssueTypeNames(ctx context.Context) []string {
+	c.subTaskTEOnce.Do(func() {
+		var types []struct {
+			Name    string `json:"name"`
+			Subtask bool   `json:"subtask"`
+		}
+		if err := c.get(ctx, "/rest/api/2/issuetype", &types); err != nil {
+			log.Printf("xtm: list issue types for sub-task Test Execution discovery failed, using default %q: %v", subTestExecIssueType, err)
+			return
+		}
+		seen := map[string]bool{}
+		for _, t := range types {
+			if t.Subtask && strings.Contains(normalizeTypeName(t.Name), "testexecution") {
+				if !seen[t.Name] {
+					seen[t.Name] = true
+					c.subTaskTENames = append(c.subTaskTENames, t.Name)
+				}
+			}
+		}
+		if len(c.subTaskTENames) == 0 {
+			log.Printf("xtm: no sub-task Test Execution issue type found in the instance list; falling back to %q", subTestExecIssueType)
+		} else {
+			log.Printf("xtm: sub-task Test Execution issue type(s) discovered: %v", c.subTaskTENames)
+		}
+	})
+	if len(c.subTaskTENames) > 0 {
+		return c.subTaskTENames
+	}
+	return []string{subTestExecIssueType}
+}
 
 // searchContainers finds every container issue of one kind in a project, mapping
 // the kind to its standard Jira issue type name.
