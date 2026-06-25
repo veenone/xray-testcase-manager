@@ -463,6 +463,13 @@ func demoFixVersions(i int) []string {
 	return subsets[i%len(subsets)]
 }
 
+// demoExecDescription returns a deterministic Markdown description for a demo
+// Test Execution identified by key. The text uses headings and bullet points so
+// the frontend markdown renderer has content to display.
+func demoExecDescription(key string) string {
+	return fmt.Sprintf("## %s\n\n**Scope:** Regression suite for this cycle.\n\n- Covers authentication, checkout, and API rate-limit paths\n- Environment: see execution header\n- Linked to release milestone via Fix Versions", key)
+}
+
 // demoLinkedTests caps how many of the low-numbered demo Tests get container
 // memberships, keeping the demo link table small while still giving the most
 // commonly-opened Tests (DEMO-1…) sets, plans and executions to display.
@@ -520,6 +527,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			Created:      created,
 			Updated:      updated,
 			Resolved:     resolved,
+			Description:  demoExecDescription(key),
 		})
 	}
 
@@ -542,6 +550,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			Created:      created,
 			Updated:      updated,
 			Resolved:     resolved,
+			Description:  demoExecDescription(key),
 		})
 	}
 
@@ -562,6 +571,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		Created:      xprojCreated,
 		Updated:      xprojUpdated,
 		Resolved:     xprojResolved,
+		Description:  demoExecDescription(xprojExecKey),
 	})
 	for i := 1; i <= demoExternalMembers; i++ {
 		links = append(links, ContainerLink{
@@ -594,6 +604,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			Created:       created,
 			Updated:       updated,
 			Resolved:      resolved,
+			Description:   demoExecDescription(key),
 		})
 	}
 
@@ -734,6 +745,7 @@ func demoCrossProjectSubExec() Container {
 		Created:       created,
 		Updated:       updated,
 		Resolved:      resolved,
+		Description:   demoExecDescription(demoCrossProjectSubExecKey),
 	}
 }
 

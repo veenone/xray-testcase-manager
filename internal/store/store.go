@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 33
+const schemaVersion = 34
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS test_container (
 	created    TEXT NOT NULL DEFAULT '',
 	updated    TEXT NOT NULL DEFAULT '',
 	resolved   TEXT NOT NULL DEFAULT '',
+	description TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -649,6 +650,16 @@ func applyMigrations(db *sql.DB) error {
 			); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 				return fmt.Errorf("v33 add %s to test_container: %w", col, err)
 			}
+		}
+	}
+	// v34: add description to test_container to cache the Jira issue description
+	// field. Fresh installs get this column from the CREATE above; this ALTER
+	// catches pre-v34 databases.
+	if current < 34 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_container ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v34 add description to test_container: %w", err)
 		}
 	}
 	return nil

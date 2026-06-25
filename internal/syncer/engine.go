@@ -256,6 +256,7 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 				Created:       c.Created,
 				Updated:       c.Updated,
 				Resolved:      c.Resolved,
+				Description:   c.Description,
 			})
 			repoLinks = append(repoLinks, testrepo.ContainerLink{
 				ContainerKey: links[idx].ContainerKey,
@@ -446,6 +447,7 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 			Created:       c.Created,
 			Updated:       c.Updated,
 			Resolved:      c.Resolved,
+			Description:   c.Description,
 		}
 	}
 	if err := e.repo.UpsertContainers(profileID, repoContainers); err != nil {
@@ -610,6 +612,7 @@ func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string
 				Created:       c.Created,
 				Updated:       c.Updated,
 				Resolved:      c.Resolved,
+				Description:   c.Description,
 			})
 			newLinks = append(newLinks, testrepo.ContainerLink{
 				ContainerKey: links[i].ContainerKey,

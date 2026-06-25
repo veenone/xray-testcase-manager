@@ -89,6 +89,9 @@ type Container struct {
 	Created  string `json:"created"`
 	Updated  string `json:"updated"`
 	Resolved string `json:"resolved"`
+	// Description is the Jira issue description (markdown/wiki text), fetched
+	// for all container kinds and cached in the local store.
+	Description string `json:"description"`
 }
 
 // ContainerQuery filters a ListContainersQuery call. Kind is required (one of
@@ -136,10 +139,13 @@ type TestPlanBoardRow struct {
 // Tests with consolidated execution status, plus a run-status histogram for the
 // header.
 type TestPlanBoard struct {
-	Key       string             `json:"key"`
-	Summary   string             `json:"summary"`
-	Rows      []TestPlanBoardRow `json:"rows"`
-	RunCounts []Bucket           `json:"runCounts"`
+	Key     string `json:"key"`
+	Summary string `json:"summary"`
+	// Description is the Jira issue description of the container (markdown/wiki
+	// text), passed through for display in the detail sidebar.
+	Description string             `json:"description"`
+	Rows        []TestPlanBoardRow `json:"rows"`
+	RunCounts   []Bucket           `json:"runCounts"`
 }
 
 // Step is one cached Xray Test Step (FR-2.5). XrayID is Xray's per-step
@@ -1162,8 +1168,8 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	// it is overwritten unconditionally on conflict (unlike environments, which
 	// is preserved when a pending container_env edit exists).
 	stmt, err := tx.Prepare(
-		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, parent_summary, environments, fix_versions, created, updated, resolved)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, parent_key, issue_type, parent_summary, environments, fix_versions, created, updated, resolved, description)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
 		   kind           = excluded.kind,
 		   summary        = excluded.summary,
@@ -1175,6 +1181,7 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 		   created        = excluded.created,
 		   updated        = excluded.updated,
 		   resolved       = excluded.resolved,
+		   description    = excluded.description,
 		   environments   = CASE WHEN EXISTS (
 		       SELECT 1 FROM pending_change
 		       WHERE pending_change.profile_id  = excluded.profile_id
@@ -1187,7 +1194,7 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 	defer stmt.Close()
 
 	for _, c := range containers {
-		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, c.ParentSummary, encodeEnvironments(c.Environments), encodeFixVersions(c.FixVersions), c.Created, c.Updated, c.Resolved); err != nil {
+		if _, err := stmt.Exec(profileID, c.Key, c.Kind, c.Summary, c.Status, c.ParentKey, c.IssueType, c.ParentSummary, encodeEnvironments(c.Environments), encodeFixVersions(c.FixVersions), c.Created, c.Updated, c.Resolved, c.Description); err != nil {
 			return fmt.Errorf("upsert container %s: %w", c.Key, err)
 		}
 	}
@@ -1381,16 +1388,18 @@ func (r *Repository) GetContainerBoard(profileID, containerKey string) (TestPlan
 	board := TestPlanBoard{Key: containerKey, Rows: []TestPlanBoardRow{}, RunCounts: []Bucket{}}
 
 	var kind string
+	var description string
 	err := r.db.QueryRow(
-		`SELECT kind, summary FROM test_container WHERE profile_id = ? AND jira_key = ?`,
+		`SELECT kind, summary, description FROM test_container WHERE profile_id = ? AND jira_key = ?`,
 		profileID, containerKey,
-	).Scan(&kind, &board.Summary)
+	).Scan(&kind, &board.Summary, &description)
 	if errors.Is(err, sql.ErrNoRows) {
 		return board, fmt.Errorf("container %s not found", containerKey)
 	}
 	if err != nil {
 		return board, fmt.Errorf("read container: %w", err)
 	}
+	board.Description = description
 
 	// Member Tests, plus this container's direct run status (meaningful for a
 	// Test Execution). LEFT JOIN both the local test_case cache and the
@@ -4539,10 +4548,10 @@ type scanner interface {
 
 func scanTest(s scanner) (TestCase, error) {
 	var (
-		t            TestCase
-		labels       string
-		components   string
-		fixVersions  string
+		t           TestCase
+		labels      string
+		components  string
+		fixVersions string
 	)
 	if err := s.Scan(
 		&t.Key, &t.ID, &t.Summary, &t.Description,

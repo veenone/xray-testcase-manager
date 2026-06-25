@@ -56,6 +56,10 @@ type Container struct {
 	// (from Jira's standard "resolutiondate" field). Empty when the execution is
 	// unresolved, for non-execution containers, or when not yet fetched.
 	Resolved string
+	// Description is the issue description (markdown/wiki text) from the Jira
+	// standard "description" field. Available for all container kinds when the
+	// field is requested. Empty when not fetched.
+	Description string
 }
 
 // ContainerLink is one Test's membership in a Container. RunStatus carries the
@@ -215,7 +219,7 @@ func (c *Client) TestExecutionsForTest(ctx context.Context, testKey string) ([]C
 		// breakdown can show when the execution was created, updated, and
 		// resolved. NOTE(xtm): verify that all requested fields are present on
 		// Xray Server/DC 8.4.0; resolutiondate is the standard Jira field name.
-		issueURL := "/rest/api/2/issue/" + url.PathEscape(ref.Key) + "?fields=summary,status,issuetype,parent,created,updated,resolutiondate"
+		issueURL := "/rest/api/2/issue/" + url.PathEscape(ref.Key) + "?fields=summary,status,issuetype,parent,description,created,updated,resolutiondate"
 		var issueResp struct {
 			Key    string          `json:"key"`
 			Fields json.RawMessage `json:"fields"`
@@ -305,7 +309,7 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 	// them). Resolve the custom field id once and, when present, request it so the
 	// read path can populate Container.Environments. Best-effort: on a resolver
 	// error, log and proceed without environments rather than fail the sync.
-	fields := "summary,status,issuetype,parent"
+	fields := "summary,status,issuetype,parent,description"
 	envFieldID := ""
 	if kind == KindTestExec {
 		// Fix Version(s), created, updated, and resolutiondate are standard Jira
@@ -389,6 +393,7 @@ type containerIssueFields struct {
 	Created        string `json:"created"`
 	Updated        string `json:"updated"`
 	ResolutionDate string `json:"resolutiondate"`
+	Description    string `json:"description"`
 }
 
 // parseContainerIssue maps one container search issue (raw `fields` plus key) into
@@ -409,6 +414,7 @@ func parseContainerIssue(key, kind string, rawFields json.RawMessage, envFieldID
 		ct.ParentKey = f.Parent.Key
 		ct.ParentSummary = f.Parent.Fields.Summary
 	}
+	ct.Description = f.Description
 	if kind == KindTestExec && envFieldID != "" {
 		ct.Environments = environmentsFromRawFields(rawFields, envFieldID)
 	}
