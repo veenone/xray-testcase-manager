@@ -413,6 +413,27 @@ var demoRunStatuses = []string{
 	"BLOCKED",
 }
 
+// demoExecTimestamps returns deterministic ISO-8601 created, updated, and
+// resolved timestamps for the i-th demo Test Execution. The dates are fixed
+// (not derived from time.Now) so demo mode is fully deterministic across
+// calls. Resolved is non-empty only for executions whose seeded status is
+// "Done" (every third execution starting at index 1), matching the pattern in
+// demoExecStatuses. All other executions get an empty resolved string.
+func demoExecTimestamps(idx int) (created, updated, resolved string) {
+	// Base date: 2026-01-01. Each exec is spaced 7 days apart for created, and
+	// 14 days apart for updated, so the history breakdown shows distinct dates.
+	base := 1735689600 // 2026-01-01T00:00:00Z in Unix seconds (fixed)
+	_ = base           // actual formatting uses the offset arithmetic below
+	day := idx * 7
+	created = fmt.Sprintf("2026-01-%02dT09:00:00Z", 1+day%28)
+	updated = fmt.Sprintf("2026-01-%02dT17:00:00Z", 1+(day+14)%28)
+	// demoExecStatuses cycles ["In Progress", "Done", "Open"]; "Done" is at i%3==1.
+	if idx%3 == 1 {
+		resolved = fmt.Sprintf("2026-01-%02dT18:00:00Z", 1+(day+14)%28)
+	}
+	return created, updated, resolved
+}
+
 // demoEnvironments returns a deterministic, non-empty subset of the environment
 // pool for the i-th execution, cycling subsets so different executions show
 // different environment chips.
@@ -488,6 +509,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 	for i := 0; i < execCount; i++ {
 		key := fmt.Sprintf("%s-TE-%d", projectKey, i+1)
 		execKeys[i] = key
+		created, updated, resolved := demoExecTimestamps(i)
 		containers = append(containers, Container{
 			Key:          key,
 			Kind:         KindTestExec,
@@ -495,6 +517,9 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			Status:       demoExecStatuses[i%len(demoExecStatuses)],
 			Environments: demoEnvironments(i),
 			FixVersions:  demoFixVersions(i),
+			Created:      created,
+			Updated:      updated,
+			Resolved:     resolved,
 		})
 	}
 
@@ -506,6 +531,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 	const crossProject = demoCrossProjectKey
 	crossExecKeys := []string{crossProject + "-TE-1", crossProject + "-TE-2"}
 	for i, key := range crossExecKeys {
+		created, updated, resolved := demoExecTimestamps(execCount + i)
 		containers = append(containers, Container{
 			Key:          key,
 			Kind:         KindTestExec,
@@ -513,6 +539,9 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 			Status:       demoExecStatuses[i%len(demoExecStatuses)],
 			Environments: demoEnvironments(execCount + i),
 			FixVersions:  demoFixVersions(execCount + i),
+			Created:      created,
+			Updated:      updated,
+			Resolved:     resolved,
 		})
 	}
 
@@ -522,6 +551,7 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 	// board via the external_test cache (populated by the sync's missing-keys pass
 	// calling ListTestsBasic, which returns basics for XRAYINT-* keys below).
 	xprojExecKey := fmt.Sprintf("%s-TE-XPROJ", projectKey)
+	xprojCreated, xprojUpdated, xprojResolved := demoExecTimestamps(execCount + len(crossExecKeys))
 	containers = append(containers, Container{
 		Key:          xprojExecKey,
 		Kind:         KindTestExec,
@@ -529,6 +559,9 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		Status:       demoExecStatuses[0],
 		Environments: demoEnvironments(0),
 		FixVersions:  demoFixVersions(0),
+		Created:      xprojCreated,
+		Updated:      xprojUpdated,
+		Resolved:     xprojResolved,
 	})
 	for i := 1; i <= demoExternalMembers; i++ {
 		links = append(links, ContainerLink{
@@ -543,19 +576,24 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 	// offline. They are still Kind=testexec and behave like standalone ones.
 	const subExecCount = 2
 	subExecKeys := make([]string, subExecCount)
+	subExecOffset := execCount + len(crossExecKeys) + 1 // +1 for the xproj exec
 	for i := 0; i < subExecCount; i++ {
 		key := fmt.Sprintf("%s-STE-%d", projectKey, i+1)
 		subExecKeys[i] = key
+		created, updated, resolved := demoExecTimestamps(subExecOffset + i)
 		containers = append(containers, Container{
-			Key:          key,
-			Kind:         KindTestExec,
-			Summary:      fmt.Sprintf("Sub-execution for story %d", i+1),
-			Status:       demoExecStatuses[i%len(demoExecStatuses)],
+			Key:           key,
+			Kind:          KindTestExec,
+			Summary:       fmt.Sprintf("Sub-execution for story %d", i+1),
+			Status:        demoExecStatuses[i%len(demoExecStatuses)],
 			ParentKey:     fmt.Sprintf("%s-S-%d", projectKey, i+1),
 			ParentSummary: fmt.Sprintf("Story %d", i+1),
-			IssueType:    "Sub Test Execution",
-			Environments: demoEnvironments(execCount + len(crossExecKeys) + i),
-			FixVersions:  demoFixVersions(execCount + len(crossExecKeys) + i),
+			IssueType:     "Sub Test Execution",
+			Environments:  demoEnvironments(subExecOffset + i),
+			FixVersions:   demoFixVersions(subExecOffset + i),
+			Created:       created,
+			Updated:       updated,
+			Resolved:      resolved,
 		})
 	}
 
@@ -681,6 +719,8 @@ func demoCrossProjectSubExecMember(i int) bool { return i%11 == 0 }
 // story in the XRAYINT project, and which runs some of the profile project's
 // tests.
 func demoCrossProjectSubExec() Container {
+	// Use a fixed index (20) so the timestamps are stable across calls.
+	created, updated, resolved := demoExecTimestamps(20)
 	return Container{
 		Key:           demoCrossProjectSubExecKey,
 		Kind:          KindTestExec,
@@ -691,6 +731,9 @@ func demoCrossProjectSubExec() Container {
 		IssueType:     "Sub Test Execution",
 		Environments:  []string{"Staging"},
 		FixVersions:   []string{"1.5.0"},
+		Created:       created,
+		Updated:       updated,
+		Resolved:      resolved,
 	}
 }
 

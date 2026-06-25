@@ -44,6 +44,18 @@ type Container struct {
 	// requested by literal name on the testexec search and shown read-only, with
 	// no custom-field resolution and no editing. Demo mode seeds it.
 	FixVersions []string
+	// Created is the ISO-8601 creation timestamp of the Test Execution issue
+	// (from Jira's standard "created" field). Empty for non-execution containers
+	// or when not yet fetched.
+	Created string
+	// Updated is the ISO-8601 last-update timestamp of the Test Execution issue
+	// (from Jira's standard "updated" field). Empty for non-execution containers
+	// or when not yet fetched.
+	Updated string
+	// Resolved is the ISO-8601 resolution timestamp of the Test Execution issue
+	// (from Jira's standard "resolutiondate" field). Empty when the execution is
+	// unresolved, for non-execution containers, or when not yet fetched.
+	Resolved string
 }
 
 // ContainerLink is one Test's membership in a Container. RunStatus carries the
@@ -198,10 +210,12 @@ func (c *Client) TestExecutionsForTest(ctx context.Context, testKey string) ([]C
 			break
 		}
 
-		// Fetch the execution issue detail to populate the Container fields.
-		// NOTE(xtm): verify that the fields summary,status,issuetype,parent are
-		// always present and sufficient on Xray Server/DC 8.4.0.
-		issueURL := "/rest/api/2/issue/" + url.PathEscape(ref.Key) + "?fields=summary,status,issuetype,parent"
+		// Fetch the execution issue detail to populate the Container fields,
+		// including the standard Jira timestamp fields so the run-history
+		// breakdown can show when the execution was created, updated, and
+		// resolved. NOTE(xtm): verify that all requested fields are present on
+		// Xray Server/DC 8.4.0; resolutiondate is the standard Jira field name.
+		issueURL := "/rest/api/2/issue/" + url.PathEscape(ref.Key) + "?fields=summary,status,issuetype,parent,created,updated,resolutiondate"
 		var issueResp struct {
 			Key    string          `json:"key"`
 			Fields json.RawMessage `json:"fields"`
@@ -294,9 +308,11 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 	fields := "summary,status,issuetype,parent"
 	envFieldID := ""
 	if kind == KindTestExec {
-		// Fix Version(s) is a standard Jira field, requested by its literal name
-		// (no resolver). It is shown read-only on executions.
-		fields = fields + ",fixVersions"
+		// Fix Version(s), created, updated, and resolutiondate are standard Jira
+		// fields requested by their literal names (no resolver). They are shown
+		// read-only on executions. NOTE(xtm): resolutiondate is the standard Jira
+		// field name; verify on a live Xray Server/DC 8.4.0 instance.
+		fields = fields + ",fixVersions,created,updated,resolutiondate"
 		id, err := c.testEnvironmentsFieldID(ctx)
 		if err != nil {
 			log.Printf("xtm: resolve Test Environments custom field failed, syncing executions without environments: %v", err)
@@ -370,6 +386,9 @@ type containerIssueFields struct {
 	FixVersions []struct {
 		Name string `json:"name"`
 	} `json:"fixVersions"`
+	Created        string `json:"created"`
+	Updated        string `json:"updated"`
+	ResolutionDate string `json:"resolutiondate"`
 }
 
 // parseContainerIssue maps one container search issue (raw `fields` plus key) into
@@ -399,6 +418,9 @@ func parseContainerIssue(key, kind string, rawFields json.RawMessage, envFieldID
 				ct.FixVersions = append(ct.FixVersions, name)
 			}
 		}
+		ct.Created = f.Created
+		ct.Updated = f.Updated
+		ct.Resolved = f.ResolutionDate
 	}
 	return ct
 }
