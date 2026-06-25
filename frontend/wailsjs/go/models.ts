@@ -625,6 +625,9 @@ export namespace testrepo {
 	    issueType: string;
 	    environments: string[];
 	    fixVersions: string[];
+	    created: string;
+	    updated: string;
+	    resolved: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Container(source);
@@ -641,6 +644,9 @@ export namespace testrepo {
 	        this.issueType = source["issueType"];
 	        this.environments = source["environments"];
 	        this.fixVersions = source["fixVersions"];
+	        this.created = source["created"];
+	        this.updated = source["updated"];
+	        this.resolved = source["resolved"];
 	    }
 	}
 	export class ContainerMembership {
@@ -1886,6 +1892,9 @@ export namespace testrepo {
 	    execIssueType: string;
 	    execParentKey: string;
 	    execParentSummary: string;
+	    execCreated: string;
+	    execUpdated: string;
+	    execResolved: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TestRunEntry(source);
@@ -1908,6 +1917,9 @@ export namespace testrepo {
 	        this.execIssueType = source["execIssueType"];
 	        this.execParentKey = source["execParentKey"];
 	        this.execParentSummary = source["execParentSummary"];
+	        this.execCreated = source["execCreated"];
+	        this.execUpdated = source["execUpdated"];
+	        this.execResolved = source["execResolved"];
 	    }
 	}
 
