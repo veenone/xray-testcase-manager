@@ -57,6 +57,11 @@ func TestListContainersReadsEnvironments(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "customfield_10200", "name": "Test Environments", "custom": true},
 			})
+		case "/rest/api/2/issuetype":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"name": "Test Execution", "subtask": false},
+				{"name": "Sub Test Execution", "subtask": true},
+			})
 		case "/rest/api/2/search":
 			jql := r.URL.Query().Get("jql")
 			fields := r.URL.Query().Get("fields")

@@ -20,6 +20,12 @@ func TestRealSubTaskExecutionsCarryParent(t *testing.T) {
 			// The testexec search resolves the Test Environments custom field id;
 			// this instance has no such field, so the env read degrades to none.
 			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/rest/api/2/issuetype":
+			// Sub-task Test Execution discovery lists the instance issue types.
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"name": "Test Execution", "subtask": false},
+				{"name": "Sub Test Execution", "subtask": true},
+			})
 		case r.URL.Path == "/rest/api/2/search":
 			jql := r.URL.Query().Get("jql")
 			if strings.Contains(jql, `issuetype = "Sub Test Execution"`) {
