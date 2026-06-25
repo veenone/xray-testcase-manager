@@ -4787,6 +4787,33 @@ tr.row-checked:hover {
   margin: 8px 0 0;
   row-gap: 5px;
 }
+/* Extended bug detail: description + defect fields rendered below the field grid. */
+.bugs-md-detail-extra {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bugs-md-detail-extra-field strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #888);
+  margin-bottom: 3px;
+}
+.bugs-md-detail-extra-text {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.bugs-md-detail-extra-loading {
+  margin-top: 8px;
+  font-size: 12px;
+}
 /* ContainerDetailPanel: run-status histogram chips. */
 .container-detail-run-counts {
   display: flex;

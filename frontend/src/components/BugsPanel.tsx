@@ -9,9 +9,10 @@ import {
   AllocateTests,
   BrowserOpenURL,
   GetTestRunHistory,
+  GetBugDetail,
   errMsg,
 } from "../api";
-import type { BugWithTests, BugTest, TestRunEntry, Container } from "../api";
+import type { BugWithTests, BugTest, TestRunEntry, Container, BugDetail } from "../api";
 import { formatDateTime } from "../dates";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
@@ -74,6 +75,11 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   // Local refresh nonce: bumped after a bugs-only sync to re-pull the list
   // without forcing a full profile refresh.
   const [nonce, setNonce] = useState(0);
+
+  // Extended bug detail (description + defect custom fields) fetched lazily
+  // when a bug is selected, bypassed for NEW- keys.
+  const [bugDetail, setBugDetail] = useState<BugDetail | null>(null);
+  const [bugDetailLoading, setBugDetailLoading] = useState(false);
 
   // In-view right sidebar: persists the open test key across sessions (test detail
   // only; plan/exec panels are ephemeral and reset to null on navigation).
@@ -373,6 +379,31 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     };
   }, [profileId, selected, refreshKey]);
 
+  // Load extended bug detail (description + defect fields) for the selected bug.
+  // Skipped for NEW- placeholder keys that have no real Jira issue yet.
+  useEffect(() => {
+    if (!profileId || !selected || selected.startsWith("NEW-")) {
+      setBugDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setBugDetailLoading(true);
+    setBugDetail(null);
+    GetBugDetail(profileId, selected)
+      .then((d) => {
+        if (!cancelled) setBugDetail(d ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setBugDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBugDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, selected]);
+
   const totalPages = Math.max(1, Math.ceil(shown.length / pageSize));
   const safePage = Math.min(Math.max(0, page), totalPages - 1);
   const paged = shown.slice(safePage * pageSize, safePage * pageSize + pageSize);
@@ -596,6 +627,37 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                 <dt>Affects</dt>
                 <dd>{sel.testKeys.length} test{sel.testKeys.length === 1 ? "" : "s"}</dd>
               </dl>
+              {bugDetailLoading && (
+                <p className="muted bugs-md-detail-extra-loading">Loading bug detail…</p>
+              )}
+              {!bugDetailLoading && bugDetail && (
+                <div className="bugs-md-detail-extra">
+                  {bugDetail.description && (
+                    <div className="bugs-md-detail-extra-field">
+                      <strong>Description</strong>
+                      <div className="bugs-md-detail-extra-text">{bugDetail.description}</div>
+                    </div>
+                  )}
+                  {bugDetail.defectOrigin && (
+                    <div className="bugs-md-detail-extra-field">
+                      <strong>Defect Origin</strong>
+                      <div className="bugs-md-detail-extra-text">{bugDetail.defectOrigin}</div>
+                    </div>
+                  )}
+                  {bugDetail.defectAnalysis && (
+                    <div className="bugs-md-detail-extra-field">
+                      <strong>Defect Analysis</strong>
+                      <div className="bugs-md-detail-extra-text">{bugDetail.defectAnalysis}</div>
+                    </div>
+                  )}
+                  {bugDetail.correctionDetails && (
+                    <div className="bugs-md-detail-extra-field">
+                      <strong>Correction Details</strong>
+                      <div className="bugs-md-detail-extra-text">{bugDetail.correctionDetails}</div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <h4>Affected tests ({tests.length})</h4>
