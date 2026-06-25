@@ -1161,12 +1161,134 @@ func (a *App) ListBugsForContainer(profileID, containerKey string) ([]testrepo.B
 
 // --- Test run history & rollups ---
 
-// GetTestRunHistory returns a test's run history across executions.
+// GetTestRunHistory returns a test's run history across executions. Before
+// reading from the local store it triggers a best-effort cross-project
+// execution discovery for real (non-local) test keys so that executions in
+// other projects, which the project-scoped sync misses, appear in the history
+// without requiring a full re-sync.
 func (a *App) GetTestRunHistory(profileID, testKey string) ([]testrepo.TestRunEntry, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
+	if !isLocalTestKey(testKey) {
+		a.refreshCrossProjectExecsForTest(profileID, testKey)
+	}
 	return a.repo.GetTestRunHistory(profileID, testKey)
+}
+
+// refreshCrossProjectExecsForTest performs a lightweight per-test cross-project
+// execution discovery: it looks up every Test Execution that testKey belongs to
+// (in any project) and additively merges newly found containers, links, and runs
+// into the local store. This is called lazily when GetTestRunHistory is invoked
+// so that cross-project sub-task executions (which the project-scoped sync
+// misses) appear in the run history without requiring a full re-sync.
+//
+// Errors are logged and ignored -- this is best-effort; the caller returns
+// whatever the local store already has.
+func (a *App) refreshCrossProjectExecsForTest(profileID, testKey string) {
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: load profile: %v", err)
+		return
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: load credentials: %v", err)
+		return
+	}
+	cl := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
+	ctx := context.Background()
+	containers, links, err := cl.TestExecutionsForTest(ctx, testKey)
+	if err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: %s: %v", testKey, err)
+		return
+	}
+	if len(containers) == 0 {
+		return
+	}
+	// Defensive: containers and links must be parallel slices (same length,
+	// same index). TestExecutionsForTest guarantees this, but guard here to
+	// prevent an out-of-bounds panic if that contract is ever relaxed.
+	if len(containers) != len(links) {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: %s: container/link length mismatch (%d vs %d), skipping",
+			testKey, len(containers), len(links))
+		return
+	}
+	// Check which containers are already in the local store so we do not
+	// overwrite links that the project-scoped sync already wrote correctly.
+	knownKeys, err := a.repo.AllContainerKeys(profileID)
+	if err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: list known keys: %v", err)
+		return
+	}
+
+	var newContainers []testrepo.Container
+	var newLinks []testrepo.ContainerLink
+	for i, c := range containers {
+		if knownKeys[c.Key] {
+			continue
+		}
+		newContainers = append(newContainers, testrepo.Container{
+			Key:           c.Key,
+			Kind:          c.Kind,
+			Summary:       c.Summary,
+			Status:        c.Status,
+			ParentKey:     c.ParentKey,
+			ParentSummary: c.ParentSummary,
+			IssueType:     c.IssueType,
+			Environments:  c.Environments,
+			FixVersions:   c.FixVersions,
+		})
+		newLinks = append(newLinks, testrepo.ContainerLink{
+			ContainerKey: links[i].ContainerKey,
+			TestKey:      links[i].TestKey,
+			RunStatus:    links[i].RunStatus,
+		})
+	}
+	if len(newContainers) == 0 {
+		return
+	}
+	if err := a.repo.UpsertContainers(profileID, newContainers); err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: upsert containers: %v", err)
+		return
+	}
+	if err := a.repo.UpsertContainerLinks(profileID, newLinks); err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: upsert links: %v", err)
+		return
+	}
+	for _, ct := range newContainers {
+		runs, rErr := cl.GetTestRuns(ctx, ct.Key)
+		if rErr != nil {
+			log.Printf("xtm: refreshCrossProjectExecsForTest: get runs for %s: %v", ct.Key, rErr)
+			continue
+		}
+		rows := make([]testrepo.TestRunRow, 0, len(runs))
+		for _, tr := range runs {
+			defectsJSON := "[]"
+			if len(tr.Defects) > 0 {
+				if b, jerr := json.Marshal(tr.Defects); jerr == nil {
+					defectsJSON = string(b)
+				}
+			}
+			env := tr.Environment
+			if env == "" && len(ct.Environments) > 0 {
+				env = strings.Join(ct.Environments, ", ")
+			}
+			rows = append(rows, testrepo.TestRunRow{
+				ExecKey:     ct.Key,
+				TestKey:     tr.TestKey,
+				RunStatus:   tr.Status,
+				StartedAt:   tr.StartedAt,
+				FinishedAt:  tr.FinishedAt,
+				ExecutedBy:  tr.ExecutedBy,
+				Environment: env,
+				Defects:     defectsJSON,
+				CreatedAt:   tr.CreatedAt,
+				UpdatedAt:   tr.UpdatedAt,
+			})
+		}
+		_ = a.repo.ReplaceRunsForExec(profileID, ct.Key, rows)
+	}
 }
 
 // GetRunRollup returns the run-result roll-up for a Test Plan or Test Set.
