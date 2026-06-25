@@ -506,11 +506,20 @@ type BugDetail struct {
 	DefectOrigin      string `json:"defectOrigin"`
 	DefectAnalysis    string `json:"defectAnalysis"`
 	CorrectionDetails string `json:"correctionDetails"`
+	// Reporter is the bug's Jira reporter display name. Severity is the value of
+	// the instance-specific "Severity" custom field (when defined).
+	Reporter string `json:"reporter"`
+	Severity string `json:"severity"`
 }
 
 // demoBugDetailOrigins is the pool of Defect Origin values cycled by a simple
 // hash of the bug key, so the demo returns a deterministic value per key.
 var demoBugDetailOrigins = []string{"Code", "Design", "Requirements", "Test"}
+
+// demoBugDetailReporters and demoBugDetailSeverities are cycled by a hash of the
+// bug key for deterministic demo values.
+var demoBugDetailReporters = []string{"Alice Tester", "Bob Reviewer", "Carol QA", "Dave Dev"}
+var demoBugDetailSeverities = []string{"Critical", "Major", "Minor", "Trivial"}
 
 // GetBugDetail fetches the extended fields for a defect issue: description and
 // three instance-specific custom fields (Defect Origin, Defect Analysis,
@@ -542,6 +551,8 @@ func (c *Client) GetBugDetail(ctx context.Context, bugKey string) (BugDetail, er
 			DefectOrigin:      origin,
 			DefectAnalysis:    "Root cause: the logic at the point of failure does not handle the edge case introduced by the reported scenario.",
 			CorrectionDetails: "Fixed in the next patch: the guard condition was added and the relevant unit test updated.",
+			Reporter:          demoBugDetailReporters[h%len(demoBugDetailReporters)],
+			Severity:          demoBugDetailSeverities[h%len(demoBugDetailSeverities)],
 		}, nil
 	}
 
@@ -559,11 +570,18 @@ func (c *Client) GetBugDetail(ctx context.Context, bugKey string) (BugDetail, er
 	if err != nil {
 		return BugDetail{}, fmt.Errorf("resolve Correction Details field: %w", err)
 	}
+	// NOTE(xtm): "Severity" is also instance-specific; resolveCustomFieldID
+	// returns "" (no error) when the instance does not define it.
+	severityID, err := c.resolveCustomFieldID(ctx, "Severity")
+	if err != nil {
+		return BugDetail{}, fmt.Errorf("resolve Severity field: %w", err)
+	}
 
-	// Build the fields parameter: description is always included; custom field
-	// ids are added only when the instance defines them.
-	fieldParts := []string{"description"}
-	for _, id := range []string{originID, analysisID, correctionID} {
+	// Build the fields parameter: description and the standard reporter field are
+	// always included; custom field ids are added only when the instance defines
+	// them.
+	fieldParts := []string{"description", "reporter"}
+	for _, id := range []string{originID, analysisID, correctionID, severityID} {
 		if id != "" {
 			fieldParts = append(fieldParts, id)
 		}
@@ -609,14 +627,24 @@ func (c *Client) GetBugDetail(ctx context.Context, bugKey string) (BugDetail, er
 			detail.CorrectionDetails = stringifyFieldValue(raw)
 		}
 	}
+	// Reporter is a standard user object; stringifyFieldValue renders its
+	// displayName / name.
+	if raw, ok := resp.Fields["reporter"]; ok {
+		detail.Reporter = stringifyFieldValue(raw)
+	}
+	if severityID != "" {
+		if raw, ok := resp.Fields[severityID]; ok {
+			detail.Severity = stringifyFieldValue(raw)
+		}
+	}
 	return detail, nil
 }
 
 // projectBugSearchResponse is the /rest/api/2/search payload for the
 // project-wide bug search.
 type projectBugSearchResponse struct {
-	Total  int                `json:"total"`
-	Issues []projectBugIssue  `json:"issues"`
+	Total  int               `json:"total"`
+	Issues []projectBugIssue `json:"issues"`
 }
 
 // projectBugIssue is one issue returned by the project-wide bug search.

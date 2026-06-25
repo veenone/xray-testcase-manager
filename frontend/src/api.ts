@@ -769,6 +769,8 @@ export interface BugDetail {
   defectOrigin: string;
   defectAnalysis: string;
   correctionDetails: string;
+  reporter: string;
+  severity: string;
 }
 
 // Bug mirrors testrepo.Bug - a cached defect issue (possibly cross-project)

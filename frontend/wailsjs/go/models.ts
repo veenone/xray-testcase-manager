@@ -5,6 +5,8 @@ export namespace jira {
 	    defectOrigin: string;
 	    defectAnalysis: string;
 	    correctionDetails: string;
+	    reporter: string;
+	    severity: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new BugDetail(source);
@@ -16,6 +18,8 @@ export namespace jira {
 	        this.defectOrigin = source["defectOrigin"];
 	        this.defectAnalysis = source["defectAnalysis"];
 	        this.correctionDetails = source["correctionDetails"];
+	        this.reporter = source["reporter"];
+	        this.severity = source["severity"];
 	    }
 	}
 	export class TestMeta {
