@@ -845,6 +845,12 @@ export interface TestRunEntry {
   execIssueType: string;
   execParentKey: string;
   execParentSummary: string;
+  // execCreated, execUpdated, execResolved are the Test Execution issue's
+  // created, updated, and resolution timestamps (ISO-8601, empty when unknown
+  // or unresolved).
+  execCreated: string;
+  execUpdated: string;
+  execResolved: string;
 }
 
 // RunRollup mirrors testrepo.RunRollup — run-result roll-up for a Test Plan or

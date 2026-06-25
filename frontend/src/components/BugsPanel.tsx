@@ -141,6 +141,15 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
         case "finishedAt":
           cmp = (a.finishedAt || a.startedAt || "").localeCompare(b.finishedAt || b.startedAt || "");
           break;
+        case "execCreated":
+          cmp = (a.execCreated || "").localeCompare(b.execCreated || "");
+          break;
+        case "execUpdated":
+          cmp = (a.execUpdated || "").localeCompare(b.execUpdated || "");
+          break;
+        case "execResolved":
+          cmp = (a.execResolved || "").localeCompare(b.execResolved || "");
+          break;
         default:
           cmp = 0;
       }
@@ -824,7 +833,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={7} style={{ padding: "0.25rem 0.5rem 0.5rem 2rem", background: "var(--bg-subtle, #f8f8f8)" }}>
+                            <td colSpan={10} style={{ padding: "0.25rem 0.5rem 0.5rem 2rem", background: "var(--bg-subtle, #f8f8f8)" }}>
                               {isLoading ? (
                                 <span className="muted">Loading run history…</span>
                               ) : !history || history.length === 0 ? (
@@ -922,6 +931,9 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                       <td>{r.fixVersions?.length ? r.fixVersions.join(", ") : <span className="muted">—</span>}</td>
                                       <td>{r.environment || <span className="muted">—</span>}</td>
                                       <td className="muted">{formatDateTime(r.finishedAt || r.startedAt)}</td>
+                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.execCreated) || <span className="muted">—</span>}</td>
+                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.execUpdated) || <span className="muted">—</span>}</td>
+                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.execResolved) || <span className="muted">—</span>}</td>
                                       <td>{r.executedBy || <span className="muted">—</span>}</td>
                                       <td>
                                         {r.defects?.length ? (
@@ -962,6 +974,9 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                           <th>Fix Version(s)</th>
                                           <th>Environment</th>
                                           <SortTh field="finishedAt">Date</SortTh>
+                                          <SortTh field="execCreated">Created</SortTh>
+                                          <SortTh field="execUpdated">Updated</SortTh>
+                                          <SortTh field="execResolved">Resolved</SortTh>
                                           <th>By</th>
                                           <th>Defects</th>
                                         </tr>
@@ -970,7 +985,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                         {groups.map((g) => (
                                           <Fragment key={g.planKey ?? "__no_plan__"}>
                                             <tr className="run-plan-group-header">
-                                              <td colSpan={7}>
+                                              <td colSpan={10}>
                                                 {g.planKey ? (
                                                   <button
                                                     className="mono bug-link-key"
