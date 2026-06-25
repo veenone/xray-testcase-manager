@@ -402,6 +402,12 @@ func demoRunDate(execIdx, pos int) string {
 func demoTestRuns(execKey string) []TestRun {
 	execIdx := demoExecKeyIndex(execKey)
 	if execIdx < 0 {
+		// Cross-project sub-task exec (XRAYINT-STE-1) must be checked BEFORE
+		// project-local sub-task execs: demoSubExecKeyIndex has no project-prefix
+		// guard and would otherwise intercept XRAYINT-STE-1 (both match "-STE-1").
+		if demoCrossProjectSubExecKeyIndex(execKey) >= 0 {
+			return demoCrossProjectSubExecRuns("DEMO")
+		}
 		// Sub-task Test Executions ("<proj>-STE-<n>") also carry runs: mirror the
 		// demoContainersAndLinks membership ("every 5th linked test also runs in a
 		// sub-task execution") so the per-test Run history includes sub-task
@@ -409,12 +415,6 @@ func demoTestRuns(execKey string) []TestRun {
 		// Kind=testexec container regardless of standalone vs sub-task issue type.
 		if subIdx := demoSubExecKeyIndex(execKey); subIdx >= 0 {
 			return demoSubExecRuns(execKey, subIdx)
-		}
-		// Cross-project sub-task exec (XRAYINT-STE-1): return runs for DEMO
-		// tests that are members (i%11 == 0). The project key for the member
-		// tests is DEMO (the profile project), not XRAYINT.
-		if demoCrossProjectSubExecKeyIndex(execKey) >= 0 {
-			return demoCrossProjectSubExecRuns("DEMO")
 		}
 		// Other non-matching keys yield no runs.
 		return []TestRun{}
