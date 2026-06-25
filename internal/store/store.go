@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 32
+const schemaVersion = 33
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -148,6 +148,9 @@ CREATE TABLE IF NOT EXISTS test_container (
 	parent_summary TEXT NOT NULL DEFAULT '',
 	environments TEXT NOT NULL DEFAULT '',
 	fix_versions TEXT NOT NULL DEFAULT '',
+	created    TEXT NOT NULL DEFAULT '',
+	updated    TEXT NOT NULL DEFAULT '',
+	resolved   TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -632,6 +635,20 @@ func applyMigrations(db *sql.DB) error {
 			`ALTER TABLE test_container ADD COLUMN parent_summary TEXT NOT NULL DEFAULT ''`,
 		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("v32 add parent_summary: %w", err)
+		}
+	}
+	// v33: add created, updated, and resolved to test_container to cache the
+	// Jira issue timestamps of Test Executions, enabling the run-history
+	// breakdown to show when an execution was created, last updated, and
+	// resolved. Fresh installs get these columns from the CREATE above; these
+	// ALTERs catch pre-v33 databases.
+	if current < 33 {
+		for _, col := range []string{"created", "updated", "resolved"} {
+			if _, err := db.Exec(
+				fmt.Sprintf(`ALTER TABLE test_container ADD COLUMN %s TEXT NOT NULL DEFAULT ''`, col),
+			); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("v33 add %s to test_container: %w", col, err)
+			}
 		}
 	}
 	return nil
