@@ -898,8 +898,20 @@
   flex-direction: column;
   min-height: 0;
 }
+/* The board content lives in a wrapper (so a right-side read-only detail can sit
+   beside it). The wrapper must be a bounded flex column always — not only when
+   the exec detail is open — so the bug list and the member table scroll and the
+   pager pins below them, matching the Preconditions view. Without this it is a
+   plain block and the list grows unbounded (no scrollbar, the pager follows the
+   list). */
+.board-exec-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 /* The fixed chrome above the scrollable table keeps its natural height. */
-.board > .containers-mode,
+.board-exec-body > .containers-mode,
 .board-head,
 .container-filter-bar,
 .container-card,
