@@ -1222,6 +1222,38 @@ func (r *Repository) ReplaceAllContainerLinks(profileID string, links []Containe
 	return tx.Commit()
 }
 
+// UpsertContainerLinks inserts Test-to-Container memberships WITHOUT wiping
+// existing ones. This is the additive counterpart to ReplaceAllContainerLinks
+// and mirrors the UpsertBugLinks pattern: it is used by the cross-project
+// execution discovery pass to merge newly found executions alongside the
+// project links that ReplaceAllContainerLinks already wrote.
+//
+// INSERT OR IGNORE de-dupes by the primary key (profile_id, container_key,
+// test_key), so calling with duplicate rows is safe and idempotent.
+func (r *Repository) UpsertContainerLinks(profileID string, links []ContainerLink) error {
+	if len(links) == 0 {
+		return nil
+	}
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	stmt, err := tx.Prepare(
+		`INSERT OR IGNORE INTO test_container_test (profile_id, container_key, test_key, run_status)
+		 VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("prepare upsert container link: %w", err)
+	}
+	defer stmt.Close()
+	for _, l := range links {
+		if _, err := stmt.Exec(profileID, l.ContainerKey, l.TestKey, l.RunStatus); err != nil {
+			return fmt.Errorf("upsert container link %s->%s: %w", l.ContainerKey, l.TestKey, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // ExternalTest is the cached basics of a member Test that lives in a different
 // Jira project than the profile's, so it is never returned by the project-scoped
 // bulk test pull and has no test_case row. The container board reads these so
