@@ -10,6 +10,7 @@ import {
   BrowserOpenURL,
   GetTestRunHistory,
   GetBugDetail,
+  ExportBugsWithRunHistory,
   errMsg,
 } from "../api";
 import type { BugWithTests, BugTest, TestRunEntry, Container, BugDetail } from "../api";
@@ -72,6 +73,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [sortDesc, setSortDesc] = useViewState(profileId, "bugs", "sortDesc", true);
   const [testFilter, setTestFilter] = useViewState<"all" | "with" | "without">(profileId, "bugs", "testFilter", "all");
   const [syncing, setSyncing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const { prompt, promptUI } = usePrompt();
   // Local refresh nonce: bumped after a bugs-only sync to re-pull the list
   // without forcing a full profile refresh.
@@ -160,6 +162,33 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
       setError(errMsg(e));
     } finally {
       setSyncing(false);
+    }
+  }
+
+  // Export the checked bugs (or the open bug if none are checked) together with
+  // their full run history to an Excel workbook.
+  async function exportBugs() {
+    const bugKeys =
+      checked.size > 0
+        ? bugs.filter((b) => checked.has(b.key)).map((b) => b.key)
+        : selected && !selected.startsWith("NEW-")
+          ? [selected]
+          : [];
+    if (bugKeys.length === 0) return;
+    setExporting(true);
+    setError("");
+    setNotice("");
+    try {
+      const path = await ExportBugsWithRunHistory(profileId, bugKeys);
+      if (path) {
+        setNotice(
+          `Exported ${bugKeys.length} bug${bugKeys.length === 1 ? "" : "s"} to ${path}`,
+        );
+      }
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -489,6 +518,23 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
               title="Refresh just the linked bugs from Jira (partial sync)"
             >
               {syncing ? "Syncing…" : "Sync"}
+            </button>
+            <button
+              className="btn"
+              onClick={exportBugs}
+              disabled={
+                exporting ||
+                (checked.size === 0 && (!selected || selected.startsWith("NEW-")))
+              }
+              title={
+                checked.size > 0
+                  ? `Export ${checked.size} checked bug${checked.size === 1 ? "" : "s"} with run history to Excel`
+                  : selected && !selected.startsWith("NEW-")
+                    ? `Export ${selected} with run history to Excel`
+                    : "Select or open a bug to export"
+              }
+            >
+              {exporting ? "Exporting…" : "Export to Excel"}
             </button>
           </div>
         </div>
