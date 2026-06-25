@@ -2,7 +2,10 @@ package testrepo
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+
+	"github.com/xuri/excelize/v2"
 )
 
 // BugExport carries all data needed to render one bug's rows in the XLSX export:
@@ -43,84 +46,220 @@ func (r *Repository) GetBug(profileID, key string) (Bug, error) {
 	return b, nil
 }
 
-// BuildBugExportWorkbook renders exports as a two-sheet XLSX workbook:
-//   - "Bugs"        one row per bug with all available fields.
-//   - "Run History" one row per (bug, affected test, run entry).
+// BuildBugExportWorkbook renders exports as a single-sheet XLSX workbook named
+// "Bug Report" with a collapsible Excel row outline:
 //
-// It reuses writeXLSXSheets from exportcsv.go (same package).
+//	Level 0  Bug row
+//	Level 1    Test row     (one per affected test)
+//	Level 2      Execution  (one per run, or a "(no runs)" placeholder)
+//
+// The parent summary row sits ABOVE its children (OutlineSummaryBelow = false).
 func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error) {
-	bugsHeader := []string{
-		"Key", "Project", "Issue Type", "Status", "Priority", "Severity",
-		"Reporter", "Summary", "Description", "Defect Origin", "Defect Analysis",
-		"Correction Details", "Affected Test Count",
-	}
-	runHeader := []string{
-		"Bug", "Test", "Test Summary", "Test Project",
-		"Execution", "Execution Type", "Parent Key", "Parent Summary",
-		"Result", "Fix Version(s)", "Environment", "Run Date",
-		"Executed By", "Test Plan(s)", "Defects",
+	const sheet = "Bug Report"
+
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+
+	// Rename the default sheet instead of creating a new one, so Sheet1 is gone.
+	defaultSheet := f.GetSheetName(0)
+	if err := f.SetSheetName(defaultSheet, sheet); err != nil {
+		return nil, fmt.Errorf("rename sheet: %w", err)
 	}
 
-	var bugsRows [][]string
-	var runRows [][]string
+	// Collapse controls appear on the parent row (above its children).
+	below := false
+	if err := f.SetSheetProps(sheet, &excelize.SheetPropsOptions{OutlineSummaryBelow: &below}); err != nil {
+		return nil, fmt.Errorf("set sheet props: %w", err)
+	}
+
+	// Column widths: A=Type, B=Key, C=Summary, D=Status/Result, E=Details,
+	// F=Description, G=Defect Analysis, H=Correction Details.
+	colWidths := []struct {
+		start, end string
+		width      float64
+	}{
+		{"A", "A", 12},
+		{"B", "B", 14},
+		{"C", "C", 40},
+		{"D", "D", 16},
+		{"E", "E", 60},
+		{"F", "F", 40},
+		{"G", "G", 30},
+		{"H", "H", 30},
+	}
+	for _, cw := range colWidths {
+		if err := f.SetColWidth(sheet, cw.start, cw.end, cw.width); err != nil {
+			return nil, fmt.Errorf("set col width: %w", err)
+		}
+	}
+
+	// Bold style for the header row.
+	boldStyle, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
+	if err != nil {
+		return nil, fmt.Errorf("new style: %w", err)
+	}
+
+	// Row 1: header.
+	headers := []string{"Type", "Key", "Summary", "Status / Result", "Details", "Description", "Defect Analysis", "Correction Details"}
+	cols := []string{"A", "B", "C", "D", "E", "F", "G", "H"}
+	for i, h := range headers {
+		if err := f.SetCellValue(sheet, cols[i]+"1", h); err != nil {
+			return nil, fmt.Errorf("set header cell: %w", err)
+		}
+	}
+	if err := f.SetRowStyle(sheet, 1, 1, boldStyle); err != nil {
+		return nil, fmt.Errorf("set header style: %w", err)
+	}
+
+	// Freeze the header row so it stays visible while scrolling.
+	if err := f.SetPanes(sheet, &excelize.Panes{
+		Freeze:      true,
+		Split:       false,
+		YSplit:      1,
+		TopLeftCell: "A2",
+		ActivePane:  "bottomLeft",
+	}); err != nil {
+		return nil, fmt.Errorf("freeze panes: %w", err)
+	}
+
+	rowNum := 2
+
+	setCells := func(row int, values []string) error {
+		for i, v := range values {
+			if err := f.SetCellValue(sheet, fmt.Sprintf("%s%d", cols[i], row), v); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	joinParts := func(parts []string) string {
+		return strings.Join(parts, " | ")
+	}
 
 	for _, ex := range exports {
-		bugsRows = append(bugsRows, []string{
-			ex.Key,
-			ex.ProjectKey,
-			ex.IssueType,
-			ex.Status,
-			ex.Priority,
-			ex.Severity,
-			ex.Reporter,
-			ex.Summary,
-			ex.Description,
-			ex.DefectOrigin,
-			ex.DefectAnalysis,
-			ex.CorrectionDetails,
-			fmt.Sprintf("%d", len(ex.AffectedTests)),
-		})
+		// Bug row (outline level 0 -- no SetRowOutlineLevel call needed).
+		bugParts := []string{}
+		if ex.ProjectKey != "" {
+			bugParts = append(bugParts, "Project: "+ex.ProjectKey)
+		}
+		if ex.Priority != "" {
+			bugParts = append(bugParts, "Priority: "+ex.Priority)
+		}
+		if ex.Severity != "" {
+			bugParts = append(bugParts, "Severity: "+ex.Severity)
+		}
+		if ex.Reporter != "" {
+			bugParts = append(bugParts, "Reporter: "+ex.Reporter)
+		}
+		if ex.DefectOrigin != "" {
+			bugParts = append(bugParts, "Defect Origin: "+ex.DefectOrigin)
+		}
+		bugParts = append(bugParts, "Affected tests: "+strconv.Itoa(len(ex.AffectedTests)))
+
+		if err := setCells(rowNum, []string{
+			"Bug", ex.Key, ex.Summary, ex.Status,
+			joinParts(bugParts),
+			ex.Description, ex.DefectAnalysis, ex.CorrectionDetails,
+		}); err != nil {
+			return nil, fmt.Errorf("set bug row cells: %w", err)
+		}
+		rowNum++
+
 		for _, bt := range ex.AffectedTests {
+			// Test row (outline level 1).
+			if err := f.SetRowOutlineLevel(sheet, rowNum, 1); err != nil {
+				return nil, fmt.Errorf("set test row outline: %w", err)
+			}
+			testParts := []string{}
+			if bt.Project != "" {
+				testParts = append(testParts, "Project: "+bt.Project)
+			}
+			if bt.RunStatus != "" {
+				testParts = append(testParts, "Latest result: "+bt.RunStatus)
+			}
+			if err := setCells(rowNum, []string{
+				"Test", bt.Key, bt.Summary, bt.Status,
+				joinParts(testParts),
+				"", "", "",
+			}); err != nil {
+				return nil, fmt.Errorf("set test row cells: %w", err)
+			}
+			rowNum++
+
 			history := ex.RunHistory[bt.Key]
 			if len(history) == 0 {
-				// No run data yet: emit one row with blank run fields so the
-				// test still appears in the Run History sheet.
-				runRows = append(runRows, []string{
-					ex.Key, bt.Key, bt.Summary, bt.Project,
-					"", "", "", "",
-					"", "", "", "",
-					"", "", "",
-				})
+				// No runs: emit a single placeholder execution row.
+				if err := f.SetRowOutlineLevel(sheet, rowNum, 2); err != nil {
+					return nil, fmt.Errorf("set no-run outline: %w", err)
+				}
+				if err := setCells(rowNum, []string{
+					"Execution", "", "(no runs)", "", "", "", "", "",
+				}); err != nil {
+					return nil, fmt.Errorf("set no-run cells: %w", err)
+				}
+				rowNum++
 				continue
 			}
+
 			for _, run := range history {
+				// Execution row (outline level 2).
+				if err := f.SetRowOutlineLevel(sheet, rowNum, 2); err != nil {
+					return nil, fmt.Errorf("set exec row outline: %w", err)
+				}
+
 				runDate := run.FinishedAt
 				if runDate == "" {
 					runDate = run.StartedAt
 				}
-				runRows = append(runRows, []string{
-					ex.Key,
-					bt.Key,
-					bt.Summary,
-					bt.Project,
-					run.ExecKey,
-					run.ExecIssueType,
-					run.ExecParentKey,
-					run.ExecParentSummary,
-					run.RunStatus,
-					strings.Join(run.FixVersions, ", "),
-					run.Environment,
-					runDate,
-					run.ExecutedBy,
-					strings.Join(run.PlanKeys, ", "),
-					strings.Join(run.Defects, ", "),
-				})
+
+				execParts := []string{}
+				if run.ExecIssueType != "" {
+					execParts = append(execParts, "Exec type: "+run.ExecIssueType)
+				}
+				if run.ExecParentKey != "" {
+					execParts = append(execParts, "Parent: "+run.ExecParentKey+" "+run.ExecParentSummary)
+				}
+				if len(run.FixVersions) > 0 {
+					execParts = append(execParts, "Fix: "+strings.Join(run.FixVersions, ", "))
+				}
+				if run.Environment != "" {
+					execParts = append(execParts, "Env: "+run.Environment)
+				}
+				if runDate != "" {
+					execParts = append(execParts, "Run date: "+runDate)
+				}
+				if run.ExecCreated != "" {
+					execParts = append(execParts, "Created: "+run.ExecCreated)
+				}
+				if run.ExecUpdated != "" {
+					execParts = append(execParts, "Updated: "+run.ExecUpdated)
+				}
+				if run.ExecResolved != "" {
+					execParts = append(execParts, "Resolved: "+run.ExecResolved)
+				}
+				if run.ExecutedBy != "" {
+					execParts = append(execParts, "By: "+run.ExecutedBy)
+				}
+				if len(run.Defects) > 0 {
+					execParts = append(execParts, "Defects: "+strings.Join(run.Defects, ", "))
+				}
+
+				if err := setCells(rowNum, []string{
+					"Execution", run.ExecKey, run.ExecSummary, run.RunStatus,
+					joinParts(execParts),
+					"", "", "",
+				}); err != nil {
+					return nil, fmt.Errorf("set exec row cells: %w", err)
+				}
+				rowNum++
 			}
 		}
 	}
 
-	return writeXLSXSheets([]namedRows{
-		{Name: "Bugs", Header: bugsHeader, Rows: bugsRows},
-		{Name: "Run History", Header: runHeader, Rows: runRows},
-	})
+	buf, err := f.WriteToBuffer()
+	if err != nil {
+		return nil, fmt.Errorf("write workbook: %w", err)
+	}
+	return buf.Bytes(), nil
 }
