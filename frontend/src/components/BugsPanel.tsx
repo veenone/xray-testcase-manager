@@ -21,6 +21,7 @@ import { TestDetail } from "./TestDetail";
 import { ContainerDetailPanel } from "./ContainerDetailPanel";
 import { usePrompt } from "./usePrompt";
 import { keyCompare, cmpStr, applyDir } from "../sort";
+import { Markdown } from "./Markdown";
 
 interface Props {
   profileId: string;
@@ -85,6 +86,8 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [bugDetailLoading, setBugDetailLoading] = useState(false);
   // Collapsible description in the detail card — collapsed by default.
   const [descOpen, setDescOpen] = useState(false);
+  // Collapsible defect analysis in the detail card -- collapsed by default.
+  const [analysisOpen, setAnalysisOpen] = useState(false);
 
   // In-view right sidebar: persists the open test key across sessions (test detail
   // only; plan/exec panels are ephemeral and reset to null on navigation).
@@ -419,6 +422,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   useEffect(() => {
     setExpandedTests(new Set());
     setDescOpen(false);
+    setAnalysisOpen(false);
   }, [selected]);
 
   // Load the affected tests (with run status) for the selected bug.
@@ -748,7 +752,9 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                         {descOpen ? "▾" : "▸"} Description
                       </button>
                       {descOpen && (
-                        <div className="bugs-md-detail-extra-text">{bugDetail.description}</div>
+                        <div className="bugs-md-detail-extra-text">
+                          <Markdown>{bugDetail.description}</Markdown>
+                        </div>
                       )}
                     </div>
                   )}
@@ -760,14 +766,26 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                   )}
                   {bugDetail.defectAnalysis && (
                     <div className="bugs-md-detail-extra-field">
-                      <strong>Defect Analysis</strong>
-                      <div className="bugs-md-detail-extra-text">{bugDetail.defectAnalysis}</div>
+                      <button
+                        className="bugs-md-desc-toggle"
+                        onClick={() => setAnalysisOpen((o) => !o)}
+                        aria-expanded={analysisOpen}
+                      >
+                        {analysisOpen ? "▾" : "▸"} Defect Analysis
+                      </button>
+                      {analysisOpen && (
+                        <div className="bugs-md-detail-extra-text">
+                          <Markdown>{bugDetail.defectAnalysis}</Markdown>
+                        </div>
+                      )}
                     </div>
                   )}
                   {bugDetail.correctionDetails && (
                     <div className="bugs-md-detail-extra-field">
                       <strong>Correction Details</strong>
-                      <div className="bugs-md-detail-extra-text">{bugDetail.correctionDetails}</div>
+                      <div className="bugs-md-detail-extra-text">
+                        <Markdown>{bugDetail.correctionDetails}</Markdown>
+                      </div>
                     </div>
                   )}
                 </div>
