@@ -210,6 +210,10 @@ export function ExcludeFromDuplicates(arg1, arg2) {
   return window['go']['main']['App']['ExcludeFromDuplicates'](arg1, arg2);
 }
 
+export function ExportBugsWithRunHistory(arg1, arg2) {
+  return window['go']['main']['App']['ExportBugsWithRunHistory'](arg1, arg2);
+}
+
 export function ExportDashboard(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ExportDashboard'](arg1, arg2, arg3, arg4);
 }

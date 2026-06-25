@@ -92,6 +92,7 @@ export {
   ExportDashboard,
   AnalyzeGap,
   CreateTestsFromGaps,
+  ExportBugsWithRunHistory,
   ExportGapReport,
   CreateSavedView,
   ListSavedViews,

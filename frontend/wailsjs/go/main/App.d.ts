@@ -111,6 +111,8 @@ export function EditTestStepField(arg1:string,arg2:string,arg3:string,arg4:strin
 
 export function ExcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
 
+export function ExportBugsWithRunHistory(arg1:string,arg2:Array<string>):Promise<string>;
+
 export function ExportDashboard(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function ExportDiagnostics():Promise<string>;
