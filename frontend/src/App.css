@@ -4907,6 +4907,11 @@ tr.row-checked:hover {
 .bugs-md-desc-toggle:hover {
   color: var(--text);
 }
+/* ContainerDetailPanel: description markdown section. */
+.container-detail-description {
+  margin-bottom: 1rem;
+}
+
 /* ContainerDetailPanel: run-status histogram chips. */
 .container-detail-run-counts {
   display: flex;

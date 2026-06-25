@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { GetContainerBoard, errMsg, BrowserOpenURL } from "../api";
 import type { TestPlanBoard } from "../api";
+import { Markdown } from "./Markdown";
 
 
 interface Props {
@@ -121,6 +122,13 @@ export function ContainerDetailPanel({ profileId, containerKey, kind, jiraUrl, o
         ) : (
           <>
             <h3>{board.summary || "(no summary)"}</h3>
+
+            {board.description && (
+              <div className="container-detail-description">
+                <h4>Description</h4>
+                <Markdown>{board.description}</Markdown>
+              </div>
+            )}
 
             {board.runCounts && board.runCounts.length > 0 && (
               <>
