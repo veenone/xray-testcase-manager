@@ -2310,6 +2310,26 @@ func (r *Repository) AllTestKeys(profileID string) ([]string, error) {
 	return out, rows.Err()
 }
 
+// AllContainerKeys returns every cached container key for a profile.
+// Used by the cross-project execution discovery pass to identify already-known
+// executions so newly discovered ones can be deduped.
+func (r *Repository) AllContainerKeys(profileID string) (map[string]bool, error) {
+	rows, err := r.db.Query(`SELECT jira_key FROM test_container WHERE profile_id = ?`, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("list container keys: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out[k] = true
+	}
+	return out, rows.Err()
+}
+
 // ListComponents returns the distinct Jira components across a profile's Tests
 // with a count each, sorted by name — the master list the group-by-component
 // sidebar draws from. Computed by scanning the components column (one cheap
