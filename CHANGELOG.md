@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [1.7.0a-2] - 2026-06-25 (alpha)
+
+Second alpha iteration of the 1.7.0 work: live-testing fixes and follow-on features on top of `1.7.0a`.
+
+### Added
+- **Import JUnit XML results.** Update a Test Execution's run results by importing a JUnit-compatible report, matching each `<testcase name>` to a test by summary. Import into the selected execution, or create a new Test Execution from the report (optionally creating tests it does not match). Queued as pending changes with a preview before commit.
+- **Per-test Fix Version on executions.** Each member shows its own Jira Fix Version(s) in a column; the execution's Fix Version chips filter the member list.
+- **Per-run timestamps.** Test runs carry created / updated timestamps; the run-history tables are sortable by result, created, or updated.
+- **Run history nested by Test Plan.** A bug's per-test run breakdown groups runs under each Test Plan and adds Created / Updated columns.
+- **Traceability detail.** The Requirement Sankey gains a Test column (requirement → coverage → plan → test → result); the Sub-task Sankey labels each parent with its summary.
+- **Test connection while editing a profile** using the stored token.
+
+### Changed
+- **Live Xray run data (Server/DC).** Test runs are fetched from the `testexec/{key}/test` endpoint (paginated); the Test Plan association is read from the execution issue; the execution's environment is stamped onto its runs. Verified against a live instance.
+- **Requirement test detail** opens as a right-side panel instead of a full-screen overlay.
+- **Bugs panel.** Scrollable list with a select-all checkbox, working rows-per-page (default 5), full-colour run-status highlighting, and a two-row header so the Sync button is not clipped.
+- **Clearer Jira errors.** A failed request surfaces the Jira error message instead of the raw query URL.
+
+### Fixed
+- Cross-project test detail no longer shows "test not found" — it falls back to a live fetch.
+- Bulk-operation modal dropdowns are no longer clipped by the modal bounds.
+- Pager Prev/Go/Next show a clear enabled vs disabled state in the Bugs view.
+- Stability: a panic-recovery safety net so a backend error surfaces as a message instead of terminating the app.
+
 ## [1.7.0a] - 2026-06-23 (alpha)
 
 Alpha build of the 1.7.0 work, for internal validation.
