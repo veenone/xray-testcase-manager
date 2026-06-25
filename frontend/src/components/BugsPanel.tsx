@@ -70,6 +70,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [pageSize, setPageSize] = useViewState(profileId, "bugs", "pageSize", 5);
   const [sortField, setSortField] = useViewState(profileId, "bugs", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "bugs", "sortDesc", true);
+  const [testFilter, setTestFilter] = useViewState<"all" | "with" | "without">(profileId, "bugs", "testFilter", "all");
   const [syncing, setSyncing] = useState(false);
   const { prompt, promptUI } = usePrompt();
   // Local refresh nonce: bumped after a bugs-only sync to re-pull the list
@@ -327,7 +328,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
 
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase();
-    const base = !f
+    const textFiltered = !f
       ? bugs
       : bugs.filter(
           (b) =>
@@ -336,13 +337,19 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
             b.projectKey.toLowerCase().includes(f) ||
             b.status.toLowerCase().includes(f),
         );
-    return [...base].sort((a, b) => applyDir(cmpBug(a, b, sortField), sortDesc));
-  }, [bugs, filter, sortField, sortDesc]);
+    const linkFiltered =
+      testFilter === "with"
+        ? textFiltered.filter((b) => b.testKeys.length > 0)
+        : testFilter === "without"
+          ? textFiltered.filter((b) => b.testKeys.length === 0)
+          : textFiltered;
+    return [...linkFiltered].sort((a, b) => applyDir(cmpBug(a, b, sortField), sortDesc));
+  }, [bugs, filter, testFilter, sortField, sortDesc]);
 
-  // Reset to the first page whenever the data source or the filter changes.
+  // Reset to the first page whenever the data source, filter, or test-linkage filter changes.
   useEffect(() => {
     setPage(0);
-  }, [profileId, refreshKey, filter, sortField, sortDesc]);
+  }, [profileId, refreshKey, filter, testFilter, sortField, sortDesc]);
 
   // Keep a valid selection: default to the first shown bug, and re-point when
   // the current one is filtered out.
@@ -492,20 +499,32 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <SortControl
-          fields={[
-            { value: "key", label: "Key" },
-            { value: "status", label: "Status" },
-            { value: "project", label: "Project" },
-            { value: "priority", label: "Priority" },
-          ]}
-          field={sortField}
-          desc={sortDesc}
-          onChange={(f, d) => {
-            setSortField(f);
-            setSortDesc(d);
-          }}
-        />
+        <div className="bugs-md-filter-row">
+          <SortControl
+            fields={[
+              { value: "key", label: "Key" },
+              { value: "status", label: "Status" },
+              { value: "project", label: "Project" },
+              { value: "priority", label: "Priority" },
+            ]}
+            field={sortField}
+            desc={sortDesc}
+            onChange={(f, d) => {
+              setSortField(f);
+              setSortDesc(d);
+            }}
+          />
+          <select
+            className="bugs-md-test-link-filter"
+            value={testFilter}
+            onChange={(e) => setTestFilter(e.target.value as "all" | "with" | "without")}
+            title="Filter by test linkage"
+          >
+            <option value="all">All bugs</option>
+            <option value="with">With tests</option>
+            <option value="without">Without tests</option>
+          </select>
+        </div>
         {shown.length === 0 ? (
           <p className="muted bugs-md-empty">
             {bugs.length === 0
@@ -558,8 +577,12 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                     {b.summary || "(no summary)"}
                   </div>
                   <div className="bugs-md-item-meta muted">
-                    {b.priority} · {b.testKeys.length} test
-                    {b.testKeys.length === 1 ? "" : "s"}
+                    {b.priority} ·{" "}
+                    {b.testKeys.length === 0 ? (
+                      <span className="bugs-md-no-tests">no tests</span>
+                    ) : (
+                      <span className="bugs-md-test-count">{b.testKeys.length} test{b.testKeys.length === 1 ? "" : "s"}</span>
+                    )}
                   </div>
                 </li>
               ))}

@@ -4814,6 +4814,47 @@ tr.row-checked:hover {
   margin-top: 8px;
   font-size: 12px;
 }
+/* Filter row: sort control + test-linkage select side by side. */
+.bugs-md-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.bugs-md-test-link-filter {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+/* Card meta badges: no-tests (amber/muted) and test-count (subtle). */
+.bugs-md-no-tests {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #fef3c7;
+  color: #92400e;
+  letter-spacing: 0.02em;
+}
+:root[data-theme="dark"] .bugs-md-no-tests {
+  background: #3a2a00;
+  color: #fcd34d;
+}
+.bugs-md-test-count {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
 /* ContainerDetailPanel: run-status histogram chips. */
 .container-detail-run-counts {
   display: flex;
