@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { GetContainerBoard, errMsg, BrowserOpenURL } from "../api";
 import type { TestPlanBoard } from "../api";
 
+
 interface Props {
   profileId: string;
   containerKey: string;
@@ -17,6 +18,37 @@ export function ContainerDetailPanel({ profileId, containerKey, kind, jiraUrl, o
   const [board, setBoard] = useState<TestPlanBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Resizeable panel width — shares the same localStorage key as TestDetail so
+  // all three sidebar panels (test case, Test Plan, Test Execution) open at the
+  // same persisted width and dragging one updates the others.
+  const [width, setWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem("xtm.detailWidth"));
+    return saved >= 320 && saved <= 900 ? saved : 440;
+  });
+  useEffect(() => {
+    localStorage.setItem("xtm.detailWidth", String(width));
+  }, [width]);
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    // The panel is anchored to the right, so dragging left (negative delta)
+    // widens it.
+    const onMove = (ev: MouseEvent) =>
+      setWidth(Math.min(900, Math.max(320, startW - (ev.clientX - startX))));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   const kindLabel = kind === "plan" ? "Test Plan" : "Test Execution";
   const isDemo = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
@@ -52,7 +84,12 @@ export function ContainerDetailPanel({ profileId, containerKey, kind, jiraUrl, o
   }
 
   return (
-    <div className="detail">
+    <div className="detail" style={{ width }}>
+      <div
+        className="detail-resizer"
+        onMouseDown={startResize}
+        title="Drag to resize"
+      />
       <div className="detail-head">
         <div className="detail-head-id">
           {canLink && !containerKey.startsWith("NEW-") ? (
