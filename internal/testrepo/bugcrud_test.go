@@ -104,6 +104,70 @@ func TestListTestsForBugReturnsAffectedTestsWithRunStatus(t *testing.T) {
 	}
 }
 
+// TestListTestsForBugLatestRunFromTestRun verifies that ListTestsForBug sets
+// RunStatus from the most recent run in test_run (not worst-wins from
+// test_container_test). Seeding an older FAIL run and a newer PASS run for the
+// same test, the method must return PASS.
+func TestListTestsForBugLatestRunFromTestRun(t *testing.T) {
+	repo := newRepo(t)
+
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-1", ID: "1", Summary: "Login"},
+	}); err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	if err := repo.ReplaceAllBugs("p1", []testrepo.Bug{
+		{Key: "BUGS-1", ProjectKey: "BUGS", IssueType: "Bug", Summary: "crash", Status: "Open"},
+	}); err != nil {
+		t.Fatalf("seed bug: %v", err)
+	}
+	if err := repo.ReplaceAllBugLinks("p1", []testrepo.BugLink{
+		{TestKey: "QA-1", BugKey: "BUGS-1", LinkID: "1"},
+	}); err != nil {
+		t.Fatalf("seed link: %v", err)
+	}
+
+	// Seed two executions.
+	if err := repo.UpsertContainers("p1", []testrepo.Container{
+		{Key: "QA-TE-1", Kind: "testexec", Summary: "Cycle 1"},
+		{Key: "QA-TE-2", Kind: "testexec", Summary: "Cycle 2"},
+	}); err != nil {
+		t.Fatalf("seed execs: %v", err)
+	}
+
+	// Seed test_run rows: older FAIL (TE-1), newer PASS (TE-2).
+	// finished_at drives the sort; TE-2 is more recent.
+	if err := repo.ReplaceRunsForExec("p1", "QA-TE-1", []testrepo.TestRunRow{
+		{
+			ExecKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "FAIL",
+			FinishedAt: "2024-01-01T10:00:00Z", UpdatedAt: "2024-01-01T10:00:00Z",
+		},
+	}); err != nil {
+		t.Fatalf("seed runs TE-1: %v", err)
+	}
+	if err := repo.ReplaceRunsForExec("p1", "QA-TE-2", []testrepo.TestRunRow{
+		{
+			ExecKey: "QA-TE-2", TestKey: "QA-1", RunStatus: "PASS",
+			FinishedAt: "2024-02-01T10:00:00Z", UpdatedAt: "2024-02-01T10:00:00Z",
+		},
+	}); err != nil {
+		t.Fatalf("seed runs TE-2: %v", err)
+	}
+
+	tests, err := repo.ListTestsForBug("p1", "BUGS-1")
+	if err != nil {
+		t.Fatalf("ListTestsForBug: %v", err)
+	}
+	if len(tests) != 1 {
+		t.Fatalf("expected 1 affected test, got %d", len(tests))
+	}
+	// Most recent run is PASS (TE-2, finished 2024-02-01); must NOT return
+	// worst-wins FAIL.
+	if tests[0].RunStatus != "PASS" {
+		t.Errorf("RunStatus = %q, want PASS (most recent run)", tests[0].RunStatus)
+	}
+}
+
 func TestCreateBugForTestQueuesAndDiscardRestores(t *testing.T) {
 	repo := newRepo(t)
 	if err := repo.UpsertTests("p1", []testrepo.TestCase{{Key: "QA-1", ID: "1", Summary: "Login"}}); err != nil {
