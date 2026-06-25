@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [1.7.0a-3] - 2026-06-25 (alpha)
+
+Third alpha iteration of the 1.7.0 work: Bugs-view improvements and fixes from live testing.
+
+### Added
+- **Bug detail panel.** Selecting a bug now shows a structured detail card above the affected tests: key, status, summary, a two-column facts grid (Type / Project / Priority / Updated / Reporter / Severity / Affects), and the bug **Description** (collapsible, collapsed by default), **Defect Origin**, **Defect Analysis**, and **Correction Details** (fetched lazily on selection).
+- **Dynamic right sidebar.** The bug-view side panel is a placeholder for a test, a Test Plan, or a Test Execution: the affected-test open icon shows the test; the run-history **Plan** and **Execution** links open that container's detail (summary, run-status histogram, members) in the sidebar. The panel is width-resizable and all three share one persisted width.
+- **Bug list test-linkage filter.** Filter bugs by All / With tests / Without tests, with a per-card cue (a test-count badge, or a "no tests" chip).
+
+### Changed
+- **Bug sync fetches ALL bugs in the project.** Previously only bugs linked to a synced test were found; the sync now also runs a project-wide `project = <bugProject> AND issuetype = <type>` search and merges it with the test-link harvest, so unlinked project bugs appear too.
+
+### Fixed
+- Bug list (and the Containers Test Execution / Plan / Set member lists) now scroll with the pager pinned, instead of the list growing unbounded with a hidden scrollbar.
+- Bug card status pills no longer overlap the card (wider list, wrapping layout).
+
 ## [1.7.0a-2] - 2026-06-25 (alpha)
 
 Second alpha iteration of the 1.7.0 work: live-testing fixes and follow-on features on top of `1.7.0a`.
