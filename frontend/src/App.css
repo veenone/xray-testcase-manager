@@ -603,6 +603,35 @@
   background: var(--surface-2, #1e2535);
 }
 
+/* Sub-task execution badge (Bugs panel run-history breakdown). */
+.exec-subtask-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+  white-space: nowrap;
+}
+
+/* Parent-issue line for sub-task executions (Bugs panel run-history breakdown). */
+.exec-parent-line {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.88em;
+  color: var(--text-muted);
+}
+.exec-parent-label {
+  font-variant-numeric: tabular-nums;
+}
+.exec-parent-summary {
+  font-style: italic;
+}
+
 /* Editable run-result select (Test Execution board) — full-colour highlight
    matching the run-badge palette so statuses are easy to scan at a glance. */
 .run-select {

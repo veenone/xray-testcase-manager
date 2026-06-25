@@ -819,22 +819,54 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                     })),
                                     ...(hasNoPlan ? [{ planKey: null, runs: history.filter(r => !r.planKeys?.length) }] : []),
                                   ];
-                                  const RunRow = ({ r, i }: { r: typeof history[0]; i: number }) => (
+                                  const RunRow = ({ r, i }: { r: typeof history[0]; i: number }) => {
+                                    const isSubTask = !!r.execParentKey;
+                                    const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
+                                    return (
                                     <tr key={`${r.execKey}-${i}`}>
                                       <td>
-                                        {r.execKey ? (
-                                          <button
-                                            className="mono bug-link-key"
-                                            onClick={() => setSidebarDetail({ kind: "exec", key: r.execKey })}
-                                            title={`Open Test Execution ${r.execKey}`}
-                                          >
-                                            {r.execKey}
-                                          </button>
-                                        ) : (
-                                          <span className="muted">—</span>
-                                        )}
+                                        <span style={{ display: "flex", alignItems: "baseline", gap: "0.35em", flexWrap: "wrap" }}>
+                                          {r.execKey ? (
+                                            <button
+                                              className="mono bug-link-key"
+                                              onClick={() => setSidebarDetail({ kind: "exec", key: r.execKey })}
+                                              title={`Open Test Execution ${r.execKey}`}
+                                            >
+                                              {r.execKey}
+                                            </button>
+                                          ) : (
+                                            <span className="muted">—</span>
+                                          )}
+                                          {isSubTask && (
+                                            <span
+                                              className="exec-subtask-badge"
+                                              title={r.execIssueType || "Sub Test Execution"}
+                                            >
+                                              Sub-task
+                                            </span>
+                                          )}
+                                        </span>
                                         {r.execSummary && (
                                           <span className="muted" style={{ display: "block", fontSize: "0.9em" }}>{r.execSummary}</span>
+                                        )}
+                                        {isSubTask && (
+                                          <span className="exec-parent-line">
+                                            <span className="exec-parent-label">↳ Parent:</span>{" "}
+                                            {canLink && !r.execParentKey.startsWith("NEW-") ? (
+                                              <button
+                                                className="mono bug-link-key"
+                                                onClick={() => BrowserOpenURL(`${base}/browse/${r.execParentKey}`)}
+                                                title={`Open ${r.execParentKey} in Jira`}
+                                              >
+                                                {r.execParentKey}
+                                              </button>
+                                            ) : (
+                                              <span className="mono">{r.execParentKey}</span>
+                                            )}
+                                            {r.execParentSummary && (
+                                              <span className="muted exec-parent-summary"> — {r.execParentSummary}</span>
+                                            )}
+                                          </span>
                                         )}
                                       </td>
                                       <td>
@@ -879,6 +911,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                       </td>
                                     </tr>
                                   );
+                                  };
                                   return (
                                     <table className="board-table" style={{ fontSize: "0.85em" }}>
                                       <thead>
