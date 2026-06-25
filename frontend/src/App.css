@@ -4612,7 +4612,7 @@ tr.row-checked:hover {
 .bugs-md {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(280px, 360px) 1fr;
+  grid-template-columns: minmax(320px, 420px) 1fr;
   gap: 18px;
   width: 100%;
   min-height: 0;
@@ -4622,7 +4622,7 @@ tr.row-checked:hover {
    right (sized to the detail panel's own width) so the test detail sits beside
    the center bug detail instead of wrapping below it. */
 .bugs-md-with-detail {
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) auto;
 }
 .bugs-md-with-detail .detail {
   position: relative;
@@ -4702,8 +4702,11 @@ tr.row-checked:hover {
 .bugs-md-item-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.bugs-md-item-top .status-pill {
+  margin-left: auto;
 }
 .bugs-md-check {
   margin: 0;
