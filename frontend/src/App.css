@@ -4766,6 +4766,25 @@ tr.row-checked:hover {
   font-weight: 600;
   margin: 0 0 14px;
 }
+/* Bug detail card: structured field block shown above the affected-tests table. */
+.bugs-md-detail-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2, var(--surface));
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.bugs-md-detail-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.bugs-md-detail-fields {
+  margin: 8px 0 0;
+  row-gap: 5px;
+}
 .sort-control {
   display: inline-flex;
   align-items: center;

@@ -541,29 +541,49 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           <p className="muted">Select a bug to see its details.</p>
         ) : (
           <>
-            <div className="bugs-md-detail-head">
-              {canLink && !sel.key.startsWith("NEW-") ? (
-                <button
-                  className="mono bug-link-key bugs-md-detail-key"
-                  onClick={() => openBug(sel.key)}
-                  title={`Open ${sel.key} in Jira`}
-                >
-                  {sel.key}
-                </button>
-              ) : (
-                <span className="mono bugs-md-detail-key">{sel.key}</span>
-              )}
-              <span className="muted">{sel.projectKey}</span>
-              {sel.status && <span className="status-pill">{sel.status}</span>}
-              {sel.priority && (
-                <span className="muted bugs-md-detail-priority">
-                  {sel.priority}
-                </span>
-              )}
+            <div className="bugs-md-detail-card">
+              <div className="bugs-md-detail-card-header">
+                {canLink && !sel.key.startsWith("NEW-") ? (
+                  <button
+                    className="mono bug-link-key bugs-md-detail-key"
+                    onClick={() => openBug(sel.key)}
+                    title={`Open ${sel.key} in Jira`}
+                  >
+                    {sel.key}
+                  </button>
+                ) : (
+                  <span className="mono bugs-md-detail-key">{sel.key}</span>
+                )}
+                {sel.status && <span className="status-pill">{sel.status}</span>}
+              </div>
+              <h2 className="bugs-md-detail-summary">
+                {sel.summary || "(no summary)"}
+              </h2>
+              <dl className="detail-fields bugs-md-detail-fields">
+                {sel.issueType && (
+                  <>
+                    <dt>Type</dt>
+                    <dd>{sel.issueType}</dd>
+                  </>
+                )}
+                <dt>Project</dt>
+                <dd className="mono">{sel.projectKey}</dd>
+                {sel.priority && (
+                  <>
+                    <dt>Priority</dt>
+                    <dd>{sel.priority}</dd>
+                  </>
+                )}
+                {sel.updated && (
+                  <>
+                    <dt>Updated</dt>
+                    <dd className="muted">{formatDateTime(sel.updated)}</dd>
+                  </>
+                )}
+                <dt>Affects</dt>
+                <dd>{sel.testKeys.length} test{sel.testKeys.length === 1 ? "" : "s"}</dd>
+              </dl>
             </div>
-            <h2 className="bugs-md-detail-summary">
-              {sel.summary || "(no summary)"}
-            </h2>
 
             <h4>Affected tests ({tests.length})</h4>
             {tests.length === 0 ? (
