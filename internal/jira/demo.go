@@ -656,6 +656,65 @@ const demoExternalMembers = 4
 // ListTestsBasic demo path so they agree on the foreign member keys.
 const demoCrossProjectKey = "XRAYINT"
 
+// demoCrossProjectSubExecKey is the key of the cross-project sub-task Test
+// Execution seeded for the per-test discovery path. It lives in the
+// demoCrossProjectKey (XRAYINT) project, which is a different project from the
+// profile's test project (e.g. DEMO). This execution is NOT returned by
+// demoContainersAndLinks("DEMO") -- it is discoverable only via
+// TestExecutionsForTest, matching the live scenario where a sub-task exec in
+// another project runs this project's tests but is invisible to the project-
+// scoped container search.
+//
+// Member rule: DEMO test at index i (0-based) is a member when i%11 == 0.
+// This is distinct from the 5th (sub-task) and 7th (cross-project TE) rules
+// already in demoContainersAndLinks so the three populations do not collide,
+// keeping test counts deterministic and easy to verify.
+const demoCrossProjectSubExecKey = demoCrossProjectKey + "-STE-1"
+
+// demoCrossProjectSubExecMember reports whether the DEMO test at 0-based
+// index i is a member of the cross-project sub-task execution.
+func demoCrossProjectSubExecMember(i int) bool { return i%11 == 0 }
+
+// demoCrossProjectSubExec is the Container descriptor for the cross-project
+// sub-task Test Execution seeded by the per-test discovery path. It is a
+// Kind=testexec sub-task (IssueType "Sub Test Execution") whose parent is a
+// story in the XRAYINT project, and which runs some of the profile project's
+// tests.
+func demoCrossProjectSubExec() Container {
+	return Container{
+		Key:           demoCrossProjectSubExecKey,
+		Kind:          KindTestExec,
+		Summary:       "Cross-project sub-execution",
+		Status:        "In Progress",
+		ParentKey:     demoCrossProjectKey + "-S-1",
+		ParentSummary: "Cross-project story 1",
+		IssueType:     "Sub Test Execution",
+		Environments:  []string{"Staging"},
+		FixVersions:   []string{"1.5.0"},
+	}
+}
+
+// demoTestExecutionsForTest returns the Containers and ContainerLinks that
+// TestExecutionsForTest should return for a given test key in demo mode.
+// Only tests that match the demoCrossProjectSubExecMember rule (i%11 == 0)
+// are members of the cross-project sub-task execution; all others return empty.
+//
+// The project key is inferred from the test key prefix so the rule works for
+// any demo project (DEMO-11, QA-11, etc.).
+func demoTestExecutionsForTest(testKey string) ([]Container, []ContainerLink) {
+	idx := demoKeyIndex(testKey)
+	if idx < 0 || !demoCrossProjectSubExecMember(idx) {
+		return []Container{}, []ContainerLink{}
+	}
+	exec := demoCrossProjectSubExec()
+	link := ContainerLink{
+		ContainerKey: demoCrossProjectSubExecKey,
+		TestKey:      testKey,
+		RunStatus:    demoRunStatuses[(idx+3)%len(demoRunStatuses)],
+	}
+	return []Container{exec}, []ContainerLink{link}
+}
+
 // demoCrossProjectBug is the demo defect reached only through a cross-project
 // member Test of the demo *-TE-XPROJ execution (#219). It lives in a defect
 // project (distinct from the foreign member's project) and is linked to no
