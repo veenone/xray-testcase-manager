@@ -134,6 +134,13 @@ func TestBuildBugExportWorkbook(t *testing.T) {
 	if safeIdx(test2Row, 1) != "QA-2" {
 		t.Errorf("row 5 Key = %q, want QA-2", safeIdx(test2Row, 1))
 	}
+	level, err = f.GetRowOutlineLevel("Bug Report", 5)
+	if err != nil {
+		t.Fatalf("GetRowOutlineLevel row 5: %v", err)
+	}
+	if level != 1 {
+		t.Errorf("row 5 outline level = %d, want 1", level)
+	}
 
 	// Row 6 = no-run execution row (outline level 2).
 	noRunRow := rows[5]
