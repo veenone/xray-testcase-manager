@@ -1,5 +1,23 @@
 export namespace jira {
 	
+	export class BugDetail {
+	    description: string;
+	    defectOrigin: string;
+	    defectAnalysis: string;
+	    correctionDetails: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BugDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.description = source["description"];
+	        this.defectOrigin = source["defectOrigin"];
+	        this.defectAnalysis = source["defectAnalysis"];
+	        this.correctionDetails = source["correctionDetails"];
+	    }
+	}
 	export class TestMeta {
 	    created: string;
 	    creator: string;

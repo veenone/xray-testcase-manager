@@ -619,6 +619,33 @@ func (a *App) SyncBugs(profileID string) error {
 	})
 }
 
+// GetBugDetail fetches the extended fields for a defect issue: description,
+// Defect Origin, Defect Analysis, and Correction Details. These are not cached
+// locally (the bug table only holds summary/status/priority); they are fetched
+// lazily on detail-panel open, mirroring GetTestMeta / GetTestCustomFields.
+//
+// Returns an empty BugDetail without a network call when bugKey looks like a
+// locally-created (not-yet-committed) issue.
+func (a *App) GetBugDetail(profileID, bugKey string) (jira.BugDetail, error) {
+	if err := a.requireStore(); err != nil {
+		return jira.BugDetail{}, err
+	}
+	// Local / not-yet-committed bug keys carry a "NEW-" prefix and have no Jira
+	// issue yet.
+	if strings.HasPrefix(bugKey, "NEW-") {
+		return jira.BugDetail{}, nil
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return jira.BugDetail{}, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return jira.BugDetail{}, fmt.Errorf("load credentials: %w", err)
+	}
+	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetBugDetail(a.ctx, bugKey)
+}
+
 // SyncTestCalls refreshes the "call test" relationships by re-pulling steps for
 // every test currently known to call another (RND_P_4TFINT_05-207), without a
 // full profile sync. It catches calls added, removed or retargeted on those

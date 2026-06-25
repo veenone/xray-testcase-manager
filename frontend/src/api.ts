@@ -141,6 +141,7 @@ export {
   ExcludeFromDuplicates,
   UnexcludeFromDuplicates,
   CreateBugForTest,
+  GetBugDetail,
   ListBugsWithTests,
   ListBugsForContainer,
   GetTestBugs,
@@ -759,6 +760,15 @@ export interface SankeyLink {
 export interface Sankey {
   nodes: SankeyNode[];
   links: SankeyLink[];
+}
+
+// BugDetail mirrors jira.BugDetail - the extended fields for a defect issue
+// fetched lazily on detail-panel open (description + three custom fields).
+export interface BugDetail {
+  description: string;
+  defectOrigin: string;
+  defectAnalysis: string;
+  correctionDetails: string;
 }
 
 // Bug mirrors testrepo.Bug - a cached defect issue (possibly cross-project)

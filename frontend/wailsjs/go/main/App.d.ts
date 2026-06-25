@@ -4,8 +4,8 @@ import {testrepo} from '../models';
 import {main} from '../models';
 import {syncer} from '../models';
 import {profile} from '../models';
-import {settings} from '../models';
 import {jira} from '../models';
+import {settings} from '../models';
 
 export function AddCalledTestStep(arg1:string,arg2:string,arg3:string):Promise<testrepo.Step>;
 
@@ -132,6 +132,8 @@ export function ExportSummaryTemplate():Promise<string>;
 export function ExportTests(arg1:string,arg2:testrepo.Query):Promise<string>;
 
 export function ExportTraceability(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<string>,arg5:boolean,arg6:Array<string>,arg7:Array<string>):Promise<string>;
+
+export function GetBugDetail(arg1:string,arg2:string):Promise<jira.BugDetail>;
 
 export function GetBulkTransitionOptions(arg1:string,arg2:Array<string>):Promise<main.BulkTransitionOptions>;
 

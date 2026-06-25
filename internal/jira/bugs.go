@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -496,4 +497,229 @@ func demoBugs(testProjectKey string, scope []string) ([]Bug, []BugLink) {
 	}
 
 	return bugs, links
+}
+
+// BugDetail holds the extended fields for a defect issue fetched lazily on
+// detail-panel open (description plus three instance-specific custom fields).
+type BugDetail struct {
+	Description       string `json:"description"`
+	DefectOrigin      string `json:"defectOrigin"`
+	DefectAnalysis    string `json:"defectAnalysis"`
+	CorrectionDetails string `json:"correctionDetails"`
+}
+
+// demoBugDetailOrigins is the pool of Defect Origin values cycled by a simple
+// hash of the bug key, so the demo returns a deterministic value per key.
+var demoBugDetailOrigins = []string{"Code", "Design", "Requirements", "Test"}
+
+// GetBugDetail fetches the extended fields for a defect issue: description and
+// three instance-specific custom fields (Defect Origin, Defect Analysis,
+// Correction Details). Called lazily on detail-panel open so the bulk sync
+// does not pay per-bug round-trip costs.
+//
+// Demo mode: returns a deterministic sample derived from bugKey without any
+// network call.
+//
+// NOTE(xtm): the three custom field display names ("Defect Origin", "Defect
+// Analysis", "Correction Details") are instance-specific and must be verified
+// and adjusted against the live Xray Server/DC 8.4.0 instance. The fields
+// may not exist on every Jira project; resolveCustomFieldID returns "" (no
+// error) when a field is absent, and that field is simply omitted from the
+// request.
+func (c *Client) GetBugDetail(ctx context.Context, bugKey string) (BugDetail, error) {
+	if isDemoURL(c.baseURL) {
+		// Deterministic hash of the key for the origin cycle.
+		h := 0
+		for _, ch := range bugKey {
+			h = h*31 + int(ch)
+		}
+		if h < 0 {
+			h = -h
+		}
+		origin := demoBugDetailOrigins[h%len(demoBugDetailOrigins)]
+		return BugDetail{
+			Description:       "Steps to reproduce: open the affected screen and trigger the failure condition described in the summary.",
+			DefectOrigin:      origin,
+			DefectAnalysis:    "Root cause: the logic at the point of failure does not handle the edge case introduced by the reported scenario.",
+			CorrectionDetails: "Fixed in the next patch: the guard condition was added and the relevant unit test updated.",
+		}, nil
+	}
+
+	// Resolve the three custom field ids by display name; each may be "" when the
+	// instance does not define that field.
+	originID, err := c.resolveCustomFieldID(ctx, "Defect Origin")
+	if err != nil {
+		return BugDetail{}, fmt.Errorf("resolve Defect Origin field: %w", err)
+	}
+	analysisID, err := c.resolveCustomFieldID(ctx, "Defect Analysis")
+	if err != nil {
+		return BugDetail{}, fmt.Errorf("resolve Defect Analysis field: %w", err)
+	}
+	correctionID, err := c.resolveCustomFieldID(ctx, "Correction Details")
+	if err != nil {
+		return BugDetail{}, fmt.Errorf("resolve Correction Details field: %w", err)
+	}
+
+	// Build the fields parameter: description is always included; custom field
+	// ids are added only when the instance defines them.
+	fieldParts := []string{"description"}
+	for _, id := range []string{originID, analysisID, correctionID} {
+		if id != "" {
+			fieldParts = append(fieldParts, id)
+		}
+	}
+	q := url.Values{}
+	q.Set("fields", strings.Join(fieldParts, ","))
+
+	var resp struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	if err := c.get(ctx, "/rest/api/2/issue/"+bugKey+"?"+q.Encode(), &resp); err != nil {
+		return BugDetail{}, err
+	}
+
+	rawStr := func(raw json.RawMessage) string {
+		if len(raw) == 0 {
+			return ""
+		}
+		// description in Jira DC REST v2 is a plain string.
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			return s
+		}
+		return stringifyFieldValue(raw)
+	}
+
+	var detail BugDetail
+	if raw, ok := resp.Fields["description"]; ok {
+		detail.Description = rawStr(raw)
+	}
+	if originID != "" {
+		if raw, ok := resp.Fields[originID]; ok {
+			detail.DefectOrigin = stringifyFieldValue(raw)
+		}
+	}
+	if analysisID != "" {
+		if raw, ok := resp.Fields[analysisID]; ok {
+			detail.DefectAnalysis = stringifyFieldValue(raw)
+		}
+	}
+	if correctionID != "" {
+		if raw, ok := resp.Fields[correctionID]; ok {
+			detail.CorrectionDetails = stringifyFieldValue(raw)
+		}
+	}
+	return detail, nil
+}
+
+// projectBugSearchResponse is the /rest/api/2/search payload for the
+// project-wide bug search.
+type projectBugSearchResponse struct {
+	Total  int                `json:"total"`
+	Issues []projectBugIssue  `json:"issues"`
+}
+
+// projectBugIssue is one issue returned by the project-wide bug search.
+type projectBugIssue struct {
+	Key    string           `json:"key"`
+	Fields projectBugFields `json:"fields"`
+}
+
+// projectBugFields holds the fields we request for a project-wide bug search.
+type projectBugFields struct {
+	Summary   string    `json:"summary"`
+	Status    *nameOnly `json:"status"`
+	Priority  *nameOnly `json:"priority"`
+	IssueType *nameOnly `json:"issuetype"`
+	Project   struct {
+		Key string `json:"key"`
+	} `json:"project"`
+	Updated string `json:"updated"`
+}
+
+// ListProjectBugs returns all defect issues in projKey whose issuetype
+// matches issueType (case-insensitive). Paginated with maxResults=100.
+//
+// Demo mode: returns the full demo bug set (deduped by key) regardless of
+// projKey, so the demo shows a sensible set of bugs without needing
+// project-specific seeding.
+//
+// Live path: issues a paginated JQL search
+//
+//	project = "<projKey>" AND issuetype = "<issueType>" ORDER BY key ASC
+//
+// with fields=summary,status,priority,issuetype,project,updated. Best-effort:
+// a 400 response logs and returns whatever has been accumulated so far.
+//
+// NOTE(xtm): the field names and Jira DC pagination behavior follow Jira DC
+// conventions and need live verification against the Xray Server/DC 8.4.0
+// instance. If a project key or issuetype name differs from the configured
+// value the JQL will return 0 results (not an error).
+func (c *Client) ListProjectBugs(ctx context.Context, projKey, issueType string) ([]Bug, error) {
+	if isDemoURL(c.baseURL) {
+		// Return the full demo bug set deduped by key.
+		allBugs, _ := demoBugs("", nil)
+		seen := map[string]struct{}{}
+		out := make([]Bug, 0, len(allBugs))
+		for _, b := range allBugs {
+			if _, dup := seen[b.Key]; dup {
+				continue
+			}
+			seen[b.Key] = struct{}{}
+			out = append(out, b)
+		}
+		return out, nil
+	}
+
+	if strings.TrimSpace(issueType) == "" {
+		issueType = "Bug"
+	}
+	jql := fmt.Sprintf(`project = "%s" AND issuetype = "%s" ORDER BY key ASC`,
+		strings.ReplaceAll(projKey, `"`, `\"`),
+		strings.ReplaceAll(issueType, `"`, `\"`))
+
+	out := []Bug{}
+	startAt := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		q := url.Values{}
+		q.Set("jql", jql)
+		q.Set("startAt", strconv.Itoa(startAt))
+		q.Set("maxResults", "100")
+		q.Set("fields", "summary,status,priority,issuetype,project,updated")
+
+		var resp projectBugSearchResponse
+		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
+			var he *HTTPError
+			if errors.As(err, &he) && he.Code == http.StatusBadRequest {
+				log.Printf("xtm: project bug search rejected (project=%s, issuetype=%s): %v",
+					projKey, issueType, err)
+				return out, nil
+			}
+			return out, err
+		}
+		for _, iss := range resp.Issues {
+			pk := iss.Fields.Project.Key
+			if pk == "" {
+				pk = bugProjectKey(iss.Key)
+			}
+			out = append(out, Bug{
+				Key:        iss.Key,
+				ProjectKey: pk,
+				IssueType:  iss.Fields.IssueType.nameOr(),
+				Summary:    iss.Fields.Summary,
+				Status:     iss.Fields.Status.nameOr(),
+				Priority:   iss.Fields.Priority.nameOr(),
+				Updated:    iss.Fields.Updated,
+			})
+		}
+		startAt += len(resp.Issues)
+		if len(resp.Issues) == 0 || startAt >= resp.Total {
+			break
+		}
+		time.Sleep(throttleContainers)
+	}
+	return out, nil
 }
