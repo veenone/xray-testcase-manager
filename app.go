@@ -2747,10 +2747,13 @@ func (a *App) ExportBugsWithRunHistory(profileID string, bugKeys []string) (stri
 			ex.Severity = detail.Severity
 		}
 
+		// A failure here drops only the affected-test rows: the bug still appears
+		// in the "Bugs" sheet (with its cached fields and a zero affected count)
+		// rather than vanishing from the export entirely.
 		affectedTests, tErr := a.repo.ListTestsForBug(profileID, key)
 		if tErr != nil {
-			log.Printf("xtm: ExportBugsWithRunHistory: list affected tests %s: %v (skipping)", key, tErr)
-			continue
+			log.Printf("xtm: ExportBugsWithRunHistory: list affected tests %s: %v (bug exported without test rows)", key, tErr)
+			affectedTests = nil
 		}
 		ex.AffectedTests = affectedTests
 
