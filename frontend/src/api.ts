@@ -838,6 +838,12 @@ export interface TestRunEntry {
   defects: string[];
   createdAt: string;
   updatedAt: string;
+  // execIssueType is the execution's Jira issue type ("Test Execution" or "Sub
+  // Test Execution"); execParentKey / execParentSummary identify a sub-task
+  // execution's parent issue (empty for standalone executions).
+  execIssueType: string;
+  execParentKey: string;
+  execParentSummary: string;
 }
 
 // RunRollup mirrors testrepo.RunRollup — run-result roll-up for a Test Plan or

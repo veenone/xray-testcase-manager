@@ -1883,6 +1883,9 @@ export namespace testrepo {
 	    defects: string[];
 	    createdAt: string;
 	    updatedAt: string;
+	    execIssueType: string;
+	    execParentKey: string;
+	    execParentSummary: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TestRunEntry(source);
@@ -1902,6 +1905,9 @@ export namespace testrepo {
 	        this.defects = source["defects"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
+	        this.execIssueType = source["execIssueType"];
+	        this.execParentKey = source["execParentKey"];
+	        this.execParentSummary = source["execParentSummary"];
 	    }
 	}
 
