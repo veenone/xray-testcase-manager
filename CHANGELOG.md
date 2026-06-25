@@ -16,10 +16,16 @@ Fourth alpha iteration of the 1.7.0 work: Bugs-view improvements, plus sub-task 
 - **Bug list test-linkage filter.** Filter bugs by All / With tests / Without tests, with a per-card cue (a test-count badge, or a "no tests" chip).
 - **Sub-task executions in the run-history breakdown.** A test's run history and the bug breakdown now distinguish **Sub Test Executions** from standalone ones with a "Sub-task" badge and a link to the parent issue.
 - **Cross-project execution discovery.** Executions that live in another project (notably sub-task executions, which inherit their parent issue's project) are now discovered per test and cached, both during a full sync and lazily when a test's run history is opened, so their runs appear in the breakdown.
+- **Export bugs to Excel.** An "Export to Excel" action in the Bugs toolbar exports the checked bugs (or the open bug) to an XLSX workbook with two sheets: a "Bugs" sheet (one row per bug with all detail fields) and a "Run History" sheet (one row per affected-test run, including execution type and sub-task parent).
 
 ### Changed
 - **Bug sync fetches ALL bugs in the project.** Previously only bugs linked to a synced test were found; the sync now also runs a project-wide `project = <bugProject> AND issuetype = <type>` search and merges it with the test-link harvest, so unlinked project bugs appear too.
 - **Sub-task Test Execution issue type is discovered from the instance** (it defaults to "Sub Test Execution" but can be renamed / localised), instead of a hardcoded name that silently missed renamed types.
+- **The Bugs-view sync also refreshes affected-test run data.** Clicking Sync in the Bugs view now refreshes the run/execution data for every bug-affected test (including newly discovered cross-project and sub-task executions), so the run-history breakdown updates without needing a full project sync.
+
+### Fixed
+- **"Latest result" now matches the run history.** The affected-tests "Latest result" reads the most recent run from the run table (the same source as the breakdown), falling back to the consolidated membership status, instead of a worst-wins value that could disagree with the runs shown.
+- **Removed the empty Created / Updated columns** from the run-history breakdown (the live Xray run endpoint does not return those timestamps, so they were always blank and redundant with the run Date). The Date column is now sortable and defaults to newest-first.
 
 ### Fixed
 - Bug list (and the Containers Test Execution / Plan / Set member lists) now scroll with the pager pinned, instead of the list growing unbounded with a hidden scrollbar.
