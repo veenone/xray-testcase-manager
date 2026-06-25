@@ -628,6 +628,7 @@ export namespace testrepo {
 	    created: string;
 	    updated: string;
 	    resolved: string;
+	    description: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Container(source);
@@ -647,6 +648,7 @@ export namespace testrepo {
 	        this.created = source["created"];
 	        this.updated = source["updated"];
 	        this.resolved = source["resolved"];
+	        this.description = source["description"];
 	    }
 	}
 	export class ContainerMembership {
@@ -1842,6 +1844,7 @@ export namespace testrepo {
 	export class TestPlanBoard {
 	    key: string;
 	    summary: string;
+	    description: string;
 	    rows: TestPlanBoardRow[];
 	    runCounts: Bucket[];
 	
@@ -1853,6 +1856,7 @@ export namespace testrepo {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
 	        this.summary = source["summary"];
+	        this.description = source["description"];
 	        this.rows = this.convertValues(source["rows"], TestPlanBoardRow);
 	        this.runCounts = this.convertValues(source["runCounts"], Bucket);
 	    }

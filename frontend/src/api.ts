@@ -375,6 +375,7 @@ export interface Container {
   issueType: string;  // Jira issuetype name (e.g. "Sub Test Execution"); informational
   environments: string[]; // Xray Test Environments (Test Executions only; empty otherwise)
   fixVersions: string[]; // Jira Fix Version(s), read-only (Test Executions only; empty otherwise)
+  description: string;  // Jira issue description (plain text)
 }
 
 // AllocateResult mirrors testrepo.AllocateResult — the outcome of a bulk
@@ -425,6 +426,7 @@ export interface TestPlanBoardRow {
 export interface TestPlanBoard {
   key: string;
   summary: string;
+  description: string;
   rows: TestPlanBoardRow[];
   runCounts: Bucket[];
 }
