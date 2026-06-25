@@ -162,3 +162,38 @@ func TestRenameBugRepointsCacheAndLinks(t *testing.T) {
 		t.Errorf("after rename = %+v, want QA-500", bugs)
 	}
 }
+
+func TestListBugsWithTestsExposesIssueTypeAndUpdated(t *testing.T) {
+	repo := newRepo(t)
+	if err := repo.ReplaceAllBugs("p1", []testrepo.Bug{
+		{Key: "BUGS-1", ProjectKey: "BUGS", IssueType: "Defect", Summary: "crash", Status: "Open", Priority: "High", Updated: "2024-01-15T10:00:00.000+0000"},
+	}); err != nil {
+		t.Fatalf("seed bug: %v", err)
+	}
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{{Key: "QA-1", ID: "1"}}); err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	if err := repo.ReplaceAllBugLinks("p1", []testrepo.BugLink{
+		{TestKey: "QA-1", BugKey: "BUGS-1", LinkID: "1"},
+	}); err != nil {
+		t.Fatalf("seed link: %v", err)
+	}
+
+	bugs, err := repo.ListBugsWithTests("p1")
+	if err != nil {
+		t.Fatalf("ListBugsWithTests: %v", err)
+	}
+	if len(bugs) != 1 {
+		t.Fatalf("len = %d, want 1", len(bugs))
+	}
+	b := bugs[0]
+	if b.IssueType != "Defect" {
+		t.Errorf("IssueType = %q, want Defect", b.IssueType)
+	}
+	if b.Updated != "2024-01-15T10:00:00.000+0000" {
+		t.Errorf("Updated = %q, want 2024-01-15T10:00:00.000+0000", b.Updated)
+	}
+	if len(b.TestKeys) != 1 || b.TestKeys[0] != "QA-1" {
+		t.Errorf("TestKeys = %v, want [QA-1]", b.TestKeys)
+	}
+}

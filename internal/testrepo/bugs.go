@@ -27,10 +27,14 @@ type BugLink struct {
 type BugWithTests struct {
 	Key        string   `json:"key"`
 	ProjectKey string   `json:"projectKey"`
+	// IssueType is the Jira issue type of the bug (e.g. "Bug", "Defect").
+	IssueType string   `json:"issueType"`
 	Summary    string   `json:"summary"`
 	Status     string   `json:"status"`
 	Priority   string   `json:"priority"`
-	TestKeys   []string `json:"testKeys"`
+	// Updated is the Jira last-updated timestamp for the bug issue.
+	Updated  string   `json:"updated"`
+	TestKeys []string `json:"testKeys"`
 }
 
 // TestBug is a bug linked to one Test, for the test-detail section.
@@ -283,7 +287,7 @@ func (r *Repository) UpsertBugLinks(profileID string, links []BugLink) error {
 // the Bugs panel. Ordered by project then key.
 func (r *Repository) ListBugsWithTests(profileID string) ([]BugWithTests, error) {
 	rows, err := r.db.Query(
-		`SELECT jira_key, project_key, summary, status, priority
+		`SELECT jira_key, project_key, issue_type, summary, status, priority, updated_at
 		 FROM bug WHERE profile_id = ? ORDER BY project_key, jira_key`, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("list bugs: %w", err)
@@ -293,7 +297,7 @@ func (r *Repository) ListBugsWithTests(profileID string) ([]BugWithTests, error)
 	idx := map[string]int{}
 	for rows.Next() {
 		var b BugWithTests
-		if err := rows.Scan(&b.Key, &b.ProjectKey, &b.Summary, &b.Status, &b.Priority); err != nil {
+		if err := rows.Scan(&b.Key, &b.ProjectKey, &b.IssueType, &b.Summary, &b.Status, &b.Priority, &b.Updated); err != nil {
 			return nil, err
 		}
 		b.TestKeys = []string{}

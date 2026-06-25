@@ -779,9 +779,13 @@ export interface Bug {
 export interface BugWithTests {
   key: string;
   projectKey: string;
+  // issueType is the Jira issue type of the bug (e.g. "Bug", "Defect").
+  issueType: string;
   summary: string;
   status: string;
   priority: string;
+  // updated is the Jira last-updated timestamp for the bug issue.
+  updated: string;
   testKeys: string[];
 }
 

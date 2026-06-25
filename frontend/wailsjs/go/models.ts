@@ -485,9 +485,11 @@ export namespace testrepo {
 	export class BugWithTests {
 	    key: string;
 	    projectKey: string;
+	    issueType: string;
 	    summary: string;
 	    status: string;
 	    priority: string;
+	    updated: string;
 	    testKeys: string[];
 	
 	    static createFrom(source: any = {}) {
@@ -498,9 +500,11 @@ export namespace testrepo {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
 	        this.projectKey = source["projectKey"];
+	        this.issueType = source["issueType"];
 	        this.summary = source["summary"];
 	        this.status = source["status"];
 	        this.priority = source["priority"];
+	        this.updated = source["updated"];
 	        this.testKeys = source["testKeys"];
 	    }
 	}
@@ -599,11 +603,11 @@ export namespace testrepo {
 	    issueType: string;
 	    environments: string[];
 	    fixVersions: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Container(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
