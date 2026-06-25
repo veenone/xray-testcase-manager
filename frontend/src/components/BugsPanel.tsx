@@ -86,6 +86,13 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   );
   const [detailVersion, setDetailVersion] = useState(0);
 
+  // Keep sidebarDetail in sync when the profile switches and a different
+  // persisted detailKey is loaded. useState ignores subsequent changes to its
+  // initializer, so an explicit sync effect is required on profileId changes.
+  useEffect(() => {
+    setSidebarDetail(detailKey ? { kind: "test", key: detailKey } : null);
+  }, [profileId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Ephemeral expand state for the affected-tests table. Not session-persisted
   // because it's a transient drill-down, not a view preference.
   const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());

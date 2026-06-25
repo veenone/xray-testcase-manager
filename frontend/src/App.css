@@ -2190,6 +2190,8 @@ tr.row-selected {
   background: #2a3850;
   color: #c7d0e0;
   border: 1px solid #3a4a66;
+  border-radius: 4px;
+  padding: 2px 7px;
 }
 .detail-head-actions {
   display: flex;
