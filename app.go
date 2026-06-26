@@ -369,7 +369,7 @@ func (a *App) ExportProfile(id string) (string, error) {
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export profile",
-		DefaultFilename: sanitizeFilename(p.Name) + "-profile.json",
+		DefaultFilename: exportFilename(sanitizeFilename(p.Name) + "-profile.json"),
 		Filters:         []runtime.FileFilter{{DisplayName: "JSON", Pattern: "*.json"}},
 	})
 	if err != nil {
@@ -441,6 +441,15 @@ func sanitizeFilename(name string) string {
 		return "profile"
 	}
 	return out
+}
+
+// exportFilename prefixes a default export filename with a local YYYYMMDDHHMM
+// timestamp, e.g. "202606261430_dashboard.xlsx". This keeps saved exports
+// sorted chronologically and stops a second export silently overwriting an
+// earlier one. The original title and extension are preserved (the files are
+// genuine XLSX/CSV, so their extension is kept accurate).
+func exportFilename(name string) string {
+	return time.Now().Format("200601021504") + "_" + name
 }
 
 // tlsOptions derives jira.Option values from a profile's TLS settings. When
@@ -2064,7 +2073,7 @@ func (a *App) ExportPytest(profileID, containerKey, style string) (string, error
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save Python scaffold",
-		DefaultFilename: "test_" + sanitizeFilename(containerKey) + suffix + ".py",
+		DefaultFilename: exportFilename("test_" + sanitizeFilename(containerKey) + suffix + ".py"),
 		Filters:         []runtime.FileFilter{{DisplayName: "Python", Pattern: "*.py"}},
 	})
 	if err != nil {
@@ -2594,7 +2603,7 @@ func (a *App) ExportGapReport(result testrepo.GapResult, format string) (string,
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export gap analysis report",
-		DefaultFilename: defaultName,
+		DefaultFilename: exportFilename(defaultName),
 		Filters:         filters,
 	})
 	if err != nil {
@@ -2626,7 +2635,7 @@ func (a *App) ExportTests(profileID string, q testrepo.Query) (string, error) {
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export tests",
-		DefaultFilename: "tests-export.csv",
+		DefaultFilename: exportFilename("tests-export.csv"),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "CSV", Pattern: "*.csv"},
 			{DisplayName: "Excel", Pattern: "*.xlsx"},
@@ -2661,7 +2670,7 @@ func (a *App) ExportRequirementAudit(profileID string) (string, error) {
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export requirement audit",
-		DefaultFilename: "requirement-audit.csv",
+		DefaultFilename: exportFilename("requirement-audit.csv"),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "CSV", Pattern: "*.csv"},
 			{DisplayName: "Excel", Pattern: "*.xlsx"},
@@ -2702,7 +2711,7 @@ func (a *App) ExportBugsWithRunHistory(profileID string, bugKeys []string) (stri
 
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export bugs",
-		DefaultFilename: "bugs-run-history.xlsx",
+		DefaultFilename: exportFilename("bugs-run-history.xlsx"),
 		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
 	})
 	if err != nil {
@@ -2800,7 +2809,7 @@ func (a *App) ExportTraceability(profileID, kind string, planFilters, execFilter
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export traceability",
-		DefaultFilename: "traceability-" + kind + ".xlsx",
+		DefaultFilename: exportFilename("traceability-" + kind + ".xlsx"),
 		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
 	})
 	if err != nil {
@@ -2829,7 +2838,7 @@ func (a *App) ExportDashboard(profileID, folder, component, status string) (stri
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export dashboard",
-		DefaultFilename: "dashboard.xlsx",
+		DefaultFilename: exportFilename("dashboard.xlsx"),
 		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
 	})
 	if err != nil {
@@ -2853,7 +2862,7 @@ func (a *App) ExportDashboard(profileID, folder, component, status string) (stri
 func (a *App) ExportImportTemplate() (string, error) {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save import template",
-		DefaultFilename: "test-import-template.csv",
+		DefaultFilename: exportFilename("test-import-template.csv"),
 		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
 	})
 	if err != nil {
@@ -2874,7 +2883,7 @@ func (a *App) ExportImportTemplate() (string, error) {
 func (a *App) ExportSummaryTemplate() (string, error) {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save summary-only template",
-		DefaultFilename: "gap-summary-template.csv",
+		DefaultFilename: exportFilename("gap-summary-template.csv"),
 		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
 	})
 	if err != nil {
@@ -2894,7 +2903,7 @@ func (a *App) ExportSummaryTemplate() (string, error) {
 func (a *App) ExportSummaryFolderTemplate() (string, error) {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save summary + folder template",
-		DefaultFilename: "gap-summary-folder-template.csv",
+		DefaultFilename: exportFilename("gap-summary-folder-template.csv"),
 		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
 	})
 	if err != nil {
