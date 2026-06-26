@@ -381,6 +381,27 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
       BrowserOpenURL(`${base}/browse/${key}`);
   }
 
+  // Per-bucket counts for the test-linkage pill filter, computed from the
+  // text-filtered list so the counts respond to the search input.
+  const testLinkCounts = useMemo(() => {
+    const f = filter.trim().toLowerCase();
+    const textFiltered = !f
+      ? bugs
+      : bugs.filter(
+          (b) =>
+            b.key.toLowerCase().includes(f) ||
+            b.summary.toLowerCase().includes(f) ||
+            b.projectKey.toLowerCase().includes(f) ||
+            b.status.toLowerCase().includes(f),
+        );
+    const withTests = textFiltered.filter((b) => b.testKeys.length > 0).length;
+    return {
+      all: textFiltered.length,
+      with: withTests,
+      without: textFiltered.length - withTests,
+    };
+  }, [bugs, filter]);
+
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase();
     const textFiltered = !f
@@ -592,6 +613,24 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
+        <div className="filter-pill-row">
+          {(
+            [
+              { value: "all", label: "All bugs" },
+              { value: "with", label: "With tests" },
+              { value: "without", label: "Without tests" },
+            ] as const
+          ).map(({ value, label }) => (
+            <button
+              key={value}
+              className={`filter-pill${testFilter === value ? " filter-pill-active" : ""}`}
+              onClick={() => setTestFilter(value)}
+              title={`Filter by test linkage: ${label}`}
+            >
+              {label} {testLinkCounts[value]}
+            </button>
+          ))}
+        </div>
         <div className="bugs-md-filter-row">
           <SortControl
             fields={[
@@ -607,16 +646,6 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
               setSortDesc(d);
             }}
           />
-          <select
-            className="bugs-md-test-link-filter"
-            value={testFilter}
-            onChange={(e) => setTestFilter(e.target.value as "all" | "with" | "without")}
-            title="Filter by test linkage"
-          >
-            <option value="all">All bugs</option>
-            <option value="with">With tests</option>
-            <option value="without">Without tests</option>
-          </select>
         </div>
         {shown.length === 0 ? (
           <p className="muted bugs-md-empty">
