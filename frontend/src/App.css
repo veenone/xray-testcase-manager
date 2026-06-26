@@ -4895,6 +4895,15 @@ tr.row-checked:hover {
   align-items: center;
   gap: 4px 10px;
 }
+/* Put the Prev / # / Go / Next nav right next to the rows-per-page selector and
+   let the range text wrap below, so the pager reads "rows per page  < nav >". */
+.bugs-md-pager .board-pager-nav {
+  order: 2;
+}
+.bugs-md-pager .board-pager-range {
+  order: 3;
+  flex-basis: 100%;
+}
 .bugs-md-test-link-filter {
   font-size: 12px;
   padding: 2px 6px;
