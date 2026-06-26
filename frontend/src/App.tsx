@@ -29,6 +29,7 @@ import {
   CommitPendingChangesByIDs,
   DeleteProfile,
   EventsOn,
+  SyncTests,
   errMsg,
 } from "./api";
 import type {
@@ -491,6 +492,22 @@ function App() {
       return;
     }
     doSync(true);
+  }
+
+  // syncTests does a targeted pull of only the test cases (not folders,
+  // preconditions, or containers), giving the Browse view a quick refresh
+  // without running the full sync pipeline (RND_P_4TFINT_05-260).
+  async function syncTests() {
+    if (!activeId) return;
+    setSyncing(true);
+    try {
+      await SyncTests(activeId);
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      await notice({ title: "Sync failed", message: errMsg(e), tone: "error" });
+    } finally {
+      setSyncing(false);
+    }
   }
 
   // Native menu bar (built in main.go) drives the same actions via events. A ref
@@ -1299,6 +1316,8 @@ function App() {
             onToggleSelect={toggleSelect}
             onToggleSelectPage={toggleSelectPage}
             onSelectAllMatching={selectAllMatching}
+            onSync={syncTests}
+            syncing={syncing}
           />
           {showNewTest ? (
             <NewTestPanel
