@@ -2662,18 +2662,18 @@ func (a *App) ExportTests(profileID string, q testrepo.Query) (string, error) {
 }
 
 // ExportRequirementAudit writes the requirement coverage / sign-off audit to a
-// user-chosen CSV or XLSX file. The format follows the saved file's extension.
-// Returns the saved path, or "" if cancelled.
+// user-chosen XLSX or CSV file. XLSX is the default; the format follows the
+// saved file's extension. Returns the saved path, or "" if cancelled.
 func (a *App) ExportRequirementAudit(profileID string) (string, error) {
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export requirement audit",
-		DefaultFilename: exportFilename("requirement-audit.csv"),
+		DefaultFilename: exportFilename("requirement-audit.xlsx"),
 		Filters: []runtime.FileFilter{
-			{DisplayName: "CSV", Pattern: "*.csv"},
 			{DisplayName: "Excel", Pattern: "*.xlsx"},
+			{DisplayName: "CSV", Pattern: "*.csv"},
 		},
 	})
 	if err != nil {
@@ -2682,9 +2682,9 @@ func (a *App) ExportRequirementAudit(profileID string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	format := "csv"
-	if strings.HasSuffix(strings.ToLower(path), ".xlsx") {
-		format = "xlsx"
+	format := "xlsx"
+	if strings.HasSuffix(strings.ToLower(path), ".csv") {
+		format = "csv"
 	}
 	data, err := a.repo.ExportRequirementAudit(profileID, format)
 	if err != nil {
