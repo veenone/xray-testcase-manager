@@ -948,6 +948,17 @@
 .board-pager {
   flex: 0 0 auto;
 }
+/* Lay the status pills on the same row as the exec-type / environment filter
+   selects, vertically centred with them, instead of on their own line above. */
+.container-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.container-filter-bar .filter-pill-row {
+  margin-bottom: 0;
+}
 /* Only the member table scrolls; the pager stays pinned beneath it. */
 .board-scroll {
   flex: 1;
