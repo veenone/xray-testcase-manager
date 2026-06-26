@@ -2458,6 +2458,7 @@ tr.row-selected {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  padding: 3px 0 3px 4px;
   margin-bottom: 10px;
 }
 .reqs-items {
@@ -2700,6 +2701,7 @@ tr.row-selected {
 .precond-list-head {
   display: flex;
   gap: 8px;
+  align-items: center;
   margin-bottom: 8px;
 }
 .precond-search {
@@ -4874,13 +4876,24 @@ tr.row-checked:hover {
   margin-top: 8px;
   font-size: 12px;
 }
-/* Filter row: sort control + test-linkage select side by side. */
+/* Filter row: pill filters left, sort control right, on one line. */
 .bugs-md-filter-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 4px;
+}
+.bugs-md-filter-row .filter-pill-row {
+  margin-bottom: 0;
+}
+/* Pager wrapper: override compact vertical stack to a wrapping row. */
+.bugs-md-pager .pager.pager-compact {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
 }
 .bugs-md-test-link-filter {
   font-size: 12px;

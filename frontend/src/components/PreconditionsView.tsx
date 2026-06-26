@@ -246,24 +246,6 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
-          <div className="filter-pill-row">
-            {(
-              [
-                { value: "all", label: "All" },
-                { value: "with", label: "With tests" },
-                { value: "without", label: "Without tests" },
-              ] as const
-            ).map(({ value, label }) => (
-              <button
-                key={value}
-                className={`filter-pill${usageFilter === value ? " filter-pill-active" : ""}`}
-                onClick={() => setUsageFilter(value)}
-                title={`Filter by test usage: ${label}`}
-              >
-                {label} {usageCounts[value]}
-              </button>
-            ))}
-          </div>
           <SortControl
             fields={[
               { value: "key", label: "Key" },
@@ -284,6 +266,24 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
           >
             + New
           </button>
+        </div>
+        <div className="filter-pill-row">
+          {(
+            [
+              { value: "all", label: "All" },
+              { value: "with", label: "With tests" },
+              { value: "without", label: "Without tests" },
+            ] as const
+          ).map(({ value, label }) => (
+            <button
+              key={value}
+              className={`filter-pill${usageFilter === value ? " filter-pill-active" : ""}`}
+              onClick={() => setUsageFilter(value)}
+              title={`Filter by test usage: ${label}`}
+            >
+              {label} {usageCounts[value]}
+            </button>
+          ))}
         </div>
 
         {loading ? (
