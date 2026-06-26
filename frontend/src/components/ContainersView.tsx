@@ -169,6 +169,17 @@ export function ContainersView({
     return [...s].sort();
   }, [containers]);
 
+  // Per-status counts for the pill filter (denominator = all containers for the
+  // current kind, before any status/type/env filtering).
+  const statusCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    m.set("", containers.length);
+    for (const c of containers) {
+      if (c.status) m.set(c.status, (m.get(c.status) ?? 0) + 1);
+    }
+    return m;
+  }, [containers]);
+
   const viewContainers = useMemo(() => {
     const base = containers.filter(
       (c) =>
@@ -797,19 +808,25 @@ export function ContainersView({
       </div>
 
       <div className="container-filter-bar">
-        <select
-          className="container-status-filter"
-          value={cStatus}
-          onChange={(e) => setCStatus(e.target.value)}
-          title="Filter by status"
-        >
-          <option value="">All statuses</option>
+        <div className="filter-pill-row">
+          <button
+            className={`filter-pill${cStatus === "" ? " filter-pill-active" : ""}`}
+            onClick={() => setCStatus("")}
+            title="Show all statuses"
+          >
+            All statuses {statusCounts.get("") ?? 0}
+          </button>
           {statusOptions.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
+            <button
+              key={s}
+              className={`filter-pill${cStatus === s ? " filter-pill-active" : ""}`}
+              onClick={() => setCStatus(cStatus === s ? "" : s)}
+              title={`Filter to status: ${s}`}
+            >
+              {s} {statusCounts.get(s) ?? 0}
+            </button>
           ))}
-        </select>
+        </div>
         {kind === "testexec" && (
           <select
             className="container-status-filter"
