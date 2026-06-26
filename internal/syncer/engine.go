@@ -91,28 +91,24 @@ func New(client *jira.Client, repo *testrepo.Repository) *Engine {
 	return &Engine{client: client, repo: repo}
 }
 
-// Sync pulls the Test Repository folder tree, the project's Tests, and the
-// project's Preconditions into the local store, calling onProgress after each
-// Test page. If `since` is empty, this is a full sync; otherwise it is an
-// incremental sync that only fetches Tests updated since the watermark
-// (FR-1.2). Upserts are idempotent, so an interrupted sync is safe to re-run.
-func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, since string, onProgress func(Progress)) error {
-	fetched := 0
-	total := -1
-
+// pullTests fetches the project's Tests page by page into the local store,
+// emitting a "Fetching tests" progress update per page. Returns the number
+// fetched and the reported total.
+func (e *Engine) pullTests(ctx context.Context, profileID, projectKey, scopeJQL, since string, onProgress func(Progress)) (fetched, total int, err error) {
+	total = -1
 	for total < 0 || fetched < total {
-		if err := ctx.Err(); err != nil {
-			return err
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fetched, total, ctxErr
 		}
 
-		tests, pageTotal, err := e.client.SearchTestsPage(ctx, projectKey, scopeJQL, since, fetched, pageSize)
-		if err != nil {
-			return fmt.Errorf("fetch page at offset %d: %w", fetched, err)
+		tests, pageTotal, pageErr := e.client.SearchTestsPage(ctx, projectKey, scopeJQL, since, fetched, pageSize)
+		if pageErr != nil {
+			return fetched, total, fmt.Errorf("fetch page at offset %d: %w", fetched, pageErr)
 		}
 		total = pageTotal
 
-		if err := e.repo.UpsertTests(profileID, toRepoTests(tests)); err != nil {
-			return err
+		if uErr := e.repo.UpsertTests(profileID, toRepoTests(tests)); uErr != nil {
+			return fetched, total, uErr
 		}
 		fetched += len(tests)
 
@@ -126,6 +122,19 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 		if fetched < total {
 			time.Sleep(throttle)
 		}
+	}
+	return fetched, total, nil
+}
+
+// Sync pulls the Test Repository folder tree, the project's Tests, and the
+// project's Preconditions into the local store, calling onProgress after each
+// Test page. If `since` is empty, this is a full sync; otherwise it is an
+// incremental sync that only fetches Tests updated since the watermark
+// (FR-1.2). Upserts are idempotent, so an interrupted sync is safe to re-run.
+func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, since string, onProgress func(Progress)) error {
+	fetched, total, err := e.pullTests(ctx, profileID, projectKey, scopeJQL, since, onProgress)
+	if err != nil {
+		return err
 	}
 
 	// Folders sync AFTER the Tests are in the store. Folder membership stamps
