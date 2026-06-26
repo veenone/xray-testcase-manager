@@ -209,6 +209,23 @@ func (e *Engine) SyncBugs(ctx context.Context, profileID, projectKey string, onP
 	return e.syncBugs(ctx, profileID, projectKey, onProgress)
 }
 
+// SyncTests pulls just the project's Tests and refreshes the Test Repository
+// folder membership, the per-view partial sync behind the test-case (Browse)
+// view's own Sync button. Unlike the full Sync it does not advance the sync
+// watermark or run the requirement / container / bug passes.
+func (e *Engine) SyncTests(ctx context.Context, profileID, projectKey, scopeJQL, since string, onProgress func(Progress)) error {
+	fetched, total, err := e.pullTests(ctx, profileID, projectKey, scopeJQL, since, onProgress)
+	if err != nil {
+		return err
+	}
+	emitStage(onProgress, "Loading folders")
+	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
+	if onProgress != nil {
+		onProgress(Progress{Fetched: fetched, Total: total, Done: true})
+	}
+	return nil
+}
+
 // SyncBugRunData refreshes the run/execution data for every test that has at
 // least one bug linked to it in the local store. It calls
 // TestExecutionsForTest per affected test, additively upserts any newly

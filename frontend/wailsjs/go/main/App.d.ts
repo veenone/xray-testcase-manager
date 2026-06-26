@@ -293,6 +293,8 @@ export function SyncRequirements(arg1:string):Promise<void>;
 
 export function SyncTestCalls(arg1:string):Promise<void>;
 
+export function SyncTests(arg1:string):Promise<void>;
+
 export function TestConnection(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<string>;
 
 export function TestProfileConnection(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<string>;

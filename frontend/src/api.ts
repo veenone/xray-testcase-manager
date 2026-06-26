@@ -29,6 +29,7 @@ export {
   SyncContainers,
   SyncBugs,
   SyncTestCalls,
+  SyncTests,
   GetSyncState,
   ListSyncLog,
   ListFolders,

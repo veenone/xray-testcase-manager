@@ -638,6 +638,28 @@ func (a *App) SyncBugs(profileID string) error {
 	})
 }
 
+// SyncTests refreshes just the project's Tests (and folder membership) from
+// Jira, the per-view partial sync behind the Browse / test-case view's Sync
+// button. Incremental against the last full sync's watermark; it does not
+// advance the watermark.
+func (a *App) SyncTests(profileID string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return err
+	}
+	state, err := a.repo.GetSyncState(profileID)
+	if err != nil {
+		return fmt.Errorf("read sync state: %w", err)
+	}
+	since := state.LastSyncedAt
+	return a.runPartialSync(profileID, "Syncing tests", func(e *syncer.Engine, projectKey string, onProgress func(syncer.Progress)) error {
+		return e.SyncTests(a.ctx, profileID, projectKey, p.ScopeJQL, since, onProgress)
+	})
+}
+
 // GetBugDetail fetches the extended fields for a defect issue: description,
 // Defect Origin, Defect Analysis, and Correction Details. These are not cached
 // locally (the bug table only holds summary/status/priority); they are fetched
