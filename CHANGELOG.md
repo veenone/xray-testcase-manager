@@ -12,9 +12,11 @@ Fifth alpha iteration of the 1.7.0 work: Bugs-view selection and export polish, 
 
 ### Added
 - **Select all bugs across pages.** The Bugs list has a second select-all control that checks every bug matching the current filter across all pages, not just the visible one — so the whole filtered set can be exported in one action.
+- **Collapsible Traceability export.** The Traceability XLSX "Table" sheet is now a collapsible outline tree that stacks each thread by node (e.g. Test Plan > Test Execution > Test > Run status), de-duplicating shared parents and using Excel row grouping (+/− controls), matching the bug export. The Flow (Sankey edge list) sheet is unchanged.
 
 ### Changed
 - **Styled bug Excel export.** The exported workbook is now banded by tier — bug, test, and execution rows each have their own fill — with cell borders and word-wrapped long-text columns (Details / Description / Defect Analysis / Correction Details) for readability.
+- **Timestamped export filenames.** Every export's default filename is prefixed with a `YYYYMMDDHHMM_` timestamp (e.g. `202606261430_dashboard.xlsx`), so saved exports sort chronologically and a second export never silently overwrites an earlier one.
 
 ### Fixed
 - **Bug Excel export collapse controls.** The workbook now declares its outline depth, so Excel reliably renders the Bug > Test > Execution row-group collapse (+/−) controls; previously the grouping data was present but some Excel builds showed the report flat.
