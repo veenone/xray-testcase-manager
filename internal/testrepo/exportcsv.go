@@ -85,8 +85,12 @@ func writeCSV(rows [][]string) ([]byte, error) {
 func writeXLSX(rows [][]string) ([]byte, error) {
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()
+	st, err := newSheetStyles(f)
+	if err != nil {
+		return nil, err
+	}
 	sheet := f.GetSheetName(0)
-	if err := fillSheet(f, sheet, rows); err != nil {
+	if err := fillSheet(f, sheet, rows, st); err != nil {
 		return nil, err
 	}
 	var buf bytes.Buffer
@@ -110,6 +114,10 @@ func writeXLSXSheets(sheets []namedRows) ([]byte, error) {
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()
 	defaultSheet := f.GetSheetName(0)
+	st, err := newSheetStyles(f)
+	if err != nil {
+		return nil, err
+	}
 
 	keepDefault := false
 	for _, s := range sheets {
@@ -130,7 +138,7 @@ func writeXLSXSheets(sheets []namedRows) ([]byte, error) {
 			rows = append(rows, s.Header)
 		}
 		rows = append(rows, s.Rows...)
-		if err := fillSheet(f, s.Name, rows); err != nil {
+		if err := fillSheet(f, s.Name, rows, st); err != nil {
 			return nil, err
 		}
 	}
@@ -148,8 +156,92 @@ func writeXLSXSheets(sheets []namedRows) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// fillSheet writes rows into the named sheet as plain strings, one row per slice.
-func fillSheet(f *excelize.File, sheet string, rows [][]string) error {
+// sheetStyles holds the cell styles fillSheet applies: a banded header plus
+// zebra-striped data rows, all bordered and word-wrapped, mirroring the bug
+// export so every workbook the app produces reads consistently.
+type sheetStyles struct {
+	header int
+	odd    int
+	even   int
+}
+
+// sheetBorderColor is the thin grid line drawn around every exported cell.
+const sheetBorderColor = "BFBFBF"
+
+// newSheetStyles registers the export cell styles on a workbook once, so every
+// sheet written into it reuses the same style ids.
+func newSheetStyles(f *excelize.File) (sheetStyles, error) {
+	borders := []excelize.Border{
+		{Type: "left", Color: sheetBorderColor, Style: 1},
+		{Type: "top", Color: sheetBorderColor, Style: 1},
+		{Type: "right", Color: sheetBorderColor, Style: 1},
+		{Type: "bottom", Color: sheetBorderColor, Style: 1},
+	}
+	wrapTop := &excelize.Alignment{Vertical: "top", WrapText: true}
+	header, err := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"305496"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Vertical: "center", WrapText: true},
+		Border:    borders,
+	})
+	if err != nil {
+		return sheetStyles{}, fmt.Errorf("new header style: %w", err)
+	}
+	odd, err := f.NewStyle(&excelize.Style{Alignment: wrapTop, Border: borders})
+	if err != nil {
+		return sheetStyles{}, fmt.Errorf("new row style: %w", err)
+	}
+	even, err := f.NewStyle(&excelize.Style{
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"EFF3FB"}, Pattern: 1},
+		Alignment: wrapTop,
+		Border:    borders,
+	})
+	if err != nil {
+		return sheetStyles{}, fmt.Errorf("new band style: %w", err)
+	}
+	return sheetStyles{header: header, odd: odd, even: even}, nil
+}
+
+// columnWidth returns a content-fit width for column col (0-based) across rows,
+// clamped to a readable range so one long cell can't make a column unwieldy.
+func columnWidth(rows [][]string, col int) float64 {
+	const (
+		minWidth = 10.0
+		maxWidth = 60.0
+		padding  = 2.0
+	)
+	longest := 0
+	for _, row := range rows {
+		if col < len(row) {
+			if n := len([]rune(row[col])); n > longest {
+				longest = n
+			}
+		}
+	}
+	w := float64(longest) + padding
+	switch {
+	case w < minWidth:
+		return minWidth
+	case w > maxWidth:
+		return maxWidth
+	default:
+		return w
+	}
+}
+
+// fillSheet writes rows into the named sheet as a styled table: row 0 is the
+// banded header; data rows are zebra-striped; every cell is bordered and
+// word-wrapped; columns are sized to their content; the header row is frozen.
+func fillSheet(f *excelize.File, sheet string, rows [][]string, st sheetStyles) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	maxCols := 0
+	for _, row := range rows {
+		if len(row) > maxCols {
+			maxCols = len(row)
+		}
+	}
 	for rIdx, row := range rows {
 		for cIdx, val := range row {
 			cell, err := excelize.CoordinatesToCellName(cIdx+1, rIdx+1)
@@ -160,6 +252,38 @@ func fillSheet(f *excelize.File, sheet string, rows [][]string) error {
 				return fmt.Errorf("xlsx set: %w", err)
 			}
 		}
+	}
+	lastCol, err := excelize.ColumnNumberToName(maxCols)
+	if err != nil {
+		return fmt.Errorf("xlsx column name: %w", err)
+	}
+	for rIdx := range rows {
+		style := st.odd
+		switch {
+		case rIdx == 0:
+			style = st.header
+		case rIdx%2 == 0:
+			style = st.even
+		}
+		left := fmt.Sprintf("A%d", rIdx+1)
+		right := fmt.Sprintf("%s%d", lastCol, rIdx+1)
+		if err := f.SetCellStyle(sheet, left, right, style); err != nil {
+			return fmt.Errorf("xlsx style row: %w", err)
+		}
+	}
+	for c := 1; c <= maxCols; c++ {
+		col, err := excelize.ColumnNumberToName(c)
+		if err != nil {
+			return fmt.Errorf("xlsx column name: %w", err)
+		}
+		if err := f.SetColWidth(sheet, col, col, columnWidth(rows, c-1)); err != nil {
+			return fmt.Errorf("xlsx column width: %w", err)
+		}
+	}
+	if err := f.SetPanes(sheet, &excelize.Panes{
+		Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft",
+	}); err != nil {
+		return fmt.Errorf("xlsx freeze header: %w", err)
 	}
 	return nil
 }
