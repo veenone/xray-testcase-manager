@@ -54,6 +54,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   const [selected, setSelected] = useViewState(profileId, "preconditions", "selected", "");
   const [tests, setTests] = useState<PreconditionTest[]>([]);
   const [filter, setFilter] = useViewState(profileId, "preconditions", "filter", "");
+  const [usageFilter, setUsageFilter] = useViewState<"all" | "with" | "without">(profileId, "preconditions", "usageFilter", "all");
   const [sortField, setSortField] = useViewState(profileId, "preconditions", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "preconditions", "sortDesc", true);
   const [loading, setLoading] = useState(true);
@@ -75,6 +76,22 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
     setDescDraft(selectedPre?.description ?? "");
   }, [selectedPre]);
 
+  // Per-bucket counts for the usage pill filter, computed from the text-filtered
+  // list so counts respond to the search input.
+  const usageCounts = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const base = !q
+      ? list
+      : list.filter(
+          (p) =>
+            p.key.toLowerCase().includes(q) ||
+            p.summary.toLowerCase().includes(q) ||
+            p.type.toLowerCase().includes(q),
+        );
+    const withTests = base.filter((p) => (p.testCount ?? 0) > 0).length;
+    return { all: base.length, with: withTests, without: base.length - withTests };
+  }, [list, filter]);
+
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     const base = !q
@@ -85,15 +102,21 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
             p.summary.toLowerCase().includes(q) ||
             p.type.toLowerCase().includes(q),
         );
-    return [...base].sort((a, b) => applyDir(cmpPre(a, b, sortField), sortDesc));
-  }, [list, filter, sortField, sortDesc]);
+    const usageFiltered =
+      usageFilter === "all"
+        ? base
+        : base.filter((p) =>
+            usageFilter === "with" ? (p.testCount ?? 0) > 0 : (p.testCount ?? 0) === 0,
+          );
+    return [...usageFiltered].sort((a, b) => applyDir(cmpPre(a, b, sortField), sortDesc));
+  }, [list, filter, usageFilter, sortField, sortDesc]);
 
   // Pagination of the precondition master list.
   const [listPage, setListPage] = useViewState(profileId, "preconditions", "listPage", 0);
   const [listPageSize, setListPageSize] = useViewState(profileId, "preconditions", "listPageSize", 15);
   useEffect(() => {
     setListPage(0);
-  }, [filter, sortField, sortDesc]);
+  }, [filter, usageFilter, sortField, sortDesc]);
   const listTotalPages = Math.max(1, Math.ceil(filtered.length / listPageSize));
   const listSafePage = Math.min(listPage, listTotalPages - 1);
   const pageList = filtered.slice(
@@ -223,6 +246,24 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
+          <div className="filter-pill-row">
+            {(
+              [
+                { value: "all", label: "All" },
+                { value: "with", label: "With tests" },
+                { value: "without", label: "Without tests" },
+              ] as const
+            ).map(({ value, label }) => (
+              <button
+                key={value}
+                className={`filter-pill${usageFilter === value ? " filter-pill-active" : ""}`}
+                onClick={() => setUsageFilter(value)}
+                title={`Filter by test usage: ${label}`}
+              >
+                {label} {usageCounts[value]}
+              </button>
+            ))}
+          </div>
           <SortControl
             fields={[
               { value: "key", label: "Key" },
