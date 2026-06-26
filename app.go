@@ -2626,19 +2626,19 @@ func (a *App) ExportGapReport(result testrepo.GapResult, format string) (string,
 	return path, nil
 }
 
-// ExportTests writes the Tests matching a query to a user-chosen CSV or XLSX
-// file (FR-10.8). The format follows the saved file's extension. Returns the
-// saved path, or "" if cancelled.
+// ExportTests writes the Tests matching a query to a user-chosen XLSX or CSV
+// file (FR-10.8). XLSX is the default; the format follows the saved file's
+// extension. Returns the saved path, or "" if cancelled.
 func (a *App) ExportTests(profileID string, q testrepo.Query) (string, error) {
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export tests",
-		DefaultFilename: exportFilename("tests-export.csv"),
+		DefaultFilename: exportFilename("tests-export.xlsx"),
 		Filters: []runtime.FileFilter{
-			{DisplayName: "CSV", Pattern: "*.csv"},
 			{DisplayName: "Excel", Pattern: "*.xlsx"},
+			{DisplayName: "CSV", Pattern: "*.csv"},
 		},
 	})
 	if err != nil {
@@ -2647,9 +2647,9 @@ func (a *App) ExportTests(profileID string, q testrepo.Query) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	format := "csv"
-	if strings.HasSuffix(strings.ToLower(path), ".xlsx") {
-		format = "xlsx"
+	format := "xlsx"
+	if strings.HasSuffix(strings.ToLower(path), ".csv") {
+		format = "csv"
 	}
 	data, err := a.repo.ExportTests(profileID, q, format)
 	if err != nil {
