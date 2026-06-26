@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [1.7.1] - 2026-06-26
+
+Patch release: a live-testing fix for Test Repository subfolder creation, plus a dedicated Sync button on the test-case view.
+
+### Added
+- **Dedicated Sync button on the Browse / test-case view** (RND_P_4TFINT_05-260). A tests-only partial sync refreshes just the test grid and folder membership, incremental against the last full sync's watermark, without running the requirement / container / bug passes. The global header Sync is unchanged.
+
+### Fixed
+- **Creating a Test Repository subfolder now commits to Jira** (RND_P_4TFINT_05-252). The folder-create call targeted `.../testrepository/{project}/folders/{parentID}/folders`, which a live Xray Server / DC instance rejects with a 404; it now posts to the correct parent folder resource `.../folders/{parentID}` (verified against the docs and the live error).
+
 ## [1.7.0] - 2026-06-26
 
 Stable **1.7.0** release. Rolls up the `1.7.0a` through `1.7.0a-5` alpha iterations (full per-iteration history in the sections below) into one release: a dedicated **Bugs management view** (detail card, affected-test run-history breakdown with sub-task and cross-project executions, markdown detail fields, Excel export), **collapsible-outline and timestamped Excel exports** across the app, **collapsible Traceability export**, and **pill-based filters** with tighter Bugs / Preconditions / Containers layouts. Highlights of the final iteration on top of `1.7.0a-4`:
