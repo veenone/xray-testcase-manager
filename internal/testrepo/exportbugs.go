@@ -333,21 +333,26 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 		// No grouped rows (no bug had affected tests): nothing to collapse.
 		return buf.Bytes(), nil
 	}
-	return setSheetOutlineLevelRow(buf.Bytes(), maxLevel)
+	return setSheetOutlineLevelRow(buf.Bytes(), bugExportSheetXML, maxLevel)
 }
 
-// bugExportSheetXML is the single worksheet part in the workbook BuildBugExportWorkbook
-// writes — it always has exactly one sheet, so the part name is fixed.
+// bugExportSheetXML is the worksheet part for the single sheet that
+// BuildBugExportWorkbook writes. excelize names parts by creation order, so the
+// first (and only) sheet is always sheet1.xml.
 const bugExportSheetXML = "xl/worksheets/sheet1.xml"
 
-// setSheetOutlineLevelRow injects sheetFormatPr/@outlineLevelRow into the
-// workbook's one worksheet. excelize writes the per-row outlineLevel attributes
-// (the group membership) but leaves the sheet-level outlineLevelRow at 0, where
-// it is omitted; some Excel builds then draw no row-group collapse (+/-)
-// controls and the outline looks flat. Rewriting the single worksheet part with
-// the attribute set makes the Bug > Test > Execution outline reliably
+// setSheetOutlineLevelRow injects sheetFormatPr/@outlineLevelRow into the named
+// worksheet part inside the workbook ZIP. excelize writes the per-row
+// outlineLevel attributes (the group membership) but leaves the sheet-level
+// outlineLevelRow at 0, where it is omitted; some Excel builds then draw no
+// row-group collapse (+/-) controls and the outline looks flat. Rewriting the
+// target worksheet part with the attribute set makes the outline reliably
 // collapsible, leaving every other part of the package untouched.
-func setSheetOutlineLevelRow(workbook []byte, level int) ([]byte, error) {
+//
+// sheetPart is the ZIP entry name for the worksheet, e.g.
+// "xl/worksheets/sheet1.xml". excelize assigns parts by sheet creation order:
+// the first sheet created is sheet1.xml, the second sheet2.xml, and so on.
+func setSheetOutlineLevelRow(workbook []byte, sheetPart string, level int) ([]byte, error) {
 	zr, err := zip.NewReader(bytes.NewReader(workbook), int64(len(workbook)))
 	if err != nil {
 		return nil, fmt.Errorf("read workbook zip: %w", err)
@@ -364,7 +369,7 @@ func setSheetOutlineLevelRow(workbook []byte, level int) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", file.Name, err)
 		}
-		if file.Name == bugExportSheetXML {
+		if file.Name == sheetPart {
 			content = injectOutlineLevelRow(content, level)
 		}
 		w, err := zw.CreateHeader(&zip.FileHeader{Name: file.Name, Method: zip.Deflate})
