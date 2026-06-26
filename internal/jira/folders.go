@@ -66,10 +66,10 @@ func (c *Client) resolveFolderID(ctx context.Context, projectKey, path string) (
 // resolves parentPath to its native Xray folder id (root = "-1") and posts the
 // new folder under it.
 //
-// NOTE(xtm): the create endpoint and body are the best-understood raven/1.0
-// shape (POST .../folders/{parentID}/folders with {"name":...}) and MUST be
-// verified against a live Xray Server/DC 8.4.0 instance; the exact path segment
-// and field name may differ by version.
+// Maps to POST /rest/raven/1.0/api/testrepository/{projectKey}/folders/{parentID}
+// with {"name":...} (parentID = "-1" for the root). Verified against a live Xray
+// Server/DC instance (RND_P_4TFINT_05-252): an earlier guess that appended a
+// second "/folders" segment returned 404 "null for uri".
 func (c *Client) CreateFolder(ctx context.Context, projectKey, parentPath, name string) error {
 	if isDemoURL(c.baseURL) {
 		return nil
@@ -79,7 +79,7 @@ func (c *Client) CreateFolder(ctx context.Context, projectKey, parentPath, name 
 		return err
 	}
 	body := map[string]any{"name": name}
-	return c.post(ctx, fmt.Sprintf("%s/%s/folders/%s/folders", testRepositoryPath, projectKey, parentID), body)
+	return c.post(ctx, fmt.Sprintf("%s/%s/folders/%s", testRepositoryPath, projectKey, parentID), body)
 }
 
 // RenameFolder renames the folder at path to newName (FR-13.3). Demo URLs

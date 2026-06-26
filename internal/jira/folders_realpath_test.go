@@ -97,8 +97,9 @@ func TestRealCreateFolder(t *testing.T) {
 	if gotMethod != http.MethodPost {
 		t.Errorf("method = %q, want POST", gotMethod)
 	}
-	// Parent "/Authentication" resolves to id 10.
-	wantPath := "/rest/raven/1.0/api/testrepository/QA/folders/10/folders"
+	// Parent "/Authentication" resolves to id 10; the child is created by
+	// POSTing to that parent folder resource (no trailing "/folders").
+	wantPath := "/rest/raven/1.0/api/testrepository/QA/folders/10"
 	if gotPath != wantPath {
 		t.Errorf("path = %q, want %q", gotPath, wantPath)
 	}
@@ -119,7 +120,8 @@ func TestRealCreateFolderAtRoot(t *testing.T) {
 	if err := c.CreateFolder(context.Background(), "QA", "/", "Top"); err != nil {
 		t.Fatalf("CreateFolder: %v", err)
 	}
-	wantPath := "/rest/raven/1.0/api/testrepository/QA/folders/-1/folders"
+	// The repository root resolves to "-1"; create posts to that resource.
+	wantPath := "/rest/raven/1.0/api/testrepository/QA/folders/-1"
 	if gotPath != wantPath {
 		t.Errorf("path = %q, want %q", gotPath, wantPath)
 	}
