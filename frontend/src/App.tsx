@@ -494,11 +494,12 @@ function App() {
     doSync(true);
   }
 
-  // syncTests does a targeted pull of only the test cases (not folders,
-  // preconditions, or containers), giving the Browse view a quick refresh
-  // without running the full sync pipeline (RND_P_4TFINT_05-260).
+  // syncTests does a targeted pull of test cases and folder membership, giving
+  // the Browse view a quick refresh without running the full sync pipeline
+  // (RND_P_4TFINT_05-260).
   async function syncTests() {
-    if (!activeId) return;
+    if (!activeId || syncRunningRef.current) return;
+    syncRunningRef.current = true;
     setSyncing(true);
     try {
       await SyncTests(activeId);
@@ -506,6 +507,7 @@ function App() {
     } catch (e) {
       await notice({ title: "Sync failed", message: errMsg(e), tone: "error" });
     } finally {
+      syncRunningRef.current = false;
       setSyncing(false);
     }
   }

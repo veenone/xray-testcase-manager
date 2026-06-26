@@ -646,17 +646,16 @@ func (a *App) SyncTests(profileID string) error {
 	if err := a.requireStore(); err != nil {
 		return err
 	}
-	p, err := a.profiles.Get(profileID)
-	if err != nil {
-		return err
-	}
-	state, err := a.repo.GetSyncState(profileID)
-	if err != nil {
-		return fmt.Errorf("read sync state: %w", err)
-	}
-	since := state.LastSyncedAt
 	return a.runPartialSync(profileID, "Syncing tests", func(e *syncer.Engine, projectKey string, onProgress func(syncer.Progress)) error {
-		return e.SyncTests(a.ctx, profileID, projectKey, p.ScopeJQL, since, onProgress)
+		p, err := a.profiles.Get(profileID)
+		if err != nil {
+			return err
+		}
+		state, err := a.repo.GetSyncState(profileID)
+		if err != nil {
+			return fmt.Errorf("read sync state: %w", err)
+		}
+		return e.SyncTests(a.ctx, profileID, projectKey, p.ScopeJQL, state.LastSyncedAt, onProgress)
 	})
 }
 
