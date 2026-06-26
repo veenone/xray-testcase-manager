@@ -601,7 +601,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                     : "Select or open a bug to export"
               }
             >
-              {exporting ? "Exporting…" : "Export to Excel"}
+              {exporting ? "Exporting…" : "Export…"}
             </button>
           </div>
         </div>
@@ -613,25 +613,25 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <div className="filter-pill-row">
-          {(
-            [
-              { value: "all", label: "All bugs" },
-              { value: "with", label: "With tests" },
-              { value: "without", label: "Without tests" },
-            ] as const
-          ).map(({ value, label }) => (
-            <button
-              key={value}
-              className={`filter-pill${testFilter === value ? " filter-pill-active" : ""}`}
-              onClick={() => setTestFilter(value)}
-              title={`Filter by test linkage: ${label}`}
-            >
-              {label} {testLinkCounts[value]}
-            </button>
-          ))}
-        </div>
         <div className="bugs-md-filter-row">
+          <div className="filter-pill-row">
+            {(
+              [
+                { value: "all", label: "All bugs" },
+                { value: "with", label: "With tests" },
+                { value: "without", label: "Without tests" },
+              ] as const
+            ).map(({ value, label }) => (
+              <button
+                key={value}
+                className={`filter-pill${testFilter === value ? " filter-pill-active" : ""}`}
+                onClick={() => setTestFilter(value)}
+                title={`Filter by test linkage: ${label}`}
+              >
+                {label} {testLinkCounts[value]}
+              </button>
+            ))}
+          </div>
           <SortControl
             fields={[
               { value: "key", label: "Key" },
@@ -727,18 +727,20 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                 </li>
               ))}
             </ul>
-            <Pager
-              compact
-              page={safePage}
-              pageSize={pageSize}
-              total={shown.length}
-              onPage={setPage}
-              pageSizeOptions={[5, 10, 15, 25, 50]}
-              onPageSize={(n) => {
-                setPageSize(n);
-                setPage(0);
-              }}
-            />
+            <div className="bugs-md-pager">
+              <Pager
+                compact
+                page={safePage}
+                pageSize={pageSize}
+                total={shown.length}
+                onPage={setPage}
+                pageSizeOptions={[5, 10, 15, 25, 50]}
+                onPageSize={(n) => {
+                  setPageSize(n);
+                  setPage(0);
+                }}
+              />
+            </div>
           </>
         )}
       </div>
