@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [1.7.0a-5] - 2026-06-26 (alpha)
+
+Fifth alpha iteration of the 1.7.0 work: Bugs-view selection and export polish, plus bug-list scroll/pager regression fixes.
+
+### Added
+- **Select all bugs across pages.** The Bugs list has a second select-all control that checks every bug matching the current filter across all pages, not just the visible one — so the whole filtered set can be exported in one action.
+
+### Changed
+- **Styled bug Excel export.** The exported workbook is now banded by tier — bug, test, and execution rows each have their own fill — with cell borders and word-wrapped long-text columns (Details / Description / Defect Analysis / Correction Details) for readability.
+
+### Fixed
+- **Bug Excel export collapse controls.** The workbook now declares its outline depth, so Excel reliably renders the Bug > Test > Execution row-group collapse (+/−) controls; previously the grouping data was present but some Excel builds showed the report flat.
+- Bug list (and the Containers Test Execution / Plan / Set member lists) now scroll with the pager pinned, instead of the list growing unbounded with a hidden scrollbar.
+- Bug card status pills no longer overlap the card (wider list, wrapping layout).
+
 ## [1.7.0a-4] - 2026-06-25 (alpha)
 
 Fourth alpha iteration of the 1.7.0 work: Bugs-view improvements, plus sub-task and cross-project execution sync fixes from live testing.
@@ -28,10 +43,6 @@ Fourth alpha iteration of the 1.7.0 work: Bugs-view improvements, plus sub-task 
 - **"Latest result" now matches the run history.** The affected-tests "Latest result" reads the most recent run from the run table (the same source as the breakdown), falling back to the consolidated membership status, instead of a worst-wins value that could disagree with the runs shown.
 - **Run-history breakdown columns.** The run-date column is renamed **Run Date** (to distinguish it from the execution timestamps) and **every column is now sortable**. The **Created / Updated / Resolved** columns show the Test Execution issue's own timestamps (created, updated, resolution date), fetched from the execution detail and cached on the container - the per-run Xray endpoint does not return them, so they were previously blank.
 - **Defect Analysis is collapsible** in the bug detail card (collapsed by default), matching the Description field, so a long analysis no longer pushes the affected tests down.
-
-### Fixed
-- Bug list (and the Containers Test Execution / Plan / Set member lists) now scroll with the pager pinned, instead of the list growing unbounded with a hidden scrollbar.
-- Bug card status pills no longer overlap the card (wider list, wrapping layout).
 
 ## [1.7.0a-2] - 2026-06-25 (alpha)
 

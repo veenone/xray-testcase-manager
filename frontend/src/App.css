@@ -4744,6 +4744,13 @@ tr.row-checked:hover {
   flex: 0 0 auto;
   cursor: pointer;
 }
+.bugs-md-select-all-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 2px 2px 2px 4px;
+}
 .bugs-md-select-all {
   display: flex;
   align-items: center;
@@ -4753,6 +4760,9 @@ tr.row-checked:hover {
   color: var(--text-muted);
   flex: 0 0 auto;
   user-select: none;
+}
+.bugs-md-select-count {
+  font-size: 12px;
 }
 .bugs-md-key {
   font-size: 12px;

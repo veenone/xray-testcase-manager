@@ -478,6 +478,10 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const allPageChecked = paged.length > 0 && paged.every((b) => checked.has(b.key));
   const somePageChecked = paged.some((b) => checked.has(b.key)) && !allPageChecked;
 
+  // Select-all state across every bug matching the current filter (all pages).
+  const allShownChecked = shown.length > 0 && shown.every((b) => checked.has(b.key));
+  const someShownChecked = shown.some((b) => checked.has(b.key)) && !allShownChecked;
+
   function toggleSelectAll() {
     setChecked((prev) => {
       const next = new Set(prev);
@@ -487,6 +491,20 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
       } else {
         // Select all on this page.
         for (const b of paged) next.add(b.key);
+      }
+      return next;
+    });
+  }
+
+  // Select (or clear) every bug matching the current filter, across all pages —
+  // not just the visible page.
+  function toggleSelectAllShown() {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (allShownChecked) {
+        for (const b of shown) next.delete(b.key);
+      } else {
+        for (const b of shown) next.add(b.key);
       }
       return next;
     });
@@ -608,23 +626,41 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           </p>
         ) : (
           <>
-            <label className="bugs-md-select-all">
-              <input
-                type="checkbox"
-                checked={allPageChecked}
-                ref={(el) => {
-                  if (el) el.indeterminate = somePageChecked;
-                }}
-                onChange={toggleSelectAll}
-                title={allPageChecked ? "Deselect all on this page" : "Select all on this page"}
-              />
-              {allPageChecked ? "Deselect all on page" : "Select all on page"}
+            <div className="bugs-md-select-all-row">
+              <label className="bugs-md-select-all">
+                <input
+                  type="checkbox"
+                  checked={allPageChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = somePageChecked;
+                  }}
+                  onChange={toggleSelectAll}
+                  title={allPageChecked ? "Deselect all on this page" : "Select all on this page"}
+                />
+                {allPageChecked ? "Deselect page" : "Select page"}
+              </label>
+              <label className="bugs-md-select-all">
+                <input
+                  type="checkbox"
+                  checked={allShownChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someShownChecked;
+                  }}
+                  onChange={toggleSelectAllShown}
+                  title={
+                    allShownChecked
+                      ? `Deselect all ${shown.length} bug${shown.length === 1 ? "" : "s"}`
+                      : `Select all ${shown.length} bug${shown.length === 1 ? "" : "s"} matching the filter (every page)`
+                  }
+                />
+                {allShownChecked ? `Deselect all (${shown.length})` : `Select all (${shown.length})`}
+              </label>
               {checked.size > 0 && (
-                <span className="muted" style={{ marginLeft: 4 }}>
+                <span className="muted bugs-md-select-count">
                   ({checked.size} total selected)
                 </span>
               )}
-            </label>
+            </div>
             <ul className="bugs-md-items">
               {paged.map((b) => (
                 <li

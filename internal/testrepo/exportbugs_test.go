@@ -1,7 +1,10 @@
 package testrepo
 
 import (
+	"archive/zip"
 	"bytes"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/xuri/excelize/v2"
@@ -159,6 +162,101 @@ func TestBuildBugExportWorkbook(t *testing.T) {
 	if level != 2 {
 		t.Errorf("row 6 outline level = %d, want 2", level)
 	}
+}
+
+// TestBugExportSetsSheetOutlineLevelRow asserts the worksheet declares its
+// outline depth (sheetFormatPr/@outlineLevelRow), without which some Excel
+// builds render the row groups flat (no collapse +/- controls).
+func TestBugExportSetsSheetOutlineLevelRow(t *testing.T) {
+	r := newTestRepo(t)
+	exports := []BugExport{{
+		Key: "BUGS-1", ProjectKey: "BUGS", IssueType: "Bug", Status: "Open", Summary: "x",
+		AffectedTests: []BugTest{{Key: "QA-1", Project: "QA", Summary: "Login", Status: "Done"}},
+		RunHistory: map[string][]TestRunEntry{
+			"QA-1": {{ExecKey: "QA-STE-1", ExecSummary: "c", RunStatus: "FAIL"}},
+		},
+	}}
+	data, err := r.BuildBugExportWorkbook(exports)
+	if err != nil {
+		t.Fatalf("BuildBugExportWorkbook: %v", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("zip read: %v", err)
+	}
+	var sheet string
+	for _, f := range zr.File {
+		if f.Name != "xl/worksheets/sheet1.xml" {
+			continue
+		}
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		_ = rc.Close()
+		sheet = string(b)
+	}
+	if sheet == "" {
+		t.Fatal("sheet1.xml not found in workbook")
+	}
+	if !strings.Contains(sheet, `outlineLevelRow="2"`) {
+		t.Errorf("sheetFormatPr is missing outlineLevelRow=\"2\"; got: %s", sheetFormatPrOf(sheet))
+	}
+}
+
+// TestBugExportRowsAreStyled asserts each outline tier (bug/test/execution) gets
+// its own cell style, and that the style enables word wrap and borders.
+func TestBugExportRowsAreStyled(t *testing.T) {
+	r := newTestRepo(t)
+	exports := []BugExport{{
+		Key: "BUGS-1", ProjectKey: "BUGS", IssueType: "Bug", Status: "Open", Summary: "x",
+		AffectedTests: []BugTest{{Key: "QA-1", Project: "QA", Summary: "Login", Status: "Done"}},
+		RunHistory: map[string][]TestRunEntry{
+			"QA-1": {{ExecKey: "QA-STE-1", ExecSummary: "c", RunStatus: "FAIL"}},
+		},
+	}}
+	data, err := r.BuildBugExportWorkbook(exports)
+	if err != nil {
+		t.Fatalf("BuildBugExportWorkbook: %v", err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("open reader: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	// Rows: 1 header, 2 bug, 3 test, 4 execution.
+	bug, _ := f.GetCellStyle("Bug Report", "A2")
+	test, _ := f.GetCellStyle("Bug Report", "A3")
+	exec, _ := f.GetCellStyle("Bug Report", "A4")
+	if bug == 0 || test == 0 || exec == 0 {
+		t.Errorf("a tier is unstyled: bug=%d test=%d exec=%d", bug, test, exec)
+	}
+	if bug == test || test == exec || bug == exec {
+		t.Errorf("tiers share a style, want distinct: bug=%d test=%d exec=%d", bug, test, exec)
+	}
+
+	st, err := f.GetStyle(bug)
+	if err != nil {
+		t.Fatalf("GetStyle: %v", err)
+	}
+	if st.Alignment == nil || !st.Alignment.WrapText {
+		t.Error("bug row style does not enable word wrap")
+	}
+	if len(st.Border) == 0 {
+		t.Error("bug row style has no borders")
+	}
+}
+
+// sheetFormatPrOf extracts the <sheetFormatPr ...> element for error messages.
+func sheetFormatPrOf(xml string) string {
+	i := strings.Index(xml, "<sheetFormatPr")
+	if i < 0 {
+		return "(no sheetFormatPr)"
+	}
+	j := strings.IndexByte(xml[i:], '>')
+	if j < 0 {
+		return xml[i:]
+	}
+	return xml[i : i+j+1]
 }
 
 func safeIdx(row []string, i int) string {

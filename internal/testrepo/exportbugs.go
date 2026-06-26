@@ -1,7 +1,10 @@
 package testrepo
 
 import (
+	"archive/zip"
+	"bytes"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -93,10 +96,46 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 		}
 	}
 
-	// Bold style for the header row.
-	boldStyle, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
+	// Cell styles: a distinct fill per outline tier (header / bug / test /
+	// execution) with thin borders and word wrap, so each group reads as its own
+	// band and long Details / Description text stays legible instead of being
+	// clipped.
+	const borderColor = "BFBFBF"
+	borders := []excelize.Border{
+		{Type: "left", Color: borderColor, Style: 1},
+		{Type: "top", Color: borderColor, Style: 1},
+		{Type: "right", Color: borderColor, Style: 1},
+		{Type: "bottom", Color: borderColor, Style: 1},
+	}
+	wrapTop := &excelize.Alignment{Vertical: "top", WrapText: true}
+	newRowStyle := func(font *excelize.Font, fill string) (int, error) {
+		return f.NewStyle(&excelize.Style{
+			Font:      font,
+			Fill:      excelize.Fill{Type: "pattern", Color: []string{fill}, Pattern: 1},
+			Alignment: wrapTop,
+			Border:    borders,
+		})
+	}
+	headerStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"305496"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Vertical: "center", WrapText: true},
+		Border:    borders,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("new style: %w", err)
+		return nil, fmt.Errorf("new header style: %w", err)
+	}
+	bugStyle, err := newRowStyle(&excelize.Font{Bold: true, Color: "1F3864"}, "8EAADB")
+	if err != nil {
+		return nil, fmt.Errorf("new bug style: %w", err)
+	}
+	testStyle, err := newRowStyle(nil, "D9E1F2")
+	if err != nil {
+		return nil, fmt.Errorf("new test style: %w", err)
+	}
+	execStyle, err := newRowStyle(nil, "F2F2F2")
+	if err != nil {
+		return nil, fmt.Errorf("new exec style: %w", err)
 	}
 
 	// Row 1: header.
@@ -107,7 +146,7 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 			return nil, fmt.Errorf("set header cell: %w", err)
 		}
 	}
-	if err := f.SetRowStyle(sheet, 1, 1, boldStyle); err != nil {
+	if err := f.SetCellStyle(sheet, "A1", "H1", headerStyle); err != nil {
 		return nil, fmt.Errorf("set header style: %w", err)
 	}
 
@@ -123,6 +162,9 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 	}
 
 	rowNum := 2
+	// Highest row outline level actually emitted, so the sheet's outlineLevelRow
+	// can be set to match (see setSheetOutlineLevelRow).
+	maxLevel := 0
 
 	setCells := func(row int, values []string) error {
 		for i, v := range values {
@@ -135,6 +177,11 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 
 	joinParts := func(parts []string) string {
 		return strings.Join(parts, " | ")
+	}
+
+	// styleRow applies a tier style across the eight data columns of one row.
+	styleRow := func(row, styleID int) error {
+		return f.SetCellStyle(sheet, fmt.Sprintf("A%d", row), fmt.Sprintf("H%d", row), styleID)
 	}
 
 	for _, ex := range exports {
@@ -164,12 +211,18 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 		}); err != nil {
 			return nil, fmt.Errorf("set bug row cells: %w", err)
 		}
+		if err := styleRow(rowNum, bugStyle); err != nil {
+			return nil, fmt.Errorf("style bug row: %w", err)
+		}
 		rowNum++
 
 		for _, bt := range ex.AffectedTests {
 			// Test row (outline level 1).
 			if err := f.SetRowOutlineLevel(sheet, rowNum, 1); err != nil {
 				return nil, fmt.Errorf("set test row outline: %w", err)
+			}
+			if maxLevel < 1 {
+				maxLevel = 1
 			}
 			testParts := []string{}
 			if bt.Project != "" {
@@ -185,6 +238,9 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 			}); err != nil {
 				return nil, fmt.Errorf("set test row cells: %w", err)
 			}
+			if err := styleRow(rowNum, testStyle); err != nil {
+				return nil, fmt.Errorf("style test row: %w", err)
+			}
 			rowNum++
 
 			history := ex.RunHistory[bt.Key]
@@ -193,10 +249,16 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 				if err := f.SetRowOutlineLevel(sheet, rowNum, 2); err != nil {
 					return nil, fmt.Errorf("set no-run outline: %w", err)
 				}
+				if maxLevel < 2 {
+					maxLevel = 2
+				}
 				if err := setCells(rowNum, []string{
 					"Execution", "", "(no runs)", "", "", "", "", "",
 				}); err != nil {
 					return nil, fmt.Errorf("set no-run cells: %w", err)
+				}
+				if err := styleRow(rowNum, execStyle); err != nil {
+					return nil, fmt.Errorf("style no-run row: %w", err)
 				}
 				rowNum++
 				continue
@@ -206,6 +268,9 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 				// Execution row (outline level 2).
 				if err := f.SetRowOutlineLevel(sheet, rowNum, 2); err != nil {
 					return nil, fmt.Errorf("set exec row outline: %w", err)
+				}
+				if maxLevel < 2 {
+					maxLevel = 2
 				}
 
 				runDate := run.FinishedAt
@@ -252,6 +317,9 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 				}); err != nil {
 					return nil, fmt.Errorf("set exec row cells: %w", err)
 				}
+				if err := styleRow(rowNum, execStyle); err != nil {
+					return nil, fmt.Errorf("style exec row: %w", err)
+				}
 				rowNum++
 			}
 		}
@@ -261,5 +329,79 @@ func (r *Repository) BuildBugExportWorkbook(exports []BugExport) ([]byte, error)
 	if err != nil {
 		return nil, fmt.Errorf("write workbook: %w", err)
 	}
-	return buf.Bytes(), nil
+	if maxLevel == 0 {
+		// No grouped rows (no bug had affected tests): nothing to collapse.
+		return buf.Bytes(), nil
+	}
+	return setSheetOutlineLevelRow(buf.Bytes(), maxLevel)
+}
+
+// bugExportSheetXML is the single worksheet part in the workbook BuildBugExportWorkbook
+// writes — it always has exactly one sheet, so the part name is fixed.
+const bugExportSheetXML = "xl/worksheets/sheet1.xml"
+
+// setSheetOutlineLevelRow injects sheetFormatPr/@outlineLevelRow into the
+// workbook's one worksheet. excelize writes the per-row outlineLevel attributes
+// (the group membership) but leaves the sheet-level outlineLevelRow at 0, where
+// it is omitted; some Excel builds then draw no row-group collapse (+/-)
+// controls and the outline looks flat. Rewriting the single worksheet part with
+// the attribute set makes the Bug > Test > Execution outline reliably
+// collapsible, leaving every other part of the package untouched.
+func setSheetOutlineLevelRow(workbook []byte, level int) ([]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(workbook), int64(len(workbook)))
+	if err != nil {
+		return nil, fmt.Errorf("read workbook zip: %w", err)
+	}
+	var out bytes.Buffer
+	zw := zip.NewWriter(&out)
+	for _, file := range zr.File {
+		rc, err := file.Open()
+		if err != nil {
+			return nil, fmt.Errorf("open %s: %w", file.Name, err)
+		}
+		content, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", file.Name, err)
+		}
+		if file.Name == bugExportSheetXML {
+			content = injectOutlineLevelRow(content, level)
+		}
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: file.Name, Method: zip.Deflate})
+		if err != nil {
+			return nil, fmt.Errorf("create %s: %w", file.Name, err)
+		}
+		if _, err := w.Write(content); err != nil {
+			return nil, fmt.Errorf("write %s: %w", file.Name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return nil, fmt.Errorf("close workbook zip: %w", err)
+	}
+	return out.Bytes(), nil
+}
+
+// injectOutlineLevelRow adds an outlineLevelRow="<level>" attribute to the
+// worksheet's <sheetFormatPr> element, handling both the self-closing
+// (<sheetFormatPr .../>) and open-tag forms. A no-op if the attribute is already
+// present or the element is absent.
+func injectOutlineLevelRow(worksheet []byte, level int) []byte {
+	s := string(worksheet)
+	if strings.Contains(s, "outlineLevelRow=") {
+		return worksheet
+	}
+	start := strings.Index(s, "<sheetFormatPr")
+	if start < 0 {
+		return worksheet
+	}
+	rel := strings.IndexByte(s[start:], '>')
+	if rel < 0 {
+		return worksheet
+	}
+	insertAt := start + rel // position of the closing '>'
+	if insertAt > 0 && s[insertAt-1] == '/' {
+		insertAt-- // keep the '/' of a self-closing tag after the new attribute
+	}
+	attr := fmt.Sprintf(` outlineLevelRow="%d"`, level)
+	return []byte(s[:insertAt] + attr + s[insertAt:])
 }
