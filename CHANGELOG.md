@@ -18,6 +18,7 @@ Fifth alpha iteration of the 1.7.0 work: Bugs-view selection and export polish, 
 - **Styled bug Excel export.** The exported workbook is now banded by tier — bug, test, and execution rows each have their own fill — with cell borders and word-wrapped long-text columns (Details / Description / Defect Analysis / Correction Details) for readability.
 - **Timestamped export filenames.** Every export's default filename is prefixed with a `YYYYMMDDHHMM_` timestamp (e.g. `202606261430_dashboard.xlsx`), so saved exports sort chronologically and a second export never silently overwrites an earlier one.
 - **Pill-based filters.** The Bugs test-linkage filter (All / With tests / Without tests), the Preconditions usage filter (All / With tests / Without tests), and the Containers status filter (All statuses + one per status) are now labelled pills with live counts, matching the Requirements coverage filter, instead of dropdowns.
+- **Tighter Bugs and Preconditions layout.** In the Bugs list the filter pills and sort control share one row, the Export button (now "Export…") sits beside Sync, and the pager places the page nav next to the rows-per-page selector. In the Preconditions list the filter pills moved to their own line below the sort / New row, so the New button no longer stretches.
 
 ### Fixed
 - **Bug Excel export collapse controls.** The workbook now declares its outline depth, so Excel reliably renders the Bug > Test > Execution row-group collapse (+/−) controls; previously the grouping data was present but some Excel builds showed the report flat.
