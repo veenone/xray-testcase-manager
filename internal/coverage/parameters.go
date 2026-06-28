@@ -15,10 +15,10 @@ import (
 // Error codes and boundary conditions are ParamValues distinguished by
 // ValueKind, so the coverage math stays uniform.
 
-// ParamModel is the full tree for one canonical requirement.
+// ParamModel is the full tree for one version of a canonical requirement.
 type ParamModel struct {
-	CanonicalID string       `json:"canonicalId"`
-	Groups      []ParamGroup `json:"groups"`
+	VersionID string       `json:"versionId"`
+	Groups    []ParamGroup `json:"groups"`
 }
 
 // ParamGroup is a worksheet-tab-level grouping of parameters.
@@ -58,6 +58,8 @@ type NodeEdit struct {
 
 	// group
 	CanonicalID string `json:"canonicalId"`
+	// group (Topic 2: groups root at a version, not the canonical)
+	VersionID string `json:"versionId"`
 	// parameter
 	GroupID string `json:"groupId"`
 	// value
@@ -73,16 +75,16 @@ type NodeEdit struct {
 	SortOrder  int    `json:"sortOrder"`
 }
 
-// GetParamModel returns the full parameter tree for a canonical requirement,
-// ordered by sort_order at every level.
-func (m *Module) GetParamModel(profileID, canonicalID string) (ParamModel, error) {
-	model := ParamModel{CanonicalID: canonicalID, Groups: []ParamGroup{}}
+// GetParamModel returns the full parameter tree for one version of a canonical
+// requirement, ordered by sort_order at every level.
+func (m *Module) GetParamModel(profileID, versionID string) (ParamModel, error) {
+	model := ParamModel{VersionID: versionID, Groups: []ParamGroup{}}
 
 	groupRows, err := m.db.Query(
 		`SELECT id, name, sort_order FROM coverage_param_group
-		  WHERE profile_id = ? AND canonical_id = ?
+		  WHERE profile_id = ? AND version_id = ?
 		  ORDER BY sort_order, name COLLATE NOCASE`,
-		profileID, canonicalID)
+		profileID, versionID)
 	if err != nil {
 		return model, fmt.Errorf("read groups: %w", err)
 	}
@@ -109,9 +111,9 @@ func (m *Module) GetParamModel(profileID, canonicalID string) (ParamModel, error
 		`SELECT p.id, p.group_id, p.name, p.kind, p.description, p.sort_order
 		   FROM coverage_parameter p
 		   JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-		  WHERE p.profile_id = ? AND g.canonical_id = ?
+		  WHERE p.profile_id = ? AND g.version_id = ?
 		  ORDER BY p.sort_order, p.name COLLATE NOCASE`,
-		profileID, canonicalID)
+		profileID, versionID)
 	if err != nil {
 		return model, fmt.Errorf("read parameters: %w", err)
 	}
@@ -142,9 +144,9 @@ func (m *Module) GetParamModel(profileID, canonicalID string) (ParamModel, error
 		   FROM coverage_param_value v
 		   JOIN coverage_parameter p   ON p.profile_id = v.profile_id AND p.id = v.parameter_id
 		   JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-		  WHERE v.profile_id = ? AND g.canonical_id = ?
+		  WHERE v.profile_id = ? AND g.version_id = ?
 		  ORDER BY v.sort_order, v.value_label COLLATE NOCASE`,
-		profileID, canonicalID)
+		profileID, versionID)
 	if err != nil {
 		return model, fmt.Errorf("read values: %w", err)
 	}
@@ -188,14 +190,14 @@ func (m *Module) upsertGroup(profileID string, n NodeEdit) (string, error) {
 		return "", fmt.Errorf("group name is required")
 	}
 	if n.ID == "" {
-		if n.CanonicalID == "" {
-			return "", fmt.Errorf("canonicalId is required for a new group")
+		if n.VersionID == "" {
+			return "", fmt.Errorf("versionId is required for a new group")
 		}
 		id := uuid.NewString()
 		_, err := m.db.Exec(
-			`INSERT INTO coverage_param_group (profile_id, id, canonical_id, name, sort_order)
-			 VALUES (?, ?, ?, ?, ?)`,
-			profileID, id, n.CanonicalID, n.Name, n.SortOrder)
+			`INSERT INTO coverage_param_group (profile_id, id, canonical_id, version_id, name, sort_order)
+			 VALUES (?, ?, '', ?, ?, ?)`,
+			profileID, id, n.VersionID, n.Name, n.SortOrder)
 		return id, err
 	}
 	_, err := m.db.Exec(
