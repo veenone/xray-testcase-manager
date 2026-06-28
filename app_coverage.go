@@ -152,12 +152,13 @@ func (a *App) SetValueTests(profileID, valueID string, testKeys []string) (err e
 }
 
 // DetectStaleCoverageMappings returns value→test mappings whose test no longer
-// exists locally (canonicalID "" scans the whole profile).
-func (a *App) DetectStaleCoverageMappings(profileID, canonicalID string) ([]coverage.StaleMapping, error) {
+// exists locally, scoped to a version when versionID != "" (empty scans the
+// whole profile).
+func (a *App) DetectStaleCoverageMappings(profileID, versionID string) ([]coverage.StaleMapping, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
-	return a.cov.DetectStaleMappings(profileID, canonicalID)
+	return a.cov.DetectStaleMappings(profileID, versionID)
 }
 
 // --- Coverage: import / export (PRD Topic 3) ---
@@ -255,4 +256,125 @@ func (a *App) SeedDemoCoverageExample(profileID string) (id string, err error) {
 		return "", err
 	}
 	return a.cov.SeedDemoExample(profileID)
+}
+
+// --- Coverage: versions (PRD Topic 2) ---
+
+func (a *App) ListVersions(profileID, canonicalID string) ([]coverage.Version, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.cov.ListVersions(profileID, canonicalID)
+}
+
+func (a *App) CreateVersion(profileID, canonicalID, name, status, notes string) (id string, err error) {
+	defer recoverToError("CreateVersion", &err)
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	return a.cov.CreateVersion(profileID, canonicalID, name, status, notes)
+}
+
+func (a *App) CloneVersion(profileID, sourceVersionID, name, status string) (id string, err error) {
+	defer recoverToError("CloneVersion", &err)
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	return a.cov.CloneVersion(profileID, sourceVersionID, name, status)
+}
+
+func (a *App) RenameVersion(profileID, id, name, status, notes string) (err error) {
+	defer recoverToError("RenameVersion", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.cov.RenameVersion(profileID, id, name, status, notes)
+}
+
+func (a *App) SetVersionStatus(profileID, id, status string) (err error) {
+	defer recoverToError("SetVersionStatus", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.cov.SetVersionStatus(profileID, id, status)
+}
+
+func (a *App) DeleteVersion(profileID, id string) (err error) {
+	defer recoverToError("DeleteVersion", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.cov.DeleteVersion(profileID, id)
+}
+
+func (a *App) SetMemberVersion(profileID, canonicalID, requirementKey, versionID string) (err error) {
+	defer recoverToError("SetMemberVersion", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.cov.SetMemberVersion(profileID, canonicalID, requirementKey, versionID)
+}
+
+// --- Coverage: change requests (PRD Topic 2) ---
+
+func (a *App) ListChangeRequests(profileID, canonicalID string) ([]coverage.ChangeRequest, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.cov.ListChangeRequests(profileID, canonicalID)
+}
+
+func (a *App) CreateChangeRequest(profileID, canonicalID, crKey, title, status, targetVersionID, risk, description string) (id string, err error) {
+	defer recoverToError("CreateChangeRequest", &err)
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	return a.cov.CreateChangeRequest(profileID, canonicalID, crKey, title, status, targetVersionID, risk, description)
+}
+
+func (a *App) UpdateChangeRequest(profileID, id, crKey, title, status, targetVersionID, risk, description string) (err error) {
+	defer recoverToError("UpdateChangeRequest", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.cov.UpdateChangeRequest(profileID, id, crKey, title, status, targetVersionID, risk, description)
+}
+
+func (a *App) DeleteChangeRequest(profileID, id string) (err error) {
+	defer recoverToError("DeleteChangeRequest", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.cov.DeleteChangeRequest(profileID, id)
+}
+
+func (a *App) SetCRDecision(profileID, crID, requirementKey, decision, note string) (err error) {
+	defer recoverToError("SetCRDecision", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.cov.SetCRDecision(profileID, crID, requirementKey, decision, note)
+}
+
+// --- Coverage: dashboards (PRD Topic 2) ---
+
+func (a *App) GetVersionDistribution(profileID, canonicalID string) ([]coverage.VersionShare, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.cov.VersionDistribution(profileID, canonicalID)
+}
+
+func (a *App) GetCRAdoption(profileID, canonicalID string) ([]coverage.CRShare, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.cov.CRAdoption(profileID, canonicalID)
+}
+
+func (a *App) GetCRImpact(profileID, crID string) (coverage.CRImpactResult, error) {
+	if err := a.requireStore(); err != nil {
+		return coverage.CRImpactResult{Decisions: []coverage.CRDecision{}}, err
+	}
+	return a.cov.CRImpact(profileID, crID)
 }

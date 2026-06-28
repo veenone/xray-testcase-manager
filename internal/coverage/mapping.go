@@ -114,21 +114,21 @@ func (m *Module) ListCandidateTests(profileID, canonicalID string) ([]CandidateT
 }
 
 // DetectStaleMappings returns value→test mappings (optionally scoped to one
-// canonical node when canonicalID != "") whose test_key is absent from
-// test_case, so the UI can badge them. Mappings are kept, never auto-pruned.
-func (m *Module) DetectStaleMappings(profileID, canonicalID string) ([]StaleMapping, error) {
+// version when versionID != "") whose test_key is absent from test_case, so
+// the UI can badge them. Mappings are kept, never auto-pruned.
+func (m *Module) DetectStaleMappings(profileID, versionID string) ([]StaleMapping, error) {
 	q := `SELECT vt.value_id, pv.value_label, vt.test_key
 	        FROM coverage_value_test vt
 	        JOIN coverage_param_value pv ON pv.profile_id = vt.profile_id AND pv.id = vt.value_id
 	        LEFT JOIN test_case tc ON tc.profile_id = vt.profile_id AND tc.jira_key = vt.test_key
 	       WHERE vt.profile_id = ? AND tc.jira_key IS NULL`
 	args := []any{profileID}
-	if canonicalID != "" {
+	if versionID != "" {
 		q += ` AND pv.parameter_id IN (
 		         SELECT p.id FROM coverage_parameter p
 		         JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-		         WHERE g.profile_id = ? AND g.canonical_id = ?)`
-		args = append(args, profileID, canonicalID)
+		         WHERE g.profile_id = ? AND g.version_id = ?)`
+		args = append(args, profileID, versionID)
 	}
 	q += ` ORDER BY pv.value_label, vt.test_key`
 	rows, err := m.db.Query(q, args...)

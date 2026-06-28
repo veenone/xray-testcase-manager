@@ -135,8 +135,8 @@ func TestStaleMappingDetection(t *testing.T) {
 	}
 
 	// Initially live → not stale, and counts as tested.
-	// Use "" (profile-wide scan) since groups are version-scoped now, not canonical-scoped.
-	if stale, _ := m.DetectStaleMappings(p, ""); len(stale) != 0 {
+	// Pass vid to exercise the version-scoped detection path.
+	if stale, _ := m.DetectStaleMappings(p, vid); len(stale) != 0 {
 		t.Fatalf("expected no stale mappings, got %d", len(stale))
 	}
 	rep, _ := m.ComputeCoverage(p, vid)
@@ -148,7 +148,7 @@ func TestStaleMappingDetection(t *testing.T) {
 	if _, err := st.DB().Exec(`DELETE FROM test_case WHERE profile_id = ? AND jira_key = 'QA-9'`, p); err != nil {
 		t.Fatal(err)
 	}
-	stale, err := m.DetectStaleMappings(p, "")
+	stale, err := m.DetectStaleMappings(p, vid)
 	if err != nil {
 		t.Fatal(err)
 	}
