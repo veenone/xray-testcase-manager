@@ -6,6 +6,7 @@ import {
   SetCanonicalMembers,
   ListCanonicalReuse,
   ListVersions,
+  SetMemberVersion,
   GetParamModel,
   UpsertCoverageNode,
   DeleteCoverageNode,
@@ -469,6 +470,53 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
                   profileId={profileId}
                   canonicalId={selected}
                 />
+                <div className="cov-member-locks">
+                  <h3 className="cov-section-title">Customer version locks</h3>
+                  {versions.length === 0 ? (
+                    <p className="cov-muted">No versions yet — create a version first to assign member locks.</p>
+                  ) : reuse.length === 0 ? (
+                    <p className="cov-muted">No member requirements linked to this canonical.</p>
+                  ) : (
+                    <table className="cov-member-locks-table">
+                      <thead>
+                        <tr>
+                          <th>Requirement</th>
+                          <th>Project</th>
+                          <th>Locked version</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reuse.map((row) => (
+                          <tr key={row.requirementKey}>
+                            <td className="cov-member-key">{row.requirementKey}</td>
+                            <td className="cov-muted">{row.projectKey || "—"}</td>
+                            <td>
+                              <select
+                                className="cov-select"
+                                value={row.acceptedVersionId}
+                                onChange={(e) => {
+                                  void SetMemberVersion(
+                                    profileId,
+                                    selected,
+                                    row.requirementKey,
+                                    e.target.value,
+                                  ).then(() => reload());
+                                }}
+                              >
+                                <option value="">— Unassigned —</option>
+                                {versions.map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             ) : loading ? (
               <p className="cov-empty">Loading…</p>

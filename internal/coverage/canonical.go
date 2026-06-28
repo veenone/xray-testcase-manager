@@ -24,11 +24,12 @@ type CanonicalRequirement struct {
 // — one row per member requirement issue, carrying its project so the UI can
 // group by customer/project.
 type ReuseRow struct {
-	CanonicalID    string `json:"canonicalId"`
-	RequirementKey string `json:"requirementKey"`
-	ProjectKey     string `json:"projectKey"`
-	Summary        string `json:"summary"`
-	Status         string `json:"status"`
+	CanonicalID       string `json:"canonicalId"`
+	RequirementKey    string `json:"requirementKey"`
+	ProjectKey        string `json:"projectKey"`
+	Summary           string `json:"summary"`
+	Status            string `json:"status"`
+	AcceptedVersionID string `json:"acceptedVersionId"`
 }
 
 // nowISO returns an ISO-8601 UTC timestamp, matching the format used across the
@@ -224,7 +225,8 @@ func (m *Module) SetMembers(profileID, canonicalID string, requirementKeys []str
 func (m *Module) ListReuse(profileID, canonicalID string) ([]ReuseRow, error) {
 	rows, err := m.db.Query(
 		`SELECT mm.canonical_id, mm.requirement_key,
-		        COALESCE(r.project_key,''), COALESCE(r.summary,''), COALESCE(r.status,'')
+		        COALESCE(r.project_key,''), COALESCE(r.summary,''), COALESCE(r.status,''),
+		        COALESCE(mm.accepted_version_id,'')
 		   FROM canonical_requirement_member mm
 		   LEFT JOIN requirement r
 		     ON r.profile_id = mm.profile_id AND r.jira_key = mm.requirement_key
@@ -239,7 +241,7 @@ func (m *Module) ListReuse(profileID, canonicalID string) ([]ReuseRow, error) {
 	for rows.Next() {
 		var rr ReuseRow
 		if err := rows.Scan(&rr.CanonicalID, &rr.RequirementKey,
-			&rr.ProjectKey, &rr.Summary, &rr.Status); err != nil {
+			&rr.ProjectKey, &rr.Summary, &rr.Status, &rr.AcceptedVersionID); err != nil {
 			return nil, err
 		}
 		out = append(out, rr)

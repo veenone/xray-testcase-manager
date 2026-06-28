@@ -211,6 +211,7 @@ export interface ReuseRow {
   projectKey: string;
   summary: string;
   status: string;
+  acceptedVersionId: string;
 }
 
 export interface ParamValue {

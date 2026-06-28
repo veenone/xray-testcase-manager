@@ -5415,6 +5415,26 @@ tr.row-checked:hover {
   padding: 4px 0;
 }
 
+/* ─── Member version locks ────────────────────────────────────────────────── */
+.cov-member-locks { display: flex; flex-direction: column; gap: 10px; }
+.cov-member-locks-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cov-member-locks-table th {
+  text-align: left;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted, #888);
+  border-bottom: 1px solid var(--border, #e0e0e0);
+}
+.cov-member-locks-table td { padding: 6px 8px; border-bottom: 1px solid var(--border, #e0e0e0); }
+.cov-member-key { font-family: monospace; font-size: 12px; }
+
 /* ─── Change Requests panel ───────────────────────────────────────────────── */
 .cov-cr-panel { display: flex; flex-direction: column; gap: 10px; }
 .cov-cr-header { display: flex; align-items: center; gap: 12px; }

@@ -448,11 +448,12 @@ export namespace coverage {
 	    projectKey: string;
 	    summary: string;
 	    status: string;
-	
+	    acceptedVersionId: string;
+
 	    static createFrom(source: any = {}) {
 	        return new ReuseRow(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.canonicalId = source["canonicalId"];
@@ -460,6 +461,7 @@ export namespace coverage {
 	        this.projectKey = source["projectKey"];
 	        this.summary = source["summary"];
 	        this.status = source["status"];
+	        this.acceptedVersionId = source["acceptedVersionId"];
 	    }
 	}
 	export class StaleMapping {
