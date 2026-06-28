@@ -35,9 +35,11 @@ func (m *Module) VersionDistribution(profileID, canonicalID string) ([]VersionSh
 		return nil, err
 	}
 	var unassigned int
-	m.db.QueryRow(
+	if err := m.db.QueryRow(
 		`SELECT COUNT(*) FROM canonical_requirement_member WHERE profile_id=? AND canonical_id=? AND accepted_version_id=''`,
-		profileID, canonicalID).Scan(&unassigned)
+		profileID, canonicalID).Scan(&unassigned); err != nil {
+		return nil, fmt.Errorf("count unassigned members: %w", err)
+	}
 	if unassigned > 0 {
 		out = append(out, VersionShare{VersionName: "Unassigned", MemberCount: unassigned})
 	}
@@ -61,9 +63,11 @@ func (m *Module) CRAdoption(profileID, canonicalID string) ([]CRShare, error) {
 		return nil, err
 	}
 	var memberCount int
-	m.db.QueryRow(
+	if err := m.db.QueryRow(
 		`SELECT COUNT(*) FROM canonical_requirement_member WHERE profile_id=? AND canonical_id=?`,
-		profileID, canonicalID).Scan(&memberCount)
+		profileID, canonicalID).Scan(&memberCount); err != nil {
+		return nil, fmt.Errorf("count members: %w", err)
+	}
 	out := []CRShare{}
 	for _, cr := range crs {
 		s := CRShare{CRID: cr.ID, Title: cr.Title, Status: cr.Status}
