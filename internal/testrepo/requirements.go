@@ -509,3 +509,17 @@ func deriveCoverage(testRunStatuses []string, testCount int) string {
 	}
 	return CoverageNotRun
 }
+
+// ConsolidatedRunByTest exposes the worst-wins run-status roll-up to sibling
+// packages (the coverage module) so "is this Test passing?" has one source of
+// truth. Thin exported wrapper over the unexported consolidatedRunByTest.
+func (r *Repository) ConsolidatedRunByTest(profileID string) (map[string]string, error) {
+	return r.consolidatedRunByTest(profileID)
+}
+
+// DeriveCoverage exposes the coverage-label derivation (UNCOVERED/NOTRUN/
+// PASSED/FAILED) to sibling packages so the coverage module reuses the same
+// rule rather than reimplementing it.
+func DeriveCoverage(testRunStatuses []string, testCount int) string {
+	return deriveCoverage(testRunStatuses, testCount)
+}

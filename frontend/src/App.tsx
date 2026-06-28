@@ -67,6 +67,7 @@ import { TraceabilityTabs } from "./components/TraceabilityTabs";
 import { ContainersView } from "./components/ContainersView";
 import { PreconditionsView } from "./components/PreconditionsView";
 import { RequirementsView } from "./components/RequirementsView";
+import { CoverageView } from "./components/CoverageView";
 import { DuplicatesView } from "./components/DuplicatesView";
 import { GapAnalysisView } from "./components/GapAnalysisView";
 import { TestCallsView } from "./components/TestCallsView";
@@ -162,6 +163,7 @@ function App() {
     | "dashboard"
     | "traceability"
     | "plans"
+    | "coverage"
   >("browse");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
@@ -530,6 +532,7 @@ function App() {
     "menu:view-duplicates": () => setView("duplicates"),
     "menu:view-gapanalysis": () => setView("gapanalysis"),
     "menu:view-testcalls": () => setView("testcalls"),
+    "menu:view-coverage": () => setView("coverage"),
     "menu:sync-history": () => setShowSyncHistory(true),
     "menu:diagnostics": () => setShowDiagnostics(true),
     "menu:about": () => setShowAbout(true),
@@ -992,6 +995,12 @@ function App() {
           >
             Containers
           </button>
+          <button
+            className={`view-tab${view === "coverage" ? " view-tab-active" : ""}`}
+            onClick={() => setView("coverage")}
+          >
+            Coverage
+          </button>
         </nav>
 
         <div className="topbar-zone topbar-right">
@@ -1216,6 +1225,18 @@ function App() {
               setSelectedKey(k);
               setView("browse");
             }}
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              reloadPending();
+            }}
+          />
+        </main>
+      ) : view === "coverage" ? (
+        <main className="content content-coverage">
+          <CoverageView
+            profileId={activeId}
+            refreshKey={refreshKey}
+            isDemo={isDemo}
             onChanged={() => {
               setRefreshKey((k) => k + 1);
               reloadPending();

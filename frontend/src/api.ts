@@ -155,8 +155,149 @@ export {
   ApplyJUnitImport,
   AnalyzeJUnitImportNewExec,
   ApplyJUnitImportNewExec,
+  // Coverage module (parameter-level coverage + canonical requirement reuse)
+  ListCanonicalRequirements,
+  CreateCanonicalRequirement,
+  RenameCanonicalRequirement,
+  DeleteCanonicalRequirement,
+  SetCanonicalMembers,
+  ListCanonicalReuse,
+  GetParamModel,
+  UpsertCoverageNode,
+  DeleteCoverageNode,
+  GetCoverageReport,
+  ListCoverageGaps,
+  ListCoverageCandidateTests,
+  ListValueTests,
+  SetValueTests,
+  DetectStaleCoverageMappings,
+  ImportCoverageTemplate,
+  ExportCoverageReport,
+  DownloadCoverageTemplate,
+  SeedDemoCoverageExample,
 } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
+
+// Coverage module data shapes (mirror internal/coverage/*.go JSON tags).
+export interface CanonicalRequirement {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  memberCount: number;
+}
+
+export interface ReuseRow {
+  canonicalId: string;
+  requirementKey: string;
+  projectKey: string;
+  summary: string;
+  status: string;
+}
+
+export interface ParamValue {
+  id: string;
+  valueLabel: string;
+  valueKind: string; // value | errorcode | boundary
+  errorCode: string;
+  isRequired: boolean;
+  notes: string;
+  sortOrder: number;
+}
+
+export interface Parameter {
+  id: string;
+  name: string;
+  kind: string;
+  description: string;
+  sortOrder: number;
+  values: ParamValue[];
+}
+
+export interface ParamGroup {
+  id: string;
+  name: string;
+  sortOrder: number;
+  parameters: Parameter[];
+}
+
+export interface ParamModel {
+  canonicalId: string;
+  groups: ParamGroup[];
+}
+
+// NodeEdit is the upsert payload for a group/parameter/value.
+export interface NodeEdit {
+  kind: string; // group | parameter | value
+  canonicalId?: string;
+  groupId?: string;
+  parameterId?: string;
+  id?: string;
+  name: string;
+  paramKind?: string;
+  valueKind?: string;
+  errorCode?: string;
+  isRequired?: boolean;
+  notes?: string;
+  sortOrder?: number;
+}
+
+export interface ValueCoverage {
+  valueId: string;
+  testKeys: string[];
+  tested: boolean;
+  runStatus: string; // UNCOVERED | NOTRUN | PASSED | FAILED
+  isRequired: boolean;
+}
+
+export interface GroupCoverage {
+  groupId: string;
+  name: string;
+  total: number;
+  tested: number;
+  percent: number;
+}
+
+export interface CoverageReport {
+  canonicalId: string;
+  totalValues: number;
+  testedValues: number;
+  percent: number;
+  groups: GroupCoverage[];
+  values: Record<string, ValueCoverage>;
+}
+
+export interface CoverageGap {
+  groupName: string;
+  paramName: string;
+  valueId: string;
+  valueLabel: string;
+  valueKind: string;
+  errorCode: string;
+}
+
+export interface CandidateTest {
+  testKey: string;
+  summary: string;
+  status: string;
+}
+
+export interface StaleMapping {
+  valueId: string;
+  valueLabel: string;
+  testKey: string;
+}
+
+export interface CoverageImportSummary {
+  groups: number;
+  parameters: number;
+  values: number;
+  mappedTests: number;
+  skipped: number;
+  warnings: string[];
+}
 
 // GapTest mirrors testrepo.GapTest — one comparable test row.
 export interface GapTest {

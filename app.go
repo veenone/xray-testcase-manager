@@ -18,6 +18,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"xray-test-manager/internal/coverage"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/profile"
 	"xray-test-manager/internal/settings"
@@ -50,6 +51,7 @@ type App struct {
 	creds      profile.CredentialStore
 	settings   *settings.Manager
 	repo       *testrepo.Repository
+	cov        *coverage.Module
 	dbPath     string
 	logPath    string
 	startupErr string
@@ -114,6 +116,7 @@ func (a *App) initStore() error {
 	a.creds = profile.NewCredentialStore()
 	a.settings = settings.NewManager(st)
 	a.repo = testrepo.NewRepository(st)
+	a.cov = coverage.New(st, a.repo)
 	log.Printf("xtm: local store ready at %s", dbPath)
 	return nil
 }

@@ -4,6 +4,7 @@ import {testrepo} from '../models';
 import {main} from '../models';
 import {syncer} from '../models';
 import {profile} from '../models';
+import {coverage} from '../models';
 import {jira} from '../models';
 import {settings} from '../models';
 
@@ -59,6 +60,8 @@ export function CommitPendingChangesByIDs(arg1:string,arg2:Array<number>):Promis
 
 export function CreateBugForTest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Array<string>):Promise<string>;
 
+export function CreateCanonicalRequirement(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+
 export function CreateContainerAndAllocate(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<testrepo.CreateContainerResult>;
 
 export function CreateFolder(arg1:string,arg2:string,arg3:string):Promise<testrepo.Folder>;
@@ -79,7 +82,11 @@ export function CreateTestsFromGaps(arg1:string,arg2:Array<testrepo.GapTest>):Pr
 
 export function DeallocateTests(arg1:string,arg2:string,arg3:Array<string>):Promise<testrepo.DeallocateResult>;
 
+export function DeleteCanonicalRequirement(arg1:string,arg2:string):Promise<void>;
+
 export function DeleteContainer(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteCoverageNode(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function DeleteFolder(arg1:string,arg2:string):Promise<void>;
 
@@ -93,9 +100,13 @@ export function DeleteSavedView(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteTestStep(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function DetectStaleCoverageMappings(arg1:string,arg2:string):Promise<Array<coverage.StaleMapping>>;
+
 export function DiscardAllPendingChanges(arg1:string):Promise<number>;
 
 export function DiscardPendingChange(arg1:string,arg2:number):Promise<void>;
+
+export function DownloadCoverageTemplate():Promise<string>;
 
 export function EditContainer(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -112,6 +123,8 @@ export function EditTestStepField(arg1:string,arg2:string,arg3:string,arg4:strin
 export function ExcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
 
 export function ExportBugsWithRunHistory(arg1:string,arg2:Array<string>):Promise<string>;
+
+export function ExportCoverageReport(arg1:string,arg2:string):Promise<string>;
 
 export function ExportDashboard(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
@@ -141,11 +154,15 @@ export function GetBulkTransitionOptions(arg1:string,arg2:Array<string>):Promise
 
 export function GetContainerBoard(arg1:string,arg2:string):Promise<testrepo.TestPlanBoard>;
 
+export function GetCoverageReport(arg1:string,arg2:string):Promise<coverage.CoverageReport>;
+
 export function GetDiagnostics():Promise<main.Diagnostics>;
 
 export function GetExecutionMembersWithRuns(arg1:string,arg2:string):Promise<Array<testrepo.ExecMemberRun>>;
 
 export function GetExecutionsForPlans(arg1:string,arg2:Array<string>):Promise<Array<testrepo.Container>>;
+
+export function GetParamModel(arg1:string,arg2:string):Promise<coverage.ParamModel>;
 
 export function GetProfileProjectKey(arg1:string):Promise<string>;
 
@@ -187,6 +204,8 @@ export function GetTraceabilitySankey(arg1:string,arg2:Array<string>,arg3:Array<
 
 export function Health():Promise<main.HealthInfo>;
 
+export function ImportCoverageTemplate(arg1:string,arg2:string):Promise<coverage.ImportSummary>;
+
 export function ImportProfile():Promise<profile.Profile>;
 
 export function ImportTests(arg1:string,arg2:string,arg3:boolean,arg4:testrepo.ImportMapping,arg5:boolean):Promise<testrepo.ImportResult>;
@@ -199,9 +218,17 @@ export function ListBugsForContainer(arg1:string,arg2:string):Promise<Array<test
 
 export function ListBugsWithTests(arg1:string):Promise<Array<testrepo.BugWithTests>>;
 
+export function ListCanonicalRequirements(arg1:string):Promise<Array<coverage.CanonicalRequirement>>;
+
+export function ListCanonicalReuse(arg1:string,arg2:string):Promise<Array<coverage.ReuseRow>>;
+
 export function ListComponents(arg1:string):Promise<Array<testrepo.Bucket>>;
 
 export function ListContainers(arg1:string,arg2:string):Promise<Array<testrepo.Container>>;
+
+export function ListCoverageCandidateTests(arg1:string,arg2:string):Promise<Array<coverage.CandidateTest>>;
+
+export function ListCoverageGaps(arg1:string,arg2:string):Promise<Array<coverage.Gap>>;
 
 export function ListFolders(arg1:string):Promise<Array<testrepo.Folder>>;
 
@@ -235,6 +262,8 @@ export function ListTestsForPrecondition(arg1:string,arg2:string):Promise<Array<
 
 export function ListTestsForRequirement(arg1:string,arg2:string):Promise<Array<testrepo.RequirementTest>>;
 
+export function ListValueTests(arg1:string,arg2:string):Promise<Array<string>>;
+
 export function MoveTestToFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function PreviewImport(arg1:string,arg2:boolean):Promise<testrepo.ImportPreview>;
@@ -244,6 +273,8 @@ export function ReadLog(arg1:number):Promise<string>;
 export function RecreateDeletedTest(arg1:string,arg2:string):Promise<string>;
 
 export function RemoveRequirementSource(arg1:string,arg2:string):Promise<void>;
+
+export function RenameCanonicalRequirement(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
 
 export function RenameFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -263,7 +294,11 @@ export function ScanDuplicateGroupSteps(arg1:string,arg2:string):Promise<testrep
 
 export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;
 
+export function SeedDemoCoverageExample(arg1:string):Promise<string>;
+
 export function SeedSampleContainers(arg1:string):Promise<testrepo.SeedResult>;
+
+export function SetCanonicalMembers(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function SetContainerEnvironments(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
@@ -280,6 +315,8 @@ export function SetTestReview(arg1:string,arg2:string,arg3:string,arg4:string,ar
 export function SetTestRunStatus(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
+
+export function SetValueTests(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function SyncBugs(arg1:string):Promise<void>;
 
@@ -308,3 +345,5 @@ export function UpdateProfile(arg1:string,arg2:string,arg3:string,arg4:string,ar
 export function UpdateProfileScope(arg1:string,arg2:string):Promise<void>;
 
 export function UpdateProfileToken(arg1:string,arg2:string):Promise<void>;
+
+export function UpsertCoverageNode(arg1:string,arg2:coverage.NodeEdit):Promise<string>;

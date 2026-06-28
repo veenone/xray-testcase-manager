@@ -106,6 +106,10 @@ export function CreateBugForTest(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['main']['App']['CreateBugForTest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
+export function CreateCanonicalRequirement(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreateCanonicalRequirement'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateContainerAndAllocate(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CreateContainerAndAllocate'](arg1, arg2, arg3, arg4);
 }
@@ -146,8 +150,16 @@ export function DeallocateTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeallocateTests'](arg1, arg2, arg3);
 }
 
+export function DeleteCanonicalRequirement(arg1, arg2) {
+  return window['go']['main']['App']['DeleteCanonicalRequirement'](arg1, arg2);
+}
+
 export function DeleteContainer(arg1, arg2) {
   return window['go']['main']['App']['DeleteContainer'](arg1, arg2);
+}
+
+export function DeleteCoverageNode(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeleteCoverageNode'](arg1, arg2, arg3);
 }
 
 export function DeleteFolder(arg1, arg2) {
@@ -174,12 +186,20 @@ export function DeleteTestStep(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeleteTestStep'](arg1, arg2, arg3);
 }
 
+export function DetectStaleCoverageMappings(arg1, arg2) {
+  return window['go']['main']['App']['DetectStaleCoverageMappings'](arg1, arg2);
+}
+
 export function DiscardAllPendingChanges(arg1) {
   return window['go']['main']['App']['DiscardAllPendingChanges'](arg1);
 }
 
 export function DiscardPendingChange(arg1, arg2) {
   return window['go']['main']['App']['DiscardPendingChange'](arg1, arg2);
+}
+
+export function DownloadCoverageTemplate() {
+  return window['go']['main']['App']['DownloadCoverageTemplate']();
 }
 
 export function EditContainer(arg1, arg2, arg3) {
@@ -212,6 +232,10 @@ export function ExcludeFromDuplicates(arg1, arg2) {
 
 export function ExportBugsWithRunHistory(arg1, arg2) {
   return window['go']['main']['App']['ExportBugsWithRunHistory'](arg1, arg2);
+}
+
+export function ExportCoverageReport(arg1, arg2) {
+  return window['go']['main']['App']['ExportCoverageReport'](arg1, arg2);
 }
 
 export function ExportDashboard(arg1, arg2, arg3, arg4) {
@@ -270,6 +294,10 @@ export function GetContainerBoard(arg1, arg2) {
   return window['go']['main']['App']['GetContainerBoard'](arg1, arg2);
 }
 
+export function GetCoverageReport(arg1, arg2) {
+  return window['go']['main']['App']['GetCoverageReport'](arg1, arg2);
+}
+
 export function GetDiagnostics() {
   return window['go']['main']['App']['GetDiagnostics']();
 }
@@ -280,6 +308,10 @@ export function GetExecutionMembersWithRuns(arg1, arg2) {
 
 export function GetExecutionsForPlans(arg1, arg2) {
   return window['go']['main']['App']['GetExecutionsForPlans'](arg1, arg2);
+}
+
+export function GetParamModel(arg1, arg2) {
+  return window['go']['main']['App']['GetParamModel'](arg1, arg2);
 }
 
 export function GetProfileProjectKey(arg1) {
@@ -362,6 +394,10 @@ export function Health() {
   return window['go']['main']['App']['Health']();
 }
 
+export function ImportCoverageTemplate(arg1, arg2) {
+  return window['go']['main']['App']['ImportCoverageTemplate'](arg1, arg2);
+}
+
 export function ImportProfile() {
   return window['go']['main']['App']['ImportProfile']();
 }
@@ -386,12 +422,28 @@ export function ListBugsWithTests(arg1) {
   return window['go']['main']['App']['ListBugsWithTests'](arg1);
 }
 
+export function ListCanonicalRequirements(arg1) {
+  return window['go']['main']['App']['ListCanonicalRequirements'](arg1);
+}
+
+export function ListCanonicalReuse(arg1, arg2) {
+  return window['go']['main']['App']['ListCanonicalReuse'](arg1, arg2);
+}
+
 export function ListComponents(arg1) {
   return window['go']['main']['App']['ListComponents'](arg1);
 }
 
 export function ListContainers(arg1, arg2) {
   return window['go']['main']['App']['ListContainers'](arg1, arg2);
+}
+
+export function ListCoverageCandidateTests(arg1, arg2) {
+  return window['go']['main']['App']['ListCoverageCandidateTests'](arg1, arg2);
+}
+
+export function ListCoverageGaps(arg1, arg2) {
+  return window['go']['main']['App']['ListCoverageGaps'](arg1, arg2);
 }
 
 export function ListFolders(arg1) {
@@ -458,6 +510,10 @@ export function ListTestsForRequirement(arg1, arg2) {
   return window['go']['main']['App']['ListTestsForRequirement'](arg1, arg2);
 }
 
+export function ListValueTests(arg1, arg2) {
+  return window['go']['main']['App']['ListValueTests'](arg1, arg2);
+}
+
 export function MoveTestToFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveTestToFolder'](arg1, arg2, arg3);
 }
@@ -476,6 +532,10 @@ export function RecreateDeletedTest(arg1, arg2) {
 
 export function RemoveRequirementSource(arg1, arg2) {
   return window['go']['main']['App']['RemoveRequirementSource'](arg1, arg2);
+}
+
+export function RenameCanonicalRequirement(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RenameCanonicalRequirement'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function RenameFolder(arg1, arg2, arg3) {
@@ -514,8 +574,16 @@ export function ScanDuplicates(arg1) {
   return window['go']['main']['App']['ScanDuplicates'](arg1);
 }
 
+export function SeedDemoCoverageExample(arg1) {
+  return window['go']['main']['App']['SeedDemoCoverageExample'](arg1);
+}
+
 export function SeedSampleContainers(arg1) {
   return window['go']['main']['App']['SeedSampleContainers'](arg1);
+}
+
+export function SetCanonicalMembers(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetCanonicalMembers'](arg1, arg2, arg3);
 }
 
 export function SetContainerEnvironments(arg1, arg2, arg3) {
@@ -548,6 +616,10 @@ export function SetTestRunStatus(arg1, arg2, arg3, arg4) {
 
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
+}
+
+export function SetValueTests(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetValueTests'](arg1, arg2, arg3);
 }
 
 export function SyncBugs(arg1) {
@@ -604,4 +676,8 @@ export function UpdateProfileScope(arg1, arg2) {
 
 export function UpdateProfileToken(arg1, arg2) {
   return window['go']['main']['App']['UpdateProfileToken'](arg1, arg2);
+}
+
+export function UpsertCoverageNode(arg1, arg2) {
+  return window['go']['main']['App']['UpsertCoverageNode'](arg1, arg2);
 }

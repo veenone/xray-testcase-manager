@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [Unreleased]
+
+### Added
+- **Coverage module (parameter-level test coverage + functional-requirement reuse).** A new **Coverage** tab adds a bounded, local-only capability beside test management: decompose a function into parameter *values* / error codes / boundaries, map existing Tests to each value, and measure coverage as *required values with ≥1 test* (the parameter-level definition — not combinatorial). Group equivalent requirement issues from many customer projects under a local **canonical functional requirement** so coverage is defined once and reused, and see which projects reuse it. Import the existing PKCS#11 parameter-extraction Excel workbook to seed a model, and export a styled coverage report (Summary + per-group + Gaps sheets) for Jira/Confluence. Run status reuses the existing requirement-coverage roll-up. Mappings that reference deleted Tests are flagged as stale (kept, never auto-pruned). All state is local (schema v35, `coverage_*`/`canonical_*` tables); nothing requires Jira admin.
+
 ## [1.7.1] - 2026-06-26
 
 Patch release: a live-testing fix for Test Repository subfolder creation, plus a dedicated Sync button on the test-case view.

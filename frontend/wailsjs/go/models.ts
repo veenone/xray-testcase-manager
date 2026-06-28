@@ -1,3 +1,377 @@
+export namespace coverage {
+	
+	export class CandidateTest {
+	    testKey: string;
+	    summary: string;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CandidateTest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.testKey = source["testKey"];
+	        this.summary = source["summary"];
+	        this.status = source["status"];
+	    }
+	}
+	export class CanonicalRequirement {
+	    id: string;
+	    name: string;
+	    category: string;
+	    description: string;
+	    createdAt: string;
+	    updatedAt: string;
+	    memberCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CanonicalRequirement(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.category = source["category"];
+	        this.description = source["description"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.memberCount = source["memberCount"];
+	    }
+	}
+	export class ValueCoverage {
+	    valueId: string;
+	    testKeys: string[];
+	    tested: boolean;
+	    runStatus: string;
+	    isRequired: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ValueCoverage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.valueId = source["valueId"];
+	        this.testKeys = source["testKeys"];
+	        this.tested = source["tested"];
+	        this.runStatus = source["runStatus"];
+	        this.isRequired = source["isRequired"];
+	    }
+	}
+	export class GroupCoverage {
+	    groupId: string;
+	    name: string;
+	    total: number;
+	    tested: number;
+	    percent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GroupCoverage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groupId = source["groupId"];
+	        this.name = source["name"];
+	        this.total = source["total"];
+	        this.tested = source["tested"];
+	        this.percent = source["percent"];
+	    }
+	}
+	export class CoverageReport {
+	    canonicalId: string;
+	    totalValues: number;
+	    testedValues: number;
+	    percent: number;
+	    groups: GroupCoverage[];
+	    values: Record<string, ValueCoverage>;
+	
+	    static createFrom(source: any = {}) {
+	        return new CoverageReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.canonicalId = source["canonicalId"];
+	        this.totalValues = source["totalValues"];
+	        this.testedValues = source["testedValues"];
+	        this.percent = source["percent"];
+	        this.groups = this.convertValues(source["groups"], GroupCoverage);
+	        this.values = this.convertValues(source["values"], ValueCoverage, true);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Gap {
+	    groupName: string;
+	    paramName: string;
+	    valueId: string;
+	    valueLabel: string;
+	    valueKind: string;
+	    errorCode: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Gap(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groupName = source["groupName"];
+	        this.paramName = source["paramName"];
+	        this.valueId = source["valueId"];
+	        this.valueLabel = source["valueLabel"];
+	        this.valueKind = source["valueKind"];
+	        this.errorCode = source["errorCode"];
+	    }
+	}
+	
+	export class ImportSummary {
+	    groups: number;
+	    parameters: number;
+	    values: number;
+	    mappedTests: number;
+	    skipped: number;
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groups = source["groups"];
+	        this.parameters = source["parameters"];
+	        this.values = source["values"];
+	        this.mappedTests = source["mappedTests"];
+	        this.skipped = source["skipped"];
+	        this.warnings = source["warnings"];
+	    }
+	}
+	export class NodeEdit {
+	    kind: string;
+	    canonicalId: string;
+	    groupId: string;
+	    parameterId: string;
+	    id: string;
+	    name: string;
+	    paramKind: string;
+	    valueKind: string;
+	    errorCode: string;
+	    isRequired: boolean;
+	    notes: string;
+	    sortOrder: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NodeEdit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.canonicalId = source["canonicalId"];
+	        this.groupId = source["groupId"];
+	        this.parameterId = source["parameterId"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.paramKind = source["paramKind"];
+	        this.valueKind = source["valueKind"];
+	        this.errorCode = source["errorCode"];
+	        this.isRequired = source["isRequired"];
+	        this.notes = source["notes"];
+	        this.sortOrder = source["sortOrder"];
+	    }
+	}
+	export class ParamValue {
+	    id: string;
+	    valueLabel: string;
+	    valueKind: string;
+	    errorCode: string;
+	    isRequired: boolean;
+	    notes: string;
+	    sortOrder: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ParamValue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.valueLabel = source["valueLabel"];
+	        this.valueKind = source["valueKind"];
+	        this.errorCode = source["errorCode"];
+	        this.isRequired = source["isRequired"];
+	        this.notes = source["notes"];
+	        this.sortOrder = source["sortOrder"];
+	    }
+	}
+	export class Parameter {
+	    id: string;
+	    name: string;
+	    kind: string;
+	    description: string;
+	    sortOrder: number;
+	    values: ParamValue[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Parameter(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.description = source["description"];
+	        this.sortOrder = source["sortOrder"];
+	        this.values = this.convertValues(source["values"], ParamValue);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ParamGroup {
+	    id: string;
+	    name: string;
+	    sortOrder: number;
+	    parameters: Parameter[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ParamGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.sortOrder = source["sortOrder"];
+	        this.parameters = this.convertValues(source["parameters"], Parameter);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ParamModel {
+	    canonicalId: string;
+	    groups: ParamGroup[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ParamModel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.canonicalId = source["canonicalId"];
+	        this.groups = this.convertValues(source["groups"], ParamGroup);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class ReuseRow {
+	    canonicalId: string;
+	    requirementKey: string;
+	    projectKey: string;
+	    summary: string;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReuseRow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.canonicalId = source["canonicalId"];
+	        this.requirementKey = source["requirementKey"];
+	        this.projectKey = source["projectKey"];
+	        this.summary = source["summary"];
+	        this.status = source["status"];
+	    }
+	}
+	export class StaleMapping {
+	    valueId: string;
+	    valueLabel: string;
+	    testKey: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new StaleMapping(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.valueId = source["valueId"];
+	        this.valueLabel = source["valueLabel"];
+	        this.testKey = source["testKey"];
+	    }
+	}
+
+}
+
 export namespace jira {
 	
 	export class BugDetail {
