@@ -90,6 +90,11 @@ func (m *Module) SeedDemoExample(profileID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Create the initial version so the parameter model is version-rooted.
+	vid, err := m.CreateVersion(profileID, cid, "1.0", "stable", "")
+	if err != nil {
+		return "", fmt.Errorf("create demo version: %w", err)
+	}
 
 	tx, err := m.db.Begin()
 	if err != nil {
@@ -101,8 +106,8 @@ func (m *Module) SeedDemoExample(profileID string) (string, error) {
 	for gi, g := range demoLogin() {
 		gid := uuid.NewString()
 		if _, err := tx.Exec(
-			`INSERT INTO coverage_param_group (profile_id, id, canonical_id, name, sort_order) VALUES (?, ?, ?, ?, ?)`,
-			profileID, gid, cid, g.name, gi); err != nil {
+			`INSERT INTO coverage_param_group (profile_id, id, canonical_id, version_id, name, sort_order) VALUES (?, ?, '', ?, ?, ?)`,
+			profileID, gid, vid, g.name, gi); err != nil {
 			return "", err
 		}
 		pid := uuid.NewString()

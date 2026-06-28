@@ -25,7 +25,11 @@ func TestDeleteNodeCascades(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gid, err := m.UpsertNode(p, NodeEdit{Kind: "group", CanonicalID: cid, Name: "G"})
+	vid, err := m.CreateVersion(p, cid, "1.0", "stable", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid, err := m.UpsertNode(p, NodeEdit{Kind: "group", VersionID: vid, Name: "G"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -35,16 +35,20 @@ func seedTest(t *testing.T, st *store.Store, profileID, testKey, runStatus, reqK
 	}
 }
 
-// buildModel creates a canonical node with one group + one parameter holding
-// the given value labels (all required), returning the canonical id and the
-// value ids in order.
-func buildModel(t *testing.T, m *Module, profileID, groupName string, values []string) (string, string, []string) {
+// buildModel creates a canonical node with one version, one group, one parameter
+// holding the given value labels (all required). Returns (canonicalID, versionID,
+// parameterID, valueIDs).
+func buildModel(t *testing.T, m *Module, profileID, groupName string, values []string) (string, string, string, []string) {
 	t.Helper()
 	cid, err := m.CreateCanonical(profileID, "C_Sign", "PKCS11", "")
 	if err != nil {
 		t.Fatalf("create canonical: %v", err)
 	}
-	gid, err := m.UpsertNode(profileID, NodeEdit{Kind: "group", CanonicalID: cid, Name: groupName})
+	vid, err := m.CreateVersion(profileID, cid, "1.0", "stable", "")
+	if err != nil {
+		t.Fatalf("create version: %v", err)
+	}
+	gid, err := m.UpsertNode(profileID, NodeEdit{Kind: "group", VersionID: vid, Name: groupName})
 	if err != nil {
 		t.Fatalf("create group: %v", err)
 	}
@@ -54,20 +58,20 @@ func buildModel(t *testing.T, m *Module, profileID, groupName string, values []s
 	}
 	ids := make([]string, len(values))
 	for i, label := range values {
-		vid, err := m.UpsertNode(profileID, NodeEdit{Kind: "value", ParameterID: pid, Name: label, IsRequired: true, SortOrder: i})
+		v, err := m.UpsertNode(profileID, NodeEdit{Kind: "value", ParameterID: pid, Name: label, IsRequired: true, SortOrder: i})
 		if err != nil {
 			t.Fatalf("create value %q: %v", label, err)
 		}
-		ids[i] = vid
+		ids[i] = v
 	}
-	return cid, pid, ids
+	return cid, vid, pid, ids
 }
 
 func TestComputeCoverageAndGaps(t *testing.T) {
 	m, st := newTestModule(t)
 	const p = "p1"
 
-	cid, _, vids := buildModel(t, m, p, "Mechanism", []string{"RSA_PKCS", "SHA256_RSA", "SHA512_ECDSA", "ED25519"})
+	cid, vid, _, vids := buildModel(t, m, p, "Mechanism", []string{"RSA_PKCS", "SHA256_RSA", "SHA512_ECDSA", "ED25519"})
 
 	// Two passing tests, linked to a member requirement.
 	if _, err := st.DB().Exec(`INSERT INTO requirement (profile_id, jira_key, project_key) VALUES (?, 'FUNC-1', 'FUNC')`, p); err != nil {
@@ -87,7 +91,7 @@ func TestComputeCoverageAndGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rep, err := m.ComputeCoverage(p, cid)
+	rep, err := m.ComputeCoverage(p, vid)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
 	}
@@ -107,7 +111,7 @@ func TestComputeCoverageAndGaps(t *testing.T) {
 		t.Errorf("SHA512_ECDSA should be untested")
 	}
 
-	gaps, err := m.ListGaps(p, cid)
+	gaps, err := m.ListGaps(p, vid)
 	if err != nil {
 		t.Fatalf("gaps: %v", err)
 	}
@@ -123,7 +127,7 @@ func TestComputeCoverageAndGaps(t *testing.T) {
 func TestStaleMappingDetection(t *testing.T) {
 	m, st := newTestModule(t)
 	const p = "p1"
-	cid, _, vids := buildModel(t, m, p, "Session", []string{"Valid"})
+	_, vid, _, vids := buildModel(t, m, p, "Session", []string{"Valid"})
 
 	seedTest(t, st, p, "QA-9", "PASS", "")
 	if err := m.SetValueTests(p, vids[0], []string{"QA-9"}); err != nil {
@@ -131,10 +135,11 @@ func TestStaleMappingDetection(t *testing.T) {
 	}
 
 	// Initially live → not stale, and counts as tested.
-	if stale, _ := m.DetectStaleMappings(p, cid); len(stale) != 0 {
+	// Use "" (profile-wide scan) since groups are version-scoped now, not canonical-scoped.
+	if stale, _ := m.DetectStaleMappings(p, ""); len(stale) != 0 {
 		t.Fatalf("expected no stale mappings, got %d", len(stale))
 	}
-	rep, _ := m.ComputeCoverage(p, cid)
+	rep, _ := m.ComputeCoverage(p, vid)
 	if rep.Percent != 100 {
 		t.Fatalf("percent = %v, want 100", rep.Percent)
 	}
@@ -143,14 +148,14 @@ func TestStaleMappingDetection(t *testing.T) {
 	if _, err := st.DB().Exec(`DELETE FROM test_case WHERE profile_id = ? AND jira_key = 'QA-9'`, p); err != nil {
 		t.Fatal(err)
 	}
-	stale, err := m.DetectStaleMappings(p, cid)
+	stale, err := m.DetectStaleMappings(p, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(stale) != 1 || stale[0].TestKey != "QA-9" {
 		t.Fatalf("stale = %+v, want one QA-9", stale)
 	}
-	rep, _ = m.ComputeCoverage(p, cid)
+	rep, _ = m.ComputeCoverage(p, vid)
 	if rep.Percent != 0 || rep.TestedValues != 0 {
 		t.Errorf("after test deletion percent = %v tested = %d, want 0/0 (stale excluded)", rep.Percent, rep.TestedValues)
 	}
@@ -159,7 +164,7 @@ func TestStaleMappingDetection(t *testing.T) {
 func TestCandidateTestsLimitedToMembers(t *testing.T) {
 	m, st := newTestModule(t)
 	const p = "p1"
-	cid, _, _ := buildModel(t, m, p, "Session", []string{"Valid"})
+	cid, _, _, _ := buildModel(t, m, p, "Session", []string{"Valid"})
 	if _, err := st.DB().Exec(`INSERT INTO requirement (profile_id, jira_key, project_key) VALUES (?, 'FUNC-1', 'FUNC')`, p); err != nil {
 		t.Fatal(err)
 	}

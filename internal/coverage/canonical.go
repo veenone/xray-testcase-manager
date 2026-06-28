@@ -100,8 +100,8 @@ func (m *Module) RenameCanonical(profileID, id, name, category, description stri
 }
 
 // DeleteCanonical removes a canonical requirement and its entire parameter model
-// (groups → parameters → values → mappings) plus its memberships, in one
-// transaction. Deleting a canonical is the only cascade in the module.
+// (versions → groups → parameters → values → mappings) plus its memberships, in
+// one transaction. Deleting a canonical is the only cascade in the module.
 func (m *Module) DeleteCanonical(profileID, id string) error {
 	tx, err := m.db.Begin()
 	if err != nil {
@@ -109,37 +109,74 @@ func (m *Module) DeleteCanonical(profileID, id string) error {
 	}
 	defer tx.Rollback()
 
-	// Delete value→test mappings for values under this canonical's parameters.
+	// --- Cascade via canonical_version (version-rooted groups, current schema) ---
 	if _, err := tx.Exec(
-		`DELETE FROM coverage_value_test
-		  WHERE profile_id = ? AND value_id IN (
+		`DELETE FROM coverage_value_test WHERE profile_id=? AND value_id IN (
 		    SELECT v.id FROM coverage_param_value v
-		    JOIN coverage_parameter p   ON p.profile_id = v.profile_id AND p.id = v.parameter_id
-		    JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-		    WHERE g.profile_id = ? AND g.canonical_id = ?)`,
+		    JOIN coverage_parameter p ON p.profile_id=v.profile_id AND p.id=v.parameter_id
+		    JOIN coverage_param_group g ON g.profile_id=p.profile_id AND g.id=p.group_id
+		    JOIN canonical_version cv ON cv.profile_id=g.profile_id AND cv.id=g.version_id
+		    WHERE g.profile_id=? AND cv.canonical_id=?)`,
+		profileID, profileID, id); err != nil {
+		return fmt.Errorf("delete version mappings: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM coverage_param_value WHERE profile_id=? AND parameter_id IN (
+		    SELECT p.id FROM coverage_parameter p
+		    JOIN coverage_param_group g ON g.profile_id=p.profile_id AND g.id=p.group_id
+		    JOIN canonical_version cv ON cv.profile_id=g.profile_id AND cv.id=g.version_id
+		    WHERE g.profile_id=? AND cv.canonical_id=?)`,
+		profileID, profileID, id); err != nil {
+		return fmt.Errorf("delete version values: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM coverage_parameter WHERE profile_id=? AND group_id IN (
+		    SELECT g.id FROM coverage_param_group g
+		    JOIN canonical_version cv ON cv.profile_id=g.profile_id AND cv.id=g.version_id
+		    WHERE g.profile_id=? AND cv.canonical_id=?)`,
+		profileID, profileID, id); err != nil {
+		return fmt.Errorf("delete version parameters: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM coverage_param_group WHERE profile_id=? AND version_id IN (
+		    SELECT id FROM canonical_version WHERE profile_id=? AND canonical_id=?)`,
+		profileID, profileID, id); err != nil {
+		return fmt.Errorf("delete version groups: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM canonical_version WHERE profile_id=? AND canonical_id=?`,
+		profileID, id); err != nil {
+		return fmt.Errorf("delete versions: %w", err)
+	}
+
+	// --- Legacy: groups with canonical_id set (backward compat with pre-v36 data) ---
+	if _, err := tx.Exec(
+		`DELETE FROM coverage_value_test WHERE profile_id=? AND value_id IN (
+		    SELECT v.id FROM coverage_param_value v
+		    JOIN coverage_parameter p ON p.profile_id=v.profile_id AND p.id=v.parameter_id
+		    JOIN coverage_param_group g ON g.profile_id=p.profile_id AND g.id=p.group_id
+		    WHERE g.profile_id=? AND g.canonical_id=?)`,
 		profileID, profileID, id); err != nil {
 		return fmt.Errorf("delete mappings: %w", err)
 	}
 	if _, err := tx.Exec(
-		`DELETE FROM coverage_param_value
-		  WHERE profile_id = ? AND parameter_id IN (
+		`DELETE FROM coverage_param_value WHERE profile_id=? AND parameter_id IN (
 		    SELECT p.id FROM coverage_parameter p
-		    JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-		    WHERE g.profile_id = ? AND g.canonical_id = ?)`,
+		    JOIN coverage_param_group g ON g.profile_id=p.profile_id AND g.id=p.group_id
+		    WHERE g.profile_id=? AND g.canonical_id=?)`,
 		profileID, profileID, id); err != nil {
 		return fmt.Errorf("delete values: %w", err)
 	}
 	if _, err := tx.Exec(
-		`DELETE FROM coverage_parameter
-		  WHERE profile_id = ? AND group_id IN (
-		    SELECT id FROM coverage_param_group WHERE profile_id = ? AND canonical_id = ?)`,
+		`DELETE FROM coverage_parameter WHERE profile_id=? AND group_id IN (
+		    SELECT id FROM coverage_param_group WHERE profile_id=? AND canonical_id=?)`,
 		profileID, profileID, id); err != nil {
 		return fmt.Errorf("delete parameters: %w", err)
 	}
 	for _, q := range []string{
-		`DELETE FROM coverage_param_group WHERE profile_id = ? AND canonical_id = ?`,
-		`DELETE FROM canonical_requirement_member WHERE profile_id = ? AND canonical_id = ?`,
-		`DELETE FROM canonical_requirement WHERE profile_id = ? AND id = ?`,
+		`DELETE FROM coverage_param_group WHERE profile_id=? AND canonical_id=?`,
+		`DELETE FROM canonical_requirement_member WHERE profile_id=? AND canonical_id=?`,
+		`DELETE FROM canonical_requirement WHERE profile_id=? AND id=?`,
 	} {
 		if _, err := tx.Exec(q, profileID, id); err != nil {
 			return fmt.Errorf("delete canonical: %w", err)

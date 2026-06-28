@@ -25,7 +25,14 @@ func TestSeedDemoExampleAlignedWithDemoData(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	rep, err := m.ComputeCoverage(p, cid)
+	// Fetch the version created by SeedDemoExample.
+	vers, err := m.ListVersions(p, cid)
+	if err != nil || len(vers) == 0 {
+		t.Fatalf("list versions after seed: err=%v len=%d", err, len(vers))
+	}
+	vid := vers[0].ID
+
+	rep, err := m.ComputeCoverage(p, vid)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
 	}
@@ -39,13 +46,13 @@ func TestSeedDemoExampleAlignedWithDemoData(t *testing.T) {
 		t.Errorf("percent = %v, want 83.3", rep.Percent)
 	}
 
-	gaps, _ := m.ListGaps(p, cid)
+	gaps, _ := m.ListGaps(p, vid)
 	if len(gaps) != 2 {
 		t.Errorf("gaps = %d, want 2", len(gaps))
 	}
 
 	// The mapped tests must be the actual demo Login tests (DEMO-1, 31, …).
-	model, _ := m.GetParamModel(p, cid)
+	model, _ := m.GetParamModel(p, vid)
 	var validCredsVID string
 	for _, g := range model.Groups {
 		for _, pr := range g.Parameters {

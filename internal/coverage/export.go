@@ -8,28 +8,28 @@ import (
 	"xray-test-manager/internal/testrepo"
 )
 
-// ExportReport renders a canonical requirement's coverage as a styled workbook:
+// ExportReport renders a version's coverage as a styled workbook:
 // a Summary sheet (overall + per-group %), one sheet per group (every value with
 // its tested/run-status and mapped tests), and a Gaps sheet (the required,
 // untested values). PMs paste these into Jira/Confluence — the sanctioned
 // admin-free sharing path.
-func (m *Module) ExportReport(profileID, canonicalID string) ([]byte, error) {
+func (m *Module) ExportReport(profileID, versionID string) ([]byte, error) {
 	var name string
 	if err := m.db.QueryRow(
-		`SELECT name FROM canonical_requirement WHERE profile_id = ? AND id = ?`,
-		profileID, canonicalID).Scan(&name); err != nil {
-		return nil, fmt.Errorf("load canonical: %w", err)
+		`SELECT name FROM canonical_version WHERE profile_id = ? AND id = ?`,
+		profileID, versionID).Scan(&name); err != nil {
+		return nil, fmt.Errorf("load version: %w", err)
 	}
 
-	model, err := m.GetParamModel(profileID, canonicalID)
+	model, err := m.GetParamModel(profileID, versionID)
 	if err != nil {
 		return nil, err
 	}
-	report, err := m.ComputeCoverage(profileID, canonicalID)
+	report, err := m.ComputeCoverage(profileID, versionID)
 	if err != nil {
 		return nil, err
 	}
-	gaps, err := m.ListGaps(profileID, canonicalID)
+	gaps, err := m.ListGaps(profileID, versionID)
 	if err != nil {
 		return nil, err
 	}

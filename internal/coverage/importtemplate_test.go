@@ -26,8 +26,12 @@ func TestImportRealTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create canonical: %v", err)
 	}
+	vid, err := m.CreateVersion(p, cid, "1.0", "stable", "")
+	if err != nil {
+		t.Fatalf("create version: %v", err)
+	}
 
-	sum, err := m.ImportCoverageTemplate(p, cid, data)
+	sum, err := m.ImportCoverageTemplate(p, vid, data)
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
@@ -48,7 +52,7 @@ func TestImportRealTemplate(t *testing.T) {
 	}
 
 	// Re-import must be idempotent (replace, not duplicate).
-	sum2, err := m.ImportCoverageTemplate(p, cid, data)
+	sum2, err := m.ImportCoverageTemplate(p, vid, data)
 	if err != nil {
 		t.Fatalf("re-import: %v", err)
 	}
@@ -57,7 +61,7 @@ func TestImportRealTemplate(t *testing.T) {
 			sum.Groups, sum.Values, sum2.Groups, sum2.Values)
 	}
 
-	rep, err := m.ComputeCoverage(p, cid)
+	rep, err := m.ComputeCoverage(p, vid)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
 	}

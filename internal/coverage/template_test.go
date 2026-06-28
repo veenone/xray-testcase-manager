@@ -26,8 +26,12 @@ func TestGeneratedTemplateRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create canonical: %v", err)
 	}
+	vid, err := m.CreateVersion(p, cid, "1.0", "stable", "")
+	if err != nil {
+		t.Fatalf("create version: %v", err)
+	}
 
-	sum, err := m.ImportCoverageTemplate(p, cid, data)
+	sum, err := m.ImportCoverageTemplate(p, vid, data)
 	if err != nil {
 		t.Fatalf("import generated template: %v", err)
 	}
@@ -45,7 +49,7 @@ func TestGeneratedTemplateRoundTrips(t *testing.T) {
 	}
 
 	// The model must be readable and non-empty after import.
-	model, err := m.GetParamModel(p, cid)
+	model, err := m.GetParamModel(p, vid)
 	if err != nil || len(model.Groups) != 4 {
 		t.Fatalf("param model after import: err=%v groups=%d", err, len(model.Groups))
 	}

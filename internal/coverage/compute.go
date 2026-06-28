@@ -27,9 +27,9 @@ type GroupCoverage struct {
 	Percent float64 `json:"percent"`
 }
 
-// CoverageReport is the headline result for one canonical requirement.
+// CoverageReport is the headline result for one version of a canonical requirement.
 type CoverageReport struct {
-	CanonicalID  string                   `json:"canonicalId"`
+	VersionID    string                   `json:"versionId"`
 	TotalValues  int                      `json:"totalValues"`
 	TestedValues int                      `json:"testedValues"`
 	Percent      float64                  `json:"percent"`
@@ -48,9 +48,9 @@ type Gap struct {
 	ErrorCode  string `json:"errorCode"`
 }
 
-// liveTestsByValue returns, per value id under the canonical node, the mapped
+// liveTestsByValue returns, per value id under the version, the mapped
 // test keys that still exist in test_case (stale mappings excluded).
-func (m *Module) liveTestsByValue(profileID, canonicalID string) (map[string][]string, error) {
+func (m *Module) liveTestsByValue(profileID, versionID string) (map[string][]string, error) {
 	rows, err := m.db.Query(
 		`SELECT vt.value_id, vt.test_key
 		   FROM coverage_value_test vt
@@ -58,8 +58,8 @@ func (m *Module) liveTestsByValue(profileID, canonicalID string) (map[string][]s
 		   JOIN coverage_parameter p   ON p.profile_id = pv.profile_id AND p.id = pv.parameter_id
 		   JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
 		   JOIN test_case tc           ON tc.profile_id = vt.profile_id AND tc.jira_key = vt.test_key
-		  WHERE vt.profile_id = ? AND g.canonical_id = ?`,
-		profileID, canonicalID)
+		  WHERE vt.profile_id = ? AND g.version_id = ?`,
+		profileID, versionID)
 	if err != nil {
 		return nil, fmt.Errorf("read live mappings: %w", err)
 	}
@@ -75,18 +75,18 @@ func (m *Module) liveTestsByValue(profileID, canonicalID string) (map[string][]s
 	return out, rows.Err()
 }
 
-// ComputeCoverage produces the per-group and overall coverage for a canonical
-// requirement. A required value is "tested" when it has ≥1 live mapped test;
-// each value's run status is derived from those tests via the shared
-// testrepo logic, so "is this test passing?" has one source of truth.
-func (m *Module) ComputeCoverage(profileID, canonicalID string) (CoverageReport, error) {
+// ComputeCoverage produces the per-group and overall coverage for one version of
+// a canonical requirement. A required value is "tested" when it has ≥1 live
+// mapped test; each value's run status is derived from those tests via the
+// shared testrepo logic, so "is this test passing?" has one source of truth.
+func (m *Module) ComputeCoverage(profileID, versionID string) (CoverageReport, error) {
 	report := CoverageReport{
-		CanonicalID: canonicalID,
-		Groups:      []GroupCoverage{},
-		Values:      map[string]ValueCoverage{},
+		VersionID: versionID,
+		Groups:    []GroupCoverage{},
+		Values:    map[string]ValueCoverage{},
 	}
 
-	live, err := m.liveTestsByValue(profileID, canonicalID)
+	live, err := m.liveTestsByValue(profileID, versionID)
 	if err != nil {
 		return report, err
 	}
@@ -100,9 +100,9 @@ func (m *Module) ComputeCoverage(profileID, canonicalID string) (CoverageReport,
 		   FROM coverage_param_value pv
 		   JOIN coverage_parameter p   ON p.profile_id = pv.profile_id AND p.id = pv.parameter_id
 		   JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-		  WHERE pv.profile_id = ? AND g.canonical_id = ?
+		  WHERE pv.profile_id = ? AND g.version_id = ?
 		  ORDER BY g.sort_order, g.name COLLATE NOCASE`,
-		profileID, canonicalID)
+		profileID, versionID)
 	if err != nil {
 		return report, fmt.Errorf("read values for coverage: %w", err)
 	}
@@ -163,19 +163,19 @@ func (m *Module) ComputeCoverage(profileID, canonicalID string) (CoverageReport,
 
 // ListGaps returns the required values that have no live mapped test, with
 // enough context (group, parameter, error code) to act on.
-func (m *Module) ListGaps(profileID, canonicalID string) ([]Gap, error) {
+func (m *Module) ListGaps(profileID, versionID string) ([]Gap, error) {
 	rows, err := m.db.Query(
 		`SELECT g.name, p.name, pv.id, pv.value_label, pv.value_kind, pv.error_code
 		   FROM coverage_param_value pv
 		   JOIN coverage_parameter p   ON p.profile_id = pv.profile_id AND p.id = pv.parameter_id
 		   JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-		  WHERE pv.profile_id = ? AND g.canonical_id = ? AND pv.is_required = 1
+		  WHERE pv.profile_id = ? AND g.version_id = ? AND pv.is_required = 1
 		    AND NOT EXISTS (
 		      SELECT 1 FROM coverage_value_test vt
 		      JOIN test_case tc ON tc.profile_id = vt.profile_id AND tc.jira_key = vt.test_key
 		      WHERE vt.profile_id = pv.profile_id AND vt.value_id = pv.id)
 		  ORDER BY g.sort_order, g.name, p.sort_order, pv.sort_order, pv.value_label`,
-		profileID, canonicalID)
+		profileID, versionID)
 	if err != nil {
 		return nil, fmt.Errorf("list gaps: %w", err)
 	}

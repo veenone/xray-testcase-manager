@@ -26,11 +26,11 @@ type ImportSummary struct {
 var testKeyRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*-\d+$`)
 
 // ImportCoverageTemplate ingests the manual PKCS#11 parameter-extraction
-// workbook into a canonical requirement's model. It is idempotent: the
-// canonical's existing model is replaced in one transaction, so re-importing an
-// updated workbook is safe. Test mappings are seeded only for test keys that
-// already exist in test_case (others are reported as skipped) — matching the
-// no-Jira-admin, local-first constraint.
+// workbook into a version's model. It is idempotent: the version's existing
+// model is replaced in one transaction, so re-importing an updated workbook is
+// safe. Test mappings are seeded only for test keys that already exist in
+// test_case (others are reported as skipped) — matching the no-Jira-admin,
+// local-first constraint.
 //
 // Recognised sheets (matched loosely by name, header-tolerant):
 //   - "Parameter Values"   → groups from the Parameter Group column, values
@@ -42,17 +42,17 @@ var testKeyRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*-\d+$`)
 //     headline denominator). N/A rows are skipped.
 //
 // Unrecognised sheets are ignored and noted in Warnings.
-func (m *Module) ImportCoverageTemplate(profileID, canonicalID string, data []byte) (ImportSummary, error) {
+func (m *Module) ImportCoverageTemplate(profileID, versionID string, data []byte) (ImportSummary, error) {
 	sum := ImportSummary{Warnings: []string{}}
 
 	var exists int
 	if err := m.db.QueryRow(
-		`SELECT COUNT(*) FROM canonical_requirement WHERE profile_id = ? AND id = ?`,
-		profileID, canonicalID).Scan(&exists); err != nil {
-		return sum, fmt.Errorf("check canonical: %w", err)
+		`SELECT COUNT(*) FROM canonical_version WHERE profile_id = ? AND id = ?`,
+		profileID, versionID).Scan(&exists); err != nil {
+		return sum, fmt.Errorf("check version: %w", err)
 	}
 	if exists == 0 {
-		return sum, fmt.Errorf("canonical requirement %q not found", canonicalID)
+		return sum, fmt.Errorf("version %q not found", versionID)
 	}
 
 	f, err := excelize.OpenReader(bytes.NewReader(data))
@@ -73,7 +73,7 @@ func (m *Module) ImportCoverageTemplate(profileID, canonicalID string, data []by
 	}
 	defer tx.Rollback()
 
-	if err := clearModel(tx, profileID, canonicalID); err != nil {
+	if err := clearModel(tx, profileID, versionID); err != nil {
 		return sum, fmt.Errorf("clear existing model: %w", err)
 	}
 
@@ -87,15 +87,15 @@ func (m *Module) ImportCoverageTemplate(profileID, canonicalID string, data []by
 		low := strings.ToLower(sheet)
 		switch {
 		case strings.Contains(low, "parameter value"):
-			if err := m.importValueSheet(tx, profileID, canonicalID, rows, known, &sum, &sortGroup); err != nil {
+			if err := m.importValueSheet(tx, profileID, versionID, rows, known, &sum, &sortGroup); err != nil {
 				return sum, err
 			}
 		case strings.Contains(low, "error path"):
-			if err := m.importFlatSheet(tx, profileID, canonicalID, "Error Paths", "errorcode", rows, known, &sum, &sortGroup); err != nil {
+			if err := m.importFlatSheet(tx, profileID, versionID, "Error Paths", "errorcode", rows, known, &sum, &sortGroup); err != nil {
 				return sum, err
 			}
 		case strings.Contains(low, "boundary"):
-			if err := m.importFlatSheet(tx, profileID, canonicalID, "Boundary Conditions", "boundary", rows, known, &sum, &sortGroup); err != nil {
+			if err := m.importFlatSheet(tx, profileID, versionID, "Boundary Conditions", "boundary", rows, known, &sum, &sortGroup); err != nil {
 				return sum, err
 			}
 		default:
@@ -114,7 +114,7 @@ func (m *Module) ImportCoverageTemplate(profileID, canonicalID string, data []by
 // importValueSheet handles "2. Parameter Values": one group per distinct
 // Parameter Group cell, each holding a single synthetic parameter whose values
 // are the rows.
-func (m *Module) importValueSheet(tx *sql.Tx, profileID, canonicalID string, rows [][]string, known map[string]bool, sum *ImportSummary, sortGroup *int) error {
+func (m *Module) importValueSheet(tx *sql.Tx, profileID, versionID string, rows [][]string, known map[string]bool, sum *ImportSummary, sortGroup *int) error {
 	hdr, idx := findHeader(rows, []string{"parameter group", "parameter value"})
 	if hdr < 0 {
 		sum.Warnings = append(sum.Warnings, "Parameter Values: header row not found")
@@ -139,9 +139,9 @@ func (m *Module) importValueSheet(tx *sql.Tx, profileID, canonicalID string, row
 		if !ok {
 			gid = uuid.NewString()
 			if _, err := tx.Exec(
-				`INSERT INTO coverage_param_group (profile_id, id, canonical_id, name, sort_order)
-				 VALUES (?, ?, ?, ?, ?)`,
-				profileID, gid, canonicalID, groupName, *sortGroup); err != nil {
+				`INSERT INTO coverage_param_group (profile_id, id, canonical_id, version_id, name, sort_order)
+				 VALUES (?, ?, '', ?, ?, ?)`,
+				profileID, gid, versionID, groupName, *sortGroup); err != nil {
 				return err
 			}
 			*sortGroup++
@@ -175,7 +175,7 @@ func (m *Module) importValueSheet(tx *sql.Tx, profileID, canonicalID string, row
 
 // importFlatSheet handles the Error Paths and Boundary Conditions sheets: a
 // single group with one synthetic parameter, one value per row.
-func (m *Module) importFlatSheet(tx *sql.Tx, profileID, canonicalID, groupName, valueKind string, rows [][]string, known map[string]bool, sum *ImportSummary, sortGroup *int) error {
+func (m *Module) importFlatSheet(tx *sql.Tx, profileID, versionID, groupName, valueKind string, rows [][]string, known map[string]bool, sum *ImportSummary, sortGroup *int) error {
 	var labelKeys, testKeys []string
 	if valueKind == "errorcode" {
 		labelKeys = []string{"error code"}
@@ -205,9 +205,9 @@ func (m *Module) importFlatSheet(tx *sql.Tx, profileID, canonicalID, groupName, 
 
 	gid := uuid.NewString()
 	if _, err := tx.Exec(
-		`INSERT INTO coverage_param_group (profile_id, id, canonical_id, name, sort_order)
-		 VALUES (?, ?, ?, ?, ?)`,
-		profileID, gid, canonicalID, groupName, *sortGroup); err != nil {
+		`INSERT INTO coverage_param_group (profile_id, id, canonical_id, version_id, name, sort_order)
+		 VALUES (?, ?, '', ?, ?, ?)`,
+		profileID, gid, versionID, groupName, *sortGroup); err != nil {
 		return err
 	}
 	*sortGroup++
@@ -305,9 +305,9 @@ func (m *Module) knownTestKeys(profileID string) (map[string]bool, error) {
 	return out, rows.Err()
 }
 
-// clearModel deletes a canonical's entire parameter model (and mappings) inside
-// the given transaction, leaving the canonical node and its memberships intact.
-func clearModel(tx *sql.Tx, profileID, canonicalID string) error {
+// clearModel deletes a version's entire parameter model (and mappings) inside
+// the given transaction, leaving the version and canonical intact.
+func clearModel(tx *sql.Tx, profileID, versionID string) error {
 	stmts := []struct {
 		q    string
 		args []any
@@ -316,14 +316,14 @@ func clearModel(tx *sql.Tx, profileID, canonicalID string) error {
 			SELECT v.id FROM coverage_param_value v
 			JOIN coverage_parameter p   ON p.profile_id = v.profile_id AND p.id = v.parameter_id
 			JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-			WHERE g.profile_id = ? AND g.canonical_id = ?)`, []any{profileID, profileID, canonicalID}},
+			WHERE g.profile_id = ? AND g.version_id = ?)`, []any{profileID, profileID, versionID}},
 		{`DELETE FROM coverage_param_value WHERE profile_id = ? AND parameter_id IN (
 			SELECT p.id FROM coverage_parameter p
 			JOIN coverage_param_group g ON g.profile_id = p.profile_id AND g.id = p.group_id
-			WHERE g.profile_id = ? AND g.canonical_id = ?)`, []any{profileID, profileID, canonicalID}},
+			WHERE g.profile_id = ? AND g.version_id = ?)`, []any{profileID, profileID, versionID}},
 		{`DELETE FROM coverage_parameter WHERE profile_id = ? AND group_id IN (
-			SELECT id FROM coverage_param_group WHERE profile_id = ? AND canonical_id = ?)`, []any{profileID, profileID, canonicalID}},
-		{`DELETE FROM coverage_param_group WHERE profile_id = ? AND canonical_id = ?`, []any{profileID, canonicalID}},
+			SELECT id FROM coverage_param_group WHERE profile_id = ? AND version_id = ?)`, []any{profileID, profileID, versionID}},
+		{`DELETE FROM coverage_param_group WHERE profile_id = ? AND version_id = ?`, []any{profileID, versionID}},
 	}
 	for _, s := range stmts {
 		if _, err := tx.Exec(s.q, s.args...); err != nil {

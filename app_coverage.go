@@ -75,12 +75,12 @@ func (a *App) ListCanonicalReuse(profileID, canonicalID string) ([]coverage.Reus
 // --- Coverage: parameter model (PRD Topic 3) ---
 
 // GetParamModel returns the full parameter tree (groups → parameters → values)
-// for a canonical requirement.
-func (a *App) GetParamModel(profileID, canonicalID string) (coverage.ParamModel, error) {
+// for a version of a canonical requirement.
+func (a *App) GetParamModel(profileID, versionID string) (coverage.ParamModel, error) {
 	if err := a.requireStore(); err != nil {
 		return coverage.ParamModel{Groups: []coverage.ParamGroup{}}, err
 	}
-	return a.cov.GetParamModel(profileID, canonicalID)
+	return a.cov.GetParamModel(profileID, versionID)
 }
 
 // UpsertCoverageNode inserts or updates one node (group, parameter, or value)
@@ -106,22 +106,22 @@ func (a *App) DeleteCoverageNode(profileID, kind, id string) (err error) {
 // --- Coverage: value↔test mapping & computation (PRD Topic 3) ---
 
 // GetCoverageReport computes per-group and overall parameter coverage for a
-// canonical requirement, plus a per-value tested/run-status annotation for the
-// matrix.
-func (a *App) GetCoverageReport(profileID, canonicalID string) (coverage.CoverageReport, error) {
+// version of a canonical requirement, plus a per-value tested/run-status
+// annotation for the matrix.
+func (a *App) GetCoverageReport(profileID, versionID string) (coverage.CoverageReport, error) {
 	if err := a.requireStore(); err != nil {
 		return coverage.CoverageReport{Groups: []coverage.GroupCoverage{}, Values: map[string]coverage.ValueCoverage{}}, err
 	}
-	return a.cov.ComputeCoverage(profileID, canonicalID)
+	return a.cov.ComputeCoverage(profileID, versionID)
 }
 
 // ListCoverageGaps returns the required values with no live mapped test — the
 // named work to reach 100%.
-func (a *App) ListCoverageGaps(profileID, canonicalID string) ([]coverage.Gap, error) {
+func (a *App) ListCoverageGaps(profileID, versionID string) ([]coverage.Gap, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
-	return a.cov.ListGaps(profileID, canonicalID)
+	return a.cov.ListGaps(profileID, versionID)
 }
 
 // ListCoverageCandidateTests returns the Tests eligible to be mapped to a value
@@ -163,9 +163,9 @@ func (a *App) DetectStaleCoverageMappings(profileID, canonicalID string) ([]cove
 // --- Coverage: import / export (PRD Topic 3) ---
 
 // ImportCoverageTemplate prompts for an .xlsx parameter-extraction workbook and
-// loads it into the canonical requirement's model (replacing any existing
-// model). A zero-value summary is returned when the dialog is cancelled.
-func (a *App) ImportCoverageTemplate(profileID, canonicalID string) (summary coverage.ImportSummary, err error) {
+// loads it into the version's model (replacing any existing model). A
+// zero-value summary is returned when the dialog is cancelled.
+func (a *App) ImportCoverageTemplate(profileID, versionID string) (summary coverage.ImportSummary, err error) {
 	defer recoverToError("ImportCoverageTemplate", &err)
 	if err := a.requireStore(); err != nil {
 		return coverage.ImportSummary{}, err
@@ -184,18 +184,18 @@ func (a *App) ImportCoverageTemplate(profileID, canonicalID string) (summary cov
 	if err != nil {
 		return coverage.ImportSummary{}, fmt.Errorf("read file: %w", err)
 	}
-	return a.cov.ImportCoverageTemplate(profileID, canonicalID, data)
+	return a.cov.ImportCoverageTemplate(profileID, versionID, data)
 }
 
-// ExportCoverageReport prompts for a save location and writes the canonical
-// requirement's coverage report as a styled .xlsx. Returns the path written, or
-// "" when cancelled.
-func (a *App) ExportCoverageReport(profileID, canonicalID string) (path string, err error) {
+// ExportCoverageReport prompts for a save location and writes the version's
+// coverage report as a styled .xlsx. Returns the path written, or "" when
+// cancelled.
+func (a *App) ExportCoverageReport(profileID, versionID string) (path string, err error) {
 	defer recoverToError("ExportCoverageReport", &err)
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
-	data, err := a.cov.ExportReport(profileID, canonicalID)
+	data, err := a.cov.ExportReport(profileID, versionID)
 	if err != nil {
 		return "", err
 	}

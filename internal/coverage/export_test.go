@@ -10,13 +10,13 @@ import (
 func TestExportReportRoundTrips(t *testing.T) {
 	m, st := newTestModule(t)
 	const p = "p1"
-	cid, _, vids := buildModel(t, m, p, "Mechanism", []string{"RSA_PKCS", "ED25519"})
+	_, vid, _, vids := buildModel(t, m, p, "Mechanism", []string{"RSA_PKCS", "ED25519"})
 	seedTest(t, st, p, "QA-1", "PASS", "")
 	if err := m.SetValueTests(p, vids[0], []string{"QA-1"}); err != nil {
 		t.Fatal(err)
 	}
 
-	data, err := m.ExportReport(p, cid)
+	data, err := m.ExportReport(p, vid)
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
