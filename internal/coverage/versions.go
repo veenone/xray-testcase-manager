@@ -107,6 +107,12 @@ func (m *Module) DeleteVersion(profileID, id string) error {
 			return err
 		}
 	}
+	// Reset member locks pointing at this version before deleting it.
+	if _, err := tx.Exec(
+		`UPDATE canonical_requirement_member SET accepted_version_id='' WHERE profile_id=? AND accepted_version_id=?`,
+		profileID, id); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM canonical_version WHERE profile_id=? AND id=?`, profileID, id); err != nil {
 		return err
 	}

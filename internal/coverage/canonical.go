@@ -174,6 +174,19 @@ func (m *Module) DeleteCanonical(profileID, id string) error {
 		profileID, profileID, id); err != nil {
 		return fmt.Errorf("delete parameters: %w", err)
 	}
+	// --- Change requests and their member decisions ---
+	if _, err := tx.Exec(
+		`DELETE FROM cr_member_decision WHERE profile_id=? AND cr_id IN (
+		    SELECT id FROM change_request WHERE profile_id=? AND canonical_id=?)`,
+		profileID, profileID, id); err != nil {
+		return fmt.Errorf("delete cr decisions: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM change_request WHERE profile_id=? AND canonical_id=?`,
+		profileID, id); err != nil {
+		return fmt.Errorf("delete change requests: %w", err)
+	}
+
 	for _, q := range []string{
 		`DELETE FROM coverage_param_group WHERE profile_id=? AND canonical_id=?`,
 		`DELETE FROM canonical_requirement_member WHERE profile_id=? AND canonical_id=?`,
