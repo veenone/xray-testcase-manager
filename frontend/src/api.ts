@@ -175,6 +175,22 @@ export {
   ExportCoverageReport,
   DownloadCoverageTemplate,
   SeedDemoCoverageExample,
+  // Versioning + Change Requests (Topic 2)
+  ListVersions,
+  CreateVersion,
+  CloneVersion,
+  RenameVersion,
+  SetVersionStatus,
+  DeleteVersion,
+  SetMemberVersion,
+  ListChangeRequests,
+  CreateChangeRequest,
+  UpdateChangeRequest,
+  DeleteChangeRequest,
+  SetCRDecision,
+  GetVersionDistribution,
+  GetCRAdoption,
+  GetCRImpact,
 } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
 
@@ -224,7 +240,7 @@ export interface ParamGroup {
 }
 
 export interface ParamModel {
-  canonicalId: string;
+  versionId: string;
   groups: ParamGroup[];
 }
 
@@ -261,7 +277,7 @@ export interface GroupCoverage {
 }
 
 export interface CoverageReport {
-  canonicalId: string;
+  versionId: string;
   totalValues: number;
   testedValues: number;
   percent: number;
@@ -1077,6 +1093,64 @@ export interface JUnitNewExecResult {
   allocated: number;
   resultsSet: number;
   failed: string[];
+}
+
+// Version mirrors coverage.Version — one named snapshot of a canonical requirement's model.
+export interface Version {
+  id: string;
+  name: string;
+  status: string; // planning | beta | stable | deprecated
+  notes: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+// ChangeRequest mirrors coverage.ChangeRequest — a proposed change scoped to one canonical.
+export interface ChangeRequest {
+  id: string;
+  crKey: string;
+  title: string;
+  status: string; // open | accepted | rejected | withdrawn
+  targetVersionId: string;
+  risk: string; // low | medium | high
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// CRDecision mirrors coverage.CRDecision — one member requirement's decision on a CR.
+export interface CRDecision {
+  requirementKey: string;
+  projectKey: string;
+  decision: string; // pending | can_accept | cannot_accept
+  note: string;
+}
+
+// CRImpactResult mirrors coverage.CRImpactResult — the full impact picture for one CR.
+export interface CRImpactResult {
+  cr: ChangeRequest;
+  decisions: CRDecision[];
+  canAccept: number;
+  cannotAccept: number;
+  pending: number;
+}
+
+// VersionShare mirrors coverage.VersionShare — member count per version for the distribution chart.
+export interface VersionShare {
+  versionId: string;
+  versionName: string;
+  status: string;
+  memberCount: number;
+}
+
+// CRShare mirrors coverage.CRShare — adoption rollup per CR for the dashboard.
+export interface CRShare {
+  crId: string;
+  title: string;
+  status: string;
+  canAccept: number;
+  cannotAccept: number;
+  pending: number;
 }
 
 // errMsg renders any thrown value (unknown in strict mode) as a string.

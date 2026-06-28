@@ -94,6 +94,10 @@ export function CloneTestSteps(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CloneTestSteps'](arg1, arg2, arg3, arg4);
 }
 
+export function CloneVersion(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CloneVersion'](arg1, arg2, arg3, arg4);
+}
+
 export function CommitPendingChanges(arg1) {
   return window['go']['main']['App']['CommitPendingChanges'](arg1);
 }
@@ -108,6 +112,10 @@ export function CreateBugForTest(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
 
 export function CreateCanonicalRequirement(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CreateCanonicalRequirement'](arg1, arg2, arg3, arg4);
+}
+
+export function CreateChangeRequest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['CreateChangeRequest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function CreateContainerAndAllocate(arg1, arg2, arg3, arg4) {
@@ -146,12 +154,20 @@ export function CreateTestsFromGaps(arg1, arg2) {
   return window['go']['main']['App']['CreateTestsFromGaps'](arg1, arg2);
 }
 
+export function CreateVersion(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['CreateVersion'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function DeallocateTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeallocateTests'](arg1, arg2, arg3);
 }
 
 export function DeleteCanonicalRequirement(arg1, arg2) {
   return window['go']['main']['App']['DeleteCanonicalRequirement'](arg1, arg2);
+}
+
+export function DeleteChangeRequest(arg1, arg2) {
+  return window['go']['main']['App']['DeleteChangeRequest'](arg1, arg2);
 }
 
 export function DeleteContainer(arg1, arg2) {
@@ -184,6 +200,10 @@ export function DeleteSavedView(arg1, arg2) {
 
 export function DeleteTestStep(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeleteTestStep'](arg1, arg2, arg3);
+}
+
+export function DeleteVersion(arg1, arg2) {
+  return window['go']['main']['App']['DeleteVersion'](arg1, arg2);
 }
 
 export function DetectStaleCoverageMappings(arg1, arg2) {
@@ -290,6 +310,14 @@ export function GetBulkTransitionOptions(arg1, arg2) {
   return window['go']['main']['App']['GetBulkTransitionOptions'](arg1, arg2);
 }
 
+export function GetCRAdoption(arg1, arg2) {
+  return window['go']['main']['App']['GetCRAdoption'](arg1, arg2);
+}
+
+export function GetCRImpact(arg1, arg2) {
+  return window['go']['main']['App']['GetCRImpact'](arg1, arg2);
+}
+
 export function GetContainerBoard(arg1, arg2) {
   return window['go']['main']['App']['GetContainerBoard'](arg1, arg2);
 }
@@ -390,6 +418,10 @@ export function GetTraceabilitySankey(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetTraceabilitySankey'](arg1, arg2, arg3, arg4);
 }
 
+export function GetVersionDistribution(arg1, arg2) {
+  return window['go']['main']['App']['GetVersionDistribution'](arg1, arg2);
+}
+
 export function Health() {
   return window['go']['main']['App']['Health']();
 }
@@ -428,6 +460,10 @@ export function ListCanonicalRequirements(arg1) {
 
 export function ListCanonicalReuse(arg1, arg2) {
   return window['go']['main']['App']['ListCanonicalReuse'](arg1, arg2);
+}
+
+export function ListChangeRequests(arg1, arg2) {
+  return window['go']['main']['App']['ListChangeRequests'](arg1, arg2);
 }
 
 export function ListComponents(arg1) {
@@ -514,6 +550,10 @@ export function ListValueTests(arg1, arg2) {
   return window['go']['main']['App']['ListValueTests'](arg1, arg2);
 }
 
+export function ListVersions(arg1, arg2) {
+  return window['go']['main']['App']['ListVersions'](arg1, arg2);
+}
+
 export function MoveTestToFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveTestToFolder'](arg1, arg2, arg3);
 }
@@ -540,6 +580,10 @@ export function RenameCanonicalRequirement(arg1, arg2, arg3, arg4, arg5) {
 
 export function RenameFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['RenameFolder'](arg1, arg2, arg3);
+}
+
+export function RenameVersion(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RenameVersion'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function ReorderTestSteps(arg1, arg2, arg3) {
@@ -582,6 +626,10 @@ export function SeedSampleContainers(arg1) {
   return window['go']['main']['App']['SeedSampleContainers'](arg1);
 }
 
+export function SetCRDecision(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SetCRDecision'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function SetCanonicalMembers(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCanonicalMembers'](arg1, arg2, arg3);
 }
@@ -592,6 +640,10 @@ export function SetContainerEnvironments(arg1, arg2, arg3) {
 
 export function SetDefaultProfile(arg1) {
   return window['go']['main']['App']['SetDefaultProfile'](arg1);
+}
+
+export function SetMemberVersion(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetMemberVersion'](arg1, arg2, arg3, arg4);
 }
 
 export function SetRequirementSource(arg1, arg2, arg3, arg4) {
@@ -620,6 +672,10 @@ export function SetTheme(arg1) {
 
 export function SetValueTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetValueTests'](arg1, arg2, arg3);
+}
+
+export function SetVersionStatus(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetVersionStatus'](arg1, arg2, arg3);
 }
 
 export function SyncBugs(arg1) {
@@ -664,6 +720,10 @@ export function TransitionTest(arg1, arg2, arg3) {
 
 export function UnexcludeFromDuplicates(arg1, arg2) {
   return window['go']['main']['App']['UnexcludeFromDuplicates'](arg1, arg2);
+}
+
+export function UpdateChangeRequest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['UpdateChangeRequest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {

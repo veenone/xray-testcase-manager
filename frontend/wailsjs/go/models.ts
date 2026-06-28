@@ -1,5 +1,111 @@
 export namespace coverage {
 	
+	export class CRDecision {
+	    requirementKey: string;
+	    projectKey: string;
+	    decision: string;
+	    note: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CRDecision(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requirementKey = source["requirementKey"];
+	        this.projectKey = source["projectKey"];
+	        this.decision = source["decision"];
+	        this.note = source["note"];
+	    }
+	}
+	export class ChangeRequest {
+	    id: string;
+	    crKey: string;
+	    title: string;
+	    status: string;
+	    targetVersionId: string;
+	    risk: string;
+	    description: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChangeRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.crKey = source["crKey"];
+	        this.title = source["title"];
+	        this.status = source["status"];
+	        this.targetVersionId = source["targetVersionId"];
+	        this.risk = source["risk"];
+	        this.description = source["description"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class CRImpactResult {
+	    cr: ChangeRequest;
+	    decisions: CRDecision[];
+	    canAccept: number;
+	    cannotAccept: number;
+	    pending: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CRImpactResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cr = this.convertValues(source["cr"], ChangeRequest);
+	        this.decisions = this.convertValues(source["decisions"], CRDecision);
+	        this.canAccept = source["canAccept"];
+	        this.cannotAccept = source["cannotAccept"];
+	        this.pending = source["pending"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CRShare {
+	    crId: string;
+	    title: string;
+	    status: string;
+	    canAccept: number;
+	    cannotAccept: number;
+	    pending: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CRShare(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.crId = source["crId"];
+	        this.title = source["title"];
+	        this.status = source["status"];
+	        this.canAccept = source["canAccept"];
+	        this.cannotAccept = source["cannotAccept"];
+	        this.pending = source["pending"];
+	    }
+	}
 	export class CandidateTest {
 	    testKey: string;
 	    summary: string;
@@ -40,6 +146,7 @@ export namespace coverage {
 	        this.memberCount = source["memberCount"];
 	    }
 	}
+	
 	export class ValueCoverage {
 	    valueId: string;
 	    testKeys: string[];
@@ -81,7 +188,7 @@ export namespace coverage {
 	    }
 	}
 	export class CoverageReport {
-	    canonicalId: string;
+	    versionId: string;
 	    totalValues: number;
 	    testedValues: number;
 	    percent: number;
@@ -94,7 +201,7 @@ export namespace coverage {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.canonicalId = source["canonicalId"];
+	        this.versionId = source["versionId"];
 	        this.totalValues = source["totalValues"];
 	        this.testedValues = source["testedValues"];
 	        this.percent = source["percent"];
@@ -168,6 +275,7 @@ export namespace coverage {
 	export class NodeEdit {
 	    kind: string;
 	    canonicalId: string;
+	    versionId: string;
 	    groupId: string;
 	    parameterId: string;
 	    id: string;
@@ -187,6 +295,7 @@ export namespace coverage {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.kind = source["kind"];
 	        this.canonicalId = source["canonicalId"];
+	        this.versionId = source["versionId"];
 	        this.groupId = source["groupId"];
 	        this.parameterId = source["parameterId"];
 	        this.id = source["id"];
@@ -300,7 +409,7 @@ export namespace coverage {
 		}
 	}
 	export class ParamModel {
-	    canonicalId: string;
+	    versionId: string;
 	    groups: ParamGroup[];
 	
 	    static createFrom(source: any = {}) {
@@ -309,7 +418,7 @@ export namespace coverage {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.canonicalId = source["canonicalId"];
+	        this.versionId = source["versionId"];
 	        this.groups = this.convertValues(source["groups"], ParamGroup);
 	    }
 	
@@ -367,6 +476,47 @@ export namespace coverage {
 	        this.valueId = source["valueId"];
 	        this.valueLabel = source["valueLabel"];
 	        this.testKey = source["testKey"];
+	    }
+	}
+	
+	export class Version {
+	    id: string;
+	    name: string;
+	    status: string;
+	    notes: string;
+	    sortOrder: number;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Version(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.notes = source["notes"];
+	        this.sortOrder = source["sortOrder"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class VersionShare {
+	    versionId: string;
+	    versionName: string;
+	    status: string;
+	    memberCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VersionShare(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.versionId = source["versionId"];
+	        this.versionName = source["versionName"];
+	        this.status = source["status"];
+	        this.memberCount = source["memberCount"];
 	    }
 	}
 
