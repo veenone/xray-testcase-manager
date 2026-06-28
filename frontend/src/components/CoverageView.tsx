@@ -5,6 +5,7 @@ import {
   DeleteCanonicalRequirement,
   SetCanonicalMembers,
   ListCanonicalReuse,
+  ListVersions,
   GetParamModel,
   UpsertCoverageNode,
   DeleteCoverageNode,
@@ -30,9 +31,13 @@ import type {
   CandidateTest,
   StaleMapping,
   ValueCoverage,
+  Version,
 } from "../api";
 import { coverage } from "../../wailsjs/go/models";
 import { useConfirm } from "./useConfirm";
+import { VersionBar } from "./VersionBar";
+import { ChangeRequestsPanel } from "./ChangeRequestsPanel";
+import { VersionDashboard } from "./VersionDashboard";
 
 interface Props {
   profileId: string;
@@ -73,12 +78,14 @@ function statusText(vc: ValueCoverage | undefined): string {
 export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props) {
   const [canon, setCanon] = useState<CanonicalRequirement[]>([]);
   const [selected, setSelected] = useState("");
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [versionId, setVersionId] = useState("");
   const [model, setModel] = useState<ParamModel | null>(null);
   const [report, setReport] = useState<CoverageReport | null>(null);
   const [gaps, setGaps] = useState<CoverageGap[]>([]);
   const [reuse, setReuse] = useState<ReuseRow[]>([]);
   const [stale, setStale] = useState<StaleMapping[]>([]);
-  const [tab, setTab] = useState<"matrix" | "gaps" | "reuse">("matrix");
+  const [tab, setTab] = useState<"matrix" | "gaps" | "reuse" | "versions">("matrix");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -105,8 +112,30 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
     void loadList();
   }, [loadList, refreshKey]);
 
-  const loadSelected = useCallback(async () => {
+  // Load versions whenever the selected canonical changes; default to first
+  // stable version, else first version.
+  const loadVersions = useCallback(async () => {
     if (!profileId || !selected) {
+      setVersions([]);
+      setVersionId("");
+      return;
+    }
+    try {
+      const vs = await ListVersions(profileId, selected);
+      setVersions(vs ?? []);
+      const stable = vs?.find((v) => v.status === "stable");
+      setVersionId(stable?.id ?? vs?.[0]?.id ?? "");
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }, [profileId, selected]);
+
+  useEffect(() => {
+    void loadVersions();
+  }, [loadVersions]);
+
+  const loadSelected = useCallback(async () => {
+    if (!profileId || !selected || !versionId) {
       setModel(null);
       setReport(null);
       setGaps([]);
@@ -118,11 +147,11 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
     setError("");
     try {
       const [m, r, g, ru, st] = await Promise.all([
-        GetParamModel(profileId, selected),
-        GetCoverageReport(profileId, selected),
-        ListCoverageGaps(profileId, selected),
+        GetParamModel(profileId, versionId),
+        GetCoverageReport(profileId, versionId),
+        ListCoverageGaps(profileId, versionId),
         ListCanonicalReuse(profileId, selected),
-        DetectStaleCoverageMappings(profileId, selected),
+        DetectStaleCoverageMappings(profileId, versionId),
       ]);
       setModel(m);
       setReport(r);
@@ -134,13 +163,14 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
     } finally {
       setLoading(false);
     }
-  }, [profileId, selected]);
+  }, [profileId, selected, versionId]);
 
   useEffect(() => {
     void loadSelected();
   }, [loadSelected, refreshKey]);
 
   const reload = async () => {
+    await loadVersions();
     await loadSelected();
     onChanged?.();
   };
@@ -184,11 +214,11 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
   }
 
   async function importTemplate() {
-    if (!selected) return;
+    if (!versionId) return;
     setBusy(true);
     setNotice("");
     try {
-      const sum = await ImportCoverageTemplate(profileId, selected);
+      const sum = await ImportCoverageTemplate(profileId, versionId);
       if (sum.groups === 0 && sum.values === 0) {
         setNotice("Import cancelled or empty.");
       } else {
@@ -206,10 +236,10 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
   }
 
   async function exportReport() {
-    if (!selected) return;
+    if (!versionId) return;
     setBusy(true);
     try {
-      const path = await ExportCoverageReport(profileId, selected);
+      const path = await ExportCoverageReport(profileId, versionId);
       setNotice(path ? `Exported to ${path}` : "Export cancelled.");
     } catch (e) {
       setError(errMsg(e));
@@ -250,13 +280,14 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
 
   async function addGroup() {
     const name = newGroupName.trim();
-    if (!name || !selected) return;
+    if (!name || !selected || !versionId) return;
     try {
       await UpsertCoverageNode(
         profileId,
         coverage.NodeEdit.createFrom({
           kind: "group",
           canonicalId: selected,
+          versionId,
           name,
           sortOrder: model?.groups.length ?? 0,
         }),
@@ -369,10 +400,10 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
                 </span>
               )}
               <div className="cov-actions">
-                <button className="btn" disabled={busy} onClick={() => void importTemplate()}>
+                <button className="btn" disabled={busy || !versionId} onClick={() => void importTemplate()}>
                   Import template…
                 </button>
-                <button className="btn" disabled={busy} onClick={() => void exportReport()}>
+                <button className="btn" disabled={busy || !versionId} onClick={() => void exportReport()}>
                   Export report…
                 </button>
                 <button className="btn" disabled={busy} onClick={() => void downloadTemplate()}>
@@ -384,6 +415,15 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
               </div>
             </header>
 
+            <VersionBar
+              versions={versions}
+              value={versionId}
+              onChange={setVersionId}
+              profileId={profileId}
+              canonicalId={selected}
+              onChanged={() => void reload()}
+            />
+
             {stale.length > 0 && (
               <div className="cov-stale">
                 ⚠ {stale.length} mapping{stale.length === 1 ? "" : "s"} reference tests no longer in the local cache (kept, not counted).
@@ -391,22 +431,53 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
             )}
 
             <nav className="cov-tabs">
-              {(["matrix", "gaps", "reuse"] as const).map((t) => (
-                <button
-                  key={t}
-                  className={`cov-tab${tab === t ? " cov-tab-active" : ""}`}
-                  onClick={() => setTab(t)}
-                >
-                  {t === "matrix" ? "Coverage" : t === "gaps" ? `Gaps (${gaps.length})` : `Reuse (${reuse.length})`}
-                </button>
-              ))}
+              <button
+                className={`cov-tab${tab === "matrix" ? " cov-tab-active" : ""}`}
+                onClick={() => setTab("matrix")}
+              >
+                Coverage
+              </button>
+              <button
+                className={`cov-tab${tab === "gaps" ? " cov-tab-active" : ""}`}
+                onClick={() => setTab("gaps")}
+              >
+                Gaps ({gaps.length})
+              </button>
+              <button
+                className={`cov-tab${tab === "reuse" ? " cov-tab-active" : ""}`}
+                onClick={() => setTab("reuse")}
+              >
+                Reuse ({reuse.length})
+              </button>
+              <button
+                className={`cov-tab${tab === "versions" ? " cov-tab-active" : ""}`}
+                onClick={() => setTab("versions")}
+              >
+                Versions &amp; CRs
+              </button>
             </nav>
 
-            {loading ? (
+            {tab === "versions" ? (
+              <div className="cov-versions-tab">
+                <ChangeRequestsPanel
+                  profileId={profileId}
+                  canonicalId={selected}
+                  versions={versions}
+                  onChanged={() => void reload()}
+                />
+                <VersionDashboard
+                  profileId={profileId}
+                  canonicalId={selected}
+                />
+              </div>
+            ) : loading ? (
               <p className="cov-empty">Loading…</p>
             ) : tab === "matrix" ? (
               <div className="cov-matrix">
-                {report &&
+                {!versionId && (
+                  <p className="cov-empty">Select or create a version above to view the coverage matrix.</p>
+                )}
+                {versionId && report &&
                   report.groups.map((g) => {
                     const grp = model?.groups.find((x) => x.id === g.groupId);
                     return (
@@ -451,20 +522,22 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
                       </div>
                     );
                   })}
-                <div className="cov-addgroup">
-                  <input
-                    className="cov-input"
-                    placeholder="Add group…"
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void addGroup();
-                    }}
-                  />
-                  <button className="btn" disabled={!newGroupName.trim()} onClick={() => void addGroup()}>
-                    Add group
-                  </button>
-                </div>
+                {versionId && (
+                  <div className="cov-addgroup">
+                    <input
+                      className="cov-input"
+                      placeholder="Add group…"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void addGroup();
+                      }}
+                    />
+                    <button className="btn" disabled={!newGroupName.trim()} onClick={() => void addGroup()}>
+                      Add group
+                    </button>
+                  </div>
+                )}
               </div>
             ) : tab === "gaps" ? (
               <table className="cov-table cov-gaps">
@@ -505,7 +578,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
                 <tbody>
                   {reuse.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="cov-empty">No member requirements. Use “Members” to link the customer requirements that reuse this.</td>
+                      <td colSpan={4} className="cov-empty">No member requirements. Use "Members" to link the customer requirements that reuse this.</td>
                     </tr>
                   )}
                   {reuse.map((r) => (
@@ -619,7 +692,7 @@ function MapTestsModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal cov-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Map tests to “{valueLabel}”</h3>
+        <h3>Map tests to "{valueLabel}"</h3>
         {error && <div className="cov-error">{error}</div>}
         <div className="cov-cands">
           {cands.length === 0 && <p className="cov-empty">No candidate tests (link member requirements that have covering tests).</p>}
