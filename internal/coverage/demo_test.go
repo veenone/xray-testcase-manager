@@ -25,10 +25,17 @@ func TestSeedDemoExampleAlignedWithDemoData(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	// Fetch the version created by SeedDemoExample.
+	// Fetch the versions created by SeedDemoExample — expect exactly 2 (1.0 + cloned 2.0).
 	vers, err := m.ListVersions(p, cid)
-	if err != nil || len(vers) == 0 {
-		t.Fatalf("list versions after seed: err=%v len=%d", err, len(vers))
+	if err != nil {
+		t.Fatalf("list versions after seed: %v", err)
+	}
+	if len(vers) != 2 {
+		t.Fatalf("versions = %d, want 2 (1.0 + cloned 2.0)", len(vers))
+	}
+	// ListVersions orders by sort_order, name — 1.0 (sort_order=0) must come first.
+	if vers[0].Name != "1.0" {
+		t.Fatalf("vers[0].Name = %q, want 1.0", vers[0].Name)
 	}
 	vid := vers[0].ID
 
@@ -72,6 +79,12 @@ func TestSeedDemoExampleAlignedWithDemoData(t *testing.T) {
 	reuse, _ := m.ListReuse(p, cid)
 	if len(reuse) != 1 || reuse[0].RequirementKey != "PRD-1" {
 		t.Errorf("members = %+v, want [PRD-1]", reuse)
+	}
+
+	// One change request "Add OAuth login" targeting v2.0.
+	crs, _ := m.ListChangeRequests(p, cid)
+	if len(crs) != 1 || crs[0].Title != "Add OAuth login" {
+		t.Errorf("CRs = %+v, want one 'Add OAuth login'", crs)
 	}
 
 	// Idempotent re-seed.

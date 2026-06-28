@@ -151,6 +151,28 @@ func (m *Module) SeedDemoExample(profileID string) (string, error) {
 	if err := tx.Commit(); err != nil {
 		return "", err
 	}
+
+	// Topic 2: clone v1→v2 and add a sample CR with decisions (best-effort).
+	if v2, cloneErr := m.CloneVersion(profileID, vid, "2.0", "beta"); cloneErr == nil {
+		members := m.demoMemberRequirements(profileID)
+		for i, rk := range members {
+			ver := vid
+			if i%2 == 1 {
+				ver = v2
+			}
+			_ = m.SetMemberVersion(profileID, cid, rk, ver)
+		}
+		if len(members) > 0 {
+			if crID, cerr := m.CreateChangeRequest(profileID, cid, "CHG-1001", "Add OAuth login", "approved", v2, "low",
+				"Adds OAuth as an alternative login path in v2.0."); cerr == nil {
+				_ = m.SetCRDecision(profileID, crID, members[0], "can_accept", "")
+				if len(members) > 1 {
+					_ = m.SetCRDecision(profileID, crID, members[1], "cannot_accept", "legacy SSO only")
+				}
+			}
+		}
+	}
+
 	return cid, nil
 }
 
