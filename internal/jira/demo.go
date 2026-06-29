@@ -145,12 +145,13 @@ var demoFolderCategories = []folderCategory{
 	{"System", []string{"API rate limit", "File upload", "File download", "Bulk operations"}},
 }
 
-// demoFolders returns the demo folder tree. Folder IDs are full paths so a
-// folder is uniquely identified by its location in the tree
-// ("/Authentication/Login").
-func demoFolders(_ string) []Folder {
+// demoFolders returns the demo folder tree for the given theme. Folder IDs are
+// full paths so a folder is uniquely identified by its location in the tree
+// ("/Authentication/Login"). The categories in theme.Categories determine the
+// hierarchy, so PKCS and generic themes each produce their own folder structure.
+func demoFolders(theme demoTheme) []Folder {
 	out := make([]Folder, 0)
-	for _, cat := range demoFolderCategories {
+	for _, cat := range theme.Categories {
 		catID := "/" + cat.Name
 		out = append(out, Folder{ID: catID, ParentID: "", Name: cat.Name})
 		for _, feat := range cat.Features {

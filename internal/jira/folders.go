@@ -176,7 +176,7 @@ func (c *Client) ListFolders(ctx context.Context, projectKey string) ([]Folder, 
 // generator, so there's no id map or embedded membership).
 func (c *Client) FolderTree(ctx context.Context, projectKey string) (FolderTreeResult, error) {
 	if isDemoURL(c.baseURL) {
-		return FolderTreeResult{Folders: demoFolders(projectKey)}, nil
+		return FolderTreeResult{Folders: demoFolders(themeFor(c.baseURL))}, nil
 	}
 	body, err := c.getBytes(ctx, fmt.Sprintf("%s/%s/folders", testRepositoryPath, projectKey))
 	if err != nil {

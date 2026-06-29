@@ -16,6 +16,33 @@ func TestMakeDemoTestPKCSThemed(t *testing.T) {
 	}
 }
 
+func TestDemoRequirementsPKCSHasFunctionalAndCustomer(t *testing.T) {
+	reqs, links := demoRequirements(themeFor("demo-pkcs"), "PKCS")
+	var func0, cust0 bool
+	for _, r := range reqs {
+		if r.ProjectKey == "FUNC" && r.Summary == "C_Sign" {
+			func0 = true
+		}
+		if r.ProjectKey == "CUST-HSM-BANK" {
+			cust0 = true
+		}
+	}
+	if !func0 {
+		t.Error("pkcs requirements missing the C_Sign functional requirement (FUNC project)")
+	}
+	if !cust0 {
+		t.Error("pkcs requirements missing a CUST-HSM-BANK customer requirement")
+	}
+	if len(links) == 0 {
+		t.Error("pkcs requirements have no test links")
+	}
+	// Generic requirements unchanged (project PRD).
+	gr, _ := demoRequirements(genericTheme, "DEMO")
+	if len(gr) == 0 || gr[0].ProjectKey != "PRD" {
+		t.Errorf("generic requirements changed: %+v", gr[:1])
+	}
+}
+
 func TestThemeForSelectsVariant(t *testing.T) {
 	if themeFor("demo").Variant != "" {
 		t.Errorf("plain demo should be the generic theme")

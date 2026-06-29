@@ -37,6 +37,22 @@ func demoVariant(baseURL string) string {
 	return ""
 }
 
+// pkcsCode maps a PKCS#11 feature name to a short code used in requirement
+// keys (e.g. "C_Sign" → "SIG"). Unknown features fall back to the feature
+// name itself so the mapping is always defined.
+func pkcsCode(feature string) string {
+	switch feature {
+	case "C_Sign":
+		return "SIG"
+	case "C_GenerateKeyPair":
+		return "KG"
+	case "C_Verify":
+		return "VER"
+	default:
+		return feature
+	}
+}
+
 // themeFor returns the theme for a profile URL.
 func themeFor(baseURL string) demoTheme {
 	if demoVariant(baseURL) == "pkcs" {
