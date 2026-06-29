@@ -17,11 +17,15 @@ import (
 // grid's pagination, search, filter and sort without being absurd.
 const demoTestCount = 5000
 
-// isDemoURL reports whether a profile's Jira URL selects demo mode.
+// isDemoURL reports whether a profile's Jira URL selects demo mode. Recognises
+// "demo", a "demo:" / "mock:" prefix, and "demo-" variants (e.g. "demo-pkcs",
+// used to pick a specific built-in demo dataset). Keep in sync with jiraUrlError
+// in the frontend (ProfileForm.tsx).
 func isDemoURL(baseURL string) bool {
 	u := strings.ToLower(strings.TrimSpace(baseURL))
 	return u == "demo" ||
 		strings.HasPrefix(u, "demo:") ||
+		strings.HasPrefix(u, "demo-") ||
 		strings.HasPrefix(u, "mock:")
 }
 

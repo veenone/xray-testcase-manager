@@ -12,9 +12,13 @@ func TestIsDemoURLRecognisesDemoSchemes(t *testing.T) {
 		"demo://anything":          true,
 		"mock://local":             true,
 		"  demo  ":                 true,
+		"demo-pkcs":                true,
+		"DEMO-PKCS":                true,
+		"demo-anything":            true,
 		"https://jira.example.com": false,
 		"":                         false,
 		"jira.demo.example.com":    false,
+		"demohost.example.com":     false,
 	}
 	for url, want := range cases {
 		if got := isDemoURL(url); got != want {
