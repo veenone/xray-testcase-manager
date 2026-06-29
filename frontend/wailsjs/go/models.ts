@@ -449,11 +449,11 @@ export namespace coverage {
 	    summary: string;
 	    status: string;
 	    acceptedVersionId: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ReuseRow(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.canonicalId = source["canonicalId"];
