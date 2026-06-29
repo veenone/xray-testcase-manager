@@ -520,16 +520,18 @@ const demoLinkedTests = 200
 // demoContainersAndLinks generates Test Sets (one per Test Repository
 // category), Test Plans and Test Executions plus their Test memberships
 // (FR-1.3). Execution memberships carry a deterministic run status so the
-// coverage view has data to chart.
-func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, error) {
+// coverage view has data to chart. The vocabulary (categories, features,
+// test count) is taken from theme so the generic and PKCS datasets each
+// produce their own themed containers.
+func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []ContainerLink, error) {
 	if projectKey == "" {
 		projectKey = "DEMO"
 	}
 	containers := make([]Container, 0)
 	links := make([]ContainerLink, 0)
 
-	setKeys := make([]string, len(demoFolderCategories))
-	for i, cat := range demoFolderCategories {
+	setKeys := make([]string, len(theme.Categories))
+	for i, cat := range theme.Categories {
 		key := fmt.Sprintf("%s-TS-%d", projectKey, i+1)
 		setKeys[i] = key
 		containers = append(containers, Container{
@@ -650,10 +652,10 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		})
 	}
 
-	for i := 0; i < demoLinkedTests && i < demoTestCount; i++ {
+	for i := 0; i < demoLinkedTests && i < theme.TestCount; i++ {
 		testKey := fmt.Sprintf("%s-%d", projectKey, i+1)
-		feature := demoFeatures[i%len(demoFeatures)]
-		if catIdx := demoCategoryIndexForFeature(genericTheme, feature); catIdx >= 0 {
+		feature := theme.Features[i%len(theme.Features)]
+		if catIdx := demoCategoryIndexForFeature(theme, feature); catIdx >= 0 {
 			links = append(links, ContainerLink{ContainerKey: setKeys[catIdx], TestKey: testKey})
 		}
 		links = append(links, ContainerLink{ContainerKey: planKeys[i%planCount], TestKey: testKey})
@@ -699,14 +701,16 @@ func demoCategoryIndexForFeature(theme demoTheme, feature string) int {
 // demoPreconditionsAndLinks returns the demo precondition master list plus
 // the test-key → precondition-keys mapping. Keys use a "<project>-P-N"
 // convention so they read like Jira keys without colliding with the test
-// number range.
-func demoPreconditionsAndLinks(projectKey string) ([]Precondition, map[string][]string, error) {
+// number range. The vocabulary (precondition definitions, feature mapping,
+// feature list, test count) is taken from theme so the generic and PKCS
+// datasets each produce their own themed preconditions.
+func demoPreconditionsAndLinks(theme demoTheme, projectKey string) ([]Precondition, map[string][]string, error) {
 	if projectKey == "" {
 		projectKey = "DEMO"
 	}
 
-	preconditions := make([]Precondition, 0, len(preconditionDefs))
-	for i, def := range preconditionDefs {
+	preconditions := make([]Precondition, 0, len(theme.Preconditions))
+	for i, def := range theme.Preconditions {
 		preconditions = append(preconditions, Precondition{
 			Key:         fmt.Sprintf("%s-P-%d", projectKey, i+1),
 			Summary:     def.Summary,
@@ -715,10 +719,10 @@ func demoPreconditionsAndLinks(projectKey string) ([]Precondition, map[string][]
 		})
 	}
 
-	links := make(map[string][]string, demoTestCount)
-	for i := 0; i < demoTestCount; i++ {
-		feature := demoFeatures[i%len(demoFeatures)]
-		indexes, ok := featurePreconditions[feature]
+	links := make(map[string][]string, theme.TestCount)
+	for i := 0; i < theme.TestCount; i++ {
+		feature := theme.Features[i%len(theme.Features)]
+		indexes, ok := theme.FeaturePre[feature]
 		if !ok || len(indexes) == 0 {
 			continue
 		}

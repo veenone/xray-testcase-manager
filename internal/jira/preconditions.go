@@ -87,7 +87,7 @@ func normalizeTypeName(s string) string {
 // are read — the slow part of a precondition sync — so the UI can show progress.
 func (c *Client) ListPreconditions(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Precondition, map[string][]string, error) {
 	if isDemoURL(c.baseURL) {
-		return demoPreconditionsAndLinks(projectKey)
+		return demoPreconditionsAndLinks(themeFor(c.baseURL), projectKey)
 	}
 
 	typeID, typeName, err := c.resolvePreconditionType(ctx)

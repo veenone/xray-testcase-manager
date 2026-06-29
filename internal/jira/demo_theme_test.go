@@ -43,6 +43,24 @@ func TestDemoRequirementsPKCSHasFunctionalAndCustomer(t *testing.T) {
 	}
 }
 
+func TestDemoPreconditionsPKCSThemed(t *testing.T) {
+	pre, links, err := demoPreconditionsAndLinks(themeFor("demo-pkcs"), "PKCS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pre) == 0 || pre[0].Summary[:3] != "HSM" {
+		t.Errorf("pkcs preconditions not themed: %+v", pre[:1])
+	}
+	if len(links) == 0 {
+		t.Error("pkcs preconditions have no test links")
+	}
+	// Generic unchanged.
+	gp, _, _ := demoPreconditionsAndLinks(genericTheme, "DEMO")
+	if len(gp) == 0 || gp[0].Summary != "User account exists" {
+		t.Errorf("generic preconditions changed: %+v", gp[:1])
+	}
+}
+
 func TestThemeForSelectsVariant(t *testing.T) {
 	if themeFor("demo").Variant != "" {
 		t.Errorf("plain demo should be the generic theme")
