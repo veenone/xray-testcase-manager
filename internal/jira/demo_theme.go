@@ -103,5 +103,8 @@ var pkcsTheme = demoTheme{
 		"C_GenerateKeyPair": {0, 1, 2},
 		"C_Verify":          {0, 1, 3, 4},
 	},
+	// Keep TestCount >= demoLinkedTests (200): the peripheral generic seeders
+	// (test runs, bug links, cross-project sub-execution members) index tests up
+	// to that cap and would otherwise reference nonexistent PKCS-<n> keys.
 	TestCount: 240, // smaller, fully PKCS-flavoured corpus
 }
