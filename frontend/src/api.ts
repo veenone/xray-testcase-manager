@@ -175,6 +175,7 @@ export {
   ExportCoverageReport,
   DownloadCoverageTemplate,
   SeedDemoCoverageExample,
+  SeedPKCS11Reference,
   // Versioning + Change Requests (Topic 2)
   ListVersions,
   CreateVersion,
@@ -314,6 +315,15 @@ export interface CoverageImportSummary {
   mappedTests: number;
   skipped: number;
   warnings: string[];
+}
+
+export interface PKCSSeedSummary {
+  features: number;
+  requirements: number;
+  tests: number;
+  versions: number;
+  changeRequests: number;
+  mappings: number;
 }
 
 // GapTest mirrors testrepo.GapTest — one comparable test row.

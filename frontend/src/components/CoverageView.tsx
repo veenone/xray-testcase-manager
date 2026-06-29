@@ -20,6 +20,7 @@ import {
   ExportCoverageReport,
   DownloadCoverageTemplate,
   SeedDemoCoverageExample,
+  SeedPKCS11Reference,
   ListRequirementsWithCoverage,
   errMsg,
 } from "../api";
@@ -279,6 +280,26 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
     }
   }
 
+  async function loadPkcsReference() {
+    setBusy(true);
+    setNotice("");
+    setError("");
+    try {
+      const s = await SeedPKCS11Reference(profileId);
+      await loadList();
+      onChanged?.();
+      setNotice(
+        `Loaded the PKCS#11 reference dataset — ${s.features} features, ${s.requirements} requirements, ` +
+          `${s.tests} tests, ${s.versions} versions, ${s.changeRequests} change requests, ${s.mappings} value→test mappings. ` +
+          `Browse the tests/requirements, then open a feature here.`,
+      );
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addGroup() {
     const name = newGroupName.trim();
     if (!name || !selected || !versionId) return;
@@ -386,6 +407,11 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
               {isDemo && (
                 <button className="btn btn-primary" disabled={busy} onClick={() => void loadDemoExample()}>
                   Load demo example (Login)
+                </button>
+              )}
+              {isDemo && (
+                <button className="btn btn-primary" disabled={busy} onClick={() => void loadPkcsReference()}>
+                  Load PKCS#11 reference data
                 </button>
               )}
             </div>

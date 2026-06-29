@@ -246,6 +246,18 @@ func (a *App) DownloadCoverageTemplate() (path string, err error) {
 	return dest, nil
 }
 
+// SeedPKCS11Reference seeds a complete, cross-linked PKCS#11 reference dataset
+// (requirements + tests + executions + the full coverage/versioning layer for
+// C_Sign, C_GenerateKeyPair, C_Verify) into the profile — for use on a throwaway
+// "demo-pkcs" profile as an end-to-end data reference. Idempotent.
+func (a *App) SeedPKCS11Reference(profileID string) (summary coverage.PKCSSeedSummary, err error) {
+	defer recoverToError("SeedPKCS11Reference", &err)
+	if err := a.requireStore(); err != nil {
+		return coverage.PKCSSeedSummary{}, err
+	}
+	return a.cov.SeedPKCSReference(profileID)
+}
+
 // SeedDemoCoverageExample builds the built-in PKCS#11 C_Sign example for the
 // profile (intended for demo mode): a full parameter model mapped to the
 // profile's synced tests, landing at the PRD's 35/41 = 85.4%. Returns the new

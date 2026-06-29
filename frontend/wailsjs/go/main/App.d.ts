@@ -318,6 +318,8 @@ export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;
 
 export function SeedDemoCoverageExample(arg1:string):Promise<string>;
 
+export function SeedPKCS11Reference(arg1:string):Promise<coverage.PKCSSeedSummary>;
+
 export function SeedSampleContainers(arg1:string):Promise<testrepo.SeedResult>;
 
 export function SetCRDecision(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;

@@ -622,6 +622,10 @@ export function SeedDemoCoverageExample(arg1) {
   return window['go']['main']['App']['SeedDemoCoverageExample'](arg1);
 }
 
+export function SeedPKCS11Reference(arg1) {
+  return window['go']['main']['App']['SeedPKCS11Reference'](arg1);
+}
+
 export function SeedSampleContainers(arg1) {
   return window['go']['main']['App']['SeedSampleContainers'](arg1);
 }

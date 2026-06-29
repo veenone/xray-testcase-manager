@@ -308,6 +308,28 @@ export namespace coverage {
 	        this.sortOrder = source["sortOrder"];
 	    }
 	}
+	export class PKCSSeedSummary {
+	    features: number;
+	    requirements: number;
+	    tests: number;
+	    versions: number;
+	    changeRequests: number;
+	    mappings: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PKCSSeedSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.features = source["features"];
+	        this.requirements = source["requirements"];
+	        this.tests = source["tests"];
+	        this.versions = source["versions"];
+	        this.changeRequests = source["changeRequests"];
+	        this.mappings = source["mappings"];
+	    }
+	}
 	export class ParamValue {
 	    id: string;
 	    valueLabel: string;
