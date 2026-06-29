@@ -28,15 +28,15 @@ func TestIsDemoURLRecognisesDemoSchemes(t *testing.T) {
 }
 
 func TestDemoTestsPageReportsTheFullTotal(t *testing.T) {
-	_, total := demoTestsPage("QA", 0, 100)
+	_, total := demoTestsPage(genericTheme, "QA", 0, 100)
 	if total != demoTestCount {
 		t.Errorf("total = %d, want %d", total, demoTestCount)
 	}
 }
 
 func TestDemoTestsPagePaginates(t *testing.T) {
-	first, _ := demoTestsPage("QA", 0, 100)
-	second, _ := demoTestsPage("QA", 100, 100)
+	first, _ := demoTestsPage(genericTheme, "QA", 0, 100)
+	second, _ := demoTestsPage(genericTheme, "QA", 100, 100)
 
 	if len(first) != 100 || len(second) != 100 {
 		t.Fatalf("page sizes = %d / %d, want 100 / 100", len(first), len(second))
@@ -48,15 +48,15 @@ func TestDemoTestsPagePaginates(t *testing.T) {
 }
 
 func TestDemoTestsPageClampsBeyondTotal(t *testing.T) {
-	page, _ := demoTestsPage("QA", demoTestCount-3, 100)
+	page, _ := demoTestsPage(genericTheme, "QA", demoTestCount-3, 100)
 	if len(page) != 3 {
 		t.Errorf("tail page size = %d, want 3", len(page))
 	}
 }
 
 func TestMakeDemoTestIsDeterministic(t *testing.T) {
-	a := makeDemoTest("QA", 42)
-	b := makeDemoTest("QA", 42)
+	a := makeDemoTest(genericTheme, "QA", 42)
+	b := makeDemoTest(genericTheme, "QA", 42)
 	if a.Summary != b.Summary || a.Status != b.Status || a.Key != b.Key {
 		t.Errorf("makeDemoTest not deterministic: %+v vs %+v", a, b)
 	}
@@ -75,7 +75,7 @@ func TestDemoStepsSeedDeterministicCallGraph(t *testing.T) {
 		{"DEMO-6", "DEMO-7"},
 	}
 	for _, c := range cases {
-		steps := demoStepsForKey(c.caller)
+		steps := demoStepsForKey(genericTheme, c.caller)
 		var got string
 		for _, s := range steps {
 			if s.CalledTestKey != "" {
@@ -93,7 +93,7 @@ func TestDemoStepsCallGraphAvoidsDuplicateClustersAndIsStable(t *testing.T) {
 	// Duplicate-cluster keys (numbers 1..4, indices 0..3) must carry no call
 	// step — the Duplicates feature depends on their fixed step content.
 	for _, key := range []string{"QA-1", "QA-2", "QA-3", "QA-4"} {
-		for _, s := range demoStepsForKey(key) {
+		for _, s := range demoStepsForKey(genericTheme, key) {
 			if s.CalledTestKey != "" {
 				t.Errorf("%s should have no call step, got CalledTestKey=%q", key, s.CalledTestKey)
 			}
@@ -103,8 +103,8 @@ func TestDemoStepsCallGraphAvoidsDuplicateClustersAndIsStable(t *testing.T) {
 	// Determinism: re-pulling returns identical steps. This is what makes a
 	// SyncTestCalls re-pull stable (the graph is preserved, not wiped).
 	for _, key := range []string{"QA-6", "QA-8", "QA-9", "QA-100"} {
-		a := demoStepsForKey(key)
-		b := demoStepsForKey(key)
+		a := demoStepsForKey(genericTheme, key)
+		b := demoStepsForKey(genericTheme, key)
 		if len(a) != len(b) {
 			t.Fatalf("demoStepsForKey(%q) length not stable: %d vs %d", key, len(a), len(b))
 		}
@@ -149,8 +149,8 @@ func TestIncrementalSinceClauseToleratesBadInput(t *testing.T) {
 // slice and at least one with an empty one, so both paths are exercised.
 func TestMakeDemoTestFixVersionsDeterministic(t *testing.T) {
 	for i := range 10 {
-		a := makeDemoTest("QA", i)
-		b := makeDemoTest("QA", i)
+		a := makeDemoTest(genericTheme, "QA", i)
+		b := makeDemoTest(genericTheme, "QA", i)
 		if len(a.FixVersions) != len(b.FixVersions) {
 			t.Errorf("index %d: FixVersions not deterministic: %v vs %v", i, a.FixVersions, b.FixVersions)
 			continue
@@ -166,7 +166,7 @@ func TestMakeDemoTestFixVersionsDeterministic(t *testing.T) {
 	// without, so both paths are exercised in the UI.
 	hasVersioned, hasEmpty := false, false
 	for i := range 30 {
-		fv := makeDemoTest("QA", i).FixVersions
+		fv := makeDemoTest(genericTheme, "QA", i).FixVersions
 		if len(fv) > 0 {
 			hasVersioned = true
 		} else {

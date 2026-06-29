@@ -5,10 +5,10 @@ import "testing"
 func TestDemoSeedsDuplicateClusters(t *testing.T) {
 	// Indices 0,1 share a summary AND identical steps; 2,3 share a summary but
 	// differ in steps.
-	t0 := makeDemoTest("DEMO", 0)
-	t1 := makeDemoTest("DEMO", 1)
-	t2 := makeDemoTest("DEMO", 2)
-	t3 := makeDemoTest("DEMO", 3)
+	t0 := makeDemoTest(genericTheme, "DEMO", 0)
+	t1 := makeDemoTest(genericTheme, "DEMO", 1)
+	t2 := makeDemoTest(genericTheme, "DEMO", 2)
+	t3 := makeDemoTest(genericTheme, "DEMO", 3)
 
 	if t0.Summary != t1.Summary {
 		t.Errorf("indices 0,1 should share a summary: %q vs %q", t0.Summary, t1.Summary)
@@ -27,10 +27,10 @@ func TestDemoSeedsDuplicateClusters(t *testing.T) {
 		}
 		return out
 	}
-	if fp(demoStepsForKey(t0.Key)) != fp(demoStepsForKey(t1.Key)) {
+	if fp(demoStepsForKey(genericTheme, t0.Key)) != fp(demoStepsForKey(genericTheme, t1.Key)) {
 		t.Error("cluster A (0,1) should have identical steps")
 	}
-	if fp(demoStepsForKey(t2.Key)) == fp(demoStepsForKey(t3.Key)) {
+	if fp(demoStepsForKey(genericTheme, t2.Key)) == fp(demoStepsForKey(genericTheme, t3.Key)) {
 		t.Error("cluster B (2,3) should have differing steps")
 	}
 }

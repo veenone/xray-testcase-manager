@@ -29,7 +29,7 @@ type TestMeta struct {
 // falling back to the creator when there is no history.
 func (c *Client) GetTestMeta(ctx context.Context, key string) (TestMeta, error) {
 	if isDemoURL(c.baseURL) {
-		return demoTestMeta(key), nil
+		return demoTestMeta(themeFor(c.baseURL), key), nil
 	}
 	var resp struct {
 		Fields struct {
@@ -93,7 +93,7 @@ func orEmpty(a, b string) string {
 }
 
 // demoTestMeta returns deterministic metadata for a demo Test.
-func demoTestMeta(key string) TestMeta {
+func demoTestMeta(_ demoTheme, key string) TestMeta {
 	h := 0
 	for _, r := range key {
 		h = h*31 + int(r)
