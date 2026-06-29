@@ -289,9 +289,9 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
       await loadList();
       onChanged?.();
       setNotice(
-        `Loaded the PKCS#11 reference dataset — ${s.features} features, ${s.requirements} requirements, ` +
-          `${s.tests} tests, ${s.versions} versions, ${s.changeRequests} change requests, ${s.mappings} value→test mappings. ` +
-          `Browse the tests/requirements, then open a feature here.`,
+        `Mapped PKCS#11 coverage onto synced demo-pkcs data — ${s.features} features, ${s.versions} versions, ` +
+          `${s.changeRequests} change requests, ${s.mappings} value→test mappings. ` +
+          `Sync the demo-pkcs profile first if you haven't already.`,
       );
     } catch (e) {
       setError(errMsg(e));
@@ -411,7 +411,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, onChanged }: Props
               )}
               {isDemo && (
                 <button className="btn btn-primary" disabled={busy} onClick={() => void loadPkcsReference()}>
-                  Load PKCS#11 reference data
+                  Load PKCS#11 coverage
                 </button>
               )}
             </div>
