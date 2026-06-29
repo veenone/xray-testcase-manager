@@ -134,10 +134,7 @@ var demoLabels = []string{
 // demoFolderCategories defines the demo Test Repository hierarchy. Feature
 // names match those in demoFeatures so each test slots into the matching
 // leaf folder.
-var demoFolderCategories = []struct {
-	Name     string
-	Features []string
-}{
+var demoFolderCategories = []folderCategory{
 	{"Authentication", []string{"Login", "Logout", "User registration", "Password reset", "Multi-factor auth", "Session timeout"}},
 	{"Browse", []string{"Search", "Filter results", "Sort results", "Pagination"}},
 	{"Commerce", []string{"Checkout", "Cart", "Add to cart", "Remove from cart", "Payment", "Refund"}},
@@ -182,10 +179,7 @@ func demoFolderForFeature(feature string) string {
 // preconditionDefs is the master list of distinct demo preconditions. Their
 // indexes here are used by featurePreconditions to assign preconditions to
 // tests by feature.
-var preconditionDefs = []struct {
-	Summary string
-	Type    string
-}{
+var preconditionDefs = []precondDef{
 	{"User account exists", "Manual"},
 	{"User is logged in", "Manual"},
 	{"Email service is available", "Manual"},
