@@ -1790,6 +1790,14 @@ i.sankey-node-l2 {
   color: var(--text);
   max-width: 160px;
 }
+/* -278: exec-type filter matches saved-views dropdown look */
+.exectype-filter {
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--text);
+}
 .view-del {
   font-size: 11px;
   padding: 2px 6px;
@@ -2429,9 +2437,8 @@ tr.row-selected {
   flex-direction: column;
   min-height: 0;
 }
-.reqs-filter {
-  margin-bottom: 8px;
-}
+/* .reqs-filter is no longer a separate standalone input; styling comes from
+   .precond-search applied directly to the input element inside .reqs-head-row. */
 .reqs-coverage-summary {
   display: flex;
   flex-wrap: wrap;
@@ -2550,15 +2557,10 @@ tr.row-selected {
   display: flex;
   gap: 6px;
 }
-.reqs-detail-edit {
-  display: flex;
-  gap: 6px;
-  align-items: center;
+/* Edit-mode form in the requirement detail pane — fields stacked vertically
+   using the .precond-field layout pattern. */
+.reqs-detail-edit-form {
   margin: 0 0 14px;
-}
-.reqs-summary-input {
-  flex: 1;
-  min-width: 0;
 }
 .req-kind {
   background: #0e7490;
@@ -2583,31 +2585,59 @@ tr.row-selected {
 .reqs-with-detail .detail {
   position: relative;
 }
+/* Requirement detail pane: metadata grid (priority, components, fix-versions,
+   sprint) rendered as a compact definition list. */
+.detail-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 10px;
+  row-gap: 4px;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.detail-meta dt {
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  white-space: nowrap;
+}
+.detail-meta dd {
+  margin: 0;
+  color: var(--text);
+}
+/* Requirement detail pane: collapsible description section. */
+.detail-description {
+  margin-bottom: 14px;
+}
+/* Requirements list panel header — flex-col container whose rows match the
+   Preconditions panel structure (.precond-list-head / .precond-list). */
 .reqs-list-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 8px;
 }
-.reqs-list-actions {
+/* Primary action bar: filter (flex 1) + compact action buttons.
+   Mirrors .precond-list-head layout. */
+.reqs-head-row {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  align-items: center;
+}
+/* Secondary toolbar: Export audit + Import */
+.reqs-list-toolbar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 .reqs-notice {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   font-size: 12px;
   word-break: break-all;
 }
-.reqs-list-title {
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-}
+/* -280: Sources button uses the same btn padding as Sync / Create */
 .reqs-sources-btn {
   font-size: 12px;
-  padding: 3px 10px;
+  flex-shrink: 0;
 }
 
 /* Requirement sources modal */
@@ -2634,10 +2664,21 @@ tr.row-selected {
   white-space: nowrap;
   max-width: 240px;
 }
-.src-remove {
+.src-edit {
   margin-left: auto;
   font-size: 11px;
   padding: 1px 7px;
+}
+.src-remove {
+  font-size: 11px;
+  padding: 1px 7px;
+}
+.src-list-editing {
+  background: var(--row-hover);
+}
+.src-edit-notice {
+  font-size: 12px;
+  margin: 0 0 4px;
 }
 .src-add {
   display: flex;
@@ -2844,6 +2885,21 @@ tr.row-selected {
 .precond-detail-key {
   font-size: 15px;
   font-weight: 600;
+}
+/* Button group for Edit / Save+Cancel in the detail header. */
+.precond-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+/* Read-only value display for Summary / Type / Condition / Description
+   when the detail pane is not in edit mode. */
+.precond-ro-val {
+  font-size: 14px;
+  color: var(--text);
+  min-height: 24px;
+  padding: 4px 0;
 }
 .pending-badge {
   font-size: 10px;
@@ -3850,6 +3906,85 @@ tr.row-checked:hover {
   border-top: 1px solid var(--border, #e2e8f0);
 }
 
+/* New Requirement Panel (FR-13) — left-docked creation form.
+   Reuses .detail + .new-test-panel for base structure and form styles;
+   these rules override the border side and resizer position. */
+
+/* reqs-root: flex row containing the optional left-docked panel + the reqs grid. */
+.reqs-root {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+.reqs-root .reqs {
+  flex: 1;
+}
+
+/* Left-dock overrides: border on the right instead of left. */
+.new-req-panel {
+  border-left: none;
+  border-right: 1px solid var(--border);
+}
+/* Resizer on the right edge: drag right = wider, drag left = narrower. */
+.new-req-panel .detail-resizer {
+  left: auto;
+  right: 0;
+  margin-left: 0;
+  margin-right: -3px;
+}
+
+/* Tag-select-with-add used for Components and Fix Versions fields. */
+.req-tag-field {
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.req-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.req-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent, #4338ca);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.req-tag-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 10px;
+  color: inherit;
+  opacity: 0.7;
+  line-height: 1;
+}
+.req-tag-remove:hover {
+  opacity: 1;
+}
+.req-tag-select {
+  width: 100%;
+}
+.req-tag-add {
+  display: flex;
+  gap: 6px;
+}
+.req-tag-input {
+  flex: 1;
+}
+.req-tag-hint {
+  font-size: 11px;
+  margin: 0;
+}
+
 /* Edit-profile cache-clear warning (FR-5). */
 .form-warning {
   background: color-mix(in srgb, #b45309 12%, transparent);
@@ -4223,11 +4358,14 @@ tr.row-checked:hover {
   height: 100%;
   min-height: 0;
 }
-/* Scrollable content region below the flush toolbar + tiles (mirrors .dup-list). */
+/* Scrollable content region below the flush toolbar + tiles. Flex column so the
+   list scrolls between the controls header and the pinned pager footer. */
 .testcalls-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 16px 20px;
 }
 .testcalls-head {
@@ -4282,6 +4420,9 @@ tr.row-checked:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 .testcalls-card {
   border: 1px solid var(--border);
@@ -4374,14 +4515,23 @@ tr.row-checked:hover {
   font-size: 12px;
 }
 
-/* Test Calls: controls row, collapse toggle, call count. */
+/* Test Calls: controls row (Expand/Collapse all), pinned above the scrollable list. */
 .testcalls-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  flex-shrink: 0;
   margin-bottom: 10px;
+}
+/* Pager footer pinned at the bottom of the view, below the scrollable caller list.
+   Mirrors the .dup-pager / .bugs-md-pager pattern used in other views. */
+.testcalls-pager {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 8px;
 }
 .testcalls-bulk {
   display: flex;
@@ -4995,6 +5145,15 @@ tr.row-checked:hover {
 .sort-control .sort-field {
   padding: 2px 6px;
 }
+/* -279: sort-by select inside preconditions toolbar matches precond-search input */
+.precond-list-head .sort-field {
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+}
 .sort-control .sort-dir {
   padding: 2px 8px;
   line-height: 1;
@@ -5270,3 +5429,50 @@ tr.row-checked:hover {
 .gap-panel-actions { margin-top: auto; }
 .gap-folder-table { width: 100%; }
 .gap-folder-table td { vertical-align: top; }
+
+/* -273: cap the container picker (SearchableSelect) in the board-head so that
+   long Test Execution summaries cannot push the action buttons to the next
+   line. The multiselect-summary inside already carries text-overflow:ellipsis,
+   so bounding the wrapper is sufficient to trigger truncation. */
+.container-exec-filter {
+  max-width: 260px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.container-exec-filter .multiselect-btn {
+  overflow: hidden;
+}
+
+/* -274: collapsible related-bugs section inside the container detail card.
+   The header acts as a toggle; the body is scrollable and height-capped so
+   even an enormous bug list cannot push the member table below off-screen. */
+.tp-bugs-collapsible {
+  margin: 6px 0 2px;
+}
+.tp-bugs-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.tp-bugs-header:hover {
+  color: var(--text);
+}
+.tp-bugs-chevron {
+  font-size: 9px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+.tp-bugs-body {
+  max-height: 160px;
+  overflow-y: auto;
+  margin-top: 4px;
+}

@@ -96,6 +96,9 @@ export function ContainersView({
   // Related defects reached through the selected container's member Tests
   // (including bugs reached only via a cross-project member, #219).
   const [relatedBugs, setRelatedBugs] = useState<Bug[]>([]);
+  // Whether the related-bugs collapsible section in the container card is open.
+  // Collapsed by default so a large bug list never hides the member table below.
+  const [bugsExpanded, setBugsExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [seeding, setSeeding] = useState(false);
@@ -493,6 +496,12 @@ export function ContainersView({
     setCExecType("");
   }, [kind]);
 
+  // Collapse the bugs section whenever the user picks a different container so
+  // a previously-expanded list from another container doesn't carry over.
+  useEffect(() => {
+    setBugsExpanded(false);
+  }, [selected]);
+
   useEffect(() => {
     if (!profileId) return;
     let cancelled = false;
@@ -694,6 +703,7 @@ export function ContainersView({
             <span className="muted">Loading…</span>
           ) : (
             <SearchableSelect
+              className="container-exec-filter"
               value={selected}
               onChange={setSelected}
               disabled={viewContainers.length === 0}
@@ -1109,44 +1119,59 @@ export function ContainersView({
           {/* Related defects reached through this container's member Tests -
               shown for executions, or for any container that has linked bugs.
               Surfaces a bug that reaches this execution only via a cross-project
-              member Test, which the per-test Bugs panel cannot show (#219). */}
+              member Test, which the per-test Bugs panel cannot show (#219).
+              The section is collapsible so a large bug list can never push the
+              member table below off-screen (-274). */}
           {(kind === "testexec" || relatedBugs.length > 0) && (
-            <div className="container-bugs">
-              <span className="container-bugs-label">
-                Related bugs
+            <div className="tp-bugs-collapsible">
+              <button
+                className="tp-bugs-header"
+                onClick={() => setBugsExpanded((e) => !e)}
+                title={bugsExpanded ? "Collapse related bugs" : "Expand related bugs"}
+              >
+                <span
+                  className="tp-bugs-chevron"
+                  style={{ transform: bugsExpanded ? "rotate(90deg)" : "none" }}
+                >
+                  ▶
+                </span>
+                <span>Related bugs</span>
                 {relatedBugs.length > 0 && (
                   <span className="container-bugs-count">
-                    {" "}
                     ({relatedBugs.length})
                   </span>
                 )}
-              </span>
-              {relatedBugs.length === 0 ? (
-                <span className="muted">None</span>
-              ) : (
-                <ul className="container-bugs-list">
-                  {relatedBugs.map((b) => (
-                    <li key={b.key} className="container-bug">
-                      <button
-                        className="mono container-bug-key"
-                        onClick={() => openBug(b.key)}
-                        title={
-                          isDemoUrl || !jiraUrl
-                            ? b.key
-                            : `Open ${b.key} in Jira`
-                        }
-                      >
-                        {b.key}
-                      </button>
-                      <span className="container-bug-summary">{b.summary}</span>
-                      {b.status && (
-                        <span className="status-pill container-bug-status">
-                          {b.status}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+              </button>
+              {bugsExpanded && (
+                <div className="tp-bugs-body">
+                  {relatedBugs.length === 0 ? (
+                    <span className="muted">None</span>
+                  ) : (
+                    <ul className="container-bugs-list">
+                      {relatedBugs.map((b) => (
+                        <li key={b.key} className="container-bug">
+                          <button
+                            className="mono container-bug-key"
+                            onClick={() => openBug(b.key)}
+                            title={
+                              isDemoUrl || !jiraUrl
+                                ? b.key
+                                : `Open ${b.key} in Jira`
+                            }
+                          >
+                            {b.key}
+                          </button>
+                          <span className="container-bug-summary">{b.summary}</span>
+                          {b.status && (
+                            <span className="status-pill container-bug-status">
+                              {b.status}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
           )}

@@ -246,6 +246,11 @@ export function Dashboard({
           buckets={stats.byComponent}
           empty="No components synced."
         />
+        <BarPanel
+          title="By requirement"
+          buckets={stats.byRequirement}
+          empty="No requirements synced."
+        />
       </div>
 
       <div className="stat-grid">

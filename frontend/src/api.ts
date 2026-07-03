@@ -12,6 +12,8 @@ export {
   GetSettings,
   SetDefaultProfile,
   SetTheme,
+  SetRequirementLinkType,
+  ListRequirementLinkTypes,
   ListProfiles,
   CreateProfile,
   CreateProfileReusingToken,
@@ -58,6 +60,8 @@ export {
   ListRequirementSources,
   SetRequirementSource,
   RemoveRequirementSource,
+  GetRequirementLinks,
+  SetRequirementLinks,
   GetTestContainers,
   ListContainers,
   AllocateTests,
@@ -80,6 +84,8 @@ export {
   ListComponents,
   ListStatuses,
   ListPriorities,
+  ListProjectComponents,
+  ListProjectFixVersions,
   PreviewImport,
   ImportTests,
   CreateTest,
@@ -143,6 +149,7 @@ export {
   ExcludeFromDuplicates,
   UnexcludeFromDuplicates,
   CreateBugForTest,
+  CreateRequirement,
   GetBugDetail,
   ListBugsWithTests,
   ListBugsForContainer,
@@ -155,6 +162,9 @@ export {
   ApplyJUnitImport,
   AnalyzeJUnitImportNewExec,
   ApplyJUnitImportNewExec,
+  AnalyzeRequirementImport,
+  ExportRequirementImportTemplate,
+  ImportRequirements,
 } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
 
@@ -201,6 +211,7 @@ export interface HealthInfo {
 export interface Settings {
   defaultProfileId: string;
   theme: string; // "light" | "dark" | "system" | "" (= light)
+  requirementLinkType: string; // Jira issue-link type for Test->Requirement coverage; default "Tested By"
 }
 
 export interface Profile {
@@ -304,6 +315,9 @@ export interface Precondition {
   summary: string;
   type: string;
   description: string;
+  // condition is the Xray precondition definition text, distinct from the Jira
+  // issue description. Empty when not set or when synced from live Jira.
+  condition: string;
 }
 
 // PreconditionUsage mirrors testrepo.PreconditionUsage — a Precondition plus
@@ -313,6 +327,9 @@ export interface PreconditionUsage {
   summary: string;
   type: string;
   description: string;
+  // condition is the Xray precondition definition text, distinct from the Jira
+  // issue description. Empty when not set or when synced from live Jira.
+  condition: string;
   testCount: number;
 }
 
@@ -333,6 +350,12 @@ export interface Requirement {
   summary: string;
   status: string;
   updated: string;
+  priority: string;
+  components: string;
+  fixVersions: string;
+  sprint: string;
+  description: string;
+  epicKey: string;
 }
 
 // RequirementCoverage mirrors testrepo.RequirementCoverage — a requirement plus
@@ -345,6 +368,11 @@ export interface RequirementCoverage {
   status: string;
   testCount: number;
   coverage: string;
+  priority: string;
+  components: string;
+  fixVersions: string;
+  sprint: string;
+  description: string;
 }
 
 // RequirementTest mirrors testrepo.RequirementTest — one Test covering a
@@ -362,6 +390,15 @@ export interface RequirementSource {
   projectKey: string;
   issueTypes: string;
   scopeJql: string;
+}
+
+// ReqReqLink mirrors testrepo.ReqReqLink — one Requirement->Requirement
+// directional issue link (e.g. "requires").
+export interface ReqReqLink {
+  fromKey: string;
+  toKey: string;
+  linkType: string;
+  linkId: string;
 }
 
 // Container mirrors testrepo.Container — a Test Set, Test Plan or Test
@@ -660,6 +697,7 @@ export interface Statistics {
   updatedTrend: Bucket[];
   byRunStatus: Bucket[];
   byCoverage: Bucket[];
+  byRequirement: Bucket[];
 }
 
 // Duplicate management (mirrors testrepo shapes).
@@ -715,6 +753,33 @@ export interface ImportError {
 export interface ImportResult {
   created: number;
   skipped: number;
+  errors: ImportError[];
+}
+
+// RequirementImportRow mirrors testrepo.RequirementImportRow — one parsed file
+// row with its existence classification. status is "new" or "existing".
+export interface RequirementImportRow {
+  summary: string;
+  description: string;
+  priority: string;
+  components: string;
+  fixVersions: string;
+  status: string;
+}
+
+// RequirementImportPreview mirrors testrepo.RequirementImportPreview — the
+// parse + classify result shown before the user commits.
+export interface RequirementImportPreview {
+  rows: RequirementImportRow[];
+  newCount: number;
+  existingCount: number;
+}
+
+// RequirementImportResult mirrors testrepo.RequirementImportResult — the
+// outcome of a completed import.
+export interface RequirementImportResult {
+  created: number;
+  skippedExisting: number;
   errors: ImportError[];
 }
 
