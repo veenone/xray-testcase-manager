@@ -87,6 +87,13 @@ type Client struct {
 	covLinkTypeOnce sync.Once
 	covLinkTypeName string
 	covLinkTypeErr  error
+
+	// currentUserOnce lazily resolves and caches the authenticated user's
+	// username (PAT owner) via GET /rest/api/2/myself, so CreateBug can set the
+	// reporter field without an extra round-trip on every call.
+	currentUserOnce sync.Once
+	currentUserName string
+	currentUserErr  error
 }
 
 // User is the subset of /rest/api/2/myself the app needs to confirm a connection.
@@ -211,6 +218,30 @@ func (c *Client) TestConnection(ctx context.Context) (*User, error) {
 		return nil, fmt.Errorf("connection test failed: %w", err)
 	}
 	return &u, nil
+}
+
+// currentUser resolves and caches the authenticated user's username (PAT
+// owner) via GET /rest/api/2/myself. The result is computed at most once per
+// client (sync.Once). Demo mode returns the synthetic username "demo.user".
+//
+// NOTE(xtm): Jira DC REST v2 identifies users by their login name ("name").
+// Some newer Jira instances (Server/DC migrated from Cloud) may use "accountId"
+// instead; verify against the live Xray Server/DC 8.4.0 instance and adjust
+// the reporter field key in CreateBug if needed.
+func (c *Client) currentUser(ctx context.Context) (string, error) {
+	c.currentUserOnce.Do(func() {
+		if isDemoURL(c.baseURL) {
+			c.currentUserName = "demo.user"
+			return
+		}
+		var u User
+		if e := c.get(ctx, "/rest/api/2/myself", &u); e != nil {
+			c.currentUserErr = e
+			return
+		}
+		c.currentUserName = u.Name
+	})
+	return c.currentUserName, c.currentUserErr
 }
 
 // get performs an authenticated GET and decodes a JSON response into out.

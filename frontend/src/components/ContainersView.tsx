@@ -689,7 +689,7 @@ export function ContainersView({
       <div className="board-head">
         <label className="board-picker">
           <span>Type</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          <select className="app-select" value={kind} onChange={(e) => setKind(e.target.value)}>
             {KINDS.map((k) => (
               <option key={k.value} value={k.value}>
                 {k.label}
@@ -839,7 +839,7 @@ export function ContainersView({
         </div>
         {kind === "testexec" && (
           <select
-            className="container-status-filter"
+            className="container-status-filter app-select"
             value={cExecType}
             onChange={(e) => setCExecType(e.target.value)}
             title="Filter by execution type"
@@ -851,7 +851,7 @@ export function ContainersView({
         )}
         {kind === "testexec" && envOptions.length > 0 && (
           <select
-            className="container-status-filter"
+            className="container-status-filter app-select"
             value={cEnv}
             onChange={(e) => setCEnv(e.target.value)}
             title="Filter by test environment"
@@ -870,7 +870,7 @@ export function ContainersView({
             title="Apply an environment change to every execution currently shown"
           >
             <select
-              className="container-status-filter"
+              className="container-status-filter app-select"
               value={batchEnvOp}
               onChange={(e) =>
                 setBatchEnvOp(e.target.value as "add_env" | "remove_env" | "set_env")
@@ -1379,6 +1379,7 @@ export function ContainersView({
           <label className="board-pagesize">
             <span className="muted">Rows per page</span>
             <select
+              className="app-select"
               value={pageSize}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));

@@ -1791,7 +1791,21 @@ i.sankey-node-l2 {
   max-width: 160px;
 }
 /* -278: exec-type filter matches saved-views dropdown look */
-.exectype-filter {
+/* -283: .app-select is the shared plain-select style used across ContainersView,
+   BugsPanel, and RequirementsView; .exectype-filter keeps this look. */
+.exectype-filter,
+.app-select {
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+/* -283: SortControl sort-field selects in the three target views share the
+   same look as .app-select (scoped so other SortControl instances are unchanged). */
+.container-filter-bar .sort-field,
+.bugs-md-filter-row .sort-field,
+.reqs-list-head .sort-field {
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 5px 8px;
@@ -4769,6 +4783,16 @@ tr.row-checked:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  font-size: 13px;
+}
+/* All form controls in the bug-form (static and dynamic) share the same font
+   family and size so Summary, Priority, Labels, Description, and the
+   createmeta-driven fields render consistently. */
+.bug-form input,
+.bug-form select,
+.bug-form textarea,
+.bug-form .multiselect-btn {
+  font-family: inherit;
   font-size: 13px;
 }
 .board-bug {

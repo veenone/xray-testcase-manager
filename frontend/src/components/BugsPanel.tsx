@@ -1215,6 +1215,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                           <span className="muted">No executions match the filter.</span>
                         ) : (
                           <select
+                            className="app-select"
                             value={addToExecTarget}
                             onChange={(e) => setAddToExecTarget(e.target.value)}
                           >

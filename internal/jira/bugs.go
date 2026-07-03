@@ -506,9 +506,19 @@ func (c *Client) CreateBug(ctx context.Context, projectKey, issueType, summary, 
 	if len(labels) > 0 {
 		fields["labels"] = labels
 	}
+	// Auto-fill reporter with the authenticated user (PAT owner). Best-effort:
+	// if /myself fails on a live instance, the reporter field is simply omitted
+	// rather than failing the create. Demo mode sets "demo.user" via the same
+	// helper so the full flow can be exercised offline.
+	// NOTE(xtm): Jira DC REST v2 keys the reporter by login name ("name"); verify
+	// against the live Xray Server/DC 8.4.0 instance (some instances require
+	// "accountId" instead).
+	if username, uerr := c.currentUser(ctx); uerr == nil && username != "" {
+		fields["reporter"] = map[string]string{"name": username}
+	}
 	// Merge extra fields collected from the createmeta-driven form. Extra fields
 	// do not override the basic fields above (project / issuetype / summary /
-	// description / priority / labels), since those are skipped in
+	// description / priority / labels / reporter), since those are skipped in
 	// GetBugCreateFields.
 	for k, v := range extraFields {
 		if _, exists := fields[k]; !exists {

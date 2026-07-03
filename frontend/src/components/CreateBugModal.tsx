@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { CreateBugForTest, GetBugCreateFields, errMsg } from "../api";
 import type { BugCreateField } from "../api";
+import { MultiSelect } from "./MultiSelect";
+import type { MultiOption } from "./MultiSelect";
 
 interface Props {
   profileId: string;
@@ -155,12 +157,28 @@ export function CreateBugModal({
   function renderExtraField(f: BugCreateField) {
     const rawVal = extraValues[f.id] ?? "";
 
-    if (f.type === "text" || f.type === "number" || f.type === "date") {
+    // "text" fields render as a multiline textarea so long-form inputs like
+    // "Steps to Reproduce" are usable.
+    if (f.type === "text") {
+      return (
+        <label key={f.id}>
+          {f.name}{f.required ? " *" : ""}
+          <textarea
+            rows={4}
+            value={typeof rawVal === "string" ? rawVal : ""}
+            onChange={(e) => setSingleExtra(f.id, e.target.value)}
+            required={f.required}
+          />
+        </label>
+      );
+    }
+
+    if (f.type === "number" || f.type === "date") {
       return (
         <label key={f.id}>
           {f.name}{f.required ? " *" : ""}
           <input
-            type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
+            type={f.type === "number" ? "number" : "date"}
             value={typeof rawVal === "string" ? rawVal : ""}
             onChange={(e) => setSingleExtra(f.id, e.target.value)}
             required={f.required}
@@ -188,34 +206,32 @@ export function CreateBugModal({
 
     if (f.type === "versions" || f.type === "array") {
       const selected = Array.isArray(rawVal) ? rawVal : [];
+      // Map BugFieldOption {id, value} -> MultiOption {value, label} so the
+      // checkbox-dropdown MultiSelect can render them. Selected ids flow back
+      // via onChange; buildFieldValue converts them to [{id},...] for Jira.
+      const opts: MultiOption[] = f.allowedValues.map((av) => ({
+        value: av.id,
+        label: av.value,
+      }));
       return (
         <label key={f.id}>
           {f.name}{f.required ? " *" : ""}
-          <select
-            multiple
-            size={Math.min(f.allowedValues.length, 4)}
-            value={selected}
-            onChange={(e) => {
-              const opts = Array.from(e.target.options);
-              setMultiExtra(f.id, opts.filter((o) => o.selected).map((o) => o.value));
-            }}
-          >
-            {f.allowedValues.map((av) => (
-              <option key={av.id} value={av.id}>
-                {av.value}
-              </option>
-            ))}
-          </select>
+          <MultiSelect
+            options={opts}
+            selected={selected}
+            onChange={(next) => setMultiExtra(f.id, next)}
+            allLabel={`Select ${f.name}…`}
+          />
         </label>
       );
     }
 
-    // Fallback: treat as text.
+    // Fallback: treat as multiline text.
     return (
       <label key={f.id}>
         {f.name}{f.required ? " *" : ""}
-        <input
-          type="text"
+        <textarea
+          rows={4}
           value={typeof rawVal === "string" ? rawVal : ""}
           onChange={(e) => setSingleExtra(f.id, e.target.value)}
         />
