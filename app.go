@@ -1169,10 +1169,35 @@ func (a *App) SetRequirementLinks(profileID, requirementKey, linkType string, li
 
 // --- Bug (defect) tracking ---
 
+// GetBugCreateFields returns the required fields for the profile's bug issue
+// type's create screen (beyond project/issuetype/summary/description/priority/
+// labels), so the Create Bug form can render and collect them before the commit.
+// The target project is resolved the same way CreateBugForTest does (profile
+// bug-project mode), with an empty execKey (the project key is available from
+// the profile before any specific execution is known).
+func (a *App) GetBugCreateFields(profileID string) (fields []jira.BugCreateField, err error) {
+	defer recoverToError("GetBugCreateFields", &err)
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
+	}
+	projKey := bugProjectKey(p, "")
+	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetBugCreateFields(a.ctx, projKey, p.BugIssueType)
+}
+
 // CreateBugForTest queues a new Bug issue linked to a failed Test, committed to
 // Jira on the next sync. The bug's project and issue type come from the profile.
-// Returns the placeholder key.
-func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description, priority string, labels []string) (key string, err error) {
+// extraFields carries any additional field values collected from the
+// createmeta-driven Create Bug form (keyed by Jira field id, values already
+// shaped for the POST body). Returns the placeholder key.
+func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description, priority string, labels []string, extraFields map[string]any) (key string, err error) {
 	defer recoverToError("CreateBugForTest", &err)
 	if err := a.requireStore(); err != nil {
 		return "", err
@@ -1183,7 +1208,7 @@ func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description
 	}
 	return a.repo.CreateBugForTest(profileID, testKey, execKey, testrepo.BugDraft{
 		ProjectKey: bugProjectKey(p, execKey), IssueType: p.BugIssueType, Summary: summary,
-		Description: description, Priority: priority, Labels: labels,
+		Description: description, Priority: priority, Labels: labels, Fields: extraFields,
 	})
 }
 

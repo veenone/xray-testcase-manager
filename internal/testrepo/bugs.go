@@ -57,13 +57,19 @@ type BugTest struct {
 }
 
 // BugDraft is the payload for creating a new bug from a failed test.
+// Fields carries any extra field values collected from the createmeta-driven
+// Create Bug form (keyed by Jira field id, values already shaped for the POST
+// body: {"id":...} for options, [{"id":...}] for versions, plain string for
+// text/number/date). It is serialised into the pending_change and forwarded to
+// CreateBug on commit.
 type BugDraft struct {
-	ProjectKey  string   `json:"projectKey"`
-	IssueType   string   `json:"issueType"`
-	Summary     string   `json:"summary"`
-	Description string   `json:"description"`
-	Priority    string   `json:"priority"`
-	Labels      []string `json:"labels"`
+	ProjectKey  string         `json:"projectKey"`
+	IssueType   string         `json:"issueType"`
+	Summary     string         `json:"summary"`
+	Description string         `json:"description"`
+	Priority    string         `json:"priority"`
+	Labels      []string       `json:"labels"`
+	Fields      map[string]any `json:"fields,omitempty"`
 }
 
 // bugLinkSnap mirrors reqLinkSnap: a Test link snapshot for discard.

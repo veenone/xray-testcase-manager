@@ -282,18 +282,210 @@ func chunkKeys(keys []string, size int) [][]string {
 	return out
 }
 
+// BugFieldOption is one allowed value for a BugCreateField select or version
+// field. ID is the Jira internal id sent in the POST body; Value is the
+// human-readable label shown in the form.
+type BugFieldOption struct {
+	ID    string `json:"id"`
+	Value string `json:"value"`
+}
+
+// BugCreateField describes one required field on the bug issue type's create
+// screen (beyond project/issuetype/summary/description/priority/labels which the
+// form always handles). Type is a simplified kind:
+//
+//   "text"     plain string input
+//   "option"   single-select with AllowedValues (POST as {"id": ...})
+//   "version"  single version picker with AllowedValues (POST as {"id": ...})
+//   "versions" multi-version picker with AllowedValues (POST as [{"id": ...},...])
+//   "number"   numeric input (POST as string)
+//   "date"     date input (POST as string)
+//   "array"    generic array of option objects
+type BugCreateField struct {
+	ID            string           `json:"id"`
+	Name          string           `json:"name"`
+	Required      bool             `json:"required"`
+	Type          string           `json:"type"`
+	AllowedValues []BugFieldOption `json:"allowedValues"`
+}
+
+// GetBugCreateFields returns the required fields on the bug issue type's create
+// screen for the given project, beyond project/issuetype/summary/description/
+// priority/labels (which the Create Bug form always collects). The caller renders
+// them dynamically so the user can supply values before the commit.
+//
+// Demo mode: returns a representative set (Steps to Reproduce, Frequency,
+// Affects Version/s, Real Detection Phase) without a network call.
+//
+// Live path: GET /rest/api/2/issue/createmeta with
+// ?projectKeys=…&issuetypeNames=…&expand=projects.issuetypes.fields, then
+// returns every field that is marked required and is not in the already-handled
+// set (project/issuetype/summary/description/priority/labels). AllowedValues is
+// populated from the createmeta allowedValues array (value or name for labels).
+//
+// NOTE(xtm): the createmeta fields expansion (required flag, allowedValues
+// shape) follows Jira DC REST v2 conventions and must be verified against the
+// live Xray Server/DC 8.4.0 instance. Some instances disable the fields
+// expansion, in which case the method returns an empty slice without an error.
+func (c *Client) GetBugCreateFields(ctx context.Context, projectKey, issueType string) ([]BugCreateField, error) {
+	if isDemoURL(c.baseURL) {
+		return demoBugCreateFields(), nil
+	}
+	if strings.TrimSpace(issueType) == "" {
+		issueType = "Bug"
+	}
+	path := "/rest/api/2/issue/createmeta?projectKeys=" + url.QueryEscape(projectKey) +
+		"&issuetypeNames=" + url.QueryEscape(issueType) +
+		"&expand=projects.issuetypes.fields"
+
+	var meta struct {
+		Projects []struct {
+			IssueTypes []struct {
+				Fields map[string]struct {
+					Name     string `json:"name"`
+					Required bool   `json:"required"`
+					Schema   struct {
+						Type  string `json:"type"`
+						Items string `json:"items"`
+					} `json:"schema"`
+					AllowedValues []struct {
+						ID    string `json:"id"`
+						Value string `json:"value"`
+						Name  string `json:"name"`
+					} `json:"allowedValues"`
+				} `json:"fields"`
+			} `json:"issuetypes"`
+		} `json:"projects"`
+	}
+	if err := c.get(ctx, path, &meta); err != nil {
+		return nil, err
+	}
+
+	// Fields already handled by the Create Bug form — skip them.
+	skip := map[string]bool{
+		"project": true, "issuetype": true, "summary": true,
+		"description": true, "priority": true, "labels": true,
+	}
+	var out []BugCreateField
+	for _, proj := range meta.Projects {
+		for _, it := range proj.IssueTypes {
+			for id, fd := range it.Fields {
+				if skip[id] || !fd.Required {
+					continue
+				}
+				typ := bugCreateFieldKind(fd.Schema.Type, fd.Schema.Items)
+				avs := make([]BugFieldOption, 0, len(fd.AllowedValues))
+				for _, av := range fd.AllowedValues {
+					v := av.Value
+					if v == "" {
+						v = av.Name
+					}
+					avs = append(avs, BugFieldOption{ID: av.ID, Value: v})
+				}
+				out = append(out, BugCreateField{
+					ID:            id,
+					Name:          fd.Name,
+					Required:      true,
+					Type:          typ,
+					AllowedValues: avs,
+				})
+			}
+		}
+	}
+	return out, nil
+}
+
+// bugCreateFieldKind maps a createmeta schema type (and its items, when the
+// type is "array") to the simplified kind the Create Bug form uses.
+func bugCreateFieldKind(schemaType, items string) string {
+	switch schemaType {
+	case "option":
+		return "option"
+	case "number":
+		return "number"
+	case "date":
+		return "date"
+	case "version":
+		return "version"
+	case "array":
+		switch items {
+		case "version":
+			return "versions"
+		case "option":
+			return "option"
+		}
+		return "array"
+	default:
+		return "text"
+	}
+}
+
+// demoBugCreateFields returns a representative set of required extra create
+// fields for the demo mode, so the full create-bug flow works offline.
+func demoBugCreateFields() []BugCreateField {
+	return []BugCreateField{
+		{
+			ID:            "customfield_10300",
+			Name:          "Steps to Reproduce",
+			Required:      true,
+			Type:          "text",
+			AllowedValues: []BugFieldOption{},
+		},
+		{
+			ID:       "customfield_10301",
+			Name:     "Frequency",
+			Required: true,
+			Type:     "option",
+			AllowedValues: []BugFieldOption{
+				{ID: "10401", Value: "Always"},
+				{ID: "10402", Value: "Sometimes"},
+				{ID: "10403", Value: "Rarely"},
+				{ID: "10404", Value: "Once"},
+			},
+		},
+		{
+			ID:       "versions",
+			Name:     "Affects Version/s",
+			Required: true,
+			Type:     "versions",
+			AllowedValues: []BugFieldOption{
+				{ID: "10000", Value: "1.0"},
+				{ID: "10001", Value: "1.1"},
+				{ID: "10002", Value: "2.0"},
+			},
+		},
+		{
+			ID:       "customfield_10302",
+			Name:     "Real Detection Phase",
+			Required: true,
+			Type:     "option",
+			AllowedValues: []BugFieldOption{
+				{ID: "10501", Value: "Unit"},
+				{ID: "10502", Value: "Integration"},
+				{ID: "10503", Value: "System"},
+				{ID: "10504", Value: "Acceptance"},
+			},
+		},
+	}
+}
+
 // CreateBug creates a defect issue of the given issuetype (the profile's
 // configured bug issue type, default "Bug") and returns its key. Demo URLs
 // return a synthetic key.
 //
+// extraFields carries any additional field values collected from the
+// createmeta-driven Create Bug form (keyed by Jira field id, values already
+// shaped for the POST body: {"id":...} for options, [{"id":...}] for versions,
+// plain string for text/number/date). They are merged into the POST fields map
+// without overriding the basic fields.
+//
 // Live path: POST /rest/api/2/issue with fields {project:{key}, issuetype:{name:
 // issueType}, summary, description (if set), priority:{name} (if set), labels (if
-// any)}, mirroring CreateTest. NOTE(xtm): some instances mark extra fields
-// mandatory on the defect type (e.g. a detection phase or affects-version); when
-// the instance rejects the create, the returned error carries the Jira response
-// body which names the missing field. That requirement is instance-specific and
-// must be verified live.
-func (c *Client) CreateBug(ctx context.Context, projectKey, issueType, summary, description, priority string, labels []string) (string, error) {
+// any)}, plus any extra fields. NOTE(xtm): some instances mark additional fields
+// mandatory on the defect type; the createmeta-driven form should have collected
+// them, but if the instance rejects the create the returned error carries the
+// Jira response body which names the missing field.
+func (c *Client) CreateBug(ctx context.Context, projectKey, issueType, summary, description, priority string, labels []string, extraFields map[string]any) (string, error) {
 	if isDemoURL(c.baseURL) {
 		return fmt.Sprintf("%s-BUG-DEMO", projectKey), nil
 	}
@@ -313,6 +505,15 @@ func (c *Client) CreateBug(ctx context.Context, projectKey, issueType, summary, 
 	}
 	if len(labels) > 0 {
 		fields["labels"] = labels
+	}
+	// Merge extra fields collected from the createmeta-driven form. Extra fields
+	// do not override the basic fields above (project / issuetype / summary /
+	// description / priority / labels), since those are skipped in
+	// GetBugCreateFields.
+	for k, v := range extraFields {
+		if _, exists := fields[k]; !exists {
+			fields[k] = v
+		}
 	}
 	var resp struct {
 		Key string `json:"key"`

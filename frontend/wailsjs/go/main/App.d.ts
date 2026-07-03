@@ -59,7 +59,7 @@ export function CommitPendingChanges(arg1:string):Promise<syncer.CommitResult>;
 
 export function CommitPendingChangesByIDs(arg1:string,arg2:Array<number>):Promise<syncer.CommitResult>;
 
-export function CreateBugForTest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Array<string>):Promise<string>;
+export function CreateBugForTest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Array<string>,arg8:Record<string, any>):Promise<string>;
 
 export function CreateContainerAndAllocate(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<testrepo.CreateContainerResult>;
 
@@ -140,6 +140,8 @@ export function ExportSummaryTemplate():Promise<string>;
 export function ExportTests(arg1:string,arg2:testrepo.Query):Promise<string>;
 
 export function ExportTraceability(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<string>,arg5:boolean,arg6:Array<string>,arg7:Array<string>):Promise<string>;
+
+export function GetBugCreateFields(arg1:string):Promise<Array<jira.BugCreateField>>;
 
 export function GetBugDetail(arg1:string,arg2:string):Promise<jira.BugDetail>;
 

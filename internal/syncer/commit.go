@@ -779,19 +779,20 @@ func (e *Engine) commitRequirementDeletes(ctx context.Context, profileID string,
 func (e *Engine) commitBugCreates(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
 	for _, c := range rows {
 		var p struct {
-			ProjectKey  string   `json:"projectKey"`
-			IssueType   string   `json:"issueType"`
-			Summary     string   `json:"summary"`
-			Description string   `json:"description"`
-			Priority    string   `json:"priority"`
-			Labels      []string `json:"labels"`
-			TestKey     string   `json:"testKey"`
+			ProjectKey  string         `json:"projectKey"`
+			IssueType   string         `json:"issueType"`
+			Summary     string         `json:"summary"`
+			Description string         `json:"description"`
+			Priority    string         `json:"priority"`
+			Labels      []string       `json:"labels"`
+			TestKey     string         `json:"testKey"`
+			Fields      map[string]any `json:"fields"`
 		}
 		if err := json.Unmarshal([]byte(c.AfterVal), &p); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed bug payload: " + err.Error()})
 			continue
 		}
-		realKey, err := e.client.CreateBug(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Labels)
+		realKey, err := e.client.CreateBug(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Labels, p.Fields)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: p.TestKey, Error: "create bug: " + sanitizeError(err.Error())})
 			continue

@@ -148,6 +148,7 @@ export {
   ScanAllDuplicateSteps,
   ExcludeFromDuplicates,
   UnexcludeFromDuplicates,
+  GetBugCreateFields,
   CreateBugForTest,
   CreateRequirement,
   GetBugDetail,
@@ -829,6 +830,25 @@ export interface SankeyLink {
 export interface Sankey {
   nodes: SankeyNode[];
   links: SankeyLink[];
+}
+
+// BugFieldOption mirrors jira.BugFieldOption — one allowed value for a
+// BugCreateField select or version field.
+export interface BugFieldOption {
+  id: string;
+  value: string;
+}
+
+// BugCreateField mirrors jira.BugCreateField — one required field on the bug
+// issue type's create screen beyond project/issuetype/summary/description/
+// priority/labels. Type is: "text" | "option" | "version" | "versions" |
+// "number" | "date" | "array".
+export interface BugCreateField {
+  id: string;
+  name: string;
+  required: boolean;
+  type: string;
+  allowedValues: BugFieldOption[];
 }
 
 // BugDetail mirrors jira.BugDetail - the extended fields for a defect issue

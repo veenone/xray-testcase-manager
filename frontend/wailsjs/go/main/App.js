@@ -106,8 +106,8 @@ export function CommitPendingChangesByIDs(arg1, arg2) {
   return window['go']['main']['App']['CommitPendingChangesByIDs'](arg1, arg2);
 }
 
-export function CreateBugForTest(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-  return window['go']['main']['App']['CreateBugForTest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+export function CreateBugForTest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['CreateBugForTest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function CreateContainerAndAllocate(arg1, arg2, arg3, arg4) {
@@ -268,6 +268,10 @@ export function ExportTests(arg1, arg2) {
 
 export function ExportTraceability(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['main']['App']['ExportTraceability'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+}
+
+export function GetBugCreateFields(arg1) {
+  return window['go']['main']['App']['GetBugCreateFields'](arg1);
 }
 
 export function GetBugDetail(arg1, arg2) {
