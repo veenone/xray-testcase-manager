@@ -74,7 +74,7 @@ type RequirementSourceSpec struct {
 // Test's issuelinks). Verify the issuelinks shape on a live Xray Server 8.4.0.
 func (c *Client) ListRequirements(ctx context.Context, profileProjectKey string, sources []RequirementSourceSpec, onProgress func(done, total int)) ([]Requirement, []RequirementLink, error) {
 	if isDemoURL(c.baseURL) {
-		reqs, links := demoRequirements(profileProjectKey)
+		reqs, links := demoRequirements(themeFor(c.baseURL), profileProjectKey)
 		if onProgress != nil {
 			onProgress(len(reqs), len(reqs))
 		}
@@ -439,13 +439,133 @@ var demoReqDescriptions = []string{
 	"Security control: all inputs validated and sanitised before processing.",
 }
 
-// demoRequirements generates ~two dozen requirement issues in a different
-// project, linked to the run-status-bearing demo Tests, with a couple left
-// uncovered — so coverage spans PASSED / FAILED / NOTRUN / UNCOVERED.
-func demoRequirements(testProjectKey string) ([]Requirement, []RequirementLink) {
+// demoRequirements generates requirement issues linked to demo Tests.
+//
+// Generic branch (theme.Variant == ""): ~24 PRD requirements linked to
+// run-status-bearing Tests, with a couple left uncovered so coverage spans
+// PASSED/FAILED/NOTRUN/UNCOVERED, populated with the 1.8.0 requirement detail
+// fields (priority, components, fix versions, sprint, description).
+//
+// PKCS branch (theme.Variant == "pkcs"): for each PKCS#11 feature one
+// functional requirement (FUNC project) and two customer requirements
+// (CUST-HSM-BANK and CUST-HSM-SAMSU), each linked to the first 6 Tests of
+// that feature (tests whose (n-1)%len(features) == featureIndex).
+func demoRequirements(theme demoTheme, testProjectKey string) ([]Requirement, []RequirementLink) {
 	if testProjectKey == "" {
 		testProjectKey = "DEMO"
 	}
+
+	// eUICC branch — functional + per-customer requirements.
+	// For each RSP procedure: one FUNC-EUICC-<code> functional requirement and
+	// three customer requirements (CUST-MNO-CONSUMER/MNO, CUST-IOT-FLEET/IOT,
+	// CUST-M2M-AUTO/M2M), each linked to the first up-to-6 tests of that feature.
+	if theme.Variant == "euicc" {
+		nFeatures := len(theme.Features)
+		reqs := make([]Requirement, 0, nFeatures*4)
+		links := make([]RequirementLink, 0)
+		const maxLinksPerReq = 6
+		for fi, f := range theme.Features {
+			code := euiccCode(f)
+
+			// Functional requirement.
+			funcKey := "FUNC-EUICC-" + code
+			reqs = append(reqs, Requirement{
+				Key:        funcKey,
+				ProjectKey: "FUNC",
+				IssueType:  "Requirement",
+				Summary:    f,
+				Status:     "Approved",
+			})
+
+			// Customer requirements + links to feature's tests.
+			customers := []struct {
+				projectKey string
+				label      string
+			}{
+				{"CUST-MNO-CONSUMER", "MNO"},
+				{"CUST-IOT-FLEET", "IOT"},
+				{"CUST-M2M-AUTO", "M2M"},
+			}
+			for _, cust := range customers {
+				custKey := cust.projectKey + "-" + code
+				reqs = append(reqs, Requirement{
+					Key:        custKey,
+					ProjectKey: cust.projectKey,
+					IssueType:  "Story",
+					Summary:    f + " — " + cust.label + " customer requirement",
+					Status:     "In Progress",
+				})
+				// Link to first up-to-6 tests for this feature.
+				// Tests for feature fi are those where (n-1) % nFeatures == fi,
+				// i.e. n = fi+1, fi+1+nFeatures, fi+1+2*nFeatures, ...
+				linked := 0
+				for n := fi + 1; n <= theme.TestCount && linked < maxLinksPerReq; n += nFeatures {
+					links = append(links, RequirementLink{
+						TestKey:        fmt.Sprintf("%s-%d", testProjectKey, n),
+						RequirementKey: custKey,
+						LinkID:         fmt.Sprintf("L-%s-%d", code, n),
+					})
+					linked++
+				}
+			}
+		}
+		return reqs, links
+	}
+
+	// PKCS branch — functional + per-customer requirements.
+	if theme.Variant == "pkcs" {
+		nFeatures := len(theme.Features)
+		reqs := make([]Requirement, 0, nFeatures*3)
+		links := make([]RequirementLink, 0)
+		const maxLinksPerReq = 6
+		for fi, f := range theme.Features {
+			code := pkcsCode(f)
+
+			// Functional requirement.
+			funcKey := "FUNC-PKCS11-" + code
+			reqs = append(reqs, Requirement{
+				Key:        funcKey,
+				ProjectKey: "FUNC",
+				IssueType:  "Requirement",
+				Summary:    f,
+				Status:     "Approved",
+			})
+
+			// Customer requirements + links to feature's tests.
+			customers := []struct {
+				projectKey string
+				label      string
+			}{
+				{"CUST-HSM-BANK", "BANK"},
+				{"CUST-HSM-SAMSU", "SAMSU"},
+			}
+			for _, cust := range customers {
+				custKey := cust.projectKey + "-" + code
+				reqs = append(reqs, Requirement{
+					Key:        custKey,
+					ProjectKey: cust.projectKey,
+					IssueType:  "Story",
+					Summary:    f + " — " + cust.label + " customer requirement",
+					Status:     "In Progress",
+				})
+				// Link to first up-to-6 tests for this feature.
+				// Tests for feature fi are those where (n-1) % nFeatures == fi,
+				// i.e. n = fi+1, fi+1+nFeatures, fi+1+2*nFeatures, ...
+				linked := 0
+				for n := fi + 1; n <= theme.TestCount && linked < maxLinksPerReq; n += nFeatures {
+					links = append(links, RequirementLink{
+						TestKey:        fmt.Sprintf("%s-%d", testProjectKey, n),
+						RequirementKey: custKey,
+						LinkID:         fmt.Sprintf("L-%s-%d", code, n),
+					})
+					linked++
+				}
+			}
+		}
+		return reqs, links
+	}
+
+	// Generic branch — unchanged PRD-1..24 logic.
 	const count = 24
 	reqs := make([]Requirement, 0, count)
 	links := make([]RequirementLink, 0)

@@ -156,6 +156,14 @@ func writeXLSXSheets(sheets []namedRows) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// NamedRows is the exported alias of namedRows so sibling packages (the coverage
+// module) can build multi-sheet workbooks with the same styling.
+type NamedRows = namedRows
+
+// WriteXLSXSheets renders a styled multi-sheet workbook — the exported entry
+// point over writeXLSXSheets for the coverage module's report export.
+func WriteXLSXSheets(sheets []NamedRows) ([]byte, error) { return writeXLSXSheets(sheets) }
+
 // sheetStyles holds the cell styles fillSheet applies: a banded header plus
 // zebra-striped data rows, all bordered and word-wrapped, mirroring the bug
 // export so every workbook the app produces reads consistently.

@@ -12,6 +12,7 @@ import {
   GetBugDetail,
   ExportBugsWithRunHistory,
   errMsg,
+  isDemoUrl,
 } from "../api";
 import type { BugWithTests, BugTest, TestRunEntry, Container, BugDetail } from "../api";
 import { formatDateTime } from "../dates";
@@ -373,7 +374,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     };
   }, [profileId, refreshKey, nonce]);
 
-  const isDemo = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
+  const isDemo = isDemoUrl(jiraUrl);
   const canLink = !!jiraUrl && !isDemo;
   function openBug(key: string) {
     const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");

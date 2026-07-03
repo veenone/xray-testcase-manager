@@ -405,10 +405,9 @@ export function ContainersView({
     }
   }
 
-  const isDemoUrl = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
   function openParent(parentKey: string) {
     const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-    if (base && !isDemoUrl && !parentKey.startsWith("NEW-")) {
+    if (base && !isDemo && !parentKey.startsWith("NEW-")) {
       BrowserOpenURL(`${base}/browse/${parentKey}`);
     }
   }
@@ -416,7 +415,7 @@ export function ContainersView({
   // exists (skip in demo mode and for not-yet-committed NEW- keys).
   function openBug(bugKey: string) {
     const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-    if (base && !isDemoUrl && !bugKey.startsWith("NEW-")) {
+    if (base && !isDemo && !bugKey.startsWith("NEW-")) {
       BrowserOpenURL(`${base}/browse/${bugKey}`);
     }
   }
@@ -1154,7 +1153,7 @@ export function ContainersView({
                             className="mono container-bug-key"
                             onClick={() => openBug(b.key)}
                             title={
-                              isDemoUrl || !jiraUrl
+                              isDemo || !jiraUrl
                                 ? b.key
                                 : `Open ${b.key} in Jira`
                             }

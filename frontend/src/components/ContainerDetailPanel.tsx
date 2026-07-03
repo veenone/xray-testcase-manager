@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GetContainerBoard, errMsg, BrowserOpenURL } from "../api";
+import { GetContainerBoard, errMsg, isDemoUrl, BrowserOpenURL } from "../api";
 import type { TestPlanBoard } from "../api";
 import { Markdown } from "./Markdown";
 
@@ -52,7 +52,7 @@ export function ContainerDetailPanel({ profileId, containerKey, kind, jiraUrl, o
   }
 
   const kindLabel = kind === "plan" ? "Test Plan" : "Test Execution";
-  const isDemo = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
+  const isDemo = isDemoUrl(jiraUrl);
   const canLink = !!jiraUrl && !isDemo;
 
   useEffect(() => {

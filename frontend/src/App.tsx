@@ -18,6 +18,7 @@ import {
   GetSettings,
   SetDefaultProfile,
   SetTheme,
+  SetShowCoverage,
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
   ResolveConflictMerge,
@@ -31,6 +32,8 @@ import {
   EventsOn,
   SyncTests,
   errMsg,
+  isDemoUrl,
+  demoVariant,
 } from "./api";
 import type {
   HealthInfo,
@@ -67,6 +70,7 @@ import { TraceabilityTabs } from "./components/TraceabilityTabs";
 import { ContainersView } from "./components/ContainersView";
 import { PreconditionsView } from "./components/PreconditionsView";
 import { RequirementsView } from "./components/RequirementsView";
+import { CoverageView } from "./components/CoverageView";
 import { DuplicatesView } from "./components/DuplicatesView";
 import { GapAnalysisView } from "./components/GapAnalysisView";
 import { TestCallsView } from "./components/TestCallsView";
@@ -96,6 +100,8 @@ function App() {
   const [activeId, setActiveId] = useState<string>("");
   const [defaultProfileId, setDefaultProfileId] = useState<string>("");
   const [theme, setThemeState] = useState<string>("light");
+  // The Coverage module is opt-in; its top-nav tab is hidden until enabled.
+  const [showCoverage, setShowCoverage] = useState(false);
   const { prompt, promptUI } = usePrompt();
   const { confirm, confirmUI } = useConfirm();
   const { notice, noticeUI } = useNotice();
@@ -162,6 +168,7 @@ function App() {
     | "dashboard"
     | "traceability"
     | "plans"
+    | "coverage"
   >("browse");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
@@ -221,6 +228,7 @@ function App() {
         const t = s.theme || "light";
         setThemeState(t);
         applyTheme(t);
+        setShowCoverage(!!s.showCoverage);
         if (ps.length > 0) {
           const def =
             s.defaultProfileId && ps.some((p) => p.id === s.defaultProfileId)
@@ -557,6 +565,7 @@ function App() {
     "menu:view-duplicates": () => setView("duplicates"),
     "menu:view-gapanalysis": () => setView("gapanalysis"),
     "menu:view-testcalls": () => setView("testcalls"),
+    "menu:view-coverage": () => setView("coverage"),
     "menu:sync-history": () => setShowSyncHistory(true),
     "menu:diagnostics": () => setShowDiagnostics(true),
     "menu:about": () => setShowAbout(true),
@@ -576,6 +585,19 @@ function App() {
       await SetTheme(next);
     } catch (e) {
       console.error("set theme:", errMsg(e));
+    }
+  }
+
+  // toggleCoverage shows/hides the opt-in Coverage tab and persists it. Leaving
+  // the Coverage view when hiding so a hidden view isn't left on screen.
+  async function toggleCoverage() {
+    const next = !showCoverage;
+    setShowCoverage(next);
+    if (!next && view === "coverage") setView("browse");
+    try {
+      await SetShowCoverage(next);
+    } catch (e) {
+      console.error("set show coverage:", errMsg(e));
     }
   }
 
@@ -900,9 +922,8 @@ function App() {
   }
 
   const activeProfile = profiles.find((p) => p.id === activeId);
-  const isDemo =
-    !!activeProfile &&
-    /^(demo$|demo:|mock:)/i.test(activeProfile.jiraUrl.trim());
+  const isDemo = isDemoUrl(activeProfile?.jiraUrl);
+  const demoVar = demoVariant(activeProfile?.jiraUrl);
 
   if (!health) {
     return <div className="centered muted">Loading…</div>;
@@ -1037,6 +1058,14 @@ function App() {
           >
             Containers
           </button>
+          {showCoverage && (
+            <button
+              className={`view-tab${view === "coverage" ? " view-tab-active" : ""}`}
+              onClick={() => setView("coverage")}
+            >
+              Coverage
+            </button>
+          )}
         </nav>
 
         <div className="topbar-zone topbar-right">
@@ -1113,6 +1142,15 @@ function App() {
                 label: "Theme: System",
                 checked: theme === "system",
                 onClick: () => chooseTheme("system"),
+              },
+              { key: "cov-div", divider: true },
+              {
+                key: "show-coverage",
+                label: "Show Coverage tab",
+                checked: showCoverage,
+                onClick: () => void toggleCoverage(),
+                title:
+                  "Reveal the Coverage module tab (opt-in; hidden by default)",
               },
             ]}
           />
@@ -1261,6 +1299,19 @@ function App() {
               setSelectedKey(k);
               setView("browse");
             }}
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              reloadPending();
+            }}
+          />
+        </main>
+      ) : view === "coverage" ? (
+        <main className="content content-coverage">
+          <CoverageView
+            profileId={activeId}
+            refreshKey={refreshKey}
+            isDemo={isDemo}
+            demoVariant={demoVar}
             onChanged={() => {
               setRefreshKey((k) => k + 1);
               reloadPending();

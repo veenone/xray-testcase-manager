@@ -17,32 +17,37 @@ import (
 // grid's pagination, search, filter and sort without being absurd.
 const demoTestCount = 5000
 
-// isDemoURL reports whether a profile's Jira URL selects demo mode.
+// isDemoURL reports whether a profile's Jira URL selects demo mode. Recognises
+// "demo", a "demo:" / "mock:" prefix, and "demo-" variants (e.g. "demo-pkcs",
+// used to pick a specific built-in demo dataset). Keep in sync with jiraUrlError
+// in the frontend (ProfileForm.tsx).
 func isDemoURL(baseURL string) bool {
 	u := strings.ToLower(strings.TrimSpace(baseURL))
 	return u == "demo" ||
 		strings.HasPrefix(u, "demo:") ||
+		strings.HasPrefix(u, "demo-") ||
 		strings.HasPrefix(u, "mock:")
 }
 
 // demoTestsPage returns the [startAt, startAt+maxResults) slice of the demo
 // dataset plus the dataset total — matching SearchTestsPage's signature.
-func demoTestsPage(projectKey string, startAt, maxResults int) ([]Test, int) {
+func demoTestsPage(theme demoTheme, projectKey string, startAt, maxResults int) ([]Test, int) {
 	if projectKey == "" {
 		projectKey = "DEMO"
 	}
-	if startAt >= demoTestCount {
-		return nil, demoTestCount
+	total := theme.TestCount
+	if startAt >= total {
+		return nil, total
 	}
 	end := startAt + maxResults
-	if end > demoTestCount {
-		end = demoTestCount
+	if end > total {
+		end = total
 	}
 	out := make([]Test, 0, end-startAt)
 	for i := startAt; i < end; i++ {
-		out = append(out, makeDemoTest(projectKey, i))
+		out = append(out, makeDemoTest(theme, projectKey, i))
 	}
-	return out, demoTestCount
+	return out, total
 }
 
 // Source vocabularies. Statuses and priorities are deliberately repeated to
@@ -130,10 +135,7 @@ var demoLabels = []string{
 // demoFolderCategories defines the demo Test Repository hierarchy. Feature
 // names match those in demoFeatures so each test slots into the matching
 // leaf folder.
-var demoFolderCategories = []struct {
-	Name     string
-	Features []string
-}{
+var demoFolderCategories = []folderCategory{
 	{"Authentication", []string{"Login", "Logout", "User registration", "Password reset", "Multi-factor auth", "Session timeout"}},
 	{"Browse", []string{"Search", "Filter results", "Sort results", "Pagination"}},
 	{"Commerce", []string{"Checkout", "Cart", "Add to cart", "Remove from cart", "Payment", "Refund"}},
@@ -143,12 +145,13 @@ var demoFolderCategories = []struct {
 	{"System", []string{"API rate limit", "File upload", "File download", "Bulk operations"}},
 }
 
-// demoFolders returns the demo folder tree. Folder IDs are full paths so a
-// folder is uniquely identified by its location in the tree
-// ("/Authentication/Login").
-func demoFolders(_ string) []Folder {
+// demoFolders returns the demo folder tree for the given theme. Folder IDs are
+// full paths so a folder is uniquely identified by its location in the tree
+// ("/Authentication/Login"). The categories in theme.Categories determine the
+// hierarchy, so PKCS and generic themes each produce their own folder structure.
+func demoFolders(theme demoTheme) []Folder {
 	out := make([]Folder, 0)
-	for _, cat := range demoFolderCategories {
+	for _, cat := range theme.Categories {
 		catID := "/" + cat.Name
 		out = append(out, Folder{ID: catID, ParentID: "", Name: cat.Name})
 		for _, feat := range cat.Features {
@@ -164,8 +167,8 @@ func demoFolders(_ string) []Folder {
 
 // demoFolderForFeature returns the leaf folder ID holding tests for a given
 // feature, or empty if the feature isn't mapped.
-func demoFolderForFeature(feature string) string {
-	for _, cat := range demoFolderCategories {
+func demoFolderForFeature(theme demoTheme, feature string) string {
+	for _, cat := range theme.Categories {
 		for _, f := range cat.Features {
 			if f == feature {
 				return "/" + cat.Name + "/" + f
@@ -178,11 +181,7 @@ func demoFolderForFeature(feature string) string {
 // preconditionDefs is the master list of distinct demo preconditions. Their
 // indexes here are used by featurePreconditions to assign preconditions to
 // tests by feature.
-var preconditionDefs = []struct {
-	Summary   string
-	Type      string
-	Condition string
-}{
+var preconditionDefs = []precondDef{
 	{"User account exists", "Manual", "Given a registered user account exists in the system"},
 	{"User is logged in", "Manual", "Given the user is authenticated and an active session exists"},
 	{"Email service is available", "Manual", "Given the email delivery service is running and reachable"},
@@ -323,11 +322,90 @@ func demoCalledSibling(testKey string) string {
 	return testKey[:dash+1] + strconv.Itoa(callee)
 }
 
-// demoStepsForKey returns a deterministic three-step skeleton for any test
-// in demo mode (FR-2.5). The steps are generic on purpose — they exercise
-// the panel layout, not Jira fidelity. Real Xray returns whatever the
-// authors wrote.
-func demoStepsForKey(testKey string) []Step {
+// demoStepsForKey returns a deterministic step list for any test in demo mode
+// (FR-2.5). For the PKCS theme it returns PKCS-flavoured steps derived from the
+// test's feature; for the eUICC theme it returns RSP-flavoured steps; for the
+// generic theme it returns the original three-step skeleton (plus
+// duplicate-cluster and call-graph overrides).
+func demoStepsForKey(theme demoTheme, testKey string) []Step {
+	if theme.Variant == "pkcs" {
+		// Derive the feature from the test key index so the steps are fully
+		// deterministic (same input → same output).
+		idx := demoKeyIndex(testKey)
+		if idx < 0 {
+			idx = 0
+		}
+		feature := theme.Features[idx%len(theme.Features)]
+		// The initialisation call follows the C_<Fn>Init naming convention for
+		// C_Sign and C_Verify; C_GenerateKeyPair has no separate init.
+		initFunc := feature + "Init"
+		if feature == "C_GenerateKeyPair" {
+			initFunc = feature
+		}
+		return []Step{
+			{
+				ID:       testKey + "-p1",
+				Index:    1,
+				Action:   "Open a session (C_OpenSession)",
+				Expected: "CKR_OK; a valid session handle is returned",
+			},
+			{
+				ID:       testKey + "-p2",
+				Index:    2,
+				Action:   "Initialize the operation (" + initFunc + ")",
+				Expected: "CKR_OK; the operation is ready",
+			},
+			{
+				ID:       testKey + "-p3",
+				Index:    3,
+				Action:   "Invoke " + feature,
+				Expected: "Return code is CKR_OK or the expected CKR_* error",
+			},
+			{
+				ID:       testKey + "-p4",
+				Index:    4,
+				Action:   "Inspect the CKR_* return code",
+				Expected: "Return code matches the test condition",
+			},
+		}
+	}
+
+	if theme.Variant == "euicc" {
+		// Derive the RSP procedure from the test key index so the steps are fully
+		// deterministic (same input → same output).
+		idx := demoKeyIndex(testKey)
+		if idx < 0 {
+			idx = 0
+		}
+		feature := theme.Features[idx%len(theme.Features)]
+		return []Step{
+			{
+				ID:       testKey + "-e1",
+				Index:    1,
+				Action:   "Establish an RSP session (ES9+/ESipa) with the SM-DP+ / eIM",
+				Expected: "Session established; SM-DP+ / eIM responds with HTTP 200",
+			},
+			{
+				ID:       testKey + "-e2",
+				Index:    2,
+				Action:   "Invoke " + feature,
+				Expected: "Procedure accepted; eUICC returns a valid response APDU",
+			},
+			{
+				ID:       testKey + "-e3",
+				Index:    3,
+				Action:   "Inspect the result / status word",
+				Expected: "Status word is 9000 (success) or the expected error SW",
+			},
+			{
+				ID:       testKey + "-e4",
+				Index:    4,
+				Action:   "Verify the outcome matches the test condition",
+				Expected: "Observed eUICC state matches the expected post-condition",
+			},
+		}
+	}
+
 	// Duplicate-cluster step overrides (see makeDemoTest). Match the numeric
 	// suffix so the override is project-key agnostic.
 	switch demoKeyIndex(testKey) {
@@ -479,16 +557,18 @@ const demoLinkedTests = 200
 // demoContainersAndLinks generates Test Sets (one per Test Repository
 // category), Test Plans and Test Executions plus their Test memberships
 // (FR-1.3). Execution memberships carry a deterministic run status so the
-// coverage view has data to chart.
-func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, error) {
+// coverage view has data to chart. The vocabulary (categories, features,
+// test count) is taken from theme so the generic and PKCS datasets each
+// produce their own themed containers.
+func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []ContainerLink, error) {
 	if projectKey == "" {
 		projectKey = "DEMO"
 	}
 	containers := make([]Container, 0)
 	links := make([]ContainerLink, 0)
 
-	setKeys := make([]string, len(demoFolderCategories))
-	for i, cat := range demoFolderCategories {
+	setKeys := make([]string, len(theme.Categories))
+	for i, cat := range theme.Categories {
 		key := fmt.Sprintf("%s-TS-%d", projectKey, i+1)
 		setKeys[i] = key
 		containers = append(containers, Container{
@@ -609,10 +689,10 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 		})
 	}
 
-	for i := 0; i < demoLinkedTests && i < demoTestCount; i++ {
+	for i := 0; i < demoLinkedTests && i < theme.TestCount; i++ {
 		testKey := fmt.Sprintf("%s-%d", projectKey, i+1)
-		feature := demoFeatures[i%len(demoFeatures)]
-		if catIdx := demoCategoryIndexForFeature(feature); catIdx >= 0 {
+		feature := theme.Features[i%len(theme.Features)]
+		if catIdx := demoCategoryIndexForFeature(theme, feature); catIdx >= 0 {
 			links = append(links, ContainerLink{ContainerKey: setKeys[catIdx], TestKey: testKey})
 		}
 		links = append(links, ContainerLink{ContainerKey: planKeys[i%planCount], TestKey: testKey})
@@ -644,8 +724,8 @@ func demoContainersAndLinks(projectKey string) ([]Container, []ContainerLink, er
 
 // demoCategoryIndexForFeature returns the index of the Test Repository category
 // holding a feature, or -1 if unmapped.
-func demoCategoryIndexForFeature(feature string) int {
-	for i, cat := range demoFolderCategories {
+func demoCategoryIndexForFeature(theme demoTheme, feature string) int {
+	for i, cat := range theme.Categories {
 		for _, f := range cat.Features {
 			if f == feature {
 				return i
@@ -658,14 +738,16 @@ func demoCategoryIndexForFeature(feature string) int {
 // demoPreconditionsAndLinks returns the demo precondition master list plus
 // the test-key → precondition-keys mapping. Keys use a "<project>-P-N"
 // convention so they read like Jira keys without colliding with the test
-// number range.
-func demoPreconditionsAndLinks(projectKey string) ([]Precondition, map[string][]string, error) {
+// number range. The vocabulary (precondition definitions, feature mapping,
+// feature list, test count) is taken from theme so the generic and PKCS
+// datasets each produce their own themed preconditions.
+func demoPreconditionsAndLinks(theme demoTheme, projectKey string) ([]Precondition, map[string][]string, error) {
 	if projectKey == "" {
 		projectKey = "DEMO"
 	}
 
-	preconditions := make([]Precondition, 0, len(preconditionDefs))
-	for i, def := range preconditionDefs {
+	preconditions := make([]Precondition, 0, len(theme.Preconditions))
+	for i, def := range theme.Preconditions {
 		preconditions = append(preconditions, Precondition{
 			Key:         fmt.Sprintf("%s-P-%d", projectKey, i+1),
 			Summary:     def.Summary,
@@ -675,10 +757,10 @@ func demoPreconditionsAndLinks(projectKey string) ([]Precondition, map[string][]
 		})
 	}
 
-	links := make(map[string][]string, demoTestCount)
-	for i := 0; i < demoTestCount; i++ {
-		feature := demoFeatures[i%len(demoFeatures)]
-		indexes, ok := featurePreconditions[feature]
+	links := make(map[string][]string, theme.TestCount)
+	for i := 0; i < theme.TestCount; i++ {
+		feature := theme.Features[i%len(theme.Features)]
+		indexes, ok := theme.FeaturePre[feature]
 		if !ok || len(indexes) == 0 {
 			continue
 		}
@@ -794,7 +876,7 @@ var demoExternalStatuses = []string{"Approved", "In Progress", "Draft", "Done"}
 // demoTestBasicForKey returns the deterministic basics for a Test key, used by
 // the ListTestsBasic demo path so the sync can cache cross-project (XRAYINT-*)
 // execution members offline. The project key is parsed from the issue key.
-func demoTestBasicForKey(key string) TestBasic {
+func demoTestBasicForKey(theme demoTheme, key string) TestBasic {
 	projectKey, idx := "DEMO", 0
 	if i := strings.LastIndex(key, "-"); i > 0 {
 		projectKey = key[:i]
@@ -802,8 +884,8 @@ func demoTestBasicForKey(key string) TestBasic {
 			idx = n - 1
 		}
 	}
-	feature := demoFeatures[idx%len(demoFeatures)]
-	condition := demoConditions[(idx/len(demoFeatures))%len(demoConditions)]
+	feature := theme.Features[idx%len(theme.Features)]
+	condition := theme.Conditions[(idx/len(theme.Features))%len(theme.Conditions)]
 	tb := TestBasic{
 		Key:        key,
 		Summary:    fmt.Sprintf("%s %s", feature, condition),
@@ -828,7 +910,7 @@ func demoTestBasicForKey(key string) TestBasic {
 	return tb
 }
 
-func demoTestForKey(key string) Test {
+func demoTestForKey(theme demoTheme, key string) Test {
 	projectKey, idx := "DEMO", 0
 	if i := strings.LastIndex(key, "-"); i > 0 {
 		projectKey = key[:i]
@@ -836,12 +918,12 @@ func demoTestForKey(key string) Test {
 			idx = n - 1
 		}
 	}
-	return makeDemoTest(projectKey, idx)
+	return makeDemoTest(theme, projectKey, idx)
 }
 
-func makeDemoTest(projectKey string, i int) Test {
-	feature := demoFeatures[i%len(demoFeatures)]
-	condition := demoConditions[(i/len(demoFeatures))%len(demoConditions)]
+func makeDemoTest(theme demoTheme, projectKey string, i int) Test {
+	feature := theme.Features[i%len(theme.Features)]
+	condition := theme.Conditions[(i/len(theme.Features))%len(theme.Conditions)]
 	status := demoStatuses[i%len(demoStatuses)]
 	priority := demoPriorities[(i*7+3)%len(demoPriorities)]
 
@@ -863,14 +945,18 @@ func makeDemoTest(projectKey string, i int) Test {
 		Format("2006-01-02T15:04:05.000-0700")
 
 	summary := fmt.Sprintf("%s %s", feature, condition)
-	// Seed two deterministic duplicate clusters for the Duplicates view demo:
+	// Seed two deterministic duplicate clusters for the Duplicates view demo
+	// (generic theme only — PKCS tests keep their "<feature> <condition>"
+	// summary so the PKCS corpus is fully themed):
 	// indices 0,1 -> identical summary + identical steps; 2,3 -> identical
 	// summary + differing steps.
-	switch i {
-	case 0, 1:
-		summary = "Duplicate demo A — user can log in"
-	case 2, 3:
-		summary = "Duplicate demo B — user can check out"
+	if theme.Variant == "" {
+		switch i {
+		case 0, 1:
+			summary = "Duplicate demo A — user can log in"
+		case 2, 3:
+			summary = "Duplicate demo B — user can check out"
+		}
 	}
 	description := fmt.Sprintf(
 		"Given a user is on the %s screen\n"+
@@ -889,7 +975,7 @@ func makeDemoTest(projectKey string, i int) Test {
 		Labels:      labels,
 		Components:  demoComponentsForIndex(i),
 		Updated:     updated,
-		FolderID:    demoFolderForFeature(feature),
+		FolderID:    demoFolderForFeature(theme, feature),
 		ExecType:    demoExecTypeForIndex(i),
 		FixVersions: demoTestFixVersionsForIndex(i),
 	}

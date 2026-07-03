@@ -198,7 +198,7 @@ func (c *Client) MoveTestStep(ctx context.Context, key, stepID string, index int
 // Maps to GET /rest/raven/2.0/api/test/{key}/steps.
 func (c *Client) GetTestSteps(ctx context.Context, key string) ([]Step, error) {
 	if isDemoURL(c.baseURL) {
-		return demoStepsForKey(key), nil
+		return demoStepsForKey(themeFor(c.baseURL), key), nil
 	}
 	body, err := c.getBytes(ctx, fmt.Sprintf("/rest/raven/2.0/api/test/%s/steps", key))
 	if err != nil {

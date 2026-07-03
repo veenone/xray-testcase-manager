@@ -85,7 +85,7 @@ type ContainerLink struct {
 // are read — the slow part of a container sync — so the UI can show progress.
 func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Container, []ContainerLink, error) {
 	if isDemoURL(c.baseURL) {
-		return demoContainersAndLinks(projectKey)
+		return demoContainersAndLinks(themeFor(c.baseURL), projectKey)
 	}
 
 	// NOTE(xtm, #4): this lists containers in projectKey only. To auto-discover
