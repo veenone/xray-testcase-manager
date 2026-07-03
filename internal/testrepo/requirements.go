@@ -19,12 +19,18 @@ type reqLinkSnap struct {
 // Requirement is a cached requirement issue linked to Tests for coverage. It may
 // live in a different project than the profile's Test project.
 type Requirement struct {
-	Key        string `json:"key"`
-	ProjectKey string `json:"projectKey"`
-	IssueType  string `json:"issueType"`
-	Summary    string `json:"summary"`
-	Status     string `json:"status"`
-	Updated    string `json:"updated"`
+	Key         string `json:"key"`
+	ProjectKey  string `json:"projectKey"`
+	IssueType   string `json:"issueType"`
+	Summary     string `json:"summary"`
+	Status      string `json:"status"`
+	Updated     string `json:"updated"`
+	Priority    string `json:"priority"`
+	Components  string `json:"components"`
+	FixVersions string `json:"fixVersions"`
+	Sprint      string `json:"sprint"`
+	Description string `json:"description"`
+	EpicKey     string `json:"epicKey"`
 }
 
 // RequirementLink is one Test <-> Requirement coverage link.
@@ -37,13 +43,19 @@ type RequirementLink struct {
 // RequirementCoverage is a Requirement plus how its covering Tests are doing,
 // for the management/coverage view.
 type RequirementCoverage struct {
-	Key        string `json:"key"`
-	ProjectKey string `json:"projectKey"`
-	IssueType  string `json:"issueType"`
-	Summary    string `json:"summary"`
-	Status     string `json:"status"`
-	TestCount  int    `json:"testCount"`
-	Coverage   string `json:"coverage"` // PASSED | FAILED | NOTRUN | UNCOVERED
+	Key         string `json:"key"`
+	ProjectKey  string `json:"projectKey"`
+	IssueType   string `json:"issueType"`
+	Summary     string `json:"summary"`
+	Status      string `json:"status"`
+	TestCount   int    `json:"testCount"`
+	Coverage    string `json:"coverage"` // PASSED | FAILED | NOTRUN | UNCOVERED
+	Priority    string `json:"priority"`
+	Components  string `json:"components"`
+	FixVersions string `json:"fixVersions"`
+	Sprint      string `json:"sprint"`
+	Description string `json:"description"`
+	EpicKey     string `json:"epicKey"`
 }
 
 // RequirementTest is one Test covering a Requirement, with its consolidated run
@@ -87,9 +99,11 @@ func (r *Repository) ReplaceAllRequirements(profileID string, reqs []Requirement
 	for _, rq := range reqs {
 		if _, err := tx.Exec(
 			`INSERT OR REPLACE INTO requirement
-			   (profile_id, jira_key, project_key, issue_type, summary, status, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			   (profile_id, jira_key, project_key, issue_type, summary, status, updated_at,
+			    priority, components, fix_versions, sprint, description, epic_key)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			profileID, rq.Key, rq.ProjectKey, rq.IssueType, rq.Summary, rq.Status, rq.Updated,
+			rq.Priority, rq.Components, rq.FixVersions, rq.Sprint, rq.Description, rq.EpicKey,
 		); err != nil {
 			return fmt.Errorf("insert requirement %s: %w", rq.Key, err)
 		}
@@ -328,7 +342,8 @@ func (r *Repository) RemoveRequirementSource(profileID, projectKey string) error
 // coverage status computed from its covering Tests' run results.
 func (r *Repository) ListRequirementsWithCoverage(profileID string) ([]RequirementCoverage, error) {
 	reqRows, err := r.db.Query(
-		`SELECT jira_key, project_key, issue_type, summary, status
+		`SELECT jira_key, project_key, issue_type, summary, status,
+		        priority, components, fix_versions, sprint, description, epic_key
 		 FROM requirement WHERE profile_id = ?
 		 ORDER BY project_key, `+keyNumericOrderExpr("jira_key")+` DESC, jira_key DESC`, profileID)
 	if err != nil {
@@ -336,11 +351,17 @@ func (r *Repository) ListRequirementsWithCoverage(profileID string) ([]Requireme
 	}
 	defer reqRows.Close()
 
-	type req struct{ key, project, itype, summary, status string }
+	type req struct {
+		key, project, itype, summary, status                     string
+		priority, components, fixVersions, sprint, description, epicKey string
+	}
 	reqs := []req{}
 	for reqRows.Next() {
 		var rq req
-		if err := reqRows.Scan(&rq.key, &rq.project, &rq.itype, &rq.summary, &rq.status); err != nil {
+		if err := reqRows.Scan(
+			&rq.key, &rq.project, &rq.itype, &rq.summary, &rq.status,
+			&rq.priority, &rq.components, &rq.fixVersions, &rq.sprint, &rq.description, &rq.epicKey,
+		); err != nil {
 			return nil, err
 		}
 		reqs = append(reqs, rq)
@@ -366,13 +387,19 @@ func (r *Repository) ListRequirementsWithCoverage(profileID string) ([]Requireme
 			statuses = append(statuses, runByTest[tk])
 		}
 		out = append(out, RequirementCoverage{
-			Key:        rq.key,
-			ProjectKey: rq.project,
-			IssueType:  rq.itype,
-			Summary:    rq.summary,
-			Status:     rq.status,
-			TestCount:  len(tests),
-			Coverage:   deriveCoverage(statuses, len(tests)),
+			Key:         rq.key,
+			ProjectKey:  rq.project,
+			IssueType:   rq.itype,
+			Summary:     rq.summary,
+			Status:      rq.status,
+			TestCount:   len(tests),
+			Coverage:    deriveCoverage(statuses, len(tests)),
+			Priority:    rq.priority,
+			Components:  rq.components,
+			FixVersions: rq.fixVersions,
+			Sprint:      rq.sprint,
+			Description: rq.description,
+			EpicKey:     rq.epicKey,
 		})
 	}
 	return out, nil
@@ -413,7 +440,8 @@ func (r *Repository) ListTestsForRequirement(profileID, requirementKey string) (
 // panel).
 func (r *Repository) GetTestRequirements(profileID, testKey string) ([]Requirement, error) {
 	rows, err := r.db.Query(
-		`SELECT rq.jira_key, rq.project_key, rq.issue_type, rq.summary, rq.status, rq.updated_at
+		`SELECT rq.jira_key, rq.project_key, rq.issue_type, rq.summary, rq.status, rq.updated_at,
+		        rq.priority, rq.components, rq.fix_versions, rq.sprint, rq.description, rq.epic_key
 		 FROM test_requirement l
 		 JOIN requirement rq ON rq.profile_id = l.profile_id AND rq.jira_key = l.requirement_key
 		 WHERE l.profile_id = ? AND l.test_key = ?
@@ -426,7 +454,10 @@ func (r *Repository) GetTestRequirements(profileID, testKey string) ([]Requireme
 	out := []Requirement{}
 	for rows.Next() {
 		var rq Requirement
-		if err := rows.Scan(&rq.Key, &rq.ProjectKey, &rq.IssueType, &rq.Summary, &rq.Status, &rq.Updated); err != nil {
+		if err := rows.Scan(
+			&rq.Key, &rq.ProjectKey, &rq.IssueType, &rq.Summary, &rq.Status, &rq.Updated,
+			&rq.Priority, &rq.Components, &rq.FixVersions, &rq.Sprint, &rq.Description, &rq.EpicKey,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, rq)

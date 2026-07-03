@@ -68,6 +68,25 @@ type Client struct {
 	bugLinkTypeOnce sync.Once
 	bugLinkTypeName string
 	bugLinkTypeErr  error
+
+	// reqLinkTypeOnce lazily resolves and caches the Requirement->Requirement
+	// issue-link type used by UpdateRequirementLinks. Preferred candidates:
+	// "requires", "Requires", "depends on", "Depends".
+	reqLinkTypeOnce sync.Once
+	reqLinkTypeName string
+	reqLinkTypeErr  error
+
+	// requirementLinkType is the configured issue-link type for Test->Requirement
+	// coverage links (e.g. "Tested By"). When non-empty it overrides
+	// resolveRequirementLinkType; set at construction from the persisted setting.
+	requirementLinkType string
+
+	// covLinkTypeOnce lazily resolves and caches the issue-link type for
+	// Test->Requirement coverage when no explicit type is configured.
+	// Preferred candidates: "tested by", "tests", "relates".
+	covLinkTypeOnce sync.Once
+	covLinkTypeName string
+	covLinkTypeErr  error
 }
 
 // User is the subset of /rest/api/2/myself the app needs to confirm a connection.
@@ -171,6 +190,14 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 
 // IsDemo reports whether this client is in demo mode (no Jira network calls).
 func (c *Client) IsDemo() bool { return isDemoURL(c.baseURL) }
+
+// SetRequirementLinkType configures the issue-link type name used when linking
+// a Test to a Requirement (FR-13 / #275). When non-empty it takes precedence
+// over the auto-resolved type from resolveRequirementLinkType. Call this once
+// at construction; the field is not guarded by a mutex.
+func (c *Client) SetRequirementLinkType(name string) {
+	c.requirementLinkType = name
+}
 
 // TestConnection verifies the base URL and token by fetching the current user
 // (FR-8.4). It returns the authenticated user on success. Demo URLs

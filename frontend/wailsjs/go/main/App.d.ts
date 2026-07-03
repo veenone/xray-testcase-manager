@@ -21,6 +21,8 @@ export function AnalyzeJUnitImport(arg1:string,arg2:string,arg3:string):Promise<
 
 export function AnalyzeJUnitImportNewExec(arg1:string,arg2:string,arg3:boolean):Promise<testrepo.JUnitNewExecPreview>;
 
+export function AnalyzeRequirementImport(arg1:string,arg2:string,arg3:boolean):Promise<testrepo.RequirementImportPreview>;
+
 export function ApplyJUnitImport(arg1:string,arg2:string,arg3:Array<testrepo.JUnitMatch>):Promise<testrepo.BulkEditResult>;
 
 export function ApplyJUnitImportNewExec(arg1:string,arg2:string,arg3:Array<testrepo.JUnitNewExecRow>):Promise<testrepo.JUnitNewExecResult>;
@@ -70,6 +72,8 @@ export function CreatePreconditionDetailed(arg1:string,arg2:string,arg3:string,a
 export function CreateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:boolean):Promise<profile.Profile>;
 
 export function CreateProfileReusingToken(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<profile.Profile>;
+
+export function CreateRequirement(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<string>;
 
 export function CreateSavedView(arg1:string,arg2:string,arg3:string):Promise<testrepo.SavedView>;
 
@@ -127,6 +131,8 @@ export function ExportPytest(arg1:string,arg2:string,arg3:string):Promise<string
 
 export function ExportRequirementAudit(arg1:string):Promise<string>;
 
+export function ExportRequirementImportTemplate():Promise<string>;
+
 export function ExportSummaryFolderTemplate():Promise<string>;
 
 export function ExportSummaryTemplate():Promise<string>;
@@ -148,6 +154,8 @@ export function GetExecutionMembersWithRuns(arg1:string,arg2:string):Promise<Arr
 export function GetExecutionsForPlans(arg1:string,arg2:Array<string>):Promise<Array<testrepo.Container>>;
 
 export function GetProfileProjectKey(arg1:string):Promise<string>;
+
+export function GetRequirementLinks(arg1:string,arg2:string):Promise<Array<testrepo.ReqReqLink>>;
 
 export function GetRequirementTraceability(arg1:string,arg2:Array<string>):Promise<testrepo.Sankey>;
 
@@ -189,6 +197,8 @@ export function Health():Promise<main.HealthInfo>;
 
 export function ImportProfile():Promise<profile.Profile>;
 
+export function ImportRequirements(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<testrepo.RequirementImportResult>;
+
 export function ImportTests(arg1:string,arg2:string,arg3:boolean,arg4:testrepo.ImportMapping,arg5:boolean):Promise<testrepo.ImportResult>;
 
 export function ListAllPreconditions(arg1:string):Promise<Array<testrepo.Precondition>>;
@@ -214,6 +224,12 @@ export function ListPreconditionsWithUsage(arg1:string):Promise<Array<testrepo.P
 export function ListPriorities(arg1:string):Promise<Array<string>>;
 
 export function ListProfiles():Promise<Array<profile.Profile>>;
+
+export function ListProjectComponents(arg1:string,arg2:string):Promise<Array<string>>;
+
+export function ListProjectFixVersions(arg1:string,arg2:string):Promise<Array<string>>;
+
+export function ListRequirementLinkTypes(arg1:string):Promise<Array<string>>;
 
 export function ListRequirementSources(arg1:string):Promise<Array<testrepo.RequirementSource>>;
 
@@ -268,6 +284,10 @@ export function SeedSampleContainers(arg1:string):Promise<testrepo.SeedResult>;
 export function SetContainerEnvironments(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function SetDefaultProfile(arg1:string):Promise<void>;
+
+export function SetRequirementLinkType(arg1:string):Promise<void>;
+
+export function SetRequirementLinks(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<void>;
 
 export function SetRequirementSource(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

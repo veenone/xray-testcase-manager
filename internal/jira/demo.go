@@ -179,24 +179,25 @@ func demoFolderForFeature(feature string) string {
 // indexes here are used by featurePreconditions to assign preconditions to
 // tests by feature.
 var preconditionDefs = []struct {
-	Summary string
-	Type    string
+	Summary   string
+	Type      string
+	Condition string
 }{
-	{"User account exists", "Manual"},
-	{"User is logged in", "Manual"},
-	{"Email service is available", "Manual"},
-	{"MFA device enrolled", "Manual"},
-	{"Search index is populated", "Manual"},
-	{"Cart has items", "Manual"},
-	{"Payment method on file", "Manual"},
-	{"Product catalog is loaded", "Manual"},
-	{"Completed order exists", "Manual"},
-	{"Admin user is logged in", "Manual"},
-	{"At least one report exists", "Manual"},
-	{"Database has seed data", "Manual"},
-	{"Network is available", "Manual"},
-	{"File system has write access", "Manual"},
-	{"Multiple users are logged in", "Manual"},
+	{"User account exists", "Manual", "Given a registered user account exists in the system"},
+	{"User is logged in", "Manual", "Given the user is authenticated and an active session exists"},
+	{"Email service is available", "Manual", "Given the email delivery service is running and reachable"},
+	{"MFA device enrolled", "Manual", "Given the user has enrolled at least one MFA device"},
+	{"Search index is populated", "Manual", "Given the search index contains at least 100 indexed documents"},
+	{"Cart has items", "Manual", "Given the shopping cart contains at least one product"},
+	{"Payment method on file", "Manual", "Given a valid payment method is saved to the user account"},
+	{"Product catalog is loaded", "Manual", "Given the product catalog contains at least one active product"},
+	{"Completed order exists", "Manual", "Given at least one order with status COMPLETED exists for the user"},
+	{"Admin user is logged in", "Manual", "Given an administrator account is authenticated"},
+	{"At least one report exists", "Manual", "Given the reporting module contains at least one saved report"},
+	{"Database has seed data", "Manual", "Given the test database has been seeded with the standard fixture set"},
+	{"Network is available", "Manual", "Given the application server can reach external network endpoints"},
+	{"File system has write access", "Manual", "Given the application process has write permission to the upload directory"},
+	{"Multiple users are logged in", "Manual", "Given at least two distinct user sessions are active concurrently"},
 }
 
 // featurePreconditions maps each feature in demoFeatures to indexes into
@@ -670,6 +671,7 @@ func demoPreconditionsAndLinks(projectKey string) ([]Precondition, map[string][]
 			Summary:     def.Summary,
 			Type:        def.Type,
 			Description: fmt.Sprintf("(Demo precondition: %s)", def.Summary),
+			Condition:   def.Condition,
 		})
 	}
 

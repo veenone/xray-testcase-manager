@@ -30,6 +30,10 @@ export function AnalyzeJUnitImportNewExec(arg1, arg2, arg3) {
   return window['go']['main']['App']['AnalyzeJUnitImportNewExec'](arg1, arg2, arg3);
 }
 
+export function AnalyzeRequirementImport(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AnalyzeRequirementImport'](arg1, arg2, arg3);
+}
+
 export function ApplyJUnitImport(arg1, arg2, arg3) {
   return window['go']['main']['App']['ApplyJUnitImport'](arg1, arg2, arg3);
 }
@@ -128,6 +132,10 @@ export function CreateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, ar
 
 export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['main']['App']['CreateProfileReusingToken'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
+export function CreateRequirement(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['CreateRequirement'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function CreateSavedView(arg1, arg2, arg3) {
@@ -242,6 +250,10 @@ export function ExportRequirementAudit(arg1) {
   return window['go']['main']['App']['ExportRequirementAudit'](arg1);
 }
 
+export function ExportRequirementImportTemplate() {
+  return window['go']['main']['App']['ExportRequirementImportTemplate']();
+}
+
 export function ExportSummaryFolderTemplate() {
   return window['go']['main']['App']['ExportSummaryFolderTemplate']();
 }
@@ -284,6 +296,10 @@ export function GetExecutionsForPlans(arg1, arg2) {
 
 export function GetProfileProjectKey(arg1) {
   return window['go']['main']['App']['GetProfileProjectKey'](arg1);
+}
+
+export function GetRequirementLinks(arg1, arg2) {
+  return window['go']['main']['App']['GetRequirementLinks'](arg1, arg2);
 }
 
 export function GetRequirementTraceability(arg1, arg2) {
@@ -366,6 +382,10 @@ export function ImportProfile() {
   return window['go']['main']['App']['ImportProfile']();
 }
 
+export function ImportRequirements(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['ImportRequirements'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function ImportTests(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['ImportTests'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -416,6 +436,18 @@ export function ListPriorities(arg1) {
 
 export function ListProfiles() {
   return window['go']['main']['App']['ListProfiles']();
+}
+
+export function ListProjectComponents(arg1, arg2) {
+  return window['go']['main']['App']['ListProjectComponents'](arg1, arg2);
+}
+
+export function ListProjectFixVersions(arg1, arg2) {
+  return window['go']['main']['App']['ListProjectFixVersions'](arg1, arg2);
+}
+
+export function ListRequirementLinkTypes(arg1) {
+  return window['go']['main']['App']['ListRequirementLinkTypes'](arg1);
 }
 
 export function ListRequirementSources(arg1) {
@@ -524,6 +556,14 @@ export function SetContainerEnvironments(arg1, arg2, arg3) {
 
 export function SetDefaultProfile(arg1) {
   return window['go']['main']['App']['SetDefaultProfile'](arg1);
+}
+
+export function SetRequirementLinkType(arg1) {
+  return window['go']['main']['App']['SetRequirementLinkType'](arg1);
+}
+
+export function SetRequirementLinks(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetRequirementLinks'](arg1, arg2, arg3, arg4);
 }
 
 export function SetRequirementSource(arg1, arg2, arg3, arg4) {

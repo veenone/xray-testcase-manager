@@ -9,8 +9,17 @@ import (
 
 // requirementEditFields maps an editable requirement field to its DB column.
 // Status changes go through a workflow transition, not a field edit.
+// NOTE(xtm): live Jira push for these fields is TODO — currently all edits
+// are stored locally and only committed to Jira when CommitPendingChanges runs;
+// the syncer.Engine.CommitChanges path for requirement field updates is stubbed
+// behind the demo short-circuit until it can be verified against a live instance.
 var requirementEditFields = map[string]string{
-	"summary": "summary",
+	"summary":      "summary",
+	"description":  "description",
+	"priority":     "priority",
+	"components":   "components",
+	"fix_versions": "fix_versions",
+	"sprint":       "sprint",
 }
 
 // requirementDeleteSnapshot captures a requirement plus its Test links so a
@@ -24,9 +33,10 @@ type requirementDeleteSnapshot struct {
 	Links      []reqLinkSnap `json:"links"`
 }
 
-// EditRequirementField edits a requirement field (summary) and queues the
-// change for commit (a Jira issue update). Editing a requirement in another
-// project requires edit permission there — surfaced at commit time.
+// EditRequirementField edits a requirement field (summary, description,
+// priority, components, fix_versions, or sprint) and queues the change for
+// commit (a Jira issue update). Editing a requirement in another project
+// requires edit permission there — surfaced at commit time.
 func (r *Repository) EditRequirementField(profileID, requirementKey, field, newValue string) error {
 	col, ok := requirementEditFields[field]
 	if !ok {
@@ -228,6 +238,130 @@ func sameReqSet(before []reqLinkSnap, after []string) bool {
 		keys[k]--
 	}
 	return true
+}
+
+// CreateRequirement queues a brand-new local Requirement (temp "NEW-REQ-N" key)
+// and inserts it into the requirement table so it shows up in
+// ListRequirementsWithCoverage. Returns the temp key.
+func (r *Repository) CreateRequirement(
+	profileID, projectKey, issueType, summary, description, priority, components, fixVersions string,
+) (string, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return "", fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	tempKey, err := nextNewReqKey(tx, profileID)
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := tx.Exec(
+		`INSERT INTO requirement
+		   (profile_id, jira_key, project_key, issue_type, summary, status, updated_at,
+		    priority, components, fix_versions, sprint, description)
+		 VALUES (?, ?, ?, ?, ?, '', '', ?, ?, ?, '', ?)`,
+		profileID, tempKey, projectKey, issueType, summary,
+		priority, components, fixVersions, description,
+	); err != nil {
+		return "", fmt.Errorf("insert local requirement: %w", err)
+	}
+
+	type requirementCreatePayload struct {
+		ProjectKey  string `json:"projectKey"`
+		IssueType   string `json:"issueType"`
+		Summary     string `json:"summary"`
+		Description string `json:"description"`
+		Priority    string `json:"priority"`
+		Components  string `json:"components"`
+		FixVersions string `json:"fixVersions"`
+	}
+	payload := requirementCreatePayload{
+		ProjectKey:  projectKey,
+		IssueType:   issueType,
+		Summary:     summary,
+		Description: description,
+		Priority:    priority,
+		Components:  components,
+		FixVersions: fixVersions,
+	}
+	encoded, _ := json.Marshal(payload)
+	if err := upsertPendingChange(
+		tx, profileID, entityRequirementCreate, tempKey, "requirement", "", string(encoded), "",
+	); err != nil {
+		return "", err
+	}
+	if err := writeAudit(
+		tx, profileID, entityRequirementCreate, tempKey,
+		"create-requirement-local", "requirement", "", summary, "",
+	); err != nil {
+		return "", err
+	}
+	return tempKey, tx.Commit()
+}
+
+// RenameRequirement rewrites a Requirement's key across the cache and any
+// pending coverage-link rows, used by the commit path to swap a "NEW-REQ-N"
+// placeholder for the real key Jira assigned. A no-op when newKey is empty or
+// unchanged.
+func (r *Repository) RenameRequirement(profileID, oldKey, newKey string) error {
+	if newKey == "" || newKey == oldKey {
+		return nil
+	}
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(
+		`UPDATE requirement SET jira_key = ? WHERE profile_id = ? AND jira_key = ?`,
+		newKey, profileID, oldKey,
+	); err != nil {
+		return fmt.Errorf("rename requirement: %w", err)
+	}
+	// Rewrite coverage links that referenced the temp key (test_requirement).
+	if _, err := tx.Exec(
+		`UPDATE test_requirement SET requirement_key = ?
+		 WHERE profile_id = ? AND requirement_key = ?`,
+		newKey, profileID, oldKey,
+	); err != nil {
+		return fmt.Errorf("rename requirement links: %w", err)
+	}
+	// Rewrite req-req links.
+	if _, err := tx.Exec(
+		`UPDATE requirement_link SET from_requirement_key = ?
+		 WHERE profile_id = ? AND from_requirement_key = ?`,
+		newKey, profileID, oldKey,
+	); err != nil {
+		return fmt.Errorf("rename req-req from_requirement_key: %w", err)
+	}
+	if _, err := tx.Exec(
+		`UPDATE requirement_link SET to_requirement_key = ?
+		 WHERE profile_id = ? AND to_requirement_key = ?`,
+		newKey, profileID, oldKey,
+	); err != nil {
+		return fmt.Errorf("rename req-req to_requirement_key: %w", err)
+	}
+	return tx.Commit()
+}
+
+// nextNewReqKey allocates an unused "NEW-REQ-N" placeholder.
+func nextNewReqKey(tx *sql.Tx, profileID string) (string, error) {
+	for n := 1; ; n++ {
+		key := fmt.Sprintf("NEW-REQ-%d", n)
+		var one int
+		err := tx.QueryRow(
+			`SELECT 1 FROM requirement WHERE profile_id = ? AND jira_key = ?`, profileID, key,
+		).Scan(&one)
+		if errors.Is(err, sql.ErrNoRows) {
+			return key, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("probe temp req key: %w", err)
+		}
+	}
 }
 
 // substituteLinkSnaps rewrites or drops a requirement key inside a serialised

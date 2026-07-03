@@ -519,6 +519,34 @@ func (a *App) SetTheme(theme string) error {
 	return a.settings.SetTheme(theme)
 }
 
+// SetRequirementLinkType persists the issue-link type name used when linking
+// Tests to Requirements on commit (FR-13 / #275). The change takes effect on
+// the next CommitPendingChanges call. Pass "" to revert to auto-resolve.
+func (a *App) SetRequirementLinkType(name string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.settings.SetRequirementLinkType(name)
+}
+
+// ListRequirementLinkTypes returns all issue-link type names defined on the
+// given profile's Jira instance, for populating the link-type config dropdown.
+// Demo mode returns a preset list without a network call.
+func (a *App) ListRequirementLinkTypes(profileID string) ([]string, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
+	}
+	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).ListIssueLinkTypes(a.ctx)
+}
+
 // --- Connection & sync (FR-1, FR-8) ---
 
 // TestConnection verifies a Jira URL and PAT, returning the display name of
@@ -1117,6 +1145,28 @@ func (a *App) RemoveRequirementSource(profileID, projectKey string) error {
 	return a.repo.RemoveRequirementSource(profileID, projectKey)
 }
 
+// GetRequirementLinks returns the outbound Requirement->Requirement links for a
+// requirement (e.g. "requires" links). Keyed by fromKey; all link types are
+// returned.
+func (a *App) GetRequirementLinks(profileID, requirementKey string) ([]testrepo.ReqReqLink, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.GetRequirementLinks(profileID, requirementKey)
+}
+
+// SetRequirementLinks replaces this requirement's outbound links of the given
+// linkType (e.g. "requires") to the supplied target keys and queues the change
+// for commit. The local store is updated immediately; Jira is updated on the
+// next commit (FR-13 traceability).
+func (a *App) SetRequirementLinks(profileID, requirementKey, linkType string, linkedKeys []string) (err error) {
+	defer recoverToError("SetRequirementLinks", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.SetRequirementLinks(profileID, requirementKey, linkType, linkedKeys)
+}
+
 // --- Bug (defect) tracking ---
 
 // CreateBugForTest queues a new Bug issue linked to a failed Test, committed to
@@ -1461,7 +1511,13 @@ func (a *App) CommitPendingChanges(profileID string) (out syncer.CommitResult, e
 	if err != nil {
 		return empty, fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
+	s, settingsErr := a.settings.Get()
+	if settingsErr != nil {
+		return empty, fmt.Errorf("read settings: %w", settingsErr)
+	}
+	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
+	client.SetRequirementLinkType(s.RequirementLinkType)
+	engine := syncer.New(client, a.repo)
 	return engine.CommitChanges(a.ctx, profileID, p.ProjectKey)
 }
 
@@ -1490,7 +1546,13 @@ func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (ou
 	if err != nil {
 		return empty, fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
+	s, settingsErr := a.settings.Get()
+	if settingsErr != nil {
+		return empty, fmt.Errorf("read settings: %w", settingsErr)
+	}
+	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
+	client.SetRequirementLinkType(s.RequirementLinkType)
+	engine := syncer.New(client, a.repo)
 	return engine.CommitChangesForIDs(a.ctx, profileID, p.ProjectKey, changeIDs)
 }
 
@@ -2506,6 +2568,24 @@ func (a *App) ImportTests(profileID, contentB64 string, isXlsx bool, mapping tes
 	return a.repo.ImportTests(profileID, records, mapping, dryRun)
 }
 
+// CreateRequirement queues a brand-new Requirement locally (temp NEW-REQ-N key)
+// for the given project + issue type, pushed to Jira on commit.
+// The project key and issue types come from the configured requirement sources.
+// Returns the temp key.
+func (a *App) CreateRequirement(profileID, projectKey, issueType, summary, description, priority, components, fixVersions string) (key string, err error) {
+	defer recoverToError("CreateRequirement", &err)
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(summary) == "" {
+		return "", fmt.Errorf("a summary is required to create a requirement")
+	}
+	if strings.TrimSpace(projectKey) == "" {
+		return "", fmt.Errorf("a project key is required to create a requirement")
+	}
+	return a.repo.CreateRequirement(profileID, projectKey, issueType, summary, description, priority, components, fixVersions)
+}
+
 // CreateTest queues a brand-new Test locally (temp NEW-N key) with optional
 // steps, folder and precondition links, pushed to Jira on commit (FR-1).
 // Returns the temp key so the frontend can open the new Test in the detail panel.
@@ -2939,6 +3019,60 @@ func (a *App) ExportSummaryFolderTemplate() (string, error) {
 	return path, nil
 }
 
+// --- Requirement import (-267) ---
+
+// ExportRequirementImportTemplate writes a starter CSV requirement import
+// template to a user-chosen file. Returns the saved path, or "" if cancelled.
+func (a *App) ExportRequirementImportTemplate() (string, error) {
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save requirement import template",
+		DefaultFilename: exportFilename("requirement-import-template.csv"),
+		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(path, []byte(testrepo.RequirementImportTemplateCSV()), 0o644); err != nil {
+		return "", fmt.Errorf("write template: %w", err)
+	}
+	return path, nil
+}
+
+// AnalyzeRequirementImport parses an uploaded file and classifies each row as
+// "new" or "existing" by comparing normalized summaries against the store.
+func (a *App) AnalyzeRequirementImport(profileID, contentB64 string, isXlsx bool) (testrepo.RequirementImportPreview, error) {
+	empty := testrepo.RequirementImportPreview{Rows: []testrepo.RequirementImportRow{}}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	records, err := decodeImport(contentB64, isXlsx)
+	if err != nil {
+		return empty, err
+	}
+	return a.repo.AnalyzeRequirementImport(profileID, records)
+}
+
+// ImportRequirements parses an uploaded file and creates local pending
+// Requirements for rows whose normalized summary is not already in the store.
+// Existing-by-summary rows are skipped. Returns a result summary.
+func (a *App) ImportRequirements(profileID, projectKey, issueType, contentB64 string, isXlsx bool) (testrepo.RequirementImportResult, error) {
+	empty := testrepo.RequirementImportResult{Errors: []testrepo.ImportError{}}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	if strings.TrimSpace(projectKey) == "" {
+		return empty, fmt.Errorf("a project key is required")
+	}
+	records, err := decodeImport(contentB64, isXlsx)
+	if err != nil {
+		return empty, err
+	}
+	return a.repo.ImportRequirements(profileID, projectKey, issueType, records)
+}
+
 // --- Browse (FR-11) ---
 
 // ListTests returns a filtered, sorted, paginated page of Tests for a profile.
@@ -3054,6 +3188,28 @@ func (a *App) jiraPriorities(profileID string) []string {
 	a.priorityCache[profileID] = priorities
 	a.statusMu.Unlock()
 	return priorities
+}
+
+// ListProjectComponents returns the Jira components configured for a project
+// key, as cached by the last sync. The list is used to populate the component
+// field in the requirement create/edit form. Returns an empty slice (not nil)
+// when no options are cached.
+func (a *App) ListProjectComponents(profileID, projectKey string) ([]string, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListProjectFieldOptions(profileID, projectKey, "component")
+}
+
+// ListProjectFixVersions returns the Jira fix versions configured for a
+// project key, as cached by the last sync. The list is used to populate the
+// fix version field in the requirement create/edit form. Returns an empty
+// slice (not nil) when no options are cached.
+func (a *App) ListProjectFixVersions(profileID, projectKey string) ([]string, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListProjectFieldOptions(profileID, projectKey, "fixversion")
 }
 
 // isLocalTestKey reports whether a Test key is a not-yet-committed local

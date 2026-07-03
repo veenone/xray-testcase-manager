@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 34
+const schemaVersion = 39
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS precondition (
 	summary     TEXT NOT NULL,
 	type        TEXT NOT NULL DEFAULT '',
 	description TEXT NOT NULL DEFAULT '',
+	condition   TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -217,13 +218,19 @@ CREATE TABLE IF NOT EXISTS test_review (
 -- may live in a different project than the profile's Test project, so it carries
 -- its own project_key.
 CREATE TABLE IF NOT EXISTS requirement (
-	profile_id  TEXT NOT NULL,
-	jira_key    TEXT NOT NULL,
-	project_key TEXT NOT NULL DEFAULT '',
-	issue_type  TEXT NOT NULL DEFAULT '',
-	summary     TEXT NOT NULL DEFAULT '',
-	status      TEXT NOT NULL DEFAULT '',
-	updated_at  TEXT NOT NULL DEFAULT '',
+	profile_id   TEXT NOT NULL,
+	jira_key     TEXT NOT NULL,
+	project_key  TEXT NOT NULL DEFAULT '',
+	issue_type   TEXT NOT NULL DEFAULT '',
+	summary      TEXT NOT NULL DEFAULT '',
+	status       TEXT NOT NULL DEFAULT '',
+	updated_at   TEXT NOT NULL DEFAULT '',
+	priority     TEXT NOT NULL DEFAULT '',
+	components   TEXT NOT NULL DEFAULT '',
+	fix_versions TEXT NOT NULL DEFAULT '',
+	sprint       TEXT NOT NULL DEFAULT '',
+	description  TEXT NOT NULL DEFAULT '',
+	epic_key     TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -326,6 +333,28 @@ CREATE TABLE IF NOT EXISTS exec_plan (
 	plan_key   TEXT NOT NULL,
 	PRIMARY KEY (profile_id, exec_key, plan_key)
 );
+
+-- Requirement -> Requirement issue links (e.g. "requires"). Stored separately
+-- from test_requirement so the two link types don't collide.
+CREATE TABLE IF NOT EXISTS requirement_link (
+    profile_id        TEXT NOT NULL,
+    from_requirement_key TEXT NOT NULL,
+    to_requirement_key   TEXT NOT NULL,
+    link_type         TEXT NOT NULL DEFAULT '',
+    link_id           TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (profile_id, from_requirement_key, to_requirement_key, link_type)
+);
+
+-- Available field options fetched from Jira per project on sync — used to
+-- populate the requirement create/edit form dropdowns without a live Jira call.
+-- field is "component" or "fixversion".
+CREATE TABLE IF NOT EXISTS project_field_option (
+    profile_id  TEXT NOT NULL,
+    project_key TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    PRIMARY KEY (profile_id, project_key, field, value)
+);
 `
 
 // indexSchema is applied *after* applyMigrations so every column referenced
@@ -349,6 +378,7 @@ CREATE INDEX IF NOT EXISTS idx_duplicate_ignore_profile   ON duplicate_ignore(pr
 CREATE INDEX IF NOT EXISTS idx_duplicate_step_scan_profile ON duplicate_step_scan(profile_id);
 CREATE INDEX IF NOT EXISTS idx_test_bug_test ON test_bug(profile_id, test_key);
 CREATE INDEX IF NOT EXISTS idx_test_bug_bug  ON test_bug(profile_id, bug_key);
+CREATE INDEX IF NOT EXISTS idx_requirement_link_from ON requirement_link(profile_id, from_requirement_key);
 `
 
 // Store wraps the SQLite connection for one local database file.
@@ -660,6 +690,45 @@ func applyMigrations(db *sql.DB) error {
 			`ALTER TABLE test_container ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
 		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("v34 add description to test_container: %w", err)
+		}
+	}
+	// requirement detail columns (priority, components, fix_versions, sprint,
+	// description) and the precondition condition column are applied
+	// UNCONDITIONALLY (not version-gated) and are idempotent via the
+	// duplicate-column tolerance. They are intentionally not `if current < N`
+	// gated: this feature branch reuses schema version numbers that another
+	// in-flight branch also assigned to unrelated migrations, so a shared DB that
+	// saw the other branch would already sit at a higher version and skip a
+	// version-gated ALTER, leaving these columns missing (observed as
+	// "table requirement has no column named priority" on sync). Running them
+	// every open costs a no-op duplicate-column probe and guarantees the columns
+	// exist regardless of the DB's version history.
+	for _, stmt := range []string{
+		`ALTER TABLE requirement ADD COLUMN priority TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN components TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN fix_versions TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN sprint TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN epic_key TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE precondition ADD COLUMN condition TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add requirement/precondition columns: %w", err)
+		}
+	}
+	// v37: requirement_link stores Requirement -> Requirement issue links (e.g.
+	// "requires"), separate from the Test <-> Requirement coverage table. Additive
+	// new table; CREATE TABLE IF NOT EXISTS makes the migration idempotent.
+	if current < 37 {
+		if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS requirement_link (
+			profile_id            TEXT NOT NULL,
+			from_requirement_key  TEXT NOT NULL,
+			to_requirement_key    TEXT NOT NULL,
+			link_type             TEXT NOT NULL DEFAULT '',
+			link_id               TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (profile_id, from_requirement_key, to_requirement_key, link_type)
+		)`); err != nil && !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("v37 create requirement_link: %w", err)
 		}
 	}
 	return nil

@@ -62,6 +62,11 @@ type Precondition struct {
 	Summary     string `json:"summary"`
 	Type        string `json:"type"`
 	Description string `json:"description"`
+	// Condition is the Xray precondition definition text — distinct from the
+	// Jira issue description. Empty when the precondition has not been given one
+	// or when synced from a live Jira instance (the custom-field id is
+	// instance-specific; see NOTE(xtm) in internal/jira/preconditions.go).
+	Condition string `json:"condition"`
 }
 
 // Container is a cached Xray Test Set, Test Plan or Test Execution (FR-1.3).
@@ -241,6 +246,7 @@ type Statistics struct {
 	UpdatedTrend   []Bucket `json:"updatedTrend"`
 	ByRunStatus    []Bucket `json:"byRunStatus"`
 	ByCoverage     []Bucket `json:"byCoverage"`
+	ByRequirement  []Bucket `json:"byRequirement"`
 }
 
 // Bucket is one (label, count) pair in a distribution — also used for the
@@ -579,19 +585,20 @@ func (r *Repository) UpsertPreconditions(profileID string, preconditions []Preco
 	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(
-		`INSERT INTO precondition (profile_id, jira_key, summary, type, description)
-		 VALUES (?, ?, ?, ?, ?)
+		`INSERT INTO precondition (profile_id, jira_key, summary, type, description, condition)
+		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
 		   summary     = excluded.summary,
 		   type        = excluded.type,
-		   description = excluded.description`)
+		   description = excluded.description,
+		   condition   = excluded.condition`)
 	if err != nil {
 		return fmt.Errorf("prepare upsert precondition: %w", err)
 	}
 	defer stmt.Close()
 
 	for _, p := range preconditions {
-		if _, err := stmt.Exec(profileID, p.Key, p.Summary, p.Type, p.Description); err != nil {
+		if _, err := stmt.Exec(profileID, p.Key, p.Summary, p.Type, p.Description, p.Condition); err != nil {
 			return fmt.Errorf("upsert precondition %s: %w", p.Key, err)
 		}
 	}
@@ -639,7 +646,7 @@ func (r *Repository) ReplaceAllTestPreconditions(profileID string, links map[str
 // ListTestPreconditions returns the Preconditions linked to a Test.
 func (r *Repository) ListTestPreconditions(profileID, testKey string) ([]Precondition, error) {
 	rows, err := r.db.Query(
-		`SELECT p.jira_key, p.summary, p.type, p.description
+		`SELECT p.jira_key, p.summary, p.type, p.description, p.condition
 		 FROM test_precondition tp
 		 JOIN precondition p
 		   ON p.profile_id = tp.profile_id AND p.jira_key = tp.precondition_key
@@ -654,7 +661,7 @@ func (r *Repository) ListTestPreconditions(profileID, testKey string) ([]Precond
 	out := []Precondition{}
 	for rows.Next() {
 		var p Precondition
-		if err := rows.Scan(&p.Key, &p.Summary, &p.Type, &p.Description); err != nil {
+		if err := rows.Scan(&p.Key, &p.Summary, &p.Type, &p.Description, &p.Condition); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -667,7 +674,7 @@ func (r *Repository) ListTestPreconditions(profileID, testKey string) ([]Precond
 // (FR-13.5 / 13.6).
 func (r *Repository) ListAllPreconditions(profileID string) ([]Precondition, error) {
 	rows, err := r.db.Query(
-		`SELECT jira_key, summary, type, description FROM precondition
+		`SELECT jira_key, summary, type, description, condition FROM precondition
 		 WHERE profile_id = ? ORDER BY jira_key`, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("list preconditions: %w", err)
@@ -677,7 +684,7 @@ func (r *Repository) ListAllPreconditions(profileID string) ([]Precondition, err
 	out := []Precondition{}
 	for rows.Next() {
 		var p Precondition
-		if err := rows.Scan(&p.Key, &p.Summary, &p.Type, &p.Description); err != nil {
+		if err := rows.Scan(&p.Key, &p.Summary, &p.Type, &p.Description, &p.Condition); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -986,8 +993,8 @@ func (r *Repository) CreatePrecondition(profileID, projectKey, summary, ptype, d
 	}
 
 	if _, err := tx.Exec(
-		`INSERT INTO precondition (profile_id, jira_key, summary, type, description)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO precondition (profile_id, jira_key, summary, type, description, condition)
+		 VALUES (?, ?, ?, ?, ?, '')`,
 		profileID, tempKey, summary, ptype, description,
 	); err != nil {
 		return "", fmt.Errorf("insert precondition: %w", err)
@@ -2531,14 +2538,15 @@ func statsFilter(profileID, folder, component, status string) (string, []any) {
 // so the whole dashboard recomputes for the filtered view.
 func (r *Repository) GetStatistics(profileID, folder, component, status string) (Statistics, error) {
 	stats := Statistics{
-		ByStatus:     []Bucket{},
-		ByPriority:   []Bucket{},
-		ByLabel:      []Bucket{},
-		ByFolder:     []Bucket{},
-		ByComponent:  []Bucket{},
-		UpdatedTrend: []Bucket{},
-		ByRunStatus:  []Bucket{},
-		ByCoverage:   []Bucket{},
+		ByStatus:      []Bucket{},
+		ByPriority:    []Bucket{},
+		ByLabel:       []Bucket{},
+		ByFolder:      []Bucket{},
+		ByComponent:   []Bucket{},
+		UpdatedTrend:  []Bucket{},
+		ByRunStatus:   []Bucket{},
+		ByCoverage:    []Bucket{},
+		ByRequirement: []Bucket{},
 	}
 
 	whereSQL, args := statsFilter(profileID, folder, component, status)
@@ -2643,11 +2651,25 @@ func (r *Repository) addRequirementCoverage(profileID string, stats *Statistics,
 	}
 
 	counts := map[string]int{}
+	reqCounts := map[string]int{}
 	for _, req := range reqs {
 		if inSubset != nil && !inSubset[req.Key] {
 			continue
 		}
 		counts[req.Coverage]++
+		// ByRequirement: only include requirements that cover at least one Test
+		// (zero-count entries are excluded so the chart stays meaningful).
+		if req.TestCount > 0 {
+			label := req.Key
+			if req.Summary != "" {
+				full := req.Key + ": " + req.Summary
+				if len(full) > 50 {
+					full = full[:47] + "..."
+				}
+				label = full
+			}
+			reqCounts[label] = req.TestCount
+		}
 	}
 	order := []string{CoverageFailed, CoverageNotRun, CoveragePassed, CoverageUncovered}
 	for _, c := range order {
@@ -2655,6 +2677,7 @@ func (r *Repository) addRequirementCoverage(profileID string, stats *Statistics,
 			stats.ByCoverage = append(stats.ByCoverage, Bucket{Label: c, Count: counts[c]})
 		}
 	}
+	stats.ByRequirement = topBuckets(reqCounts, 12)
 	return nil
 }
 
@@ -3707,6 +3730,30 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 				return fmt.Errorf("restore requirement link: %w", err)
 			}
 		}
+	case entityReqReqLinkSet:
+		// entity_key is the fromKey, field is the linkType; restore the prior
+		// outbound links (with their Jira link ids) from the before snapshot.
+		var snap []reqqLinkSnap
+		if err := json.Unmarshal([]byte(beforeVal), &snap); err != nil {
+			return fmt.Errorf("decode req-link snapshot: %w", err)
+		}
+		if _, err := tx.Exec(
+			`DELETE FROM requirement_link
+			 WHERE profile_id = ? AND from_requirement_key = ? AND link_type = ?`,
+			profileID, entityKey, field,
+		); err != nil {
+			return fmt.Errorf("clear req links: %w", err)
+		}
+		for _, l := range snap {
+			if _, err := tx.Exec(
+				`INSERT INTO requirement_link
+				   (profile_id, from_requirement_key, to_requirement_key, link_type, link_id)
+				 VALUES (?, ?, ?, ?, ?)`,
+				profileID, entityKey, l.ToKey, field, l.LinkID,
+			); err != nil {
+				return fmt.Errorf("restore req link: %w", err)
+			}
+		}
 	case entityTestRun:
 		// Revert the Test's run status in the execution (entity_key is
 		// "<execKey>:<testKey>").
@@ -3759,6 +3806,15 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 			profileID, entityKey,
 		); err != nil {
 			return fmt.Errorf("remove imported test steps: %w", err)
+		}
+	case entityRequirementCreate:
+		// entity_key is the temporary requirement key; discarding removes the
+		// not-yet-created requirement.
+		if _, err := tx.Exec(
+			`DELETE FROM requirement WHERE profile_id = ? AND jira_key = ?`,
+			profileID, entityKey,
+		); err != nil {
+			return fmt.Errorf("remove local requirement: %w", err)
 		}
 	case entityBugCreate:
 		// entity_key is the temporary bug key; discarding removes the
@@ -3865,9 +3921,9 @@ func (r *Repository) DiscardPendingChange(profileID string, changeID int64) erro
 			return fmt.Errorf("decode precondition snapshot: %w", err)
 		}
 		if _, err := tx.Exec(
-			`INSERT INTO precondition (profile_id, jira_key, summary, type, description)
-			   VALUES (?, ?, ?, ?, ?)`,
-			profileID, entityKey, snap.Summary, snap.Type, snap.Description,
+			`INSERT INTO precondition (profile_id, jira_key, summary, type, description, condition)
+			   VALUES (?, ?, ?, ?, ?, ?)`,
+			profileID, entityKey, snap.Summary, snap.Type, snap.Description, snap.Condition,
 		); err != nil {
 			return fmt.Errorf("restore precondition: %w", err)
 		}
@@ -4434,7 +4490,9 @@ const (
 	entityRequirementSet     = "requirement_set"
 	entityRequirementEdit    = "requirement_edit"
 	entityRequirementDelete  = "requirement_delete"
+	entityRequirementCreate  = "requirement_create"
 	entityBugCreate          = "bug_create"
+	entityReqReqLinkSet      = "req_req_link_set"
 )
 
 // preconditionFields whitelists which Precondition columns can be edited via
@@ -4443,6 +4501,7 @@ var preconditionFields = map[string]string{
 	"summary":     "summary",
 	"description": "description",
 	"type":        "type",
+	"condition":   "condition",
 }
 
 // stepEntityKey encodes a step's parent Test plus its Xray step ID into a

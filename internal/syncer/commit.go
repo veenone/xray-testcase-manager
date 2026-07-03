@@ -177,6 +177,10 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 	requirementDeleteRows := make([]testrepo.PendingChange, 0)
 	// Bug creates, keyed by the temporary bug key.
 	bugCreateRows := make([]testrepo.PendingChange, 0)
+	// Requirement creates, keyed by the temporary requirement key.
+	requirementCreateRows := make([]testrepo.PendingChange, 0)
+	// Requirement->Requirement link changes (entity_key = fromKey, field = linkType).
+	reqReqLinkRows := make([]testrepo.PendingChange, 0)
 	for _, c := range changes {
 		if c.EntityType == "test_membership_add" ||
 			c.EntityType == "test_membership_remove" ||
@@ -221,6 +225,14 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		}
 		if c.EntityType == "bug_create" {
 			bugCreateRows = append(bugCreateRows, c)
+			continue
+		}
+		if c.EntityType == "requirement_create" {
+			requirementCreateRows = append(requirementCreateRows, c)
+			continue
+		}
+		if c.EntityType == "req_req_link_set" {
+			reqReqLinkRows = append(reqReqLinkRows, c)
 			continue
 		}
 		if c.EntityType == "test_run" {
@@ -634,6 +646,8 @@ testLoop:
 	e.commitRequirementEdits(ctx, profileID, requirementEditRows, &result)
 	e.commitRequirementDeletes(ctx, profileID, requirementDeleteRows, &result)
 	e.commitBugCreates(ctx, profileID, bugCreateRows, &result)
+	e.commitRequirementCreates(ctx, profileID, requirementCreateRows, &result)
+	e.commitReqReqLinks(ctx, profileID, reqReqLinkRows, &result)
 
 	return result, nil
 }
@@ -795,6 +809,43 @@ func (e *Engine) commitBugCreates(ctx context.Context, profileID string, rows []
 		}
 		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: key, Error: "Jira created the bug but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, key)
+	}
+}
+
+// commitRequirementCreates creates each queued Requirement issue in Jira and
+// repoints the placeholder key to the real one (mirrors commitBugCreates).
+func (e *Engine) commitRequirementCreates(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	for _, c := range rows {
+		var p struct {
+			ProjectKey  string `json:"projectKey"`
+			IssueType   string `json:"issueType"`
+			Summary     string `json:"summary"`
+			Description string `json:"description"`
+			Priority    string `json:"priority"`
+			Components  string `json:"components"`
+			FixVersions string `json:"fixVersions"`
+		}
+		if err := json.Unmarshal([]byte(c.AfterVal), &p); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed requirement payload: " + err.Error()})
+			continue
+		}
+		realKey, err := e.client.CreateRequirement(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Components, p.FixVersions)
+		if err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "create requirement: " + sanitizeError(err.Error())})
+			continue
+		}
+		key := c.EntityKey
+		if realKey != "" && realKey != c.EntityKey {
+			if rErr := e.repo.RenameRequirement(profileID, c.EntityKey, realKey); rErr != nil {
+				_ = rErr // remote create succeeded; cache-rename hiccup must not fail the commit
+			}
+			key = realKey
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: key, Error: "Jira created the requirement but local cleanup failed: " + err.Error()})
 			continue
 		}
 		result.Succeeded = append(result.Succeeded, key)
@@ -1501,4 +1552,61 @@ func sanitizeError(s string) string {
 		s = s[:300] + "…"
 	}
 	return s
+}
+
+// commitReqReqLinks pushes Requirement->Requirement link changes to Jira.
+// Each pending_change row has entity_key = fromKey and field = linkType; before
+// holds the snapshot ([]reqqLinkSnap with ToKey/LinkID), after holds the new
+// target keys ([]string).
+//
+// NOTE(xtm): the live Jira call (UpdateRequirementLinks) is stubbed behind the
+// demo short-circuit until the "requires" link type name and direction are
+// verified against the live Xray Server/DC 8.4.0 instance.
+// TODO(xtm): enable the live path once UpdateRequirementLinks is verified.
+func (e *Engine) commitReqReqLinks(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	for _, c := range rows {
+		fromKey := c.EntityKey
+		var before []struct {
+			ToKey  string `json:"toKey"`
+			LinkID string `json:"linkId"`
+		}
+		var after []string
+		if err := json.Unmarshal([]byte(c.BeforeVal), &before); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: fromKey, Error: "malformed req-link snapshot: " + err.Error()})
+			continue
+		}
+		if err := json.Unmarshal([]byte(c.AfterVal), &after); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: fromKey, Error: "malformed req-link set: " + err.Error()})
+			continue
+		}
+		afterSet := make(map[string]bool, len(after))
+		for _, k := range after {
+			afterSet[k] = true
+		}
+		removeLinkIDs := []string{}
+		for _, l := range before {
+			if !afterSet[l.ToKey] {
+				removeLinkIDs = append(removeLinkIDs, l.LinkID)
+			}
+		}
+		beforeSet := make(map[string]bool, len(before))
+		for _, l := range before {
+			beforeSet[l.ToKey] = true
+		}
+		add := []string{}
+		for _, k := range after {
+			if !beforeSet[k] {
+				add = append(add, k)
+			}
+		}
+		if err := e.client.UpdateRequirementLinks(ctx, fromKey, add, removeLinkIDs); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: fromKey, Error: "update req links: " + sanitizeError(err.Error())})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: fromKey, Error: "Jira updated req links but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, fromKey)
+	}
 }

@@ -2,6 +2,7 @@ package testrepo_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"xray-test-manager/internal/testrepo"
@@ -136,4 +137,77 @@ func containsKey(afterVal, key string) bool {
 		}
 	}
 	return false
+}
+
+func TestCreateRequirementTempKeyAndPending(t *testing.T) {
+	repo := newRepo(t)
+	// seed a requirement source so the profile exists
+	_ = repo.SetRequirementSource("p1", "PROJ", "Story", "")
+
+	key, err := repo.CreateRequirement("p1", "PROJ", "Story", "My requirement", "desc", "High", "CompA", "v1.0")
+	if err != nil {
+		t.Fatalf("CreateRequirement: %v", err)
+	}
+	if !strings.HasPrefix(key, "NEW-REQ-") {
+		t.Fatalf("temp key = %q, want NEW-REQ-*", key)
+	}
+
+	// Requirement appears in coverage list.
+	list, err := repo.ListRequirementsWithCoverage("p1")
+	if err != nil {
+		t.Fatalf("ListRequirementsWithCoverage: %v", err)
+	}
+	found := false
+	for _, r := range list {
+		if r.Key == key {
+			found = true
+			if r.Summary != "My requirement" {
+				t.Errorf("summary = %q, want My requirement", r.Summary)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("new requirement %q not in coverage list", key)
+	}
+
+	// A pending change exists.
+	pending, err := repo.ListPendingChanges("p1")
+	if err != nil {
+		t.Fatalf("ListPendingChanges: %v", err)
+	}
+	hasPending := false
+	for _, p := range pending {
+		if p.EntityKey == key && p.EntityType == "requirement_create" {
+			hasPending = true
+		}
+	}
+	if !hasPending {
+		t.Errorf("no requirement_create pending change for %q", key)
+	}
+}
+
+func TestRenameRequirementRewritesLinks(t *testing.T) {
+	repo := newRepo(t)
+	_ = repo.SetRequirementSource("p1", "PROJ", "Story", "")
+
+	tempKey, err := repo.CreateRequirement("p1", "PROJ", "Story", "Req", "", "", "", "")
+	if err != nil {
+		t.Fatalf("CreateRequirement: %v", err)
+	}
+
+	// Rename temp key to a real key.
+	if err := repo.RenameRequirement("p1", tempKey, "PROJ-100"); err != nil {
+		t.Fatalf("RenameRequirement: %v", err)
+	}
+
+	// Verify the coverage list shows the real key.
+	list, err := repo.ListRequirementsWithCoverage("p1")
+	if err != nil {
+		t.Fatalf("ListRequirementsWithCoverage: %v", err)
+	}
+	for _, r := range list {
+		if r.Key == tempKey {
+			t.Errorf("old temp key %q still in list after rename", tempKey)
+		}
+	}
 }

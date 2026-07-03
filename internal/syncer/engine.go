@@ -178,6 +178,9 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 		return err
 	}
 
+	emitStage(onProgress, "Syncing project field options")
+	e.syncProjectFieldOptions(ctx, profileID, projectKey)
+
 	if err := e.repo.SetSyncState(profileID); err != nil {
 		return err
 	}
@@ -434,6 +437,7 @@ func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey st
 			Summary:     p.Summary,
 			Type:        p.Type,
 			Description: p.Description,
+			Condition:   p.Condition,
 		}
 	}
 	if err := e.repo.UpsertPreconditions(profileID, repoPre); err != nil {
@@ -746,12 +750,18 @@ func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey str
 	repoReqs := make([]testrepo.Requirement, len(reqs))
 	for i, rq := range reqs {
 		repoReqs[i] = testrepo.Requirement{
-			Key:        rq.Key,
-			ProjectKey: rq.ProjectKey,
-			IssueType:  rq.IssueType,
-			Summary:    rq.Summary,
-			Status:     rq.Status,
-			Updated:    rq.Updated,
+			Key:         rq.Key,
+			ProjectKey:  rq.ProjectKey,
+			IssueType:   rq.IssueType,
+			Summary:     rq.Summary,
+			Status:      rq.Status,
+			Updated:     rq.Updated,
+			Priority:    rq.Priority,
+			Components:  rq.Components,
+			FixVersions: rq.FixVersions,
+			Sprint:      rq.Sprint,
+			Description: rq.Description,
+			EpicKey:     rq.EpicKey,
 		}
 	}
 	if err := e.repo.ReplaceAllRequirements(profileID, repoReqs); err != nil {
@@ -766,7 +776,31 @@ func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey str
 			LinkID:         l.LinkID,
 		}
 	}
-	return e.repo.ReplaceAllRequirementLinks(profileID, repoLinks)
+	if err := e.repo.ReplaceAllRequirementLinks(profileID, repoLinks); err != nil {
+		return err
+	}
+
+	// Sync Requirement->Requirement links (e.g. "requires") if any are available.
+	// The live path returns empty until the harvest is implemented (see
+	// ListReqToReqLinks in internal/jira/requirements.go).
+	reqKeys := make([]string, len(reqs))
+	for i, rq := range reqs {
+		reqKeys[i] = rq.Key
+	}
+	rrLinks, err := e.client.ListReqToReqLinks(ctx, reqKeys)
+	if err != nil {
+		return err
+	}
+	repoRRLinks := make([]testrepo.ReqReqLink, len(rrLinks))
+	for i, l := range rrLinks {
+		repoRRLinks[i] = testrepo.ReqReqLink{
+			FromKey:  l.FromKey,
+			ToKey:    l.ToKey,
+			LinkType: l.LinkType,
+			LinkID:   l.LinkID,
+		}
+	}
+	return e.repo.ReplaceAllReqReqLinks(profileID, repoRRLinks)
 }
 
 // syncBugs discovers the defect issues for the profile and reconciles the local
@@ -867,6 +901,50 @@ func (e *Engine) syncCustomFields(ctx context.Context, profileID, projectKey str
 		repoDefs[i] = testrepo.CustomFieldDef{FieldID: d.ID, Name: d.Name, Type: d.Type}
 	}
 	return e.repo.UpsertCustomFields(profileID, repoDefs)
+}
+
+// syncProjectFieldOptions fetches components and fix versions for each
+// in-scope project key (the profile's own project plus every configured
+// requirement source project, de-duplicated) and caches them in
+// project_field_option. Best-effort: a per-project or per-field failure is
+// logged and skipped so a single unavailable project cannot abort the sync.
+func (e *Engine) syncProjectFieldOptions(ctx context.Context, profileID, projectKey string) {
+	// Collect all in-scope project keys, de-duplicated.
+	keys := []string{projectKey}
+	seen := map[string]bool{projectKey: true}
+	sources, err := e.repo.ListRequirementSources(profileID)
+	if err != nil {
+		log.Printf("xtm: syncProjectFieldOptions: list requirement sources: %v (continuing)", err)
+	} else {
+		for _, s := range sources {
+			if !seen[s.ProjectKey] {
+				seen[s.ProjectKey] = true
+				keys = append(keys, s.ProjectKey)
+			}
+		}
+	}
+
+	for _, key := range keys {
+		if ctx.Err() != nil {
+			return
+		}
+		components, err := e.client.ProjectComponents(ctx, key)
+		if err != nil {
+			log.Printf("xtm: syncProjectFieldOptions: components for %s: %v (skipping)", key, err)
+		} else if storeErr := e.repo.ReplaceProjectFieldOptions(profileID, key, "component", components); storeErr != nil {
+			log.Printf("xtm: syncProjectFieldOptions: store components for %s: %v (skipping)", key, storeErr)
+		}
+
+		if ctx.Err() != nil {
+			return
+		}
+		versions, err := e.client.ProjectVersions(ctx, key)
+		if err != nil {
+			log.Printf("xtm: syncProjectFieldOptions: versions for %s: %v (skipping)", key, err)
+		} else if storeErr := e.repo.ReplaceProjectFieldOptions(profileID, key, "fixversion", versions); storeErr != nil {
+			log.Printf("xtm: syncProjectFieldOptions: store versions for %s: %v (skipping)", key, storeErr)
+		}
+	}
 }
 
 // toRepoTests maps the Jira client's Test type to the repository's TestCase.
