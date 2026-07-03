@@ -20,7 +20,7 @@ const (
 type Settings struct {
 	DefaultProfileID    string `json:"defaultProfileId"`
 	Theme               string `json:"theme"`               // "light" | "dark" | "system" | "" (= light)
-	RequirementLinkType string `json:"requirementLinkType"` // issue-link type for Test->Requirement coverage; default "Tested By"
+	RequirementLinkType string `json:"requirementLinkType"` // issue-link type for Test->Requirement coverage; default "tested by"
 }
 
 // Manager reads and writes global settings.
@@ -34,7 +34,7 @@ func NewManager(s *store.Store) *Manager {
 }
 
 // Get returns the current settings, with zero values for anything unset.
-// RequirementLinkType defaults to "Tested By" when no value has been persisted.
+// RequirementLinkType defaults to "tested by" when no value has been persisted.
 func (m *Manager) Get() (Settings, error) {
 	var s Settings
 	def, err := m.value(keyDefaultProfileID)
@@ -52,7 +52,7 @@ func (m *Manager) Get() (Settings, error) {
 	s.DefaultProfileID = def
 	s.Theme = theme
 	if rlt == "" {
-		rlt = "Tested By"
+		rlt = "tested by"
 	}
 	s.RequirementLinkType = rlt
 	return s, nil

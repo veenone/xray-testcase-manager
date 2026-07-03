@@ -38,12 +38,14 @@ type Requirement struct {
 
 // defaultCoverageLinkType is the fallback issue-link type for Test->Requirement
 // coverage when no type is configured and the instance defines no recognisable
-// coverage link type. "Tested By" is the Xray default (inward on the
-// requirement, outward on the Test). The configurable path in
-// UpdateTestRequirements takes precedence; this is only used as a last resort.
+// coverage link type. "tested by" is the Xray default (inward on the
+// requirement, outward on the Test) — Jira issue-link type names are
+// case-sensitive, and this instance defines it lowercase, so a title-cased
+// "Tested By" 404s. The configurable path in UpdateTestRequirements takes
+// precedence; this is only used as a last resort.
 // NOTE(xtm): verify the link-type name and direction against the live Xray
 // Server/DC 8.4.0 instance; the exact name may differ per instance.
-const defaultCoverageLinkType = "Tested By"
+const defaultCoverageLinkType = "tested by"
 
 // RequirementLink is a Test <-> Requirement coverage link.
 type RequirementLink struct {
@@ -382,7 +384,7 @@ func (c *Client) resolveRequirementLinkType(ctx context.Context) (string, error)
 // Xray Server/DC 8.4.0 instance before using the result in UI logic.
 func (c *Client) ListIssueLinkTypes(ctx context.Context) ([]string, error) {
 	if isDemoURL(c.baseURL) {
-		return []string{"Tests", "Tested By", "Relates", "Blocks", "Cloners", "Duplicate"}, nil
+		return []string{"tested by", "Tests", "Relates", "Blocks", "Cloners", "Duplicate"}, nil
 	}
 	var resp struct {
 		IssueLinkTypes []struct {

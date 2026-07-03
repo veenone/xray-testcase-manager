@@ -211,7 +211,7 @@ export interface HealthInfo {
 export interface Settings {
   defaultProfileId: string;
   theme: string; // "light" | "dark" | "system" | "" (= light)
-  requirementLinkType: string; // Jira issue-link type for Test->Requirement coverage; default "Tested By"
+  requirementLinkType: string; // Jira issue-link type for Test->Requirement coverage; default "tested by"
 }
 
 export interface Profile {

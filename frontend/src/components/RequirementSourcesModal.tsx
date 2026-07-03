@@ -30,7 +30,7 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
 
   // Link-type configuration state.
   const [linkTypes, setLinkTypes] = useState<string[]>([]);
-  const [selectedLinkType, setSelectedLinkType] = useState("Tested By");
+  const [selectedLinkType, setSelectedLinkType] = useState("tested by");
   const [linkTypeError, setLinkTypeError] = useState("");
   const [linkTypeBusy, setLinkTypeBusy] = useState(false);
 
@@ -47,7 +47,7 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
       .then((types) => setLinkTypes(types ?? []))
       .catch(() => setLinkTypes([]));
     GetSettings()
-      .then((s) => setSelectedLinkType(s.requirementLinkType || "Tested By"))
+      .then((s) => setSelectedLinkType(s.requirementLinkType || "tested by"))
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileId]);
@@ -136,7 +136,8 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
             <span className="src-field-help">
               The Jira issue-link type created when a test is linked to a
               requirement (via "Add tests" or the test-detail panel). Default is
-              "Tested By". Changes take effect on the next commit.
+              "tested by" (Jira link-type names are case-sensitive). Changes take
+              effect on the next commit.
             </span>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               <select
