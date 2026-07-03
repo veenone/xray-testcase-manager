@@ -1133,11 +1133,16 @@
 .multiselect-list label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 5px 6px;
   font-size: 12px;
   border-radius: 5px;
   cursor: pointer;
+}
+/* Prevent the checkbox from stretching; keep it vertically centred with the label text. */
+.multiselect-list label input {
+  flex: 0 0 auto;
+  margin: 0;
 }
 .multiselect-list label:hover {
   background: var(--surface-2);
@@ -1801,16 +1806,25 @@ i.sankey-node-l2 {
   background: var(--surface);
   color: var(--text);
 }
-/* -283: SortControl sort-field selects in the three target views share the
-   same look as .app-select (scoped so other SortControl instances are unchanged). */
+/* -283: SortControl sort-field selects in the container/bugs views share
+   the same look as .app-select (scoped so other SortControl instances are unchanged). */
 .container-filter-bar .sort-field,
-.bugs-md-filter-row .sort-field,
-.reqs-list-head .sort-field {
+.bugs-md-filter-row .sort-field {
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 5px 8px;
   background: var(--surface);
   color: var(--text);
+}
+/* -283: Requirements sort-by matches the precond-sort look (border-radius 5px,
+   surface-2 background, 12px font) — mirrors .precond-list-head .sort-field. */
+.reqs-list-head .sort-field {
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 5px 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
 }
 .view-del {
   font-size: 11px;
@@ -4049,7 +4063,12 @@ tr.row-checked:hover {
   flex-direction: row;
 }
 .board-pagesize select {
-  padding: 3px 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
 }
 .board-pager-range {
   flex: 1;
@@ -4785,15 +4804,20 @@ tr.row-checked:hover {
   gap: 4px;
   font-size: 13px;
 }
-/* All form controls in the bug-form (static and dynamic) share the same font
-   family and size so Summary, Priority, Labels, Description, and the
-   createmeta-driven fields render consistently. */
+/* All form controls in the bug-form (static and dynamic) share the same look
+   as the Affects Version/s multiselect-btn so Summary, Priority, Labels,
+   Description, and createmeta-driven fields render uniformly. */
 .bug-form input,
 .bug-form select,
 .bug-form textarea,
 .bug-form .multiselect-btn {
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 4px 8px;
+  background: var(--surface);
+  color: var(--text);
 }
 .board-bug {
   padding: 0 4px;

@@ -882,7 +882,7 @@ export function ContainersView({
               <option value="set_env">Set env</option>
             </select>
             <input
-              className="container-env-add"
+              className="container-env-add app-select"
               list="container-env-names"
               value={batchEnvName}
               placeholder="Environment…"
@@ -1003,7 +1003,7 @@ export function ContainersView({
                   </span>
                 ))}
                 <input
-                  className="container-env-add"
+                  className="container-env-add app-select"
                   value={envDraft}
                   placeholder="Add environment…"
                   onChange={(e) => setEnvDraft(e.target.value)}
