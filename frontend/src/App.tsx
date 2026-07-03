@@ -453,6 +453,15 @@ function App() {
 
   async function doSync(full: boolean) {
     if (!activeId || syncRunningRef.current) return;
+    if (committing) {
+      await notice({
+        title: "Commit in progress",
+        message:
+          "A commit is in progress. Please wait for it to finish before syncing.",
+        tone: "info",
+      });
+      return;
+    }
     syncRunningRef.current = true;
     setSyncing(true);
     setSyncError("");
@@ -479,6 +488,15 @@ function App() {
   // refreshed. It can be slow on large projects, so confirm first.
   async function runFullSync() {
     if (!activeId || syncRunningRef.current) return;
+    if (committing) {
+      await notice({
+        title: "Commit in progress",
+        message:
+          "A commit is in progress. Please wait for it to finish before syncing.",
+        tone: "info",
+      });
+      return;
+    }
     if (
       !(await confirm({
         title: "Full resync",
@@ -499,6 +517,15 @@ function App() {
   // (RND_P_4TFINT_05-260).
   async function syncTests() {
     if (!activeId || syncRunningRef.current) return;
+    if (committing) {
+      await notice({
+        title: "Commit in progress",
+        message:
+          "A commit is in progress. Please wait for it to finish before syncing.",
+        tone: "info",
+      });
+      return;
+    }
     syncRunningRef.current = true;
     setSyncing(true);
     try {
@@ -722,6 +749,15 @@ function App() {
   // Committed pending rows are deleted by the backend; failures stay.
   async function handleCommit() {
     if (!activeId || committing) return;
+    if (syncing || syncRunningRef.current) {
+      await notice({
+        title: "Sync in progress",
+        message:
+          "A sync is in progress. Please wait for it to finish before committing.",
+        tone: "info",
+      });
+      return;
+    }
     setCommitting(true);
     setLastCommitResult(null);
     try {
@@ -747,6 +783,15 @@ function App() {
   // a full commit; only the chosen item leaves the list on success.
   async function handleCommitIds(ids: number[]) {
     if (!activeId || committing || ids.length === 0) return;
+    if (syncing || syncRunningRef.current) {
+      await notice({
+        title: "Sync in progress",
+        message:
+          "A sync is in progress. Please wait for it to finish before committing.",
+        tone: "info",
+      });
+      return;
+    }
     setCommitting(true);
     setLastCommitResult(null);
     try {
