@@ -104,6 +104,12 @@
   max-width: 220px;
   text-overflow: ellipsis;
 }
+/* Disabled while a sync is running: switching profiles mid-sync would race the
+   in-flight pull, so the dropdown is locked (with a tooltip) until it finishes. */
+.profile-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 /* Bar-native button: blends into the dark topbar instead of a bright chip. */
 .topbar-btn {
@@ -5342,6 +5348,11 @@ tr.row-checked:hover {
 }
 .gap-seg .seg-btn { border: none; }
 .gap-file { display: inline-flex; align-items: center; gap: 8px; }
+/* Styled file picker: a .btn-styled label wraps a hidden native input so the
+   control matches the app's buttons instead of the browser's default "Choose
+   File" widget. Clicking the label still opens the file dialog. */
+.gap-file-btn { display: inline-flex; align-items: center; cursor: pointer; }
+.gap-file-btn input[type="file"] { display: none; }
 .gap-file-name { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gap-run {
   display: flex;

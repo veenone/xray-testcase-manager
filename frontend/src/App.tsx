@@ -925,6 +925,13 @@ function App() {
   const isDemo = isDemoUrl(activeProfile?.jiraUrl);
   const demoVar = demoVariant(activeProfile?.jiraUrl);
 
+  // A sync is in flight when the main Sync is running (syncing) OR any partial
+  // per-view refresh is emitting progress. Both a full pull and a partial sync
+  // write to the store keyed by the active profile, so switching profiles while
+  // either runs would race the in-flight writes and land stale progress events
+  // on the newly-selected profile. Used to lock the profile switcher.
+  const syncActive = syncing || syncRunningRef.current || progress !== null;
+
   if (!health) {
     return <div className="centered muted">Loading…</div>;
   }
@@ -983,7 +990,19 @@ function App() {
           <select
             className="profile-select"
             value={activeId}
+            disabled={syncActive}
+            title={
+              syncActive
+                ? "Profile switching is disabled while a sync is in progress"
+                : "Switch active profile"
+            }
             onChange={(e) => {
+              // Guard against a race with an in-flight sync: the sync writes to
+              // the store keyed by the old profile, so switching mid-sync would
+              // point the UI at a new profile while stale progress events and
+              // reloads are still landing. The disabled attribute prevents it;
+              // this early return is belt-and-braces for menu/keyboard paths.
+              if (syncActive) return;
               setActiveId(e.target.value);
               setSelectedKey(null);
             }}
