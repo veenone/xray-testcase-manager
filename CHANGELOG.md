@@ -8,15 +8,40 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
 
 ## [Unreleased]
 
-## [1.8.0b] - 2026-07-07
+## [1.8.0] - 2026-07-07
 
-Preview release of the **Coverage module** — parameter-level coverage and cross-project functional-requirement reuse (Topics 1 + 3), per-version coverage with change-request tracking (Topic 2), a graphical **Coverage Map** with per-project status and a project→function→coverage Sankey, an enriched Excel report, and a `demo-pkcs` demo backend that synthesises a full PKCS#11 dataset across every view. All local; no Jira admin.
+Major feature release for the 1.8.0 line: a **requirements-centric suite** (richer requirement detail, create / import / link requirements, a configurable Test <-> Requirement link type, and an Epic layer in the requirement Sankey) alongside a new **Coverage module** (parameter-level coverage, cross-project functional-requirement reuse, per-version coverage with change requests, a graphical **Coverage Map**, an enriched Excel report, and a `demo-pkcs` dataset), plus preconditions, dashboard, test-calls and containers refinements. Covers Jira -265..-280; schema reaches v39. All local; no Jira admin.
 
 ### Added
+
+**Requirements suite (Jira -265..-280)**
+- Requirement detail shows priority, component(s), fix version(s), sprint, and a collapsible markdown description; Edit mode edits every field, with Components and Fix Versions offering the project's available values (select-or-add).
+- Create a requirement (local temp key, pushed to Jira on commit), import requirements from a CSV / XLSX file (summary-dedupe like Gap Analysis, with a downloadable template), and link a requirement to other requirements ("Requires").
+- Configurable **Test <-> Requirement link type** (a setting, default **"Tested By"**, chosen from the instance's link types) applied on commit, replacing the previously hardcoded link type (-275).
+- Requirements toolbar realigned to the Preconditions design; New-requirement is a left-docked panel with a markdown summary.
+
+**Coverage module**
 - **Coverage module (parameter-level test coverage + functional-requirement reuse).** A new **Coverage** tab adds a bounded, local-only capability beside test management: decompose a function into parameter *values* / error codes / boundaries, map existing Tests to each value, and measure coverage as *required values with ≥1 test* (the parameter-level definition — not combinatorial). Group equivalent requirement issues from many customer projects under a local **canonical functional requirement** so coverage is defined once and reused, and see which projects reuse it. Import the existing PKCS#11 parameter-extraction Excel workbook to seed a model, and export a styled coverage report (Summary + per-group + Gaps sheets) for Jira/Confluence. Run status reuses the existing requirement-coverage roll-up. Mappings that reference deleted Tests are flagged as stale (kept, never auto-pruned). All state is local (schema v35, `coverage_*`/`canonical_*` tables); nothing requires Jira admin.
 - **Coverage module — versions & change requests (Topic 2).** Each functional requirement can now hold multiple **versions** (e.g. 2.40/stable, 3.0/beta) — coverage is measured per version, and a version can be **cloned** to start a new release line from an existing one. Customer requirements are **locked to a version**, and **change requests** track each customer's can-accept / cannot-accept / pending decision, with **version-distribution and CR-adoption dashboards**. All local (schema v36); no Jira admin needed.
 - **Coverage module — Coverage Map view + project configuration.** A new **Coverage Map** sub-tab (reachable without selecting a function) graphically relates your in-scope projects to the canonical functional requirements: a **per-project coverage panel** (coverage %, requirements, functions reused) and a **Sankey** flowing *customer project → function → covered / gap*. The in-scope **project keys are now configuration** (a per-profile `source` / `customer` list, schema v37) that seeds itself from existing members and drives the view and the report. The coverage report gains **By-project** and **Reuse-map** sheets alongside Summary / per-group / Gaps. Coverage modals were restyled for a consistent centered/scrolling layout. All local; no Jira admin.
 - **PKCS#11 demo dataset (`demo-pkcs` profile).** Create a profile with the Jira base URL **`demo-pkcs`** and a normal **Sync** now produces a complete PKCS#11 dataset across *every* view — **Browse** (tests like `C_Sign with RSA-2048`, foldered under Signing / Key management for **C_Sign, C_GenerateKeyPair, C_Verify**), **Requirements** (`FUNC-PKCS11-*` reused by `CUST-HSM-BANK/SAMSU-*`), **Preconditions** (HSM-themed), and **Containers** (PKCS Test Sets / Plans / Executions with run status). On top of that, the Coverage tab's **Load PKCS#11 coverage** action layers the parameter models, two versions (2.40 / 3.0), member version-locks, and change requests with per-customer decisions onto the synced tests — so a value in the Coverage matrix is the same test key you can open in Browse. The demo backend is theme-driven: `demo-pkcs` swaps the demo vocabulary to PKCS while the plain `demo` dataset is unchanged. The profile form and `isDemoURL` accept a `demo-` prefix (e.g. `demo-pkcs`).
+
+**Preconditions, Dashboard, Test Calls, Containers, Traceability**
+- Preconditions: read-only detail with explicit Edit / Save / Cancel, a new Condition definition field, collapsible Condition + Description, and a sort dropdown matching the filter box.
+- Dashboard: a "By requirement" chart beside "By component".
+- Test Calls: the pager moved to a fixed bottom footer.
+- Containers: the Test-Execution filter is width-capped with ellipsis; the Test-Plan related-bugs list is collapsible so the test list stays visible.
+- Traceability: the requirement Sankey gains an **Epic** layer (Requirement -> Epic -> Coverage -> ...), falling back to the current flow when a requirement has no epic.
+
+### Changed
+- **Gap Analysis file picker** now uses the app's standard button styling instead of the browser-native "Choose File" widget.
+- **Profile switching is locked during a sync** — the top-bar profile selector is disabled while any sync (full or per-view) runs, so you can't switch projects mid-pull and race the in-flight writes.
+
+### Fixed
+- **Schema-collision fix.** The requirement / precondition / epic column ALTERs now run unconditionally and idempotently (not version-gated): reusing schema version numbers across two in-flight branches on a shared DB skipped the version-gated ALTERs and broke live sync ("table requirement has no column named priority"). A regression test reproduces the collision.
+
+### Notes
+- Live Jira paths that need a real Xray Server / DC 8.4.0 instance (requirement create / import / link push, sprint / precondition-condition / epic-link custom fields, coverage push) are marked `NOTE(xtm)` and are fully functional in demo mode.
 
 ## [1.7.1] - 2026-06-26
 
