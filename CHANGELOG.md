@@ -8,7 +8,7 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
 
 ## [Unreleased]
 
-## [1.8.0pre] - 2026-06-29
+## [1.8.0b] - 2026-07-07
 
 Preview release of the **Coverage module** — parameter-level coverage and cross-project functional-requirement reuse (Topics 1 + 3), per-version coverage with change-request tracking (Topic 2), a graphical **Coverage Map** with per-project status and a project→function→coverage Sankey, an enriched Excel report, and a `demo-pkcs` demo backend that synthesises a full PKCS#11 dataset across every view. All local; no Jira admin.
 

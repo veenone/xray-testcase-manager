@@ -78,6 +78,8 @@ hosts the Sankeys — they moved to the new **Traceability** tab), and **26/27**
 | 36 | `36-clone-steps.png` | Test detail → Steps → **Clone from…** | The clone-steps picker with a source test selected |
 | 37 | `37-bugs-panel.png` | **Containers** tab → **Bugs** toggle | The Bugs master list + a selected bug's detail and the tests it affects |
 | 38 | `38-subtask-sankey.png` | **Traceability** tab → **Sub-task** | The Parent → Execution → run-result Sankey with the Parent filter |
+| 39 | `39-gap-analysis.png` | **Gap Analysis** tab | Reference = **Upload file**, so both **Choose file** buttons show; crop the setup card (`.gap-setup`) |
+| 54 | `54-profile-locked-sync.png` | Any view → click **Sync**, capture mid-sync | Tight crop of the **top bar** with the profile selector greyed out and the Sync button reading "Syncing…" |
 
 To refresh a shot: run `wails dev`, open `http://localhost:34115/` in the
 `browse` tool, switch to the **Demo Project (DEMO)** profile, sync once, then

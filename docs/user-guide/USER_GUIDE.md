@@ -63,15 +63,16 @@ Earlier releases added commit **conflict management** (three-way merge),
 9. [Preconditions](#8-preconditions)
 10. [Requirements & coverage](#9-requirements--coverage)
 11. [Finding duplicates](#10-finding-duplicates)
-12. [Test Sets, Plans & Executions (Containers)](#11-test-sets-plans--executions-containers)
-13. [Defect tracking](#12-defect-tracking)
-14. [Dashboard](#13-dashboard)
-15. [Traceability](#14-traceability)
-16. [Committing changes to Jira](#15-committing-changes-to-jira)
-17. [Syncing](#16-syncing)
-18. [Settings & profile management](#17-settings--profile-management)
-19. [Diagnostics & troubleshooting](#18-diagnostics--troubleshooting)
-20. [Glossary](#glossary)
+12. [Gap analysis](#11-gap-analysis)
+13. [Test Sets, Plans & Executions (Containers)](#12-test-sets-plans--executions-containers)
+14. [Defect tracking](#13-defect-tracking)
+15. [Dashboard](#14-dashboard)
+16. [Traceability](#15-traceability)
+17. [Committing changes to Jira](#16-committing-changes-to-jira)
+18. [Syncing](#17-syncing)
+19. [Settings & profile management](#18-settings--profile-management)
+20. [Diagnostics & troubleshooting](#19-diagnostics--troubleshooting)
+21. [Glossary](#glossary)
 
 ---
 
@@ -393,7 +394,32 @@ rows highlighted — useful when deciding which copy to keep.
 
 ---
 
-## 11. Test Sets, Plans & Executions (Containers)
+## 11. Gap analysis
+
+The **Gap Analysis** tab compares two sets of tests by **summary** and reports
+what is missing on each side, so you can see coverage gaps between a reference
+set and a target. Either side can be your **active project** or an **uploaded
+file** (CSV / XLSX using the import template columns).
+
+- **Reference** — pick **Active project** or **Upload file**, then **Choose
+  file**. The chosen file name shows next to the button.
+- **Target** — the set you are checking for gaps; **Choose file** to load it.
+- **Compare by** — **Summary** (match on the test summary alone) or **Summary +
+  folder** (also require the Test Repository folder to match).
+- **Three-way** (file reference only) — also report what the reference set is
+  missing relative to the project, not just target-vs-reference.
+- **Template** — download a **Full**, **Summary only**, or **Summary + folder**
+  CSV template so an uploaded file has the columns the matcher expects.
+
+Click **Run analysis** to produce the gap report; export it for follow-up.
+
+![Figure 39: Gap analysis setup](images/39-gap-analysis.png)
+*Figure 39 — Gap Analysis: choose a reference and target (active project or an
+uploaded file via the **Choose file** button), pick how to match, and run.*
+
+---
+
+## 12. Test Sets, Plans & Executions (Containers)
 
 The **Containers** tab manages the three Xray container types. Pick a **kind**
 (Test Set / Test Plan / Test Execution), then choose a container from a
@@ -436,7 +462,7 @@ tests — either plain `@pytest.mark.xray` functions or a `unittest`-style class
 
 ---
 
-## 12. Defect tracking
+## 13. Defect tracking
 
 When a test fails you can raise and track a defect (bug) for it without leaving
 the app. Defect tracking spans three places:
@@ -464,7 +490,7 @@ bar.
 
 ---
 
-## 13. Dashboard
+## 14. Dashboard
 
 The **Dashboard** tab summarizes the cached project from the local cache: total
 tests, pending changes, and breakdowns by status, priority, folder, label and
@@ -478,7 +504,7 @@ their own [Traceability](#14-traceability) tab.
 
 ---
 
-## 14. Traceability
+## 15. Traceability
 
 The **Traceability** tab holds three Sankey diagrams behind a tab bar; each keeps
 its own filters and only one shows at a time. Hover any node to trace its
@@ -508,7 +534,7 @@ Parent filter.*
 
 ---
 
-## 15. Committing changes to Jira
+## 16. Committing changes to Jira
 
 All edits — field changes, steps, transitions, links, bugs, new entities,
 deletions — are queued locally as **pending changes**. Nothing reaches Jira
@@ -533,7 +559,7 @@ reported per test:
 
 ---
 
-## 16. Syncing
+## 17. Syncing
 
 **Sync** pulls the latest tests from Jira into the local cache. The status bar
 shows progress per phase (tests, folders, preconditions, containers,
@@ -542,6 +568,15 @@ requirements, bugs, custom fields).
 ![Figure 30: Sync in progress](images/30-sync-progress.png)
 *Figure 30 — A sync in progress, with the phase and item counts in the status
 bar.*
+
+> **Profile switching is locked during a sync.** While any sync is running (a
+> full sync or a per-view refresh), the profile selector in the top bar is
+> disabled, so you can't switch projects mid-pull and race the in-flight writes.
+> It re-enables automatically as soon as the sync finishes.
+
+![Figure 54: Profile selector locked during sync](images/54-profile-locked-sync.png)
+*Figure 54 — During a sync the profile selector is greyed out and the **Sync**
+button reads "Syncing…"; switching profiles is blocked until it completes.*
 
 - **Sync** (top-right) — incremental pull since the last watermark.
 - **More → Full resync (re-pull folders)** — ignores the watermark and re-maps
@@ -565,7 +600,7 @@ full sync.
 
 ---
 
-## 17. Settings & profile management
+## 18. Settings & profile management
 
 The **Profile** menu (top-left) manages the active profile:
 
@@ -587,7 +622,7 @@ Switch the **color theme** from **More → Theme: Light / Dark / System**.
 
 ---
 
-## 18. Diagnostics & troubleshooting
+## 19. Diagnostics & troubleshooting
 
 **More → Diagnostics** shows the database path, log path, schema version, and
 environment details — useful when reporting an issue.
@@ -600,7 +635,7 @@ environment details — useful when reporting an issue.
 | Blank window on launch | Install the Microsoft WebView2 runtime, relaunch. |
 | "Backend failed to start" | Note the DB/log path shown, check the log; try removing the database file and relaunching. |
 | Sync shows 0 tests | Check the project key and that the PAT has access; confirm the scope JQL isn't excluding everything. |
-| Edits not in Jira | They are local until you **Commit** (see §15). Check the pending badge. |
+| Edits not in Jira | They are local until you **Commit** (see §16). Check the pending badge. |
 | A commit reports **Conflict** | Sync, then override or keep-remote in the Pending Changes dialog. |
 | Token rejected | Rotate it with **Profile → Set token…**. |
 
