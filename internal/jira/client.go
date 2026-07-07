@@ -39,6 +39,13 @@ type Client struct {
 	testTypeName string
 	testTypeErr  error
 
+	// subTaskTEOnce lazily resolves and caches the issue type name(s) used for
+	// sub-task Test Executions on this instance. Their name varies (default "Sub
+	// Test Execution", but instances may rename / localise it), so they are
+	// discovered from the instance issue type list rather than hardcoded.
+	subTaskTEOnce  sync.Once
+	subTaskTENames []string
+
 	// customFieldMu guards customFieldIDs, the per-instance cache of resolved
 	// custom field ids keyed by field name (see resolveCustomFieldID), so a sync
 	// or commit resolves a given field (e.g. "Test Type") from /rest/api/2/field
@@ -61,6 +68,32 @@ type Client struct {
 	bugLinkTypeOnce sync.Once
 	bugLinkTypeName string
 	bugLinkTypeErr  error
+
+	// reqLinkTypeOnce lazily resolves and caches the Requirement->Requirement
+	// issue-link type used by UpdateRequirementLinks. Preferred candidates:
+	// "requires", "Requires", "depends on", "Depends".
+	reqLinkTypeOnce sync.Once
+	reqLinkTypeName string
+	reqLinkTypeErr  error
+
+	// requirementLinkType is the configured issue-link type for Test->Requirement
+	// coverage links (e.g. "Tested By"). When non-empty it overrides
+	// resolveRequirementLinkType; set at construction from the persisted setting.
+	requirementLinkType string
+
+	// covLinkTypeOnce lazily resolves and caches the issue-link type for
+	// Test->Requirement coverage when no explicit type is configured.
+	// Preferred candidates: "tested by", "tests", "relates".
+	covLinkTypeOnce sync.Once
+	covLinkTypeName string
+	covLinkTypeErr  error
+
+	// currentUserOnce lazily resolves and caches the authenticated user's
+	// username (PAT owner) via GET /rest/api/2/myself, so CreateBug can set the
+	// reporter field without an extra round-trip on every call.
+	currentUserOnce sync.Once
+	currentUserName string
+	currentUserErr  error
 }
 
 // User is the subset of /rest/api/2/myself the app needs to confirm a connection.
@@ -162,6 +195,17 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 	}
 }
 
+// IsDemo reports whether this client is in demo mode (no Jira network calls).
+func (c *Client) IsDemo() bool { return isDemoURL(c.baseURL) }
+
+// SetRequirementLinkType configures the issue-link type name used when linking
+// a Test to a Requirement (FR-13 / #275). When non-empty it takes precedence
+// over the auto-resolved type from resolveRequirementLinkType. Call this once
+// at construction; the field is not guarded by a mutex.
+func (c *Client) SetRequirementLinkType(name string) {
+	c.requirementLinkType = name
+}
+
 // TestConnection verifies the base URL and token by fetching the current user
 // (FR-8.4). It returns the authenticated user on success. Demo URLs
 // short-circuit to a fake user so the UI can be exercised without Jira.
@@ -174,6 +218,30 @@ func (c *Client) TestConnection(ctx context.Context) (*User, error) {
 		return nil, fmt.Errorf("connection test failed: %w", err)
 	}
 	return &u, nil
+}
+
+// currentUser resolves and caches the authenticated user's username (PAT
+// owner) via GET /rest/api/2/myself. The result is computed at most once per
+// client (sync.Once). Demo mode returns the synthetic username "demo.user".
+//
+// NOTE(xtm): Jira DC REST v2 identifies users by their login name ("name").
+// Some newer Jira instances (Server/DC migrated from Cloud) may use "accountId"
+// instead; verify against the live Xray Server/DC 8.4.0 instance and adjust
+// the reporter field key in CreateBug if needed.
+func (c *Client) currentUser(ctx context.Context) (string, error) {
+	c.currentUserOnce.Do(func() {
+		if isDemoURL(c.baseURL) {
+			c.currentUserName = "demo.user"
+			return
+		}
+		var u User
+		if e := c.get(ctx, "/rest/api/2/myself", &u); e != nil {
+			c.currentUserErr = e
+			return
+		}
+		c.currentUserName = u.Name
+	})
+	return c.currentUserName, c.currentUserErr
 }
 
 // get performs an authenticated GET and decodes a JSON response into out.

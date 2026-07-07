@@ -402,8 +402,21 @@ func demoRunDate(execIdx, pos int) string {
 func demoTestRuns(execKey string) []TestRun {
 	execIdx := demoExecKeyIndex(execKey)
 	if execIdx < 0 {
-		// Key does not match the demo pattern (e.g. cross-project or sub-task
-		// exec): return no runs rather than synthesising noise.
+		// Cross-project sub-task exec (XRAYINT-STE-1) must be checked BEFORE
+		// project-local sub-task execs: demoSubExecKeyIndex has no project-prefix
+		// guard and would otherwise intercept XRAYINT-STE-1 (both match "-STE-1").
+		if demoCrossProjectSubExecKeyIndex(execKey) >= 0 {
+			return demoCrossProjectSubExecRuns("DEMO")
+		}
+		// Sub-task Test Executions ("<proj>-STE-<n>") also carry runs: mirror the
+		// demoContainersAndLinks membership ("every 5th linked test also runs in a
+		// sub-task execution") so the per-test Run history includes sub-task
+		// execution runs. This matches the live sync, which covers every
+		// Kind=testexec container regardless of standalone vs sub-task issue type.
+		if subIdx := demoSubExecKeyIndex(execKey); subIdx >= 0 {
+			return demoSubExecRuns(execKey, subIdx)
+		}
+		// Other non-matching keys yield no runs.
 		return []TestRun{}
 	}
 	projectKey := demoExecProjectKey(execKey)
@@ -451,6 +464,161 @@ func demoTestRuns(execKey string) []TestRun {
 			Defects:     defects,
 			CreatedAt:   createdAt,
 			UpdatedAt:   updatedAt,
+		})
+		pos++
+	}
+	return runs
+}
+
+// demoSubExecCount mirrors subExecCount in demoContainersAndLinks: the number of
+// demo sub-task Test Executions per project.
+const demoSubExecCount = 2
+
+// demoSubExecKeyIndex parses the 0-based sub-task exec index from a
+// "<proj>-STE-<n>" key, or -1 if the key does not match.
+func demoSubExecKeyIndex(execKey string) int {
+	parts := strings.Split(execKey, "-STE-")
+	if len(parts) != 2 {
+		return -1
+	}
+	n := 0
+	for _, ch := range parts[1] {
+		if ch < '0' || ch > '9' {
+			return -1
+		}
+		n = n*10 + int(ch-'0')
+	}
+	if n < 1 || n > demoSubExecCount {
+		return -1
+	}
+	return n - 1
+}
+
+// demoSubExecProjectKey extracts the project key from a "<proj>-STE-<n>" key.
+func demoSubExecProjectKey(execKey string) string {
+	if i := strings.Index(execKey, "-STE-"); i > 0 {
+		return execKey[:i]
+	}
+	return "DEMO"
+}
+
+// demoSubExecRuns synthesises runs for one demo sub-task Test Execution. It
+// mirrors the demoContainersAndLinks rule that every 5th linked test (i%5 == 0)
+// also runs in subExecKeys[(i/5)%subExecCount], using the same run status so the
+// board membership and the per-test Run history agree. Dates/environment use a
+// base index past the standalone executions to stay deterministic and distinct.
+func demoSubExecRuns(execKey string, subIdx int) []TestRun {
+	projectKey := demoSubExecProjectKey(execKey)
+	baseIdx := demoExecCount + subIdx
+	env := demoRunEnvironment(baseIdx)
+
+	var runs []TestRun
+	pos := 0
+	for i := 0; i < demoLinkedTests && i < demoTestCount; i++ {
+		if i%5 != 0 || (i/5)%demoSubExecCount != subIdx {
+			continue
+		}
+		testNum := i + 1
+		testKey := fmt.Sprintf("%s-%d", projectKey, testNum)
+		status := demoRunStatuses[(i+1)%len(demoRunStatuses)]
+
+		started := demoRunDate(baseIdx, pos)
+		finished := demoRunDate(baseIdx, pos+1)
+		executor := demoExecExecutors[pos%len(demoExecExecutors)]
+
+		var defects []string
+		if status == "FAIL" {
+			bugProject := demoBugProject
+			if testNum%2 == 0 {
+				bugProject = demoBugProject2
+			}
+			defects = []string{fmt.Sprintf("%s-%d", bugProject, 100+(testNum%12))}
+		} else {
+			defects = []string{}
+		}
+
+		runs = append(runs, TestRun{
+			TestKey:     testKey,
+			Status:      status,
+			StartedAt:   started,
+			FinishedAt:  finished,
+			ExecutedBy:  executor,
+			Environment: env,
+			Defects:     defects,
+			CreatedAt:   demoRunDate(baseIdx, pos-1),
+			UpdatedAt:   finished,
+		})
+		pos++
+	}
+	return runs
+}
+
+// demoCrossProjectSubExecKeyIndex parses the 0-based index from a
+// "<proj>-STE-<n>" key where the project is demoCrossProjectKey, returning -1
+// if the key does not match.
+func demoCrossProjectSubExecKeyIndex(execKey string) int {
+	prefix := demoCrossProjectKey + "-STE-"
+	if !strings.HasPrefix(execKey, prefix) {
+		return -1
+	}
+	n := 0
+	for _, ch := range execKey[len(prefix):] {
+		if ch < '0' || ch > '9' {
+			return -1
+		}
+		n = n*10 + int(ch-'0')
+	}
+	if n < 1 || n > 1 {
+		// Only XRAYINT-STE-1 is seeded; reject any other suffix.
+		return -1
+	}
+	return n - 1
+}
+
+// demoCrossProjectSubExecRuns synthesises TestRun values for the cross-project
+// sub-task execution (demoCrossProjectSubExecKey). Members are DEMO tests at
+// indices i where i%11 == 0 (see demoCrossProjectSubExecMember). Uses a base
+// index past all the standalone and project sub-exec indices so dates are
+// distinct and deterministic.
+func demoCrossProjectSubExecRuns(projectKey string) []TestRun {
+	baseIdx := demoExecCount + demoSubExecCount + 1 // past standalone + project sub-task execs
+	env := demoRunEnvironment(baseIdx)
+
+	var runs []TestRun
+	pos := 0
+	for i := 0; i < demoLinkedTests && i < demoTestCount; i++ {
+		if !demoCrossProjectSubExecMember(i) {
+			continue
+		}
+		testNum := i + 1
+		testKey := fmt.Sprintf("%s-%d", projectKey, testNum)
+		status := demoRunStatuses[(i+3)%len(demoRunStatuses)]
+
+		started := demoRunDate(baseIdx, pos)
+		finished := demoRunDate(baseIdx, pos+1)
+		executor := demoExecExecutors[pos%len(demoExecExecutors)]
+
+		var defects []string
+		if status == "FAIL" {
+			bugProject := demoBugProject
+			if testNum%2 == 0 {
+				bugProject = demoBugProject2
+			}
+			defects = []string{fmt.Sprintf("%s-%d", bugProject, 100+(testNum%12))}
+		} else {
+			defects = []string{}
+		}
+
+		runs = append(runs, TestRun{
+			TestKey:     testKey,
+			Status:      status,
+			StartedAt:   started,
+			FinishedAt:  finished,
+			ExecutedBy:  executor,
+			Environment: env,
+			Defects:     defects,
+			CreatedAt:   demoRunDate(baseIdx, pos-1),
+			UpdatedAt:   finished,
 		})
 		pos++
 	}

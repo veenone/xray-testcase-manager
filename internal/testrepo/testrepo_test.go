@@ -905,6 +905,23 @@ func TestGetContainerBoardRejectsUnknownKey(t *testing.T) {
 	}
 }
 
+func TestGetContainerBoardDescription(t *testing.T) {
+	repo := newRepo(t)
+	if err := repo.UpsertContainers("p1", []testrepo.Container{
+		{Key: "QA-TP-1", Kind: "testplan", Summary: "Release plan", Status: "Open",
+			Description: "## Release plan\n\nAll regression tests for this sprint."},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	board, err := repo.GetContainerBoard("p1", "QA-TP-1")
+	if err != nil {
+		t.Fatalf("GetContainerBoard: %v", err)
+	}
+	if board.Description != "## Release plan\n\nAll regression tests for this sprint." {
+		t.Errorf("board.Description = %q, want markdown content", board.Description)
+	}
+}
+
 func TestSeedSampleContainersPopulatesAllThreeKinds(t *testing.T) {
 	repo := newRepo(t)
 	tests := []testrepo.TestCase{}

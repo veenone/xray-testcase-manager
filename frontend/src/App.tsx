@@ -18,6 +18,7 @@ import {
   GetSettings,
   SetDefaultProfile,
   SetTheme,
+  SetShowCoverage,
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
   ResolveConflictMerge,
@@ -29,7 +30,10 @@ import {
   CommitPendingChangesByIDs,
   DeleteProfile,
   EventsOn,
+  SyncTests,
   errMsg,
+  isDemoUrl,
+  demoVariant,
 } from "./api";
 import type {
   HealthInfo,
@@ -66,6 +70,7 @@ import { TraceabilityTabs } from "./components/TraceabilityTabs";
 import { ContainersView } from "./components/ContainersView";
 import { PreconditionsView } from "./components/PreconditionsView";
 import { RequirementsView } from "./components/RequirementsView";
+import { CoverageView } from "./components/CoverageView";
 import { DuplicatesView } from "./components/DuplicatesView";
 import { GapAnalysisView } from "./components/GapAnalysisView";
 import { TestCallsView } from "./components/TestCallsView";
@@ -95,6 +100,8 @@ function App() {
   const [activeId, setActiveId] = useState<string>("");
   const [defaultProfileId, setDefaultProfileId] = useState<string>("");
   const [theme, setThemeState] = useState<string>("light");
+  // The Coverage module is opt-in; its top-nav tab is hidden until enabled.
+  const [showCoverage, setShowCoverage] = useState(false);
   const { prompt, promptUI } = usePrompt();
   const { confirm, confirmUI } = useConfirm();
   const { notice, noticeUI } = useNotice();
@@ -161,6 +168,7 @@ function App() {
     | "dashboard"
     | "traceability"
     | "plans"
+    | "coverage"
   >("browse");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
@@ -220,6 +228,7 @@ function App() {
         const t = s.theme || "light";
         setThemeState(t);
         applyTheme(t);
+        setShowCoverage(!!s.showCoverage);
         if (ps.length > 0) {
           const def =
             s.defaultProfileId && ps.some((p) => p.id === s.defaultProfileId)
@@ -452,6 +461,15 @@ function App() {
 
   async function doSync(full: boolean) {
     if (!activeId || syncRunningRef.current) return;
+    if (committing) {
+      await notice({
+        title: "Commit in progress",
+        message:
+          "A commit is in progress. Please wait for it to finish before syncing.",
+        tone: "info",
+      });
+      return;
+    }
     syncRunningRef.current = true;
     setSyncing(true);
     setSyncError("");
@@ -478,6 +496,15 @@ function App() {
   // refreshed. It can be slow on large projects, so confirm first.
   async function runFullSync() {
     if (!activeId || syncRunningRef.current) return;
+    if (committing) {
+      await notice({
+        title: "Commit in progress",
+        message:
+          "A commit is in progress. Please wait for it to finish before syncing.",
+        tone: "info",
+      });
+      return;
+    }
     if (
       !(await confirm({
         title: "Full resync",
@@ -491,6 +518,33 @@ function App() {
       return;
     }
     doSync(true);
+  }
+
+  // syncTests does a targeted pull of test cases and folder membership, giving
+  // the Browse view a quick refresh without running the full sync pipeline
+  // (RND_P_4TFINT_05-260).
+  async function syncTests() {
+    if (!activeId || syncRunningRef.current) return;
+    if (committing) {
+      await notice({
+        title: "Commit in progress",
+        message:
+          "A commit is in progress. Please wait for it to finish before syncing.",
+        tone: "info",
+      });
+      return;
+    }
+    syncRunningRef.current = true;
+    setSyncing(true);
+    try {
+      await SyncTests(activeId);
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      await notice({ title: "Sync failed", message: errMsg(e), tone: "error" });
+    } finally {
+      syncRunningRef.current = false;
+      setSyncing(false);
+    }
   }
 
   // Native menu bar (built in main.go) drives the same actions via events. A ref
@@ -511,6 +565,7 @@ function App() {
     "menu:view-duplicates": () => setView("duplicates"),
     "menu:view-gapanalysis": () => setView("gapanalysis"),
     "menu:view-testcalls": () => setView("testcalls"),
+    "menu:view-coverage": () => setView("coverage"),
     "menu:sync-history": () => setShowSyncHistory(true),
     "menu:diagnostics": () => setShowDiagnostics(true),
     "menu:about": () => setShowAbout(true),
@@ -530,6 +585,19 @@ function App() {
       await SetTheme(next);
     } catch (e) {
       console.error("set theme:", errMsg(e));
+    }
+  }
+
+  // toggleCoverage shows/hides the opt-in Coverage tab and persists it. Leaving
+  // the Coverage view when hiding so a hidden view isn't left on screen.
+  async function toggleCoverage() {
+    const next = !showCoverage;
+    setShowCoverage(next);
+    if (!next && view === "coverage") setView("browse");
+    try {
+      await SetShowCoverage(next);
+    } catch (e) {
+      console.error("set show coverage:", errMsg(e));
     }
   }
 
@@ -703,6 +771,15 @@ function App() {
   // Committed pending rows are deleted by the backend; failures stay.
   async function handleCommit() {
     if (!activeId || committing) return;
+    if (syncing || syncRunningRef.current) {
+      await notice({
+        title: "Sync in progress",
+        message:
+          "A sync is in progress. Please wait for it to finish before committing.",
+        tone: "info",
+      });
+      return;
+    }
     setCommitting(true);
     setLastCommitResult(null);
     try {
@@ -728,6 +805,15 @@ function App() {
   // a full commit; only the chosen item leaves the list on success.
   async function handleCommitIds(ids: number[]) {
     if (!activeId || committing || ids.length === 0) return;
+    if (syncing || syncRunningRef.current) {
+      await notice({
+        title: "Sync in progress",
+        message:
+          "A sync is in progress. Please wait for it to finish before committing.",
+        tone: "info",
+      });
+      return;
+    }
     setCommitting(true);
     setLastCommitResult(null);
     try {
@@ -836,9 +922,15 @@ function App() {
   }
 
   const activeProfile = profiles.find((p) => p.id === activeId);
-  const isDemo =
-    !!activeProfile &&
-    /^(demo$|demo:|mock:)/i.test(activeProfile.jiraUrl.trim());
+  const isDemo = isDemoUrl(activeProfile?.jiraUrl);
+  const demoVar = demoVariant(activeProfile?.jiraUrl);
+
+  // A sync is in flight when the main Sync is running (syncing) OR any partial
+  // per-view refresh is emitting progress. Both a full pull and a partial sync
+  // write to the store keyed by the active profile, so switching profiles while
+  // either runs would race the in-flight writes and land stale progress events
+  // on the newly-selected profile. Used to lock the profile switcher.
+  const syncActive = syncing || syncRunningRef.current || progress !== null;
 
   if (!health) {
     return <div className="centered muted">Loading…</div>;
@@ -898,7 +990,19 @@ function App() {
           <select
             className="profile-select"
             value={activeId}
+            disabled={syncActive}
+            title={
+              syncActive
+                ? "Profile switching is disabled while a sync is in progress"
+                : "Switch active profile"
+            }
             onChange={(e) => {
+              // Guard against a race with an in-flight sync: the sync writes to
+              // the store keyed by the old profile, so switching mid-sync would
+              // point the UI at a new profile while stale progress events and
+              // reloads are still landing. The disabled attribute prevents it;
+              // this early return is belt-and-braces for menu/keyboard paths.
+              if (syncActive) return;
               setActiveId(e.target.value);
               setSelectedKey(null);
             }}
@@ -973,6 +1077,14 @@ function App() {
           >
             Containers
           </button>
+          {showCoverage && (
+            <button
+              className={`view-tab${view === "coverage" ? " view-tab-active" : ""}`}
+              onClick={() => setView("coverage")}
+            >
+              Coverage
+            </button>
+          )}
         </nav>
 
         <div className="topbar-zone topbar-right">
@@ -1049,6 +1161,15 @@ function App() {
                 label: "Theme: System",
                 checked: theme === "system",
                 onClick: () => chooseTheme("system"),
+              },
+              { key: "cov-div", divider: true },
+              {
+                key: "show-coverage",
+                label: "Show Coverage tab",
+                checked: showCoverage,
+                onClick: () => void toggleCoverage(),
+                title:
+                  "Reveal the Coverage module tab (opt-in; hidden by default)",
               },
             ]}
           />
@@ -1203,6 +1324,19 @@ function App() {
             }}
           />
         </main>
+      ) : view === "coverage" ? (
+        <main className="content content-coverage">
+          <CoverageView
+            profileId={activeId}
+            refreshKey={refreshKey}
+            isDemo={isDemo}
+            demoVariant={demoVar}
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              reloadPending();
+            }}
+          />
+        </main>
       ) : (
         <main className="content">
           <div className="browse-sidebar" style={{ width: sidebarWidth }}>
@@ -1299,6 +1433,8 @@ function App() {
             onToggleSelect={toggleSelect}
             onToggleSelectPage={toggleSelectPage}
             onSelectAllMatching={selectAllMatching}
+            onSync={syncTests}
+            syncing={syncing}
           />
           {showNewTest ? (
             <NewTestPanel

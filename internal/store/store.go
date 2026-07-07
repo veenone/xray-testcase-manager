@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 32
+const schemaVersion = 39
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS precondition (
 	summary     TEXT NOT NULL,
 	type        TEXT NOT NULL DEFAULT '',
 	description TEXT NOT NULL DEFAULT '',
+	condition   TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -148,6 +149,10 @@ CREATE TABLE IF NOT EXISTS test_container (
 	parent_summary TEXT NOT NULL DEFAULT '',
 	environments TEXT NOT NULL DEFAULT '',
 	fix_versions TEXT NOT NULL DEFAULT '',
+	created    TEXT NOT NULL DEFAULT '',
+	updated    TEXT NOT NULL DEFAULT '',
+	resolved   TEXT NOT NULL DEFAULT '',
+	description TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -213,13 +218,19 @@ CREATE TABLE IF NOT EXISTS test_review (
 -- may live in a different project than the profile's Test project, so it carries
 -- its own project_key.
 CREATE TABLE IF NOT EXISTS requirement (
-	profile_id  TEXT NOT NULL,
-	jira_key    TEXT NOT NULL,
-	project_key TEXT NOT NULL DEFAULT '',
-	issue_type  TEXT NOT NULL DEFAULT '',
-	summary     TEXT NOT NULL DEFAULT '',
-	status      TEXT NOT NULL DEFAULT '',
-	updated_at  TEXT NOT NULL DEFAULT '',
+	profile_id   TEXT NOT NULL,
+	jira_key     TEXT NOT NULL,
+	project_key  TEXT NOT NULL DEFAULT '',
+	issue_type   TEXT NOT NULL DEFAULT '',
+	summary      TEXT NOT NULL DEFAULT '',
+	status       TEXT NOT NULL DEFAULT '',
+	updated_at   TEXT NOT NULL DEFAULT '',
+	priority     TEXT NOT NULL DEFAULT '',
+	components   TEXT NOT NULL DEFAULT '',
+	fix_versions TEXT NOT NULL DEFAULT '',
+	sprint       TEXT NOT NULL DEFAULT '',
+	description  TEXT NOT NULL DEFAULT '',
+	epic_key     TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -322,6 +333,173 @@ CREATE TABLE IF NOT EXISTS exec_plan (
 	plan_key   TEXT NOT NULL,
 	PRIMARY KEY (profile_id, exec_key, plan_key)
 );
+
+-- Requirement -> Requirement issue links (e.g. "requires"). Stored separately
+-- from test_requirement so the two link types don't collide.
+CREATE TABLE IF NOT EXISTS requirement_link (
+    profile_id        TEXT NOT NULL,
+    from_requirement_key TEXT NOT NULL,
+    to_requirement_key   TEXT NOT NULL,
+    link_type         TEXT NOT NULL DEFAULT '',
+    link_id           TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (profile_id, from_requirement_key, to_requirement_key, link_type)
+);
+
+-- Available field options fetched from Jira per project on sync — used to
+-- populate the requirement create/edit form dropdowns without a live Jira call.
+-- field is "component" or "fixversion".
+CREATE TABLE IF NOT EXISTS project_field_option (
+    profile_id  TEXT NOT NULL,
+    project_key TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    PRIMARY KEY (profile_id, project_key, field, value)
+);
+
+-- ── Coverage module (schema v35) ────────────────────────────────────────────
+-- A bounded, local-only sibling feature: parameter-level test coverage plus a
+-- canonical functional-requirement registry. None of these tables map to Jira
+-- schema (the deployment has no Jira admin); they live purely in this cache and
+-- travel with the profile via export/import. All are profile-scoped and prefixed
+-- coverage_* / canonical_* so the module stays isolated and is trivially dropped.
+
+-- A local "functional requirement" node grouping equivalent requirement issues
+-- spread across customer projects. Has no Jira issue of its own; it is the unit
+-- that owns a parameter-coverage model so coverage is defined once and reused.
+CREATE TABLE IF NOT EXISTS canonical_requirement (
+	profile_id  TEXT NOT NULL,
+	id          TEXT NOT NULL,
+	name        TEXT NOT NULL,
+	category    TEXT NOT NULL DEFAULT '',
+	description TEXT NOT NULL DEFAULT '',
+	created_at  TEXT NOT NULL,
+	updated_at  TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (profile_id, id)
+);
+
+-- Membership of synced requirement issues under a canonical node. requirement_key
+-- is a logical FK to requirement.jira_key; joining to requirement.project_key
+-- answers "which customer projects reuse this functional requirement?".
+CREATE TABLE IF NOT EXISTS canonical_requirement_member (
+	profile_id          TEXT NOT NULL,
+	canonical_id        TEXT NOT NULL,
+	requirement_key     TEXT NOT NULL,
+	added_at            TEXT NOT NULL,
+	accepted_version_id TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (profile_id, canonical_id, requirement_key)
+);
+
+-- Parameter groups own a canonical node — the worksheet tabs of the manual Excel
+-- template (Session, Mechanism, Data, Output, ErrorPaths, State).
+CREATE TABLE IF NOT EXISTS coverage_param_group (
+	profile_id   TEXT NOT NULL,
+	id           TEXT NOT NULL,
+	canonical_id TEXT NOT NULL,
+	version_id   TEXT NOT NULL DEFAULT '',
+	name         TEXT NOT NULL,
+	sort_order   INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (profile_id, id)
+);
+
+-- A parameter within a group (e.g. pMechanism). kind distinguishes ordinary
+-- value parameters from error-path / boundary buckets.
+CREATE TABLE IF NOT EXISTS coverage_parameter (
+	profile_id  TEXT NOT NULL,
+	id          TEXT NOT NULL,
+	group_id    TEXT NOT NULL,
+	name        TEXT NOT NULL,
+	kind        TEXT NOT NULL DEFAULT 'value',
+	description TEXT NOT NULL DEFAULT '',
+	sort_order  INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (profile_id, id)
+);
+
+-- The distinct parameter value — the unit coverage is measured over (41 for
+-- C_Sign). Error codes and boundaries are values too (value_kind), keeping the
+-- coverage math uniform. is_required=1 means it counts toward 100%.
+CREATE TABLE IF NOT EXISTS coverage_param_value (
+	profile_id   TEXT NOT NULL,
+	id           TEXT NOT NULL,
+	parameter_id TEXT NOT NULL,
+	value_label  TEXT NOT NULL,
+	value_kind   TEXT NOT NULL DEFAULT 'value',
+	error_code   TEXT NOT NULL DEFAULT '',
+	is_required  INTEGER NOT NULL DEFAULT 1,
+	notes        TEXT NOT NULL DEFAULT '',
+	sort_order   INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (profile_id, id)
+);
+
+-- The local "tested" signal: a parameter value is exercised by a Test. test_key
+-- is a logical FK to test_case.jira_key; a mapping whose test no longer exists is
+-- "stale" (surfaced, never auto-deleted).
+CREATE TABLE IF NOT EXISTS coverage_value_test (
+	profile_id TEXT NOT NULL,
+	value_id   TEXT NOT NULL,
+	test_key   TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	PRIMARY KEY (profile_id, value_id, test_key)
+);
+
+-- ── Version + change-request module (schema v36) ─────────────────────────────
+-- Named versions of a canonical functional requirement. A version is stable once
+-- its parameters are locked for a customer delivery; new versions branch the
+-- parameter model. All additive; none touch Jira schema.
+
+CREATE TABLE IF NOT EXISTS canonical_version (
+	profile_id   TEXT NOT NULL,
+	id           TEXT NOT NULL,
+	canonical_id TEXT NOT NULL,
+	name         TEXT NOT NULL,
+	status       TEXT NOT NULL DEFAULT 'stable',
+	notes        TEXT NOT NULL DEFAULT '',
+	sort_order   INTEGER NOT NULL DEFAULT 0,
+	created_at   TEXT NOT NULL,
+	PRIMARY KEY (profile_id, id)
+);
+
+-- A change request proposes an update to a canonical requirement targeting a
+-- specific version. status: proposed → in_review → approved / rejected.
+CREATE TABLE IF NOT EXISTS change_request (
+	profile_id        TEXT NOT NULL,
+	id                TEXT NOT NULL,
+	canonical_id      TEXT NOT NULL,
+	cr_key            TEXT NOT NULL DEFAULT '',
+	title             TEXT NOT NULL,
+	status            TEXT NOT NULL DEFAULT 'proposed',
+	target_version_id TEXT NOT NULL DEFAULT '',
+	risk              TEXT NOT NULL DEFAULT 'low',
+	description       TEXT NOT NULL DEFAULT '',
+	created_at        TEXT NOT NULL,
+	updated_at        TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (profile_id, id)
+);
+
+-- Per-customer decision on a change request for a specific member requirement.
+-- decision: pending / can_accept / needs_retest / rejected.
+CREATE TABLE IF NOT EXISTS cr_member_decision (
+	profile_id      TEXT NOT NULL,
+	cr_id           TEXT NOT NULL,
+	requirement_key TEXT NOT NULL,
+	decision        TEXT NOT NULL DEFAULT 'pending',
+	note            TEXT NOT NULL DEFAULT '',
+	updated_at      TEXT NOT NULL,
+	PRIMARY KEY (profile_id, cr_id, requirement_key)
+);
+
+-- ── Coverage project config (schema v37) ────────────────────────────────────
+-- The user-curated list of in-scope Jira projects for the coverage module.
+-- Each row assigns a role (source | customer) and a display label to a project.
+-- When no rows exist for a profile the UI derives a default from the distinct
+-- project_key values of requirement issues that are canonical members.
+CREATE TABLE IF NOT EXISTS coverage_project (
+	profile_id  TEXT NOT NULL,
+	project_key TEXT NOT NULL,
+	role        TEXT NOT NULL DEFAULT 'customer',
+	label       TEXT NOT NULL DEFAULT '',
+	sort_order  INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (profile_id, project_key)
+);
 `
 
 // indexSchema is applied *after* applyMigrations so every column referenced
@@ -345,6 +523,20 @@ CREATE INDEX IF NOT EXISTS idx_duplicate_ignore_profile   ON duplicate_ignore(pr
 CREATE INDEX IF NOT EXISTS idx_duplicate_step_scan_profile ON duplicate_step_scan(profile_id);
 CREATE INDEX IF NOT EXISTS idx_test_bug_test ON test_bug(profile_id, test_key);
 CREATE INDEX IF NOT EXISTS idx_test_bug_bug  ON test_bug(profile_id, bug_key);
+CREATE INDEX IF NOT EXISTS idx_requirement_link_from ON requirement_link(profile_id, from_requirement_key);
+CREATE INDEX IF NOT EXISTS idx_canon_member_canon ON canonical_requirement_member(profile_id, canonical_id);
+CREATE INDEX IF NOT EXISTS idx_canon_member_req   ON canonical_requirement_member(profile_id, requirement_key);
+CREATE INDEX IF NOT EXISTS idx_cov_group_canon    ON coverage_param_group(profile_id, canonical_id);
+CREATE INDEX IF NOT EXISTS idx_cov_param_group    ON coverage_parameter(profile_id, group_id);
+CREATE INDEX IF NOT EXISTS idx_cov_value_param    ON coverage_param_value(profile_id, parameter_id);
+CREATE INDEX IF NOT EXISTS idx_cov_value_test_val ON coverage_value_test(profile_id, value_id);
+CREATE INDEX IF NOT EXISTS idx_cov_value_test_tst ON coverage_value_test(profile_id, test_key);
+CREATE INDEX IF NOT EXISTS idx_canon_version_canon ON canonical_version(profile_id, canonical_id);
+CREATE INDEX IF NOT EXISTS idx_change_request_canon ON change_request(profile_id, canonical_id);
+CREATE INDEX IF NOT EXISTS idx_cr_decision_cr        ON cr_member_decision(profile_id, cr_id);
+CREATE INDEX IF NOT EXISTS idx_cr_decision_req       ON cr_member_decision(profile_id, requirement_key);
+CREATE INDEX IF NOT EXISTS idx_cov_group_version     ON coverage_param_group(profile_id, version_id);
+CREATE INDEX IF NOT EXISTS idx_coverage_project ON coverage_project(profile_id);
 `
 
 // Store wraps the SQLite connection for one local database file.
@@ -632,6 +824,211 @@ func applyMigrations(db *sql.DB) error {
 			`ALTER TABLE test_container ADD COLUMN parent_summary TEXT NOT NULL DEFAULT ''`,
 		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("v32 add parent_summary: %w", err)
+		}
+	}
+	// v33: add created, updated, and resolved to test_container to cache the
+	// Jira issue timestamps of Test Executions, enabling the run-history
+	// breakdown to show when an execution was created, last updated, and
+	// resolved. Fresh installs get these columns from the CREATE above; these
+	// ALTERs catch pre-v33 databases.
+	if current < 33 {
+		for _, col := range []string{"created", "updated", "resolved"} {
+			if _, err := db.Exec(
+				fmt.Sprintf(`ALTER TABLE test_container ADD COLUMN %s TEXT NOT NULL DEFAULT ''`, col),
+			); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("v33 add %s to test_container: %w", col, err)
+			}
+		}
+	}
+	// v34: add description to test_container to cache the Jira issue description
+	// field. Fresh installs get this column from the CREATE above; this ALTER
+	// catches pre-v34 databases.
+	if current < 34 {
+		if _, err := db.Exec(
+			`ALTER TABLE test_container ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v34 add description to test_container: %w", err)
+		}
+	}
+	// requirement detail columns (priority, components, fix_versions, sprint,
+	// description) and the precondition condition column are applied
+	// UNCONDITIONALLY (not version-gated) and are idempotent via the
+	// duplicate-column tolerance. They are intentionally not `if current < N`
+	// gated: this feature branch reuses schema version numbers that another
+	// in-flight branch also assigned to unrelated migrations, so a shared DB that
+	// saw the other branch would already sit at a higher version and skip a
+	// version-gated ALTER, leaving these columns missing (observed as
+	// "table requirement has no column named priority" on sync). Running them
+	// every open costs a no-op duplicate-column probe and guarantees the columns
+	// exist regardless of the DB's version history.
+	for _, stmt := range []string{
+		`ALTER TABLE requirement ADD COLUMN priority TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN components TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN fix_versions TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN sprint TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE requirement ADD COLUMN epic_key TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE precondition ADD COLUMN condition TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add requirement/precondition columns: %w", err)
+		}
+	}
+	// v37: requirement_link stores Requirement -> Requirement issue links (e.g.
+	// "requires"), separate from the Test <-> Requirement coverage table. Additive
+	// new table; CREATE TABLE IF NOT EXISTS makes the migration idempotent.
+	if current < 37 {
+		if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS requirement_link (
+			profile_id            TEXT NOT NULL,
+			from_requirement_key  TEXT NOT NULL,
+			to_requirement_key    TEXT NOT NULL,
+			link_type             TEXT NOT NULL DEFAULT '',
+			link_id               TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (profile_id, from_requirement_key, to_requirement_key, link_type)
+		)`); err != nil && !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("v37 create requirement_link: %w", err)
+		}
+	}
+	// v35: the coverage module's local tables (parameter-level coverage + the
+	// canonical functional-requirement registry). All additive new tables, so
+	// CREATE TABLE IF NOT EXISTS makes the migration idempotent; fresh installs
+	// get them from baseSchema. None touch Jira schema.
+	if current < 35 {
+		for _, q := range []string{
+			`CREATE TABLE IF NOT EXISTS canonical_requirement (
+				profile_id  TEXT NOT NULL,
+				id          TEXT NOT NULL,
+				name        TEXT NOT NULL,
+				category    TEXT NOT NULL DEFAULT '',
+				description TEXT NOT NULL DEFAULT '',
+				created_at  TEXT NOT NULL,
+				updated_at  TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (profile_id, id)
+			)`,
+			`CREATE TABLE IF NOT EXISTS canonical_requirement_member (
+				profile_id      TEXT NOT NULL,
+				canonical_id    TEXT NOT NULL,
+				requirement_key TEXT NOT NULL,
+				added_at        TEXT NOT NULL,
+				PRIMARY KEY (profile_id, canonical_id, requirement_key)
+			)`,
+			`CREATE TABLE IF NOT EXISTS coverage_param_group (
+				profile_id   TEXT NOT NULL,
+				id           TEXT NOT NULL,
+				canonical_id TEXT NOT NULL,
+				name         TEXT NOT NULL,
+				sort_order   INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (profile_id, id)
+			)`,
+			`CREATE TABLE IF NOT EXISTS coverage_parameter (
+				profile_id  TEXT NOT NULL,
+				id          TEXT NOT NULL,
+				group_id    TEXT NOT NULL,
+				name        TEXT NOT NULL,
+				kind        TEXT NOT NULL DEFAULT 'value',
+				description TEXT NOT NULL DEFAULT '',
+				sort_order  INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (profile_id, id)
+			)`,
+			`CREATE TABLE IF NOT EXISTS coverage_param_value (
+				profile_id   TEXT NOT NULL,
+				id           TEXT NOT NULL,
+				parameter_id TEXT NOT NULL,
+				value_label  TEXT NOT NULL,
+				value_kind   TEXT NOT NULL DEFAULT 'value',
+				error_code   TEXT NOT NULL DEFAULT '',
+				is_required  INTEGER NOT NULL DEFAULT 1,
+				notes        TEXT NOT NULL DEFAULT '',
+				sort_order   INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (profile_id, id)
+			)`,
+			`CREATE TABLE IF NOT EXISTS coverage_value_test (
+				profile_id TEXT NOT NULL,
+				value_id   TEXT NOT NULL,
+				test_key   TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY (profile_id, value_id, test_key)
+			)`,
+		} {
+			if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "already exists") {
+				return fmt.Errorf("v35 create coverage tables: %w", err)
+			}
+		}
+	}
+	// v36: Topic 2 — versions, change requests, per-customer decisions, and the
+	// version-rooting of the parameter model. Additive; backfills a default version.
+	if current < 36 {
+		for _, q := range []string{
+			`CREATE TABLE IF NOT EXISTS canonical_version (
+				profile_id TEXT NOT NULL, id TEXT NOT NULL, canonical_id TEXT NOT NULL,
+				name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'stable',
+				notes TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0,
+				created_at TEXT NOT NULL, PRIMARY KEY (profile_id, id))`,
+			`CREATE TABLE IF NOT EXISTS change_request (
+				profile_id TEXT NOT NULL, id TEXT NOT NULL, canonical_id TEXT NOT NULL,
+				cr_key TEXT NOT NULL DEFAULT '', title TEXT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'proposed', target_version_id TEXT NOT NULL DEFAULT '',
+				risk TEXT NOT NULL DEFAULT 'low', description TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (profile_id, id))`,
+			`CREATE TABLE IF NOT EXISTS cr_member_decision (
+				profile_id TEXT NOT NULL, cr_id TEXT NOT NULL, requirement_key TEXT NOT NULL,
+				decision TEXT NOT NULL DEFAULT 'pending', note TEXT NOT NULL DEFAULT '',
+				updated_at TEXT NOT NULL, PRIMARY KEY (profile_id, cr_id, requirement_key))`,
+		} {
+			if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "already exists") {
+				return fmt.Errorf("v36 create tables: %w", err)
+			}
+		}
+		for _, stmt := range []string{
+			`ALTER TABLE coverage_param_group ADD COLUMN version_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE canonical_requirement_member ADD COLUMN accepted_version_id TEXT NOT NULL DEFAULT ''`,
+		} {
+			if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("v36 add columns: %w", err)
+			}
+		}
+		// Backfill: a default version per canonical, re-rooting existing groups.
+		rows, err := db.Query(`SELECT profile_id, id FROM canonical_requirement`)
+		if err != nil {
+			return fmt.Errorf("v36 read canonicals: %w", err)
+		}
+		type cv struct{ profileID, canonID string }
+		var canons []cv
+		for rows.Next() {
+			var c cv
+			if err := rows.Scan(&c.profileID, &c.canonID); err != nil {
+				rows.Close()
+				return err
+			}
+			canons = append(canons, c)
+		}
+		rows.Close()
+		for _, c := range canons {
+			verID := c.canonID + "-v1"
+			if _, err := db.Exec(
+				`INSERT OR IGNORE INTO canonical_version (profile_id,id,canonical_id,name,status,sort_order,created_at)
+				 VALUES (?,?,?,?,'stable',0,'2026-01-01T00:00:00Z')`,
+				c.profileID, verID, c.canonID, "v1"); err != nil {
+				return fmt.Errorf("v36 seed version: %w", err)
+			}
+			if _, err := db.Exec(
+				`UPDATE coverage_param_group SET version_id = ? WHERE profile_id = ? AND canonical_id = ? AND version_id = ''`,
+				verID, c.profileID, c.canonID); err != nil {
+				return fmt.Errorf("v36 reroot groups: %w", err)
+			}
+		}
+	}
+	// v37: coverage_project config table — per-profile list of in-scope Jira
+	// projects with role and display label. Additive; CREATE TABLE IF NOT EXISTS
+	// makes this idempotent on fresh installs.
+	if current < 37 {
+		if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS coverage_project (
+			profile_id TEXT NOT NULL, project_key TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'customer', label TEXT NOT NULL DEFAULT '',
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (profile_id, project_key))`); err != nil {
+			return err
 		}
 	}
 	return nil

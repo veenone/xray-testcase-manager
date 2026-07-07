@@ -20,6 +20,11 @@ func TestListContainersReadsFixVersions(t *testing.T) {
 			// No custom fields; the environments read degrades to none and does
 			// not interfere with the fixVersions assertions.
 			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case "/rest/api/2/issuetype":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"name": "Test Execution", "subtask": false},
+				{"name": "Sub Test Execution", "subtask": true},
+			})
 		case "/rest/api/2/search":
 			jql := r.URL.Query().Get("jql")
 			fields := r.URL.Query().Get("fields")

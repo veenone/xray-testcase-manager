@@ -253,16 +253,6 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
                 Collapse all
               </button>
             </div>
-            <Pager
-              page={safePage}
-              pageSize={pageSize}
-              total={callerCount}
-              onPage={setPage}
-              onPageSize={(n) => {
-                setPageSize(n);
-                setPage(0);
-              }}
-            />
           </div>
           <ul className="testcalls-list">
             {pageCallers.map(([callerKey, { summary, calls }]) => {
@@ -343,6 +333,18 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
               );
             })}
           </ul>
+          <div className="testcalls-pager">
+            <Pager
+              page={safePage}
+              pageSize={pageSize}
+              total={callerCount}
+              onPage={setPage}
+              onPageSize={(n) => {
+                setPageSize(n);
+                setPage(0);
+              }}
+            />
+          </div>
         </>
       )}
       </div>

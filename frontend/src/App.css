@@ -104,6 +104,12 @@
   max-width: 220px;
   text-overflow: ellipsis;
 }
+/* Disabled while a sync is running: switching profiles mid-sync would race the
+   in-flight pull, so the dropdown is locked (with a tooltip) until it finishes. */
+.profile-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 /* Bar-native button: blends into the dark topbar instead of a bright chip. */
 .topbar-btn {
@@ -603,6 +609,35 @@
   background: var(--surface-2, #1e2535);
 }
 
+/* Sub-task execution badge (Bugs panel run-history breakdown). */
+.exec-subtask-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+  white-space: nowrap;
+}
+
+/* Parent-issue line for sub-task executions (Bugs panel run-history breakdown). */
+.exec-parent-line {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.88em;
+  color: var(--text-muted);
+}
+.exec-parent-label {
+  font-variant-numeric: tabular-nums;
+}
+.exec-parent-summary {
+  font-style: italic;
+}
+
 /* Editable run-result select (Test Execution board) — full-colour highlight
    matching the run-badge palette so statuses are easy to scan at a glance. */
 .run-select {
@@ -898,14 +933,37 @@
   flex-direction: column;
   min-height: 0;
 }
+/* The board content lives in a wrapper (so a right-side read-only detail can sit
+   beside it). The wrapper must be a bounded flex column always — not only when
+   the exec detail is open — so the bug list and the member table scroll and the
+   pager pins below them, matching the Preconditions view. Without this it is a
+   plain block and the list grows unbounded (no scrollbar, the pager follows the
+   list). */
+.board-exec-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 /* The fixed chrome above the scrollable table keeps its natural height. */
-.board > .containers-mode,
+.board-exec-body > .containers-mode,
 .board-head,
 .container-filter-bar,
 .container-card,
 .board-bulk,
 .board-pager {
   flex: 0 0 auto;
+}
+/* Lay the status pills on the same row as the exec-type / environment filter
+   selects, vertically centred with them, instead of on their own line above. */
+.container-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.container-filter-bar .filter-pill-row {
+  margin-bottom: 0;
 }
 /* Only the member table scrolls; the pager stays pinned beneath it. */
 .board-scroll {
@@ -1081,11 +1139,16 @@
 .multiselect-list label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 5px 6px;
   font-size: 12px;
   border-radius: 5px;
   cursor: pointer;
+}
+/* Prevent the checkbox from stretching; keep it vertically centred with the label text. */
+.multiselect-list label input {
+  flex: 0 0 auto;
+  margin: 0;
 }
 .multiselect-list label:hover {
   background: var(--surface-2);
@@ -1738,6 +1801,37 @@ i.sankey-node-l2 {
   color: var(--text);
   max-width: 160px;
 }
+/* -278: exec-type filter matches saved-views dropdown look */
+/* -283: .app-select is the shared plain-select style used across ContainersView,
+   BugsPanel, and RequirementsView; .exectype-filter keeps this look. */
+.exectype-filter,
+.app-select {
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+/* -283: SortControl sort-field selects in the container/bugs views share
+   the same look as .app-select (scoped so other SortControl instances are unchanged). */
+.container-filter-bar .sort-field,
+.bugs-md-filter-row .sort-field {
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+/* -283: Requirements sort-by matches the precond-sort look (border-radius 5px,
+   surface-2 background, 12px font) — mirrors .precond-list-head .sort-field. */
+.reqs-list-head .sort-field {
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 5px 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+}
 .view-del {
   font-size: 11px;
   padding: 2px 6px;
@@ -2178,6 +2272,8 @@ tr.row-selected {
   background: #2a3850;
   color: #c7d0e0;
   border: 1px solid #3a4a66;
+  border-radius: 4px;
+  padding: 2px 7px;
 }
 .detail-head-actions {
   display: flex;
@@ -2375,9 +2471,8 @@ tr.row-selected {
   flex-direction: column;
   min-height: 0;
 }
-.reqs-filter {
-  margin-bottom: 8px;
-}
+/* .reqs-filter is no longer a separate standalone input; styling comes from
+   .precond-search applied directly to the input element inside .reqs-head-row. */
 .reqs-coverage-summary {
   display: flex;
   flex-wrap: wrap;
@@ -2395,6 +2490,28 @@ tr.row-selected {
 .cov-pill-active {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+.filter-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.filter-pill-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.filter-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 3px 0 3px 4px;
+  margin-bottom: 10px;
 }
 .reqs-items {
   list-style: none;
@@ -2474,15 +2591,10 @@ tr.row-selected {
   display: flex;
   gap: 6px;
 }
-.reqs-detail-edit {
-  display: flex;
-  gap: 6px;
-  align-items: center;
+/* Edit-mode form in the requirement detail pane — fields stacked vertically
+   using the .precond-field layout pattern. */
+.reqs-detail-edit-form {
   margin: 0 0 14px;
-}
-.reqs-summary-input {
-  flex: 1;
-  min-width: 0;
 }
 .req-kind {
   background: #0e7490;
@@ -2507,31 +2619,59 @@ tr.row-selected {
 .reqs-with-detail .detail {
   position: relative;
 }
+/* Requirement detail pane: metadata grid (priority, components, fix-versions,
+   sprint) rendered as a compact definition list. */
+.detail-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 10px;
+  row-gap: 4px;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.detail-meta dt {
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  white-space: nowrap;
+}
+.detail-meta dd {
+  margin: 0;
+  color: var(--text);
+}
+/* Requirement detail pane: collapsible description section. */
+.detail-description {
+  margin-bottom: 14px;
+}
+/* Requirements list panel header — flex-col container whose rows match the
+   Preconditions panel structure (.precond-list-head / .precond-list). */
 .reqs-list-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 8px;
 }
-.reqs-list-actions {
+/* Primary action bar: filter (flex 1) + compact action buttons.
+   Mirrors .precond-list-head layout. */
+.reqs-head-row {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  align-items: center;
+}
+/* Secondary toolbar: Export audit + Import */
+.reqs-list-toolbar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 .reqs-notice {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   font-size: 12px;
   word-break: break-all;
 }
-.reqs-list-title {
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-}
+/* -280: Sources button uses the same btn padding as Sync / Create */
 .reqs-sources-btn {
   font-size: 12px;
-  padding: 3px 10px;
+  flex-shrink: 0;
 }
 
 /* Requirement sources modal */
@@ -2558,10 +2698,21 @@ tr.row-selected {
   white-space: nowrap;
   max-width: 240px;
 }
-.src-remove {
+.src-edit {
   margin-left: auto;
   font-size: 11px;
   padding: 1px 7px;
+}
+.src-remove {
+  font-size: 11px;
+  padding: 1px 7px;
+}
+.src-list-editing {
+  background: var(--row-hover);
+}
+.src-edit-notice {
+  font-size: 12px;
+  margin: 0 0 4px;
 }
 .src-add {
   display: flex;
@@ -2636,6 +2787,7 @@ tr.row-selected {
 .precond-list-head {
   display: flex;
   gap: 8px;
+  align-items: center;
   margin-bottom: 8px;
 }
 .precond-search {
@@ -2767,6 +2919,21 @@ tr.row-selected {
 .precond-detail-key {
   font-size: 15px;
   font-weight: 600;
+}
+/* Button group for Edit / Save+Cancel in the detail header. */
+.precond-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+/* Read-only value display for Summary / Type / Condition / Description
+   when the detail pane is not in edit mode. */
+.precond-ro-val {
+  font-size: 14px;
+  color: var(--text);
+  min-height: 24px;
+  padding: 4px 0;
 }
 .pending-badge {
   font-size: 10px;
@@ -3773,6 +3940,85 @@ tr.row-checked:hover {
   border-top: 1px solid var(--border, #e2e8f0);
 }
 
+/* New Requirement Panel (FR-13) — left-docked creation form.
+   Reuses .detail + .new-test-panel for base structure and form styles;
+   these rules override the border side and resizer position. */
+
+/* reqs-root: flex row containing the optional left-docked panel + the reqs grid. */
+.reqs-root {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+.reqs-root .reqs {
+  flex: 1;
+}
+
+/* Left-dock overrides: border on the right instead of left. */
+.new-req-panel {
+  border-left: none;
+  border-right: 1px solid var(--border);
+}
+/* Resizer on the right edge: drag right = wider, drag left = narrower. */
+.new-req-panel .detail-resizer {
+  left: auto;
+  right: 0;
+  margin-left: 0;
+  margin-right: -3px;
+}
+
+/* Tag-select-with-add used for Components and Fix Versions fields. */
+.req-tag-field {
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.req-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.req-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent, #4338ca);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.req-tag-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 10px;
+  color: inherit;
+  opacity: 0.7;
+  line-height: 1;
+}
+.req-tag-remove:hover {
+  opacity: 1;
+}
+.req-tag-select {
+  width: 100%;
+}
+.req-tag-add {
+  display: flex;
+  gap: 6px;
+}
+.req-tag-input {
+  flex: 1;
+}
+.req-tag-hint {
+  font-size: 11px;
+  margin: 0;
+}
+
 /* Edit-profile cache-clear warning (FR-5). */
 .form-warning {
   background: color-mix(in srgb, #b45309 12%, transparent);
@@ -3823,7 +4069,12 @@ tr.row-checked:hover {
   flex-direction: row;
 }
 .board-pagesize select {
-  padding: 3px 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
 }
 .board-pager-range {
   flex: 1;
@@ -4146,11 +4397,14 @@ tr.row-checked:hover {
   height: 100%;
   min-height: 0;
 }
-/* Scrollable content region below the flush toolbar + tiles (mirrors .dup-list). */
+/* Scrollable content region below the flush toolbar + tiles. Flex column so the
+   list scrolls between the controls header and the pinned pager footer. */
 .testcalls-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 16px 20px;
 }
 .testcalls-head {
@@ -4205,6 +4459,9 @@ tr.row-checked:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 .testcalls-card {
   border: 1px solid var(--border);
@@ -4297,14 +4554,23 @@ tr.row-checked:hover {
   font-size: 12px;
 }
 
-/* Test Calls: controls row, collapse toggle, call count. */
+/* Test Calls: controls row (Expand/Collapse all), pinned above the scrollable list. */
 .testcalls-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  flex-shrink: 0;
   margin-bottom: 10px;
+}
+/* Pager footer pinned at the bottom of the view, below the scrollable caller list.
+   Mirrors the .dup-pager / .bugs-md-pager pattern used in other views. */
+.testcalls-pager {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 8px;
 }
 .testcalls-bulk {
   display: flex;
@@ -4544,6 +4810,21 @@ tr.row-checked:hover {
   gap: 4px;
   font-size: 13px;
 }
+/* All form controls in the bug-form (static and dynamic) share the same look
+   as the Affects Version/s multiselect-btn so Summary, Priority, Labels,
+   Description, and createmeta-driven fields render uniformly. */
+.bug-form input,
+.bug-form select,
+.bug-form textarea,
+.bug-form .multiselect-btn {
+  font-family: inherit;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 4px 8px;
+  background: var(--surface);
+  color: var(--text);
+}
 .board-bug {
   padding: 0 4px;
 }
@@ -4600,7 +4881,7 @@ tr.row-checked:hover {
 .bugs-md {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(280px, 360px) 1fr;
+  grid-template-columns: minmax(320px, 420px) 1fr;
   gap: 18px;
   width: 100%;
   min-height: 0;
@@ -4610,7 +4891,7 @@ tr.row-checked:hover {
    right (sized to the detail panel's own width) so the test detail sits beside
    the center bug detail instead of wrapping below it. */
 .bugs-md-with-detail {
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) auto;
 }
 .bugs-md-with-detail .detail {
   position: relative;
@@ -4690,13 +4971,23 @@ tr.row-checked:hover {
 .bugs-md-item-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.bugs-md-item-top .status-pill {
+  margin-left: auto;
 }
 .bugs-md-check {
   margin: 0;
   flex: 0 0 auto;
   cursor: pointer;
+}
+.bugs-md-select-all-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 2px 2px 2px 4px;
 }
 .bugs-md-select-all {
   display: flex;
@@ -4707,6 +4998,9 @@ tr.row-checked:hover {
   color: var(--text-muted);
   flex: 0 0 auto;
   user-select: none;
+}
+.bugs-md-select-count {
+  font-size: 12px;
 }
 .bugs-md-key {
   font-size: 12px;
@@ -4751,6 +5045,148 @@ tr.row-checked:hover {
   font-weight: 600;
   margin: 0 0 14px;
 }
+/* Bug detail card: structured field block shown above the affected-tests table. */
+.bugs-md-detail-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2, var(--surface));
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.bugs-md-detail-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.bugs-md-detail-fields {
+  margin: 8px 0 0;
+  row-gap: 5px;
+}
+/* Extended bug detail: description + defect fields rendered below the field grid. */
+.bugs-md-detail-extra {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bugs-md-detail-extra-field strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #888);
+  margin-bottom: 3px;
+}
+.bugs-md-detail-extra-text {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.bugs-md-detail-extra-loading {
+  margin-top: 8px;
+  font-size: 12px;
+}
+/* Filter row: pill filters left, sort control right, on one line. */
+.bugs-md-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.bugs-md-filter-row .filter-pill-row {
+  margin-bottom: 0;
+}
+/* Pager wrapper: override compact vertical stack to a wrapping row. */
+.bugs-md-pager .pager.pager-compact {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+/* Put the Prev / # / Go / Next nav right next to the rows-per-page selector and
+   let the range text wrap below, so the pager reads "rows per page  < nav >". */
+.bugs-md-pager .board-pager-nav {
+  order: 2;
+}
+.bugs-md-pager .board-pager-range {
+  order: 3;
+  flex-basis: 100%;
+}
+.bugs-md-test-link-filter {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+/* Card meta badges: no-tests (amber/muted) and test-count (subtle). */
+.bugs-md-no-tests {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #fef3c7;
+  color: #92400e;
+  letter-spacing: 0.02em;
+}
+:root[data-theme="dark"] .bugs-md-no-tests {
+  background: #3a2a00;
+  color: #fcd34d;
+}
+.bugs-md-test-count {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+/* 2-column detail fields grid: label value | label value per row. */
+.bugs-md-detail-fields-2col {
+  grid-template-columns: auto 1fr auto 1fr;
+}
+/* Collapsible description toggle button in bug detail extra. */
+.bugs-md-desc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #888);
+  margin-bottom: 3px;
+}
+.bugs-md-desc-toggle:hover {
+  color: var(--text);
+}
+/* ContainerDetailPanel: description markdown section. */
+.container-detail-description {
+  margin-bottom: 1rem;
+}
+
+/* ContainerDetailPanel: run-status histogram chips. */
+.container-detail-run-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
 .sort-control {
   display: inline-flex;
   align-items: center;
@@ -4762,6 +5198,15 @@ tr.row-checked:hover {
 }
 .sort-control .sort-field {
   padding: 2px 6px;
+}
+/* -279: sort-by select inside preconditions toolbar matches precond-search input */
+.precond-list-head .sort-field {
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
 }
 .sort-control .sort-dir {
   padding: 2px 8px;
@@ -4903,6 +5348,11 @@ tr.row-checked:hover {
 }
 .gap-seg .seg-btn { border: none; }
 .gap-file { display: inline-flex; align-items: center; gap: 8px; }
+/* Styled file picker: a .btn-styled label wraps a hidden native input so the
+   control matches the app's buttons instead of the browser's default "Choose
+   File" widget. Clicking the label still opens the file dialog. */
+.gap-file-btn { display: inline-flex; align-items: center; cursor: pointer; }
+.gap-file-btn input[type="file"] { display: none; }
 .gap-file-name { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gap-run {
   display: flex;
@@ -5038,3 +5488,471 @@ tr.row-checked:hover {
 .gap-panel-actions { margin-top: auto; }
 .gap-folder-table { width: 100%; }
 .gap-folder-table td { vertical-align: top; }
+
+/* -273: cap the container picker (SearchableSelect) in the board-head so that
+   long Test Execution summaries cannot push the action buttons to the next
+   line. The multiselect-summary inside already carries text-overflow:ellipsis,
+   so bounding the wrapper is sufficient to trigger truncation. */
+.container-exec-filter {
+  max-width: 260px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.container-exec-filter .multiselect-btn {
+  overflow: hidden;
+}
+
+/* -274: collapsible related-bugs section inside the container detail card.
+   The header acts as a toggle; the body is scrollable and height-capped so
+   even an enormous bug list cannot push the member table below off-screen. */
+.tp-bugs-collapsible {
+  margin: 6px 0 2px;
+}
+.tp-bugs-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.tp-bugs-header:hover {
+  color: var(--text);
+}
+.tp-bugs-chevron {
+  font-size: 9px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+.tp-bugs-body {
+  max-height: 160px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+/* ── Coverage module (parameter-level coverage + canonical reuse) ─────────── */
+.content-coverage { flex: 1; display: flex; overflow: hidden; background: var(--surface-2); }
+.cov-root { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.cov-list {
+  width: 280px; flex-shrink: 0; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.cov-list-head { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border-subtle); }
+.cov-input {
+  flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--surface); color: var(--text); font-size: 13px;
+}
+.cov-canon-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+.cov-canon {
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px; cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cov-canon:hover { background: var(--row-hover); }
+.cov-canon-active { background: var(--row-hover); border-left: 3px solid var(--accent); }
+.cov-canon-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cov-canon-meta { font-size: 11px; color: var(--text-muted); }
+.cov-x {
+  border: none; background: none; color: var(--text-muted); cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 0 4px;
+}
+.cov-x:hover { color: var(--danger-text); }
+.cov-detail { flex: 1; display: flex; flex-direction: column; overflow: auto; padding: 12px 16px; }
+.cov-detail-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cov-detail-head h2 { margin: 0; font-size: 18px; }
+.cov-headline {
+  font-weight: 700; font-size: 15px; padding: 2px 10px; border-radius: 12px;
+  background: var(--surface-sunken); border: 1px solid var(--border);
+}
+.cov-actions { margin-left: auto; display: flex; gap: 8px; }
+.cov-tabs { display: flex; gap: 4px; margin: 12px 0; border-bottom: 1px solid var(--border); }
+.cov-tab {
+  border: none; background: none; padding: 6px 12px; cursor: pointer;
+  color: var(--text-muted); border-bottom: 2px solid transparent; font-size: 13px;
+}
+.cov-tab-active { color: var(--text-strong); border-bottom-color: var(--accent); font-weight: 600; }
+.cov-group { margin-bottom: 16px; }
+.cov-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.cov-group-name { font-weight: 600; }
+.cov-group-pct { font-size: 12px; color: var(--text-muted); }
+.cov-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cov-table td, .cov-table th { padding: 4px 8px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: top; }
+.cov-vlabel { font-family: var(--mono, monospace); }
+.cov-kind {
+  margin-left: 6px; font-size: 10px; text-transform: uppercase; padding: 1px 5px;
+  border-radius: 8px; background: var(--surface-sunken); color: var(--text-muted);
+}
+.cov-optional { opacity: 0.7; }
+.cov-tests { color: var(--text-muted); font-size: 12px; }
+.cov-pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.cov-pass { background: #1f7a3d22; color: #1f7a3d; }
+.cov-fail { background: #b4242422; color: #b42424; }
+.cov-notrun { background: #a9740022; color: #a97400; }
+.cov-gap { background: var(--surface-sunken); color: var(--text-muted); }
+.cov-stale-dot { margin-left: 4px; color: #a97400; cursor: help; }
+.cov-stale {
+  background: #a9740018; border: 1px solid #a9740044; color: var(--text);
+  padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; font-size: 13px;
+}
+/* Parameter sub-header row inside the coverage matrix table */
+.cov-param-head td {
+  background: var(--surface-sunken);
+  border-top: 2px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 5px 8px 4px;
+}
+.cov-param-name { font-weight: 600; font-size: 12px; color: var(--text-strong); }
+.cov-param-pct { text-align: right; font-size: 11px; font-weight: 400; color: var(--text-muted); white-space: nowrap; }
+/* Value rows — indented under their parameter header */
+.cov-vrow .cov-vlabel { padding-left: 22px; }
+.cov-vrow-bullet { margin-right: 4px; color: var(--text-muted); user-select: none; }
+.cov-error { background: #b4242418; border: 1px solid #b4242444; color: var(--danger-text); padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; }
+.cov-notice { background: var(--surface-sunken); border: 1px solid var(--border); padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; font-size: 13px; }
+.cov-empty { color: var(--text-muted); padding: 12px; font-size: 13px; }
+.cov-welcome { max-width: 620px; padding: 8px 4px; color: var(--text); }
+.cov-welcome h2 { margin: 0 0 8px; font-size: 18px; }
+.cov-welcome p { color: var(--text-muted); line-height: 1.5; }
+.cov-welcome ol { margin: 12px 0; padding-left: 20px; line-height: 1.7; }
+.cov-welcome code { background: var(--surface-sunken); padding: 1px 5px; border-radius: 4px; font-family: var(--mono, monospace); }
+.cov-muted { color: var(--text-muted); font-size: 13px; }
+.cov-welcome-actions { display: flex; gap: 10px; margin: 16px 0 8px; flex-wrap: wrap; }
+.cov-addgroup { display: flex; gap: 6px; margin-top: 8px; max-width: 360px; }
+
+/* Coverage modal size modifiers (use standard pending-head / cov-body / pending-actions structure). */
+.map-tests-modal { width: min(92vw, 760px); display: flex; flex-direction: column; max-height: 85vh; }
+.members-modal { width: min(92vw, 560px); display: flex; flex-direction: column; max-height: 85vh; }
+.cr-form-modal { width: min(92vw, 560px); display: flex; flex-direction: column; max-height: 85vh; }
+.cov-picker-modal { width: min(92vw, 640px); display: flex; flex-direction: column; max-height: 85vh; }
+.cov-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
+.cov-picker-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
+
+.cov-cands { max-height: 320px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: 4px; margin: 8px 0; }
+.cov-cand { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--border-subtle); }
+.cov-cand-key { font-family: var(--mono, monospace); font-size: 12px; min-width: 90px; }
+.cov-cand-sum { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cov-manual { display: block; font-size: 12px; color: var(--text-muted); margin: 8px 0; }
+.cov-manual .cov-input { width: 100%; margin-top: 4px; }
+.cov-manual-row { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.cov-manual-row .cov-input { flex: 1; width: auto; margin-top: 0; }
+
+/* ─── Version bar ──────────────────────────────────────────────────────────── */
+.cov-version-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 8px;
+}
+.cov-version-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.cov-select {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.cov-version-inline-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  width: 100%;
+}
+
+/* Version & CR status badges */
+.cov-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cov-badge-planning  { background: #3b5bdb22; color: var(--accent); }
+.cov-badge-beta      { background: #a9740022; color: #a97400; }
+.cov-badge-stable    { background: #1f7a3d22; color: #1f7a3d; }
+.cov-badge-deprecated { background: #6b728022; color: var(--text-muted); }
+
+/* CR status badges */
+.cov-badge-cr-open       { background: #3b5bdb22; color: var(--accent); }
+.cov-badge-cr-accepted   { background: #1f7a3d22; color: #1f7a3d; }
+.cov-badge-cr-rejected   { background: #b4242422; color: #b42424; }
+.cov-badge-cr-withdrawn  { background: #6b728022; color: var(--text-muted); }
+
+/* Risk badges */
+.cov-badge-risk-low    { background: #1f7a3d11; color: #1f7a3d; }
+.cov-badge-risk-medium { background: #a9740011; color: #a97400; }
+.cov-badge-risk-high   { background: #b4242411; color: #b42424; }
+
+/* ─── Versions & CRs tab ──────────────────────────────────────────────────── */
+.cov-versions-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 4px 0;
+}
+
+/* ─── Member version locks ────────────────────────────────────────────────── */
+.cov-member-locks { display: flex; flex-direction: column; gap: 10px; }
+.cov-member-locks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cov-member-locks-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cov-member-locks-table th {
+  text-align: left;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted, #888);
+  border-bottom: 1px solid var(--border, #e0e0e0);
+}
+.cov-member-locks-table td { padding: 6px 8px; border-bottom: 1px solid var(--border, #e0e0e0); }
+.cov-member-key { font-family: monospace; font-size: 12px; }
+.cov-member-current { background: var(--surface-sunken, rgba(0,0,0,.03)); }
+.cov-member-current td:first-child { border-left: 3px solid var(--accent, #1a73e8); }
+.cov-member-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  background: var(--accent, #1a73e8);
+  color: #fff;
+  vertical-align: middle;
+}
+
+/* ─── Change Requests panel ───────────────────────────────────────────────── */
+.cov-cr-panel { display: flex; flex-direction: column; gap: 10px; }
+.cov-cr-header { display: flex; align-items: center; gap: 12px; }
+.cov-section-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-strong); }
+.cov-cr-list { display: flex; flex-direction: column; gap: 6px; }
+.cov-cr-item {
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.cov-cr-item:hover { background: var(--row-hover); }
+.cov-cr-item-active { border-color: var(--accent); background: var(--surface-sunken); }
+.cov-cr-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cov-cr-key { font-family: var(--mono, monospace); font-size: 12px; color: var(--text-muted); min-width: 60px; }
+.cov-cr-title { font-size: 13px; font-weight: 500; flex: 1; }
+.cov-cr-version { font-size: 12px; color: var(--accent); }
+.cov-cr-desc { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
+
+/* CR impact grid */
+.cov-cr-impact {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.cov-cr-tallies { display: flex; gap: 16px; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.cov-cr-grid td, .cov-cr-grid th { padding: 4px 8px; }
+
+/* Form fields */
+.cov-field-label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.cov-field-label .cov-input, .cov-field-label .cov-select { margin-top: 2px; }
+.cov-form-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+.cov-form-row .cov-field-label { flex: 1; min-width: 120px; }
+.cov-textarea { resize: vertical; font-family: inherit; }
+
+/* ─── Version dashboard ───────────────────────────────────────────────────── */
+.cov-version-dashboard { display: flex; flex-direction: column; gap: 20px; }
+.cov-dash-section { display: flex; flex-direction: column; gap: 8px; }
+.cov-dist-bars { display: flex; flex-direction: column; gap: 6px; }
+.cov-dist-row { display: flex; align-items: center; gap: 10px; }
+.cov-dist-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 160px;
+}
+.cov-dist-bar-wrap {
+  flex: 1;
+  height: 12px;
+  background: var(--surface-sunken);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.cov-dist-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 6px;
+  min-width: 4px;
+  transition: width 0.3s ease;
+}
+.cov-dist-count { font-size: 12px; color: var(--text-muted); min-width: 24px; text-align: right; }
+
+/* ── Coverage Guide tab ─────────────────────────────────────────────────── */
+.cov-guide {
+  max-width: 700px;
+  padding: 4px 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.cov-guide-heading {
+  margin: 20px 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+.cov-guide-heading:first-child { margin-top: 4px; }
+.cov-guide-body {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.cov-guide-code {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+}
+.cov-guide-list {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+}
+.cov-guide-tip {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--surface-sunken);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  color: var(--text);
+}
+
+/* Hierarchy diagram */
+.cov-guide-diagram {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  margin: 10px 0 16px;
+}
+.cov-guide-node {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  min-width: 360px;
+  max-width: 540px;
+}
+.cov-guide-node-fn  { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.cov-guide-node-ver { border-color: var(--border-strong); }
+.cov-guide-node-grp { border-color: var(--border-strong); }
+.cov-guide-node-par { border-color: var(--border-strong); }
+.cov-guide-node-val { border-color: var(--border-strong); }
+.cov-guide-node-tst { border-color: #1f7a3d; background: color-mix(in srgb, #1f7a3d 8%, var(--surface)); }
+.cov-guide-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+.cov-guide-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.cov-guide-arrow {
+  font-size: 14px;
+  color: var(--text-muted);
+  padding: 3px 0 3px 22px;
+  user-select: none;
+}
+
+/* Jira structure diagram */
+.cov-guide-jira {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  margin: 10px 0 16px;
+  max-width: 560px;
+}
+.cov-guide-jira-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.cov-guide-jira-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.cov-guide-jira-source  { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.cov-guide-jira-customer { border-color: var(--border-strong); }
+.cov-guide-jira-req     { border-color: var(--border-strong); }
+.cov-guide-jira-tst     { border-color: #1f7a3d; background: color-mix(in srgb, #1f7a3d 8%, var(--surface)); }
+.cov-guide-jira-kind {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.cov-guide-jira-name {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.cov-guide-jira-sep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--text-muted);
+  padding: 0 4px;
+  user-select: none;
+}
+.cov-guide-jira-arrow {
+  font-size: 14px;
+  color: var(--text-muted);
+  padding: 4px 0 4px 24px;
+  user-select: none;
+}

@@ -13,6 +13,7 @@ import {
   ListBugsWithTests,
   BrowserOpenURL,
   errMsg,
+  isDemoUrl,
 } from "../api";
 import type {
   Statistics,
@@ -287,7 +288,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
 
   function openCrossBug(key: string) {
     const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-    const isDemo = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
+    const isDemo = isDemoUrl(jiraUrl);
     if (base && !isDemo && !key.startsWith("NEW-")) {
       BrowserOpenURL(`${base}/browse/${key}`);
     }

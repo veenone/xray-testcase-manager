@@ -12,6 +12,9 @@ export {
   GetSettings,
   SetDefaultProfile,
   SetTheme,
+  SetRequirementLinkType,
+  ListRequirementLinkTypes,
+  SetShowCoverage,
   ListProfiles,
   CreateProfile,
   CreateProfileReusingToken,
@@ -29,6 +32,7 @@ export {
   SyncContainers,
   SyncBugs,
   SyncTestCalls,
+  SyncTests,
   GetSyncState,
   ListSyncLog,
   ListFolders,
@@ -57,6 +61,8 @@ export {
   ListRequirementSources,
   SetRequirementSource,
   RemoveRequirementSource,
+  GetRequirementLinks,
+  SetRequirementLinks,
   GetTestContainers,
   ListContainers,
   AllocateTests,
@@ -79,6 +85,8 @@ export {
   ListComponents,
   ListStatuses,
   ListPriorities,
+  ListProjectComponents,
+  ListProjectFixVersions,
   PreviewImport,
   ImportTests,
   CreateTest,
@@ -92,6 +100,7 @@ export {
   ExportDashboard,
   AnalyzeGap,
   CreateTestsFromGaps,
+  ExportBugsWithRunHistory,
   ExportGapReport,
   CreateSavedView,
   ListSavedViews,
@@ -140,7 +149,10 @@ export {
   ScanAllDuplicateSteps,
   ExcludeFromDuplicates,
   UnexcludeFromDuplicates,
+  GetBugCreateFields,
   CreateBugForTest,
+  CreateRequirement,
+  GetBugDetail,
   ListBugsWithTests,
   ListBugsForContainer,
   GetTestBugs,
@@ -152,8 +164,205 @@ export {
   ApplyJUnitImport,
   AnalyzeJUnitImportNewExec,
   ApplyJUnitImportNewExec,
+  AnalyzeRequirementImport,
+  ExportRequirementImportTemplate,
+  ImportRequirements,
+  // Coverage module (parameter-level coverage + canonical requirement reuse)
+  ListCanonicalRequirements,
+  CreateCanonicalRequirement,
+  RenameCanonicalRequirement,
+  DeleteCanonicalRequirement,
+  SetCanonicalMembers,
+  ListCanonicalReuse,
+  GetParamModel,
+  UpsertCoverageNode,
+  DeleteCoverageNode,
+  GetCoverageReport,
+  ListCoverageGaps,
+  ListCoverageCandidateTests,
+  ListValueTests,
+  SetValueTests,
+  DetectStaleCoverageMappings,
+  ImportCoverageTemplate,
+  ExportCoverageReport,
+  DownloadCoverageTemplate,
+  SeedDemoCoverageExample,
+  SeedPKCS11Reference,
+  SeedEUICCReference,
+  // Coverage Map (project-level panel + relation Sankey + config)
+  ListCoverageProjects,
+  SetCoverageProjects,
+  GetCoverageProjectStatus,
+  GetCoverageRelationSankey,
+  // Versioning + Change Requests (Topic 2)
+  ListVersions,
+  CreateVersion,
+  CloneVersion,
+  RenameVersion,
+  SetVersionStatus,
+  DeleteVersion,
+  SetMemberVersion,
+  ListChangeRequests,
+  CreateChangeRequest,
+  UpdateChangeRequest,
+  DeleteChangeRequest,
+  SetCRDecision,
+  GetVersionDistribution,
+  GetCRAdoption,
+  GetCRImpact,
 } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
+
+// Coverage module data shapes (mirror internal/coverage/*.go JSON tags).
+export interface CanonicalRequirement {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  memberCount: number;
+}
+
+export interface ReuseRow {
+  canonicalId: string;
+  requirementKey: string;
+  projectKey: string;
+  summary: string;
+  status: string;
+  acceptedVersionId: string;
+}
+
+export interface ParamValue {
+  id: string;
+  valueLabel: string;
+  valueKind: string; // value | errorcode | boundary
+  errorCode: string;
+  isRequired: boolean;
+  notes: string;
+  sortOrder: number;
+}
+
+export interface Parameter {
+  id: string;
+  name: string;
+  kind: string;
+  description: string;
+  sortOrder: number;
+  values: ParamValue[];
+}
+
+export interface ParamGroup {
+  id: string;
+  name: string;
+  sortOrder: number;
+  parameters: Parameter[];
+}
+
+export interface ParamModel {
+  versionId: string;
+  groups: ParamGroup[];
+}
+
+// NodeEdit is the upsert payload for a group/parameter/value.
+export interface NodeEdit {
+  kind: string; // group | parameter | value
+  canonicalId?: string;
+  groupId?: string;
+  parameterId?: string;
+  id?: string;
+  name: string;
+  paramKind?: string;
+  valueKind?: string;
+  errorCode?: string;
+  isRequired?: boolean;
+  notes?: string;
+  sortOrder?: number;
+}
+
+export interface ValueCoverage {
+  valueId: string;
+  testKeys: string[];
+  tested: boolean;
+  runStatus: string; // UNCOVERED | NOTRUN | PASSED | FAILED
+  isRequired: boolean;
+}
+
+export interface GroupCoverage {
+  groupId: string;
+  name: string;
+  total: number;
+  tested: number;
+  percent: number;
+}
+
+export interface CoverageReport {
+  versionId: string;
+  totalValues: number;
+  testedValues: number;
+  percent: number;
+  groups: GroupCoverage[];
+  values: Record<string, ValueCoverage>;
+}
+
+export interface CoverageGap {
+  groupName: string;
+  paramName: string;
+  valueId: string;
+  valueLabel: string;
+  valueKind: string;
+  errorCode: string;
+}
+
+export interface CandidateTest {
+  testKey: string;
+  summary: string;
+  status: string;
+}
+
+export interface StaleMapping {
+  valueId: string;
+  valueLabel: string;
+  testKey: string;
+}
+
+export interface CoverageImportSummary {
+  groups: number;
+  parameters: number;
+  values: number;
+  mappedTests: number;
+  skipped: number;
+  warnings: string[];
+}
+
+// ProjectConfig mirrors coverage.ProjectConfig — one in-scope project for the Coverage Map.
+export interface ProjectConfig {
+  projectKey: string;
+  role: string; // "source" | "customer"
+  label: string;
+  sortOrder: number;
+}
+
+// ProjectCoverageRow mirrors coverage.ProjectCoverageRow — per-project coverage rollup.
+export interface ProjectCoverageRow {
+  projectKey: string;
+  role: string;
+  label: string;
+  requirementCount: number;
+  functionsReused: number;
+  coveredValues: number;
+  totalValues: number;
+  percent: number;
+}
+
+export interface PKCSSeedSummary {
+  features: number;
+  requirements: number;
+  tests: number;
+  versions: number;
+  changeRequests: number;
+  mappings: number;
+}
 
 // GapTest mirrors testrepo.GapTest — one comparable test row.
 export interface GapTest {
@@ -198,6 +407,8 @@ export interface HealthInfo {
 export interface Settings {
   defaultProfileId: string;
   theme: string; // "light" | "dark" | "system" | "" (= light)
+  requirementLinkType: string; // Jira issue-link type for Test->Requirement coverage; default "tested by"
+  showCoverage: boolean; // reveal the opt-in, hidden-by-default Coverage tab
 }
 
 export interface Profile {
@@ -301,6 +512,9 @@ export interface Precondition {
   summary: string;
   type: string;
   description: string;
+  // condition is the Xray precondition definition text, distinct from the Jira
+  // issue description. Empty when not set or when synced from live Jira.
+  condition: string;
 }
 
 // PreconditionUsage mirrors testrepo.PreconditionUsage — a Precondition plus
@@ -310,6 +524,9 @@ export interface PreconditionUsage {
   summary: string;
   type: string;
   description: string;
+  // condition is the Xray precondition definition text, distinct from the Jira
+  // issue description. Empty when not set or when synced from live Jira.
+  condition: string;
   testCount: number;
 }
 
@@ -330,6 +547,12 @@ export interface Requirement {
   summary: string;
   status: string;
   updated: string;
+  priority: string;
+  components: string;
+  fixVersions: string;
+  sprint: string;
+  description: string;
+  epicKey: string;
 }
 
 // RequirementCoverage mirrors testrepo.RequirementCoverage — a requirement plus
@@ -342,6 +565,11 @@ export interface RequirementCoverage {
   status: string;
   testCount: number;
   coverage: string;
+  priority: string;
+  components: string;
+  fixVersions: string;
+  sprint: string;
+  description: string;
 }
 
 // RequirementTest mirrors testrepo.RequirementTest — one Test covering a
@@ -361,6 +589,15 @@ export interface RequirementSource {
   scopeJql: string;
 }
 
+// ReqReqLink mirrors testrepo.ReqReqLink — one Requirement->Requirement
+// directional issue link (e.g. "requires").
+export interface ReqReqLink {
+  fromKey: string;
+  toKey: string;
+  linkType: string;
+  linkId: string;
+}
+
 // Container mirrors testrepo.Container — a Test Set, Test Plan or Test
 // Execution (kind = "testset" / "testplan" / "testexec").
 export interface Container {
@@ -373,6 +610,7 @@ export interface Container {
   issueType: string;  // Jira issuetype name (e.g. "Sub Test Execution"); informational
   environments: string[]; // Xray Test Environments (Test Executions only; empty otherwise)
   fixVersions: string[]; // Jira Fix Version(s), read-only (Test Executions only; empty otherwise)
+  description: string;  // Jira issue description (plain text)
 }
 
 // AllocateResult mirrors testrepo.AllocateResult — the outcome of a bulk
@@ -423,6 +661,7 @@ export interface TestPlanBoardRow {
 export interface TestPlanBoard {
   key: string;
   summary: string;
+  description: string;
   rows: TestPlanBoardRow[];
   runCounts: Bucket[];
 }
@@ -655,6 +894,7 @@ export interface Statistics {
   updatedTrend: Bucket[];
   byRunStatus: Bucket[];
   byCoverage: Bucket[];
+  byRequirement: Bucket[];
 }
 
 // Duplicate management (mirrors testrepo shapes).
@@ -713,6 +953,33 @@ export interface ImportResult {
   errors: ImportError[];
 }
 
+// RequirementImportRow mirrors testrepo.RequirementImportRow — one parsed file
+// row with its existence classification. status is "new" or "existing".
+export interface RequirementImportRow {
+  summary: string;
+  description: string;
+  priority: string;
+  components: string;
+  fixVersions: string;
+  status: string;
+}
+
+// RequirementImportPreview mirrors testrepo.RequirementImportPreview — the
+// parse + classify result shown before the user commits.
+export interface RequirementImportPreview {
+  rows: RequirementImportRow[];
+  newCount: number;
+  existingCount: number;
+}
+
+// RequirementImportResult mirrors testrepo.RequirementImportResult — the
+// outcome of a completed import.
+export interface RequirementImportResult {
+  created: number;
+  skippedExisting: number;
+  errors: ImportError[];
+}
+
 // StepDraft mirrors testrepo.StepDraft — one step in the New Test form (FR-1).
 export interface StepDraft {
   action: string;
@@ -761,6 +1028,36 @@ export interface Sankey {
   links: SankeyLink[];
 }
 
+// BugFieldOption mirrors jira.BugFieldOption — one allowed value for a
+// BugCreateField select or version field.
+export interface BugFieldOption {
+  id: string;
+  value: string;
+}
+
+// BugCreateField mirrors jira.BugCreateField — one required field on the bug
+// issue type's create screen beyond project/issuetype/summary/description/
+// priority/labels. Type is: "text" | "option" | "version" | "versions" |
+// "number" | "date" | "array".
+export interface BugCreateField {
+  id: string;
+  name: string;
+  required: boolean;
+  type: string;
+  allowedValues: BugFieldOption[];
+}
+
+// BugDetail mirrors jira.BugDetail - the extended fields for a defect issue
+// fetched lazily on detail-panel open (description + three custom fields).
+export interface BugDetail {
+  description: string;
+  defectOrigin: string;
+  defectAnalysis: string;
+  correctionDetails: string;
+  reporter: string;
+  severity: string;
+}
+
 // Bug mirrors testrepo.Bug - a cached defect issue (possibly cross-project)
 // linked to Tests. Returned by ListBugsForContainer for an execution's related
 // defects.
@@ -779,9 +1076,13 @@ export interface Bug {
 export interface BugWithTests {
   key: string;
   projectKey: string;
+  // issueType is the Jira issue type of the bug (e.g. "Bug", "Defect").
+  issueType: string;
   summary: string;
   status: string;
   priority: string;
+  // updated is the Jira last-updated timestamp for the bug issue.
+  updated: string;
   testKeys: string[];
 }
 
@@ -822,6 +1123,18 @@ export interface TestRunEntry {
   defects: string[];
   createdAt: string;
   updatedAt: string;
+  // execIssueType is the execution's Jira issue type ("Test Execution" or "Sub
+  // Test Execution"); execParentKey / execParentSummary identify a sub-task
+  // execution's parent issue (empty for standalone executions).
+  execIssueType: string;
+  execParentKey: string;
+  execParentSummary: string;
+  // execCreated, execUpdated, execResolved are the Test Execution issue's
+  // created, updated, and resolution timestamps (ISO-8601, empty when unknown
+  // or unresolved).
+  execCreated: string;
+  execUpdated: string;
+  execResolved: string;
 }
 
 // RunRollup mirrors testrepo.RunRollup — run-result roll-up for a Test Plan or
@@ -906,8 +1219,86 @@ export interface JUnitNewExecResult {
   failed: string[];
 }
 
+// Version mirrors coverage.Version — one named snapshot of a canonical requirement's model.
+export interface Version {
+  id: string;
+  name: string;
+  status: string; // planning | beta | stable | deprecated
+  notes: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+// ChangeRequest mirrors coverage.ChangeRequest — a proposed change scoped to one canonical.
+export interface ChangeRequest {
+  id: string;
+  crKey: string;
+  title: string;
+  status: string; // open | accepted | rejected | withdrawn
+  targetVersionId: string;
+  risk: string; // low | medium | high
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// CRDecision mirrors coverage.CRDecision — one member requirement's decision on a CR.
+export interface CRDecision {
+  requirementKey: string;
+  projectKey: string;
+  decision: string; // pending | can_accept | cannot_accept
+  note: string;
+}
+
+// CRImpactResult mirrors coverage.CRImpactResult — the full impact picture for one CR.
+export interface CRImpactResult {
+  cr: ChangeRequest;
+  decisions: CRDecision[];
+  canAccept: number;
+  cannotAccept: number;
+  pending: number;
+}
+
+// VersionShare mirrors coverage.VersionShare — member count per version for the distribution chart.
+export interface VersionShare {
+  versionId: string;
+  versionName: string;
+  status: string;
+  memberCount: number;
+}
+
+// CRShare mirrors coverage.CRShare — adoption rollup per CR for the dashboard.
+export interface CRShare {
+  crId: string;
+  title: string;
+  status: string;
+  canAccept: number;
+  cannotAccept: number;
+  pending: number;
+}
+
 // errMsg renders any thrown value (unknown in strict mode) as a string.
 export function errMsg(e: unknown): string {
   if (e instanceof Error) return e.message;
   return typeof e === "string" ? e : String(e);
+}
+
+// isDemoUrl reports whether a profile's Jira URL selects demo mode: "demo", a
+// "demo:" / "mock:" prefix, or a "demo-" variant like "demo-pkcs" that picks a
+// built-in dataset. The single source of truth for the frontend — keep in sync
+// with isDemoURL in the Go backend (internal/jira/demo.go) and the validation in
+// ProfileForm.tsx.
+export function isDemoUrl(url?: string): boolean {
+  return /^(demo|demo[-:].*|mock:.*)$/i.test((url ?? "").trim());
+}
+
+// demoVariant returns the named demo dataset variant embedded in a profile's
+// Jira URL. Returns "pkcs" for demo-pkcs (or demo-pkcs:...), "euicc" for
+// demo-euicc (or demo-euicc:...), or "" for plain demo / non-demo profiles.
+// Mirrors demoVariant in the Go backend (internal/jira/demo_theme.go).
+export function demoVariant(url?: string): "pkcs" | "euicc" | "" {
+  const s = (url ?? "").trim().toLowerCase();
+  if (s === "demo-pkcs" || s.startsWith("demo-pkcs:")) return "pkcs";
+  if (s === "demo-euicc" || s.startsWith("demo-euicc:")) return "euicc";
+  return "";
 }

@@ -3,6 +3,7 @@ package jira
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -91,5 +92,125 @@ func TestListBugsSpanningDefectPartialScope(t *testing.T) {
 	}
 	if len(links) == 0 {
 		t.Errorf("expected at least one in-scope link for %s", target)
+	}
+}
+
+// TestGetBugDetailDemoNonEmpty verifies that GetBugDetail in demo mode returns
+// a non-empty BugDetail with all four fields populated, and that DefectOrigin
+// is one of the expected values.
+func TestGetBugDetailDemoNonEmpty(t *testing.T) {
+	c := NewClient("demo", "")
+	ctx := context.Background()
+
+	keys := []string{"BUGS-100", "BUGS-101", "SUP-200", "BUGS-1"}
+	validOrigins := map[string]bool{
+		"Code": true, "Design": true, "Requirements": true, "Test": true,
+	}
+	for _, key := range keys {
+		d, err := c.GetBugDetail(ctx, key)
+		if err != nil {
+			t.Fatalf("GetBugDetail(%s): %v", key, err)
+		}
+		if d.Description == "" {
+			t.Errorf("GetBugDetail(%s): empty Description", key)
+		}
+		if !validOrigins[d.DefectOrigin] {
+			t.Errorf("GetBugDetail(%s): DefectOrigin = %q, want one of Code/Design/Requirements/Test", key, d.DefectOrigin)
+		}
+		if d.DefectAnalysis == "" {
+			t.Errorf("GetBugDetail(%s): empty DefectAnalysis", key)
+		}
+		if d.CorrectionDetails == "" {
+			t.Errorf("GetBugDetail(%s): empty CorrectionDetails", key)
+		}
+	}
+}
+
+// TestGetBugDetailDemoDeterministic verifies that the same key always returns
+// the same BugDetail (no time.Now / rand) and that different keys may return
+// different DefectOrigin values.
+func TestGetBugDetailDemoDeterministic(t *testing.T) {
+	c := NewClient("demo", "")
+	ctx := context.Background()
+
+	first, err := c.GetBugDetail(ctx, "BUGS-100")
+	if err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	second, err := c.GetBugDetail(ctx, "BUGS-100")
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if first != second {
+		t.Errorf("non-deterministic: first=%+v second=%+v", first, second)
+	}
+	// Confirm the fixed strings do not contain em dashes.
+	for _, s := range []string{first.Description, first.DefectAnalysis, first.CorrectionDetails} {
+		if strings.Contains(s, "—") {
+			t.Errorf("em dash found in demo BugDetail: %q", s)
+		}
+	}
+}
+
+// TestListProjectBugsDemoNonEmpty verifies that ListProjectBugs in demo mode
+// returns the full bug seed (deduped, non-empty) regardless of projKey.
+func TestListProjectBugsDemoNonEmpty(t *testing.T) {
+	c := NewClient("demo", "")
+	ctx := context.Background()
+
+	bugs, err := c.ListProjectBugs(ctx, "BUGS", "Bug")
+	if err != nil {
+		t.Fatalf("ListProjectBugs: %v", err)
+	}
+	if len(bugs) == 0 {
+		t.Fatal("expected a non-empty bug list from demo ListProjectBugs")
+	}
+	// All keys must be unique.
+	seen := map[string]bool{}
+	for _, b := range bugs {
+		if seen[b.Key] {
+			t.Errorf("duplicate key %s in ListProjectBugs result", b.Key)
+		}
+		seen[b.Key] = true
+	}
+}
+
+// TestSyncBugsMergeDedup verifies the merge-dedup logic: a bug in both the
+// project-wide set and the harvest yields one record (project-wide wins for
+// the Updated field), and a bug only in the harvest is also present.
+func TestSyncBugsMergeDedup(t *testing.T) {
+	// project-wide bugs: BUGS-1 (with Updated), BUGS-2 (with Updated)
+	projBugs := []Bug{
+		{Key: "BUGS-1", ProjectKey: "BUGS", IssueType: "Bug", Summary: "proj only one", Updated: "2024-01-01"},
+		{Key: "BUGS-2", ProjectKey: "BUGS", IssueType: "Bug", Summary: "proj two", Updated: "2024-01-02"},
+	}
+	// harvest bugs: BUGS-2 (same key, no Updated), BUGS-3 (cross-project, not in proj)
+	harvestBugs := []Bug{
+		{Key: "BUGS-2", ProjectKey: "BUGS", IssueType: "Bug", Summary: "harvest two"},
+		{Key: "BUGS-3", ProjectKey: "BUGS", IssueType: "Bug", Summary: "harvest three"},
+	}
+
+	// Replicate the merge logic from syncBugs.
+	merged := make(map[string]Bug, len(projBugs)+len(harvestBugs))
+	for _, b := range projBugs {
+		merged[b.Key] = b
+	}
+	for _, b := range harvestBugs {
+		if _, exists := merged[b.Key]; !exists {
+			merged[b.Key] = b
+		}
+	}
+
+	if len(merged) != 3 {
+		t.Fatalf("want 3 merged bugs (BUGS-1, BUGS-2, BUGS-3), got %d", len(merged))
+	}
+	if b := merged["BUGS-2"]; b.Updated != "2024-01-02" {
+		t.Errorf("BUGS-2: project-wide record (with Updated) should win; got Updated=%q", b.Updated)
+	}
+	if b := merged["BUGS-3"]; b.Summary != "harvest three" {
+		t.Errorf("BUGS-3 (harvest-only): not present or wrong: %+v", b)
+	}
+	if b := merged["BUGS-1"]; b.Summary != "proj only one" {
+		t.Errorf("BUGS-1 (proj-only): not present or wrong: %+v", b)
 	}
 }

@@ -428,3 +428,18 @@ func TestParsePlanKeys(t *testing.T) {
 		t.Errorf("empty: got %v", got)
 	}
 }
+
+// TestDemoSubExecRunsNonEmpty confirms sub-task Test Executions now carry demo
+// runs, so the per-test Run history includes them (matching the live sync).
+func TestDemoSubExecRunsNonEmpty(t *testing.T) {
+	r1 := demoTestRuns("DEMO-STE-1")
+	r2 := demoTestRuns("DEMO-STE-2")
+	if len(r1) == 0 || len(r2) == 0 {
+		t.Fatalf("expected demo sub-task exec runs, got STE-1=%d STE-2=%d", len(r1), len(r2))
+	}
+	for _, run := range r1 {
+		if run.TestKey == "" || run.Status == "" {
+			t.Errorf("sub-task run missing key/status: %+v", run)
+		}
+	}
+}

@@ -6,19 +6,26 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"xray-test-manager/internal/store"
 )
 
 const (
-	keyDefaultProfileID = "default_profile_id"
-	keyTheme            = "theme"
+	keyDefaultProfileID    = "default_profile_id"
+	keyTheme               = "theme"
+	keyRequirementLinkType = "requirement_link_type"
+	keyShowCoverage        = "show_coverage"
 )
 
 // Settings holds the global application preferences.
 type Settings struct {
-	DefaultProfileID string `json:"defaultProfileId"`
-	Theme            string `json:"theme"` // "light" | "dark" | "system" | "" (= light)
+	DefaultProfileID    string `json:"defaultProfileId"`
+	Theme               string `json:"theme"`               // "light" | "dark" | "system" | "" (= light)
+	RequirementLinkType string `json:"requirementLinkType"` // issue-link type for Test->Requirement coverage; default "tested by"
+	// ShowCoverage reveals the Coverage top-nav tab. The Coverage module is
+	// opt-in, so it is hidden by default until the user enables it.
+	ShowCoverage bool `json:"showCoverage"`
 }
 
 // Manager reads and writes global settings.
@@ -32,6 +39,7 @@ func NewManager(s *store.Store) *Manager {
 }
 
 // Get returns the current settings, with zero values for anything unset.
+// RequirementLinkType defaults to "tested by" when no value has been persisted.
 func (m *Manager) Get() (Settings, error) {
 	var s Settings
 	def, err := m.value(keyDefaultProfileID)
@@ -42,9 +50,28 @@ func (m *Manager) Get() (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
+	rlt, err := m.value(keyRequirementLinkType)
+	if err != nil {
+		return Settings{}, err
+	}
+	showCov, err := m.value(keyShowCoverage)
+	if err != nil {
+		return Settings{}, err
+	}
 	s.DefaultProfileID = def
 	s.Theme = theme
+	if rlt == "" {
+		rlt = "tested by"
+	}
+	s.RequirementLinkType = rlt
+	// Default false (hidden) when unset or unparsable.
+	s.ShowCoverage, _ = strconv.ParseBool(showCov)
 	return s, nil
+}
+
+// SetShowCoverage records whether the Coverage top-nav tab is shown.
+func (m *Manager) SetShowCoverage(v bool) error {
+	return m.setValue(keyShowCoverage, strconv.FormatBool(v))
 }
 
 // SetDefaultProfileID records which profile is auto-selected on launch.
@@ -55,6 +82,13 @@ func (m *Manager) SetDefaultProfileID(id string) error {
 // SetTheme records the colour theme preference.
 func (m *Manager) SetTheme(theme string) error {
 	return m.setValue(keyTheme, theme)
+}
+
+// SetRequirementLinkType records which Jira issue-link type is used when linking
+// a Test to a Requirement (FR-13 / #275). An empty name clears the explicit
+// setting, reverting to auto-resolve on the next commit.
+func (m *Manager) SetRequirementLinkType(name string) error {
+	return m.setValue(keyRequirementLinkType, name)
 }
 
 func (m *Manager) value(key string) (string, error) {

@@ -27,10 +27,14 @@ type BugLink struct {
 type BugWithTests struct {
 	Key        string   `json:"key"`
 	ProjectKey string   `json:"projectKey"`
+	// IssueType is the Jira issue type of the bug (e.g. "Bug", "Defect").
+	IssueType string   `json:"issueType"`
 	Summary    string   `json:"summary"`
 	Status     string   `json:"status"`
 	Priority   string   `json:"priority"`
-	TestKeys   []string `json:"testKeys"`
+	// Updated is the Jira last-updated timestamp for the bug issue.
+	Updated  string   `json:"updated"`
+	TestKeys []string `json:"testKeys"`
 }
 
 // TestBug is a bug linked to one Test, for the test-detail section.
@@ -53,13 +57,19 @@ type BugTest struct {
 }
 
 // BugDraft is the payload for creating a new bug from a failed test.
+// Fields carries any extra field values collected from the createmeta-driven
+// Create Bug form (keyed by Jira field id, values already shaped for the POST
+// body: {"id":...} for options, [{"id":...}] for versions, plain string for
+// text/number/date). It is serialised into the pending_change and forwarded to
+// CreateBug on commit.
 type BugDraft struct {
-	ProjectKey  string   `json:"projectKey"`
-	IssueType   string   `json:"issueType"`
-	Summary     string   `json:"summary"`
-	Description string   `json:"description"`
-	Priority    string   `json:"priority"`
-	Labels      []string `json:"labels"`
+	ProjectKey  string         `json:"projectKey"`
+	IssueType   string         `json:"issueType"`
+	Summary     string         `json:"summary"`
+	Description string         `json:"description"`
+	Priority    string         `json:"priority"`
+	Labels      []string       `json:"labels"`
+	Fields      map[string]any `json:"fields,omitempty"`
 }
 
 // bugLinkSnap mirrors reqLinkSnap: a Test link snapshot for discard.
@@ -79,6 +89,25 @@ func (r *Repository) ProfileBugIssueType(profileID string) string {
 		return "Bug"
 	}
 	return t
+}
+
+// ProfileBugProjectMode returns the profile's bug-project mode
+// ("test" | "execution" | "dedicated"), defaulting to "test".
+func (r *Repository) ProfileBugProjectMode(profileID string) string {
+	var m string
+	err := r.db.QueryRow(`SELECT bug_project_mode FROM profiles WHERE id = ?`, profileID).Scan(&m)
+	if err != nil || strings.TrimSpace(m) == "" {
+		return "test"
+	}
+	return strings.TrimSpace(m)
+}
+
+// ProfileBugProjectKey returns the profile's dedicated bug project key (non-empty
+// only when bug_project_mode = "dedicated").
+func (r *Repository) ProfileBugProjectKey(profileID string) string {
+	var k string
+	_ = r.db.QueryRow(`SELECT bug_project_key FROM profiles WHERE id = ?`, profileID).Scan(&k)
+	return strings.TrimSpace(k)
 }
 
 // ReplaceAllBugs reconciles the cached bug issues for a profile (full replace on
@@ -151,8 +180,41 @@ func (r *Repository) GetTestBugs(profileID, testKey string) ([]TestBug, error) {
 	return out, rows.Err()
 }
 
+// latestRunByTest returns, per test key, the run status of that test's most
+// recent run from the test_run table, ordered by finished_at DESC, then
+// updated_at DESC, then exec_key DESC for a stable tie-break. Tests with no
+// test_run row are absent from the map.
+func (r *Repository) latestRunByTest(profileID string) (map[string]string, error) {
+	rows, err := r.db.Query(
+		`SELECT test_key, run_status
+		 FROM (
+		   SELECT test_key, run_status,
+		          ROW_NUMBER() OVER (
+		            PARTITION BY test_key
+		            ORDER BY finished_at DESC, updated_at DESC, exec_key DESC
+		          ) AS rn
+		   FROM test_run
+		   WHERE profile_id = ?
+		 )
+		 WHERE rn = 1`,
+		profileID)
+	if err != nil {
+		return nil, fmt.Errorf("latest run by test: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var testKey, status string
+		if err := rows.Scan(&testKey, &status); err != nil {
+			return nil, err
+		}
+		out[testKey] = status
+	}
+	return out, rows.Err()
+}
+
 // ListTestsForBug returns the Tests a bug affects, each with its consolidated
-// run status — for the bug detail pane. Mirrors ListTestsForRequirement.
+// run status - for the bug detail pane. Mirrors ListTestsForRequirement.
 //
 // LEFT JOINs both the local test_case cache and the external_test cache (a
 // cross-project member of an execution lives only in the latter), COALESCEing
@@ -175,7 +237,14 @@ func (r *Repository) ListTestsForBug(profileID, bugKey string) ([]BugTest, error
 	}
 	defer rows.Close()
 
-	runByTest, err := r.consolidatedRunByTest(profileID)
+	// latestRunByTest reads test_run (same source as the run-history breakdown)
+	// and returns the most recent run status per test. Fall back to
+	// consolidatedRunByTest for tests with no test_run rows yet.
+	latestRun, err := r.latestRunByTest(profileID)
+	if err != nil {
+		return nil, err
+	}
+	consolidatedRun, err := r.consolidatedRunByTest(profileID)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +263,11 @@ func (r *Repository) ListTestsForBug(profileID, bugKey string) ([]BugTest, error
 		} else if i := strings.LastIndex(bt.Key, "-"); i > 0 {
 			bt.Project = bt.Key[:i]
 		}
-		bt.RunStatus = runByTest[bt.Key]
+		if s, ok := latestRun[bt.Key]; ok {
+			bt.RunStatus = s
+		} else {
+			bt.RunStatus = consolidatedRun[bt.Key]
+		}
 		out = append(out, bt)
 	}
 	return out, rows.Err()
@@ -283,7 +356,7 @@ func (r *Repository) UpsertBugLinks(profileID string, links []BugLink) error {
 // the Bugs panel. Ordered by project then key.
 func (r *Repository) ListBugsWithTests(profileID string) ([]BugWithTests, error) {
 	rows, err := r.db.Query(
-		`SELECT jira_key, project_key, summary, status, priority
+		`SELECT jira_key, project_key, issue_type, summary, status, priority, updated_at
 		 FROM bug WHERE profile_id = ? ORDER BY project_key, jira_key`, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("list bugs: %w", err)
@@ -293,7 +366,7 @@ func (r *Repository) ListBugsWithTests(profileID string) ([]BugWithTests, error)
 	idx := map[string]int{}
 	for rows.Next() {
 		var b BugWithTests
-		if err := rows.Scan(&b.Key, &b.ProjectKey, &b.Summary, &b.Status, &b.Priority); err != nil {
+		if err := rows.Scan(&b.Key, &b.ProjectKey, &b.IssueType, &b.Summary, &b.Status, &b.Priority, &b.Updated); err != nil {
 			return nil, err
 		}
 		b.TestKeys = []string{}
@@ -320,4 +393,27 @@ func (r *Repository) ListBugsWithTests(profileID string) ([]BugWithTests, error)
 		}
 	}
 	return out, lrows.Err()
+}
+
+// BugAffectedTestKeys returns the distinct test keys that have at least one
+// bug linked to them for this profile, in ascending key order.
+func (r *Repository) BugAffectedTestKeys(profileID string) ([]string, error) {
+	rows, err := r.db.Query(
+		`SELECT DISTINCT test_key FROM test_bug
+		 WHERE profile_id = ?
+		 ORDER BY test_key`,
+		profileID)
+	if err != nil {
+		return nil, fmt.Errorf("bug affected test keys: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
 }

@@ -43,12 +43,15 @@ function normalizeJiraUrl(url: string): string {
   return url.trim().replace(/[\s/]+$/, "");
 }
 
-// jiraUrlError validates the Jira base URL. Demo URLs (demo / mock) are allowed;
-// otherwise it must be a well-formed http(s) URL with a host and no spaces.
+// jiraUrlError validates the Jira base URL. Demo URLs are allowed — "demo", a
+// "demo:" / "mock:" prefix, or a "demo-" suffixed variant like "demo-pkcs" (used
+// to pick a specific built-in demo dataset); otherwise it must be a well-formed
+// http(s) URL with a host and no spaces. Keep in sync with isDemoURL in the Go
+// backend (internal/jira/demo.go).
 function jiraUrlError(url: string): string {
   const u = normalizeJiraUrl(url);
   if (u === "") return "";
-  if (/^(demo|(demo|mock):.*)$/i.test(u)) return "";
+  if (/^(demo|demo[-:].*|mock:.*)$/i.test(u)) return "";
   if (/\s/.test(u)) {
     return "The URL must not contain spaces.";
   }

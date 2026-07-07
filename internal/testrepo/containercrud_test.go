@@ -103,3 +103,60 @@ func TestDeleteLocallyCreatedContainerCancelsCreate(t *testing.T) {
 		t.Errorf("create-then-delete should leave no pending rows; got %+v", changes)
 	}
 }
+
+// TestUpsertContainerLinksIsAdditive verifies that UpsertContainerLinks does
+// not wipe existing links (unlike ReplaceAllContainerLinks) and dedupes by the
+// primary key (profile_id, container_key, test_key).
+func TestUpsertContainerLinksIsAdditive(t *testing.T) {
+	repo := newRepo(t)
+	const profileID = "p1"
+
+	// Seed two test cases and two containers.
+	if err := repo.UpsertTests(profileID, []testrepo.TestCase{
+		{Key: "DEMO-1", ID: "1", Summary: "Login"},
+		{Key: "DEMO-2", ID: "2", Summary: "Logout"},
+	}); err != nil {
+		t.Fatalf("seed tests: %v", err)
+	}
+	if err := repo.UpsertContainers(profileID, []testrepo.Container{
+		{Key: "DEMO-TE-1", Kind: "testexec", Summary: "In-project exec"},
+		{Key: "XPROJ-STE-1", Kind: "testexec", Summary: "Cross-project sub-exec"},
+	}); err != nil {
+		t.Fatalf("seed containers: %v", err)
+	}
+
+	// Seed the in-project link via ReplaceAllContainerLinks (wipe-and-replace).
+	if err := repo.ReplaceAllContainerLinks(profileID, []testrepo.ContainerLink{
+		{ContainerKey: "DEMO-TE-1", TestKey: "DEMO-1", RunStatus: "PASS"},
+	}); err != nil {
+		t.Fatalf("seed project links: %v", err)
+	}
+
+	// UpsertContainerLinks should add the cross-project link WITHOUT wiping DEMO-TE-1.
+	if err := repo.UpsertContainerLinks(profileID, []testrepo.ContainerLink{
+		{ContainerKey: "XPROJ-STE-1", TestKey: "DEMO-1", RunStatus: "FAIL"},
+		{ContainerKey: "XPROJ-STE-1", TestKey: "DEMO-2", RunStatus: "TODO"},
+		// Duplicate: same (container, test) -- should not error or duplicate.
+		{ContainerKey: "XPROJ-STE-1", TestKey: "DEMO-1", RunStatus: "FAIL"},
+	}); err != nil {
+		t.Fatalf("UpsertContainerLinks: %v", err)
+	}
+
+	// The in-project link must still exist (additive, not wiped).
+	roll, err := repo.GetRunRollup(profileID, "DEMO-TE-1")
+	if err != nil {
+		t.Fatalf("GetRunRollup: %v", err)
+	}
+	if roll.Total != 1 {
+		t.Errorf("DEMO-TE-1 should still have 1 member after UpsertContainerLinks, got %d", roll.Total)
+	}
+
+	// The cross-project exec should now have 2 distinct members (duplicate collapsed).
+	roll2, err := repo.GetRunRollup(profileID, "XPROJ-STE-1")
+	if err != nil {
+		t.Fatalf("GetRunRollup cross-project: %v", err)
+	}
+	if roll2.Total != 2 {
+		t.Errorf("XPROJ-STE-1 should have 2 members, got %d", roll2.Total)
+	}
+}

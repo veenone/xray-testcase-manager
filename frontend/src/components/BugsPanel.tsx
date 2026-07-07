@@ -9,15 +9,20 @@ import {
   AllocateTests,
   BrowserOpenURL,
   GetTestRunHistory,
+  GetBugDetail,
+  ExportBugsWithRunHistory,
   errMsg,
+  isDemoUrl,
 } from "../api";
-import type { BugWithTests, BugTest, TestRunEntry, Container } from "../api";
+import type { BugWithTests, BugTest, TestRunEntry, Container, BugDetail } from "../api";
 import { formatDateTime } from "../dates";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
 import { TestDetail } from "./TestDetail";
+import { ContainerDetailPanel } from "./ContainerDetailPanel";
 import { usePrompt } from "./usePrompt";
 import { keyCompare, cmpStr, applyDir } from "../sort";
+import { Markdown } from "./Markdown";
 
 interface Props {
   profileId: string;
@@ -68,17 +73,40 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [pageSize, setPageSize] = useViewState(profileId, "bugs", "pageSize", 5);
   const [sortField, setSortField] = useViewState(profileId, "bugs", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "bugs", "sortDesc", true);
+  const [testFilter, setTestFilter] = useViewState<"all" | "with" | "without">(profileId, "bugs", "testFilter", "all");
   const [syncing, setSyncing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const { prompt, promptUI } = usePrompt();
   // Local refresh nonce: bumped after a bugs-only sync to re-pull the list
   // without forcing a full profile refresh.
   const [nonce, setNonce] = useState(0);
 
-  // In-view read-only test detail sidebar: detailKey is session-persisted so
-  // returning to the Bugs view restores the open detail; detailVersion is
-  // ephemeral (bumped to force a re-fetch on re-open).
+  // Extended bug detail (description + defect custom fields) fetched lazily
+  // when a bug is selected, bypassed for NEW- keys.
+  const [bugDetail, setBugDetail] = useState<BugDetail | null>(null);
+  const [bugDetailLoading, setBugDetailLoading] = useState(false);
+  // Collapsible description in the detail card — collapsed by default.
+  const [descOpen, setDescOpen] = useState(false);
+  // Collapsible defect analysis in the detail card -- collapsed by default.
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+
+  // In-view right sidebar: persists the open test key across sessions (test detail
+  // only; plan/exec panels are ephemeral and reset to null on navigation).
   const [detailKey, setDetailKey] = useViewState<string | null>(profileId, "bugs", "detailKey", null);
+  // sidebarDetail drives which panel the right sidebar shows. kind=test uses
+  // detailKey + detailVersion; kind=plan/exec is ephemeral (not session-persisted).
+  type SidebarDetail = { kind: "test"; key: string } | { kind: "plan" | "exec"; key: string } | null;
+  const [sidebarDetail, setSidebarDetail] = useState<SidebarDetail>(
+    detailKey ? { kind: "test", key: detailKey } : null
+  );
   const [detailVersion, setDetailVersion] = useState(0);
+
+  // Keep sidebarDetail in sync when the profile switches and a different
+  // persisted detailKey is loaded. useState ignores subsequent changes to its
+  // initializer, so an explicit sync effect is required on profileId changes.
+  useEffect(() => {
+    setSidebarDetail(detailKey ? { kind: "test", key: detailKey } : null);
+  }, [profileId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ephemeral expand state for the affected-tests table. Not session-persisted
   // because it's a transient drill-down, not a view preference.
@@ -88,17 +116,17 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   // Set of test keys whose run history is currently loading.
   const [runHistoryLoading, setRunHistoryLoading] = useState<Set<string>>(new Set());
   // Per-test sort state for the run-history breakdown. Keyed by test key.
-  // Default: updatedAt descending (newest first).
+  // Default: finishedAt descending (newest run first).
   type RunSort = { field: string; desc: boolean };
   const [runSortMap, setRunSortMap] = useState<Map<string, RunSort>>(new Map());
 
   function getRunSort(testKey: string): RunSort {
-    return runSortMap.get(testKey) ?? { field: "updatedAt", desc: true };
+    return runSortMap.get(testKey) ?? { field: "finishedAt", desc: true };
   }
 
   function toggleRunSort(testKey: string, field: string) {
     setRunSortMap((prev) => {
-      const current = prev.get(testKey) ?? { field: "updatedAt", desc: true };
+      const current = prev.get(testKey) ?? { field: "finishedAt", desc: true };
       const next: RunSort =
         current.field === field
           ? { field, desc: !current.desc }
@@ -114,11 +142,32 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
         case "runStatus":
           cmp = (a.runStatus ?? "").localeCompare(b.runStatus ?? "");
           break;
-        case "createdAt":
-          cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+        case "finishedAt":
+          cmp = (a.finishedAt || a.startedAt || "").localeCompare(b.finishedAt || b.startedAt || "");
           break;
-        case "updatedAt":
-          cmp = (a.updatedAt ?? "").localeCompare(b.updatedAt ?? "");
+        case "execCreated":
+          cmp = (a.execCreated || "").localeCompare(b.execCreated || "");
+          break;
+        case "execUpdated":
+          cmp = (a.execUpdated || "").localeCompare(b.execUpdated || "");
+          break;
+        case "execResolved":
+          cmp = (a.execResolved || "").localeCompare(b.execResolved || "");
+          break;
+        case "execKey":
+          cmp = (a.execKey || "").localeCompare(b.execKey || "");
+          break;
+        case "fixVersions":
+          cmp = ((a.fixVersions || []).join(", ")).localeCompare((b.fixVersions || []).join(", "));
+          break;
+        case "environment":
+          cmp = (a.environment || "").localeCompare(b.environment || "");
+          break;
+        case "executedBy":
+          cmp = (a.executedBy || "").localeCompare(b.executedBy || "");
+          break;
+        case "defects":
+          cmp = ((a.defects || []).join(", ")).localeCompare((b.defects || []).join(", "));
           break;
         default:
           cmp = 0;
@@ -141,6 +190,33 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
       setError(errMsg(e));
     } finally {
       setSyncing(false);
+    }
+  }
+
+  // Export the checked bugs (or the open bug if none are checked) together with
+  // their full run history to an Excel workbook.
+  async function exportBugs() {
+    const bugKeys =
+      checked.size > 0
+        ? bugs.filter((b) => checked.has(b.key)).map((b) => b.key)
+        : selected && !selected.startsWith("NEW-")
+          ? [selected]
+          : [];
+    if (bugKeys.length === 0) return;
+    setExporting(true);
+    setError("");
+    setNotice("");
+    try {
+      const path = await ExportBugsWithRunHistory(profileId, bugKeys);
+      if (path) {
+        setNotice(
+          `Exported ${bugKeys.length} bug${bugKeys.length === 1 ? "" : "s"} to ${path}`,
+        );
+      }
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -298,7 +374,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     };
   }, [profileId, refreshKey, nonce]);
 
-  const isDemo = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
+  const isDemo = isDemoUrl(jiraUrl);
   const canLink = !!jiraUrl && !isDemo;
   function openBug(key: string) {
     const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
@@ -306,9 +382,11 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
       BrowserOpenURL(`${base}/browse/${key}`);
   }
 
-  const shown = useMemo(() => {
+  // Per-bucket counts for the test-linkage pill filter, computed from the
+  // text-filtered list so the counts respond to the search input.
+  const testLinkCounts = useMemo(() => {
     const f = filter.trim().toLowerCase();
-    const base = !f
+    const textFiltered = !f
       ? bugs
       : bugs.filter(
           (b) =>
@@ -317,13 +395,38 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
             b.projectKey.toLowerCase().includes(f) ||
             b.status.toLowerCase().includes(f),
         );
-    return [...base].sort((a, b) => applyDir(cmpBug(a, b, sortField), sortDesc));
-  }, [bugs, filter, sortField, sortDesc]);
+    const withTests = textFiltered.filter((b) => b.testKeys.length > 0).length;
+    return {
+      all: textFiltered.length,
+      with: withTests,
+      without: textFiltered.length - withTests,
+    };
+  }, [bugs, filter]);
 
-  // Reset to the first page whenever the data source or the filter changes.
+  const shown = useMemo(() => {
+    const f = filter.trim().toLowerCase();
+    const textFiltered = !f
+      ? bugs
+      : bugs.filter(
+          (b) =>
+            b.key.toLowerCase().includes(f) ||
+            b.summary.toLowerCase().includes(f) ||
+            b.projectKey.toLowerCase().includes(f) ||
+            b.status.toLowerCase().includes(f),
+        );
+    const linkFiltered =
+      testFilter === "with"
+        ? textFiltered.filter((b) => b.testKeys.length > 0)
+        : testFilter === "without"
+          ? textFiltered.filter((b) => b.testKeys.length === 0)
+          : textFiltered;
+    return [...linkFiltered].sort((a, b) => applyDir(cmpBug(a, b, sortField), sortDesc));
+  }, [bugs, filter, testFilter, sortField, sortDesc]);
+
+  // Reset to the first page whenever the data source, filter, or test-linkage filter changes.
   useEffect(() => {
     setPage(0);
-  }, [profileId, refreshKey, filter, sortField, sortDesc]);
+  }, [profileId, refreshKey, filter, testFilter, sortField, sortDesc]);
 
   // Keep a valid selection: default to the first shown bug, and re-point when
   // the current one is filtered out.
@@ -337,8 +440,11 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
 
   // Clear the per-test expand state whenever the user switches to a different
   // bug, so stale expansions from the previous selection don't carry over.
+  // Also collapse the description so it doesn't stay open across navigations.
   useEffect(() => {
     setExpandedTests(new Set());
+    setDescOpen(false);
+    setAnalysisOpen(false);
   }, [selected]);
 
   // Load the affected tests (with run status) for the selected bug.
@@ -360,6 +466,31 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     };
   }, [profileId, selected, refreshKey]);
 
+  // Load extended bug detail (description + defect fields) for the selected bug.
+  // Skipped for NEW- placeholder keys that have no real Jira issue yet.
+  useEffect(() => {
+    if (!profileId || !selected || selected.startsWith("NEW-")) {
+      setBugDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setBugDetailLoading(true);
+    setBugDetail(null);
+    GetBugDetail(profileId, selected)
+      .then((d) => {
+        if (!cancelled) setBugDetail(d ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setBugDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBugDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, selected]);
+
   const totalPages = Math.max(1, Math.ceil(shown.length / pageSize));
   const safePage = Math.min(Math.max(0, page), totalPages - 1);
   const paged = shown.slice(safePage * pageSize, safePage * pageSize + pageSize);
@@ -368,6 +499,10 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   // Select-all state for the current page.
   const allPageChecked = paged.length > 0 && paged.every((b) => checked.has(b.key));
   const somePageChecked = paged.some((b) => checked.has(b.key)) && !allPageChecked;
+
+  // Select-all state across every bug matching the current filter (all pages).
+  const allShownChecked = shown.length > 0 && shown.every((b) => checked.has(b.key));
+  const someShownChecked = shown.some((b) => checked.has(b.key)) && !allShownChecked;
 
   function toggleSelectAll() {
     setChecked((prev) => {
@@ -383,8 +518,22 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     });
   }
 
+  // Select (or clear) every bug matching the current filter, across all pages —
+  // not just the visible page.
+  function toggleSelectAllShown() {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (allShownChecked) {
+        for (const b of shown) next.delete(b.key);
+      } else {
+        for (const b of shown) next.add(b.key);
+      }
+      return next;
+    });
+  }
+
   return (
-    <div className={`bugs-md${detailKey ? " bugs-md-with-detail" : ""}`}>
+    <div className={`bugs-md${sidebarDetail ? " bugs-md-with-detail" : ""}`}>
       {promptUI}
       <div className="bugs-md-list">
         <div className="bugs-md-head">
@@ -438,6 +587,23 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
             >
               {syncing ? "Syncing…" : "Sync"}
             </button>
+            <button
+              className="btn"
+              onClick={exportBugs}
+              disabled={
+                exporting ||
+                (checked.size === 0 && (!selected || selected.startsWith("NEW-")))
+              }
+              title={
+                checked.size > 0
+                  ? `Export ${checked.size} checked bug${checked.size === 1 ? "" : "s"} with run history to Excel`
+                  : selected && !selected.startsWith("NEW-")
+                    ? `Export ${selected} with run history to Excel`
+                    : "Select or open a bug to export"
+              }
+            >
+              {exporting ? "Exporting…" : "Export…"}
+            </button>
           </div>
         </div>
         {error && <div className="error-text">{error}</div>}
@@ -448,20 +614,40 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <SortControl
-          fields={[
-            { value: "key", label: "Key" },
-            { value: "status", label: "Status" },
-            { value: "project", label: "Project" },
-            { value: "priority", label: "Priority" },
-          ]}
-          field={sortField}
-          desc={sortDesc}
-          onChange={(f, d) => {
-            setSortField(f);
-            setSortDesc(d);
-          }}
-        />
+        <div className="bugs-md-filter-row">
+          <div className="filter-pill-row">
+            {(
+              [
+                { value: "all", label: "All bugs" },
+                { value: "with", label: "With tests" },
+                { value: "without", label: "Without tests" },
+              ] as const
+            ).map(({ value, label }) => (
+              <button
+                key={value}
+                className={`filter-pill${testFilter === value ? " filter-pill-active" : ""}`}
+                onClick={() => setTestFilter(value)}
+                title={`Filter by test linkage: ${label}`}
+              >
+                {label} {testLinkCounts[value]}
+              </button>
+            ))}
+          </div>
+          <SortControl
+            fields={[
+              { value: "key", label: "Key" },
+              { value: "status", label: "Status" },
+              { value: "project", label: "Project" },
+              { value: "priority", label: "Priority" },
+            ]}
+            field={sortField}
+            desc={sortDesc}
+            onChange={(f, d) => {
+              setSortField(f);
+              setSortDesc(d);
+            }}
+          />
+        </div>
         {shown.length === 0 ? (
           <p className="muted bugs-md-empty">
             {bugs.length === 0
@@ -470,23 +656,41 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           </p>
         ) : (
           <>
-            <label className="bugs-md-select-all">
-              <input
-                type="checkbox"
-                checked={allPageChecked}
-                ref={(el) => {
-                  if (el) el.indeterminate = somePageChecked;
-                }}
-                onChange={toggleSelectAll}
-                title={allPageChecked ? "Deselect all on this page" : "Select all on this page"}
-              />
-              {allPageChecked ? "Deselect all on page" : "Select all on page"}
+            <div className="bugs-md-select-all-row">
+              <label className="bugs-md-select-all">
+                <input
+                  type="checkbox"
+                  checked={allPageChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = somePageChecked;
+                  }}
+                  onChange={toggleSelectAll}
+                  title={allPageChecked ? "Deselect all on this page" : "Select all on this page"}
+                />
+                {allPageChecked ? "Deselect page" : "Select page"}
+              </label>
+              <label className="bugs-md-select-all">
+                <input
+                  type="checkbox"
+                  checked={allShownChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someShownChecked;
+                  }}
+                  onChange={toggleSelectAllShown}
+                  title={
+                    allShownChecked
+                      ? `Deselect all ${shown.length} bug${shown.length === 1 ? "" : "s"}`
+                      : `Select all ${shown.length} bug${shown.length === 1 ? "" : "s"} matching the filter (every page)`
+                  }
+                />
+                {allShownChecked ? `Deselect all (${shown.length})` : `Select all (${shown.length})`}
+              </label>
               {checked.size > 0 && (
-                <span className="muted" style={{ marginLeft: 4 }}>
+                <span className="muted bugs-md-select-count">
                   ({checked.size} total selected)
                 </span>
               )}
-            </label>
+            </div>
             <ul className="bugs-md-items">
               {paged.map((b) => (
                 <li
@@ -514,24 +718,30 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                     {b.summary || "(no summary)"}
                   </div>
                   <div className="bugs-md-item-meta muted">
-                    {b.priority} · {b.testKeys.length} test
-                    {b.testKeys.length === 1 ? "" : "s"}
+                    {b.priority} ·{" "}
+                    {b.testKeys.length === 0 ? (
+                      <span className="bugs-md-no-tests">no tests</span>
+                    ) : (
+                      <span className="bugs-md-test-count">{b.testKeys.length} test{b.testKeys.length === 1 ? "" : "s"}</span>
+                    )}
                   </div>
                 </li>
               ))}
             </ul>
-            <Pager
-              compact
-              page={safePage}
-              pageSize={pageSize}
-              total={shown.length}
-              onPage={setPage}
-              pageSizeOptions={[5, 10, 15, 25, 50]}
-              onPageSize={(n) => {
-                setPageSize(n);
-                setPage(0);
-              }}
-            />
+            <div className="bugs-md-pager">
+              <Pager
+                compact
+                page={safePage}
+                pageSize={pageSize}
+                total={shown.length}
+                onPage={setPage}
+                pageSizeOptions={[5, 10, 15, 25, 50]}
+                onPageSize={(n) => {
+                  setPageSize(n);
+                  setPage(0);
+                }}
+              />
+            </div>
           </>
         )}
       </div>
@@ -541,29 +751,114 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
           <p className="muted">Select a bug to see its details.</p>
         ) : (
           <>
-            <div className="bugs-md-detail-head">
-              {canLink && !sel.key.startsWith("NEW-") ? (
-                <button
-                  className="mono bug-link-key bugs-md-detail-key"
-                  onClick={() => openBug(sel.key)}
-                  title={`Open ${sel.key} in Jira`}
-                >
-                  {sel.key}
-                </button>
-              ) : (
-                <span className="mono bugs-md-detail-key">{sel.key}</span>
+            <div className="bugs-md-detail-card">
+              <div className="bugs-md-detail-card-header">
+                {canLink && !sel.key.startsWith("NEW-") ? (
+                  <button
+                    className="mono bug-link-key bugs-md-detail-key"
+                    onClick={() => openBug(sel.key)}
+                    title={`Open ${sel.key} in Jira`}
+                  >
+                    {sel.key}
+                  </button>
+                ) : (
+                  <span className="mono bugs-md-detail-key">{sel.key}</span>
+                )}
+                {sel.status && <span className="status-pill">{sel.status}</span>}
+              </div>
+              <h2 className="bugs-md-detail-summary">
+                {sel.summary || "(no summary)"}
+              </h2>
+              <dl className="detail-fields bugs-md-detail-fields bugs-md-detail-fields-2col">
+                {sel.issueType && (
+                  <>
+                    <dt>Type</dt>
+                    <dd>{sel.issueType}</dd>
+                  </>
+                )}
+                <dt>Project</dt>
+                <dd className="mono">{sel.projectKey}</dd>
+                {sel.priority && (
+                  <>
+                    <dt>Priority</dt>
+                    <dd>{sel.priority}</dd>
+                  </>
+                )}
+                {sel.updated && (
+                  <>
+                    <dt>Updated</dt>
+                    <dd className="muted">{formatDateTime(sel.updated)}</dd>
+                  </>
+                )}
+                {bugDetail?.reporter && (
+                  <>
+                    <dt>Reporter</dt>
+                    <dd>{bugDetail.reporter}</dd>
+                  </>
+                )}
+                {bugDetail?.severity && (
+                  <>
+                    <dt>Severity</dt>
+                    <dd>{bugDetail.severity}</dd>
+                  </>
+                )}
+                <dt>Affects</dt>
+                <dd>{sel.testKeys.length} test{sel.testKeys.length === 1 ? "" : "s"}</dd>
+              </dl>
+              {bugDetailLoading && (
+                <p className="muted bugs-md-detail-extra-loading">Loading bug detail…</p>
               )}
-              <span className="muted">{sel.projectKey}</span>
-              {sel.status && <span className="status-pill">{sel.status}</span>}
-              {sel.priority && (
-                <span className="muted bugs-md-detail-priority">
-                  {sel.priority}
-                </span>
+              {!bugDetailLoading && bugDetail && (
+                <div className="bugs-md-detail-extra">
+                  {bugDetail.description && (
+                    <div className="bugs-md-detail-extra-field">
+                      <button
+                        className="bugs-md-desc-toggle"
+                        onClick={() => setDescOpen((o) => !o)}
+                        aria-expanded={descOpen}
+                      >
+                        {descOpen ? "▾" : "▸"} Description
+                      </button>
+                      {descOpen && (
+                        <div className="bugs-md-detail-extra-text">
+                          <Markdown>{bugDetail.description}</Markdown>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {bugDetail.defectOrigin && (
+                    <div className="bugs-md-detail-extra-field">
+                      <strong>Defect Origin</strong>
+                      <div className="bugs-md-detail-extra-text">{bugDetail.defectOrigin}</div>
+                    </div>
+                  )}
+                  {bugDetail.defectAnalysis && (
+                    <div className="bugs-md-detail-extra-field">
+                      <button
+                        className="bugs-md-desc-toggle"
+                        onClick={() => setAnalysisOpen((o) => !o)}
+                        aria-expanded={analysisOpen}
+                      >
+                        {analysisOpen ? "▾" : "▸"} Defect Analysis
+                      </button>
+                      {analysisOpen && (
+                        <div className="bugs-md-detail-extra-text">
+                          <Markdown>{bugDetail.defectAnalysis}</Markdown>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {bugDetail.correctionDetails && (
+                    <div className="bugs-md-detail-extra-field">
+                      <strong>Correction Details</strong>
+                      <div className="bugs-md-detail-extra-text">
+                        <Markdown>{bugDetail.correctionDetails}</Markdown>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-            <h2 className="bugs-md-detail-summary">
-              {sel.summary || "(no summary)"}
-            </h2>
 
             <h4>Affected tests ({tests.length})</h4>
             {tests.length === 0 ? (
@@ -615,6 +910,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                               onClick={() => {
                                 setDetailKey(t.key);
                                 setDetailVersion((v) => v + 1);
+                                setSidebarDetail({ kind: "test", key: t.key });
                               }}
                               style={{ fontSize: "0.75rem", padding: "0 0.25rem" }}
                             >
@@ -638,7 +934,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={7} style={{ padding: "0.25rem 0.5rem 0.5rem 2rem", background: "var(--bg-subtle, #f8f8f8)" }}>
+                            <td colSpan={10} style={{ padding: "0.25rem 0.5rem 0.5rem 2rem", background: "var(--bg-subtle, #f8f8f8)" }}>
                               {isLoading ? (
                                 <span className="muted">Loading run history…</span>
                               ) : !history || history.length === 0 ? (
@@ -676,25 +972,54 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                     })),
                                     ...(hasNoPlan ? [{ planKey: null, runs: history.filter(r => !r.planKeys?.length) }] : []),
                                   ];
-                                  const RunRow = ({ r, i }: { r: typeof history[0]; i: number }) => (
+                                  const RunRow = ({ r, i }: { r: typeof history[0]; i: number }) => {
+                                    const isSubTask = !!r.execParentKey;
+                                    const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
+                                    return (
                                     <tr key={`${r.execKey}-${i}`}>
                                       <td>
-                                        {canLink && r.execKey && !r.execKey.startsWith("NEW-") ? (
-                                          <button
-                                            className="mono bug-link-key"
-                                            onClick={() => {
-                                              const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-                                              BrowserOpenURL(`${base}/browse/${r.execKey}`);
-                                            }}
-                                            title={r.execSummary || `Open ${r.execKey} in Jira`}
-                                          >
-                                            {r.execKey}
-                                          </button>
-                                        ) : (
-                                          <span className="mono" title={r.execSummary}>{r.execKey}</span>
-                                        )}
+                                        <span style={{ display: "flex", alignItems: "baseline", gap: "0.35em", flexWrap: "wrap" }}>
+                                          {r.execKey ? (
+                                            <button
+                                              className="mono bug-link-key"
+                                              onClick={() => setSidebarDetail({ kind: "exec", key: r.execKey })}
+                                              title={`Open Test Execution ${r.execKey}`}
+                                            >
+                                              {r.execKey}
+                                            </button>
+                                          ) : (
+                                            <span className="muted">—</span>
+                                          )}
+                                          {isSubTask && (
+                                            <span
+                                              className="exec-subtask-badge"
+                                              title={r.execIssueType || "Sub Test Execution"}
+                                            >
+                                              Sub-task
+                                            </span>
+                                          )}
+                                        </span>
                                         {r.execSummary && (
                                           <span className="muted" style={{ display: "block", fontSize: "0.9em" }}>{r.execSummary}</span>
+                                        )}
+                                        {isSubTask && (
+                                          <span className="exec-parent-line">
+                                            <span className="exec-parent-label">↳ Parent:</span>{" "}
+                                            {canLink && !r.execParentKey.startsWith("NEW-") ? (
+                                              <button
+                                                className="mono bug-link-key"
+                                                onClick={() => BrowserOpenURL(`${base}/browse/${r.execParentKey}`)}
+                                                title={`Open ${r.execParentKey} in Jira`}
+                                              >
+                                                {r.execParentKey}
+                                              </button>
+                                            ) : (
+                                              <span className="mono">{r.execParentKey}</span>
+                                            )}
+                                            {r.execParentSummary && (
+                                              <span className="muted exec-parent-summary"> — {r.execParentSummary}</span>
+                                            )}
+                                          </span>
                                         )}
                                       </td>
                                       <td>
@@ -707,9 +1032,10 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                       <td>{r.fixVersions?.length ? r.fixVersions.join(", ") : <span className="muted">—</span>}</td>
                                       <td>{r.environment || <span className="muted">—</span>}</td>
                                       <td className="muted">{formatDateTime(r.finishedAt || r.startedAt)}</td>
+                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.execCreated) || <span className="muted">—</span>}</td>
+                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.execUpdated) || <span className="muted">—</span>}</td>
+                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.execResolved) || <span className="muted">—</span>}</td>
                                       <td>{r.executedBy || <span className="muted">—</span>}</td>
-                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.createdAt) || <span>—</span>}</td>
-                                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDateTime(r.updatedAt) || <span>—</span>}</td>
                                       <td>
                                         {r.defects?.length ? (
                                           <span>
@@ -739,41 +1065,36 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                                       </td>
                                     </tr>
                                   );
+                                  };
                                   return (
                                     <table className="board-table" style={{ fontSize: "0.85em" }}>
                                       <thead>
                                         <tr>
-                                          <th>Execution</th>
+                                          <SortTh field="execKey">Execution</SortTh>
                                           <SortTh field="runStatus">Result</SortTh>
-                                          <th>Fix Version(s)</th>
-                                          <th>Environment</th>
-                                          <th>Date</th>
-                                          <th>By</th>
-                                          <SortTh field="createdAt">Created</SortTh>
-                                          <SortTh field="updatedAt">Updated</SortTh>
-                                          <th>Defects</th>
+                                          <SortTh field="fixVersions">Fix Version(s)</SortTh>
+                                          <SortTh field="environment">Environment</SortTh>
+                                          <SortTh field="finishedAt">Run Date</SortTh>
+                                          <SortTh field="execCreated">Created</SortTh>
+                                          <SortTh field="execUpdated">Updated</SortTh>
+                                          <SortTh field="execResolved">Resolved</SortTh>
+                                          <SortTh field="executedBy">By</SortTh>
+                                          <SortTh field="defects">Defects</SortTh>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {groups.map((g) => (
                                           <Fragment key={g.planKey ?? "__no_plan__"}>
                                             <tr className="run-plan-group-header">
-                                              <td colSpan={9}>
+                                              <td colSpan={10}>
                                                 {g.planKey ? (
-                                                  canLink && !g.planKey.startsWith("NEW-") ? (
-                                                    <button
-                                                      className="mono bug-link-key"
-                                                      onClick={() => {
-                                                        const base = (jiraUrl ?? "").trim().replace(/\/+$/, "");
-                                                        BrowserOpenURL(`${base}/browse/${g.planKey}`);
-                                                      }}
-                                                      title={`Open ${g.planKey} in Jira`}
-                                                    >
-                                                      Plan: {g.planKey}
-                                                    </button>
-                                                  ) : (
-                                                    <span className="mono">Plan: {g.planKey}</span>
-                                                  )
+                                                  <button
+                                                    className="mono bug-link-key"
+                                                    onClick={() => setSidebarDetail({ kind: "plan", key: g.planKey! })}
+                                                    title={`Open Test Plan ${g.planKey}`}
+                                                  >
+                                                    Plan: {g.planKey}
+                                                  </button>
                                                 ) : (
                                                   <span className="muted">No test plan</span>
                                                 )}
@@ -805,17 +1126,29 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
         )}
       </div>
 
-      {detailKey && (
+      {sidebarDetail?.kind === "test" && (
         <TestDetail
           profileId={profileId}
-          testKey={detailKey}
+          testKey={sidebarDetail.key}
           version={detailVersion}
           pendingForTest={[]}
           folders={[]}
           jiraUrl={jiraUrl}
           readOnly
-          onClose={() => setDetailKey(null)}
+          onClose={() => {
+            setSidebarDetail(null);
+            setDetailKey(null);
+          }}
           onEdited={() => {}}
+        />
+      )}
+      {(sidebarDetail?.kind === "plan" || sidebarDetail?.kind === "exec") && (
+        <ContainerDetailPanel
+          profileId={profileId}
+          containerKey={sidebarDetail.key}
+          kind={sidebarDetail.kind}
+          jiraUrl={jiraUrl}
+          onClose={() => setSidebarDetail(null)}
         />
       )}
 
@@ -883,6 +1216,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                           <span className="muted">No executions match the filter.</span>
                         ) : (
                           <select
+                            className="app-select"
                             value={addToExecTarget}
                             onChange={(e) => setAddToExecTarget(e.target.value)}
                           >

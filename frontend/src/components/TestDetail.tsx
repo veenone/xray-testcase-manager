@@ -34,6 +34,7 @@ import {
   GetTestBugs,
   GetTestRunHistory,
   errMsg,
+  isDemoUrl,
 } from "../api";
 import type {
   TestCase,
@@ -113,7 +114,7 @@ export function TestDetail({
   // The test key links to its real Jira issue, opened in the system browser
   // (RND_P_4TFINT_05-211). Suppressed for demo profiles and for uncommitted
   // "NEW-" drafts, which have no Jira URL yet.
-  const isDemoProfile = /^(demo$|demo:|mock:)/i.test((jiraUrl ?? "").trim());
+  const isDemoProfile = isDemoUrl(jiraUrl);
   const canLinkToJira =
     !!jiraUrl && !isDemoProfile && !testKey.startsWith("NEW-");
   function openInJira() {

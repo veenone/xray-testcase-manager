@@ -211,3 +211,114 @@ func TestGetTestRunHistory(t *testing.T) {
 		t.Errorf("hist[1].UpdatedAt = %q, want 2026-05-01T10:00:00Z", second.UpdatedAt)
 	}
 }
+
+// TestGetTestRunHistoryExecTimestamps asserts that GetTestRunHistory surfaces
+// the Test Execution issue's created, updated, and resolved timestamps
+// (ExecCreated, ExecUpdated, ExecResolved) from the test_container join. These
+// are the Jira issue-level timestamps, distinct from the run's own
+// started_at/finished_at/created_at/updated_at fields.
+func TestGetTestRunHistoryExecTimestamps(t *testing.T) {
+	repo := newRepo(t)
+
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "TS-1", ID: "1", Summary: "Timestamp test"},
+	}); err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+
+	// Seed three executions: one resolved, one in-progress (no resolved), one
+	// plain (no timestamps to verify the empty-string case).
+	if err := repo.UpsertContainers("p1", []testrepo.Container{
+		{
+			Key:      "TS-TE-1",
+			Kind:     "testexec",
+			Summary:  "Resolved exec",
+			Status:   "Done",
+			Created:  "2026-02-01T09:00:00Z",
+			Updated:  "2026-02-15T17:00:00Z",
+			Resolved: "2026-02-15T18:00:00Z",
+		},
+		{
+			Key:     "TS-TE-2",
+			Kind:    "testexec",
+			Summary: "In-progress exec",
+			Status:  "In Progress",
+			Created: "2026-03-01T09:00:00Z",
+			Updated: "2026-03-10T12:00:00Z",
+		},
+		{
+			Key:     "TS-TE-3",
+			Kind:    "testexec",
+			Summary: "No-timestamp exec",
+			Status:  "Open",
+		},
+	}); err != nil {
+		t.Fatalf("seed containers: %v", err)
+	}
+
+	// Seed a test_run row for each execution so GetTestRunHistory returns them.
+	for _, execKey := range []string{"TS-TE-1", "TS-TE-2", "TS-TE-3"} {
+		if err := repo.ReplaceRunsForExec("p1", execKey, []testrepo.TestRunRow{
+			{ExecKey: execKey, TestKey: "TS-1", RunStatus: "PASS",
+				CreatedAt: "2026-02-01T10:00:00Z", UpdatedAt: "2026-02-01T11:00:00Z"},
+		}); err != nil {
+			t.Fatalf("seed run for %s: %v", execKey, err)
+		}
+	}
+
+	hist, err := repo.GetTestRunHistory("p1", "TS-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hist) != 3 {
+		t.Fatalf("expected 3 run history entries, got %d", len(hist))
+	}
+
+	// Index by exec key for order-independent checks.
+	byKey := make(map[string]testrepo.TestRunEntry, len(hist))
+	for _, e := range hist {
+		byKey[e.ExecKey] = e
+	}
+
+	te1, ok := byKey["TS-TE-1"]
+	if !ok {
+		t.Fatal("TS-TE-1 missing from run history")
+	}
+	if te1.ExecCreated != "2026-02-01T09:00:00Z" {
+		t.Errorf("TS-TE-1 ExecCreated = %q, want 2026-02-01T09:00:00Z", te1.ExecCreated)
+	}
+	if te1.ExecUpdated != "2026-02-15T17:00:00Z" {
+		t.Errorf("TS-TE-1 ExecUpdated = %q, want 2026-02-15T17:00:00Z", te1.ExecUpdated)
+	}
+	if te1.ExecResolved != "2026-02-15T18:00:00Z" {
+		t.Errorf("TS-TE-1 ExecResolved = %q, want 2026-02-15T18:00:00Z", te1.ExecResolved)
+	}
+
+	te2, ok := byKey["TS-TE-2"]
+	if !ok {
+		t.Fatal("TS-TE-2 missing from run history")
+	}
+	if te2.ExecCreated != "2026-03-01T09:00:00Z" {
+		t.Errorf("TS-TE-2 ExecCreated = %q, want 2026-03-01T09:00:00Z", te2.ExecCreated)
+	}
+	if te2.ExecUpdated != "2026-03-10T12:00:00Z" {
+		t.Errorf("TS-TE-2 ExecUpdated = %q, want 2026-03-10T12:00:00Z", te2.ExecUpdated)
+	}
+	if te2.ExecResolved != "" {
+		t.Errorf("TS-TE-2 ExecResolved = %q, want empty (unresolved exec)", te2.ExecResolved)
+	}
+
+	te3, ok := byKey["TS-TE-3"]
+	if !ok {
+		t.Fatal("TS-TE-3 missing from run history")
+	}
+	if te3.ExecCreated != "" {
+		t.Errorf("TS-TE-3 ExecCreated = %q, want empty", te3.ExecCreated)
+	}
+	if te3.ExecUpdated != "" {
+		t.Errorf("TS-TE-3 ExecUpdated = %q, want empty", te3.ExecUpdated)
+	}
+	if te3.ExecResolved != "" {
+		t.Errorf("TS-TE-3 ExecResolved = %q, want empty", te3.ExecResolved)
+	}
+}

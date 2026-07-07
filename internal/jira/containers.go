@@ -26,10 +26,10 @@ const (
 // and differ only in how they relate to Tests, so one type with a Kind
 // discriminator avoids three near-identical structs.
 type Container struct {
-	Key       string
-	Kind      string
-	Summary   string
-	Status    string
+	Key           string
+	Kind          string
+	Summary       string
+	Status        string
 	ParentKey     string // parent issue key for a sub-task Test Execution; else ""
 	ParentSummary string // parent issue summary; empty when no parent or not fetched
 	IssueType     string // Jira issuetype name (e.g. "Sub Test Execution"); informational
@@ -44,6 +44,22 @@ type Container struct {
 	// requested by literal name on the testexec search and shown read-only, with
 	// no custom-field resolution and no editing. Demo mode seeds it.
 	FixVersions []string
+	// Created is the ISO-8601 creation timestamp of the Test Execution issue
+	// (from Jira's standard "created" field). Empty for non-execution containers
+	// or when not yet fetched.
+	Created string
+	// Updated is the ISO-8601 last-update timestamp of the Test Execution issue
+	// (from Jira's standard "updated" field). Empty for non-execution containers
+	// or when not yet fetched.
+	Updated string
+	// Resolved is the ISO-8601 resolution timestamp of the Test Execution issue
+	// (from Jira's standard "resolutiondate" field). Empty when the execution is
+	// unresolved, for non-execution containers, or when not yet fetched.
+	Resolved string
+	// Description is the issue description (markdown/wiki text) from the Jira
+	// standard "description" field. Available for all container kinds when the
+	// field is requested. Empty when not fetched.
+	Description string
 }
 
 // ContainerLink is one Test's membership in a Container. RunStatus carries the
@@ -69,7 +85,7 @@ type ContainerLink struct {
 // are read — the slow part of a container sync — so the UI can show progress.
 func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Container, []ContainerLink, error) {
 	if isDemoURL(c.baseURL) {
-		return demoContainersAndLinks(projectKey)
+		return demoContainersAndLinks(themeFor(c.baseURL), projectKey)
 	}
 
 	// NOTE(xtm, #4): this lists containers in projectKey only. To auto-discover
@@ -102,18 +118,22 @@ func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgre
 
 	// Sub-task Test Executions are a separate Jira issue type that hangs off a
 	// parent issue. They are still Kind=testexec and use the same testexec
-	// membership endpoint; the extra datum is the parent key. Searched on their
-	// own issue type so a project that lacks it (a 400, handled as "none") can't
-	// affect the standalone Test Execution pass above.
-	subExecs, err := c.searchContainersByIssueType(ctx, projectKey, KindTestExec, subTestExecIssueType)
-	if err != nil {
-		return nil, nil, fmt.Errorf("search sub-task test executions: %w", err)
+	// membership endpoint; the extra datum is the parent key. Their issue type
+	// name is discovered from the instance (it defaults to "Sub Test Execution"
+	// but can be renamed / localised), so a renamed type is not silently missed.
+	// Searched on its own issue type so a project that lacks it (a 400, handled
+	// as "none") can't affect the standalone Test Execution pass above.
+	for _, steType := range c.subTaskTestExecIssueTypeNames(ctx) {
+		subExecs, err := c.searchContainersByIssueType(ctx, projectKey, KindTestExec, steType)
+		if err != nil {
+			return nil, nil, fmt.Errorf("search sub-task test executions (%q): %w", steType, err)
+		}
+		containers = append(containers, subExecs...)
+		for _, ct := range subExecs {
+			all = append(all, kindContainer{kind: KindTestExec, key: ct.Key})
+		}
+		log.Printf("xtm: containers sub-testexec %q: %d found for %s", steType, len(subExecs), projectKey)
 	}
-	containers = append(containers, subExecs...)
-	for _, ct := range subExecs {
-		all = append(all, kindContainer{kind: KindTestExec, key: ct.Key})
-	}
-	log.Printf("xtm: containers sub-testexec: %d found for %s", len(subExecs), projectKey)
 
 	// Pull each container's Test memberships. Best-effort per container so a
 	// single inaccessible container can't abort the whole sync.
@@ -137,10 +157,135 @@ func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgre
 	return containers, links, nil
 }
 
-// subTestExecIssueType is the Jira issue type name for a sub-task Test Execution
-// in Xray Server/DC. JQL matches issue-type names case-insensitively, so this
-// also matches "sub test execution" etc. If an instance renames it, change this.
+// TestExecutionsForTest returns every Test Execution (standalone and sub-task,
+// any project) that testKey is a member of, as Containers and ContainerLinks.
+// This is the per-test cross-project discovery path: unlike ListContainers
+// (which is project-scoped), this lookup finds executions in ANY project that
+// include testKey, so cross-project sub-task executions are not missed.
+//
+// Demo mode returns deterministic data from the demo seed (one cross-project
+// sub-task exec for member tests at i%11 == 0). The live path is best-effort:
+// per-test and per-exec errors are logged and skipped; a top-level network
+// failure returns (nil, nil, nil) so the caller can degrade gracefully.
+//
+// NOTE(xtm): Live endpoint: GET /rest/raven/2.0/api/test/{testKey}/testexec
+// returns a JSON array of objects, each with at least a "key" field and
+// optionally a "status" field. The per-exec Container detail is fetched via
+// GET /rest/api/2/issue/{execKey}?fields=summary,status,issuetype,parent and
+// parsed the same way as searchContainersByIssueType. These shapes need
+// verification against a live Xray Server/DC 8.4.0 instance.
+func (c *Client) TestExecutionsForTest(ctx context.Context, testKey string) ([]Container, []ContainerLink, error) {
+	if isDemoURL(c.baseURL) {
+		containers, links := demoTestExecutionsForTest(testKey)
+		return containers, links, nil
+	}
+
+	// Live path: look up the executions this test belongs to.
+	// NOTE(xtm): GET /rest/raven/2.0/api/test/{testKey}/testexec is the assumed
+	// Xray Server/DC endpoint. Response shape: a JSON array of objects, each
+	// with at least a "key" field and an optional "status" field carrying the
+	// test's run status in that execution. Verify response shape on a live
+	// instance before removing this marker.
+	path := "/rest/raven/2.0/api/test/" + url.PathEscape(testKey) + "/testexec"
+	body, err := c.getBytes(ctx, path)
+	if err != nil {
+		log.Printf("xtm: TestExecutionsForTest %s: %v (skipping)", testKey, err)
+		return nil, nil, nil
+	}
+
+	type execRef struct {
+		Key    string `json:"key"`
+		Status string `json:"status"`
+	}
+	var refs []execRef
+	if err := json.Unmarshal(body, &refs); err != nil {
+		log.Printf("xtm: TestExecutionsForTest %s: decode: %v (skipping)", testKey, err)
+		return nil, nil, nil
+	}
+
+	containers := make([]Container, 0, len(refs))
+	links := make([]ContainerLink, 0, len(refs))
+
+	for _, ref := range refs {
+		if ref.Key == "" {
+			continue
+		}
+		if ctx.Err() != nil {
+			break
+		}
+
+		// Fetch the execution issue detail to populate the Container fields,
+		// including the standard Jira timestamp fields so the run-history
+		// breakdown can show when the execution was created, updated, and
+		// resolved. NOTE(xtm): verify that all requested fields are present on
+		// Xray Server/DC 8.4.0; resolutiondate is the standard Jira field name.
+		issueURL := "/rest/api/2/issue/" + url.PathEscape(ref.Key) + "?fields=summary,status,issuetype,parent,description,created,updated,resolutiondate"
+		var issueResp struct {
+			Key    string          `json:"key"`
+			Fields json.RawMessage `json:"fields"`
+		}
+		if err := c.get(ctx, issueURL, &issueResp); err != nil {
+			log.Printf("xtm: TestExecutionsForTest %s: fetch exec %s: %v (skipping)", testKey, ref.Key, err)
+			time.Sleep(throttleContainers)
+			continue
+		}
+
+		ct := parseContainerIssue(ref.Key, KindTestExec, issueResp.Fields, "")
+		containers = append(containers, ct)
+		links = append(links, ContainerLink{
+			ContainerKey: ref.Key,
+			TestKey:      testKey,
+			RunStatus:    strings.ToUpper(strings.TrimSpace(ref.Status)),
+		})
+		time.Sleep(throttleContainers)
+	}
+	return containers, links, nil
+}
+
+// subTestExecIssueType is the default Jira issue type name for a sub-task Test
+// Execution in Xray Server/DC, used as the fallback when the instance issue type
+// list cannot be read or yields no match.
 const subTestExecIssueType = "Sub Test Execution"
+
+// subTaskTestExecIssueTypeNames returns the issue type name(s) this instance uses
+// for sub-task Test Executions. Rather than hardcoding "Sub Test Execution"
+// (which fails silently when an instance renames or localises it, because the
+// JQL search then 400s and is treated as "none"), it lists the instance issue
+// types once and selects every subtask type whose letters-only name contains
+// "testexecution" (so "Sub Test Execution", "Test Execution Sub-task", localised
+// variants, etc. all match). It falls back to the default name when the listing
+// fails or matches nothing. Cached for the client's lifetime; never returns an
+// error so the container sync stays best-effort.
+func (c *Client) subTaskTestExecIssueTypeNames(ctx context.Context) []string {
+	c.subTaskTEOnce.Do(func() {
+		var types []struct {
+			Name    string `json:"name"`
+			Subtask bool   `json:"subtask"`
+		}
+		if err := c.get(ctx, "/rest/api/2/issuetype", &types); err != nil {
+			log.Printf("xtm: list issue types for sub-task Test Execution discovery failed, using default %q: %v", subTestExecIssueType, err)
+			return
+		}
+		seen := map[string]bool{}
+		for _, t := range types {
+			if t.Subtask && strings.Contains(normalizeTypeName(t.Name), "testexecution") {
+				if !seen[t.Name] {
+					seen[t.Name] = true
+					c.subTaskTENames = append(c.subTaskTENames, t.Name)
+				}
+			}
+		}
+		if len(c.subTaskTENames) == 0 {
+			log.Printf("xtm: no sub-task Test Execution issue type found in the instance list; falling back to %q", subTestExecIssueType)
+		} else {
+			log.Printf("xtm: sub-task Test Execution issue type(s) discovered: %v", c.subTaskTENames)
+		}
+	})
+	if len(c.subTaskTENames) > 0 {
+		return c.subTaskTENames
+	}
+	return []string{subTestExecIssueType}
+}
 
 // searchContainers finds every container issue of one kind in a project, mapping
 // the kind to its standard Jira issue type name.
@@ -164,12 +309,14 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 	// them). Resolve the custom field id once and, when present, request it so the
 	// read path can populate Container.Environments. Best-effort: on a resolver
 	// error, log and proceed without environments rather than fail the sync.
-	fields := "summary,status,issuetype,parent"
+	fields := "summary,status,issuetype,parent,description"
 	envFieldID := ""
 	if kind == KindTestExec {
-		// Fix Version(s) is a standard Jira field, requested by its literal name
-		// (no resolver). It is shown read-only on executions.
-		fields = fields + ",fixVersions"
+		// Fix Version(s), created, updated, and resolutiondate are standard Jira
+		// fields requested by their literal names (no resolver). They are shown
+		// read-only on executions. NOTE(xtm): resolutiondate is the standard Jira
+		// field name; verify on a live Xray Server/DC 8.4.0 instance.
+		fields = fields + ",fixVersions,created,updated,resolutiondate"
 		id, err := c.testEnvironmentsFieldID(ctx)
 		if err != nil {
 			log.Printf("xtm: resolve Test Environments custom field failed, syncing executions without environments: %v", err)
@@ -243,6 +390,10 @@ type containerIssueFields struct {
 	FixVersions []struct {
 		Name string `json:"name"`
 	} `json:"fixVersions"`
+	Created        string `json:"created"`
+	Updated        string `json:"updated"`
+	ResolutionDate string `json:"resolutiondate"`
+	Description    string `json:"description"`
 }
 
 // parseContainerIssue maps one container search issue (raw `fields` plus key) into
@@ -263,6 +414,7 @@ func parseContainerIssue(key, kind string, rawFields json.RawMessage, envFieldID
 		ct.ParentKey = f.Parent.Key
 		ct.ParentSummary = f.Parent.Fields.Summary
 	}
+	ct.Description = f.Description
 	if kind == KindTestExec && envFieldID != "" {
 		ct.Environments = environmentsFromRawFields(rawFields, envFieldID)
 	}
@@ -272,6 +424,9 @@ func parseContainerIssue(key, kind string, rawFields json.RawMessage, envFieldID
 				ct.FixVersions = append(ct.FixVersions, name)
 			}
 		}
+		ct.Created = f.Created
+		ct.Updated = f.Updated
+		ct.Resolved = f.ResolutionDate
 	}
 	return ct
 }

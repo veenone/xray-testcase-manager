@@ -205,7 +205,7 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 	if isDemoURL(c.baseURL) {
 		// Demo mode ignores `since` and the scope so an incremental sync still
 		// fills the progress bar against the regenerated dataset.
-		tests, total := demoTestsPage(projectKey, startAt, maxResults)
+		tests, total := demoTestsPage(themeFor(c.baseURL), projectKey, startAt, maxResults)
 		return tests, total, nil
 	}
 	jql := fmt.Sprintf("project = %s AND issuetype = Test", projectKey)
@@ -420,7 +420,7 @@ func (c *Client) ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic
 	if isDemoURL(c.baseURL) {
 		out := make([]TestBasic, 0, len(keys))
 		for _, k := range keys {
-			out = append(out, demoTestBasicForKey(k))
+			out = append(out, demoTestBasicForKey(themeFor(c.baseURL), k))
 		}
 		return out, nil
 	}
@@ -490,7 +490,7 @@ func (c *Client) searchTestBasics(ctx context.Context, keys []string) ([]testBas
 // never errors.
 func (c *Client) GetTestFields(ctx context.Context, key string) (Test, error) {
 	if isDemoURL(c.baseURL) {
-		return demoTestForKey(key), nil
+		return demoTestForKey(themeFor(c.baseURL), key), nil
 	}
 	// Resolve and request the Test Type custom field so the conflict re-fetch
 	// carries exec_type too (consistency with the bulk pull). Best-effort.

@@ -18,6 +18,12 @@ type Precondition struct {
 	Summary     string
 	Type        string
 	Description string
+	// Condition is the Xray precondition definition text, distinct from the Jira
+	// issue description. NOTE(xtm): the condition text lives in an
+	// instance-specific Xray custom field; its field id varies per deployment, so
+	// Condition is left empty for live Jira until the field id can be verified on
+	// a real Xray Server/DC 8.4.0 instance. Demo mode populates it.
+	Condition string
 }
 
 // resolvePreconditionType finds the Jira issue type used for Xray Preconditions
@@ -87,7 +93,7 @@ func normalizeTypeName(s string) string {
 // are read — the slow part of a precondition sync — so the UI can show progress.
 func (c *Client) ListPreconditions(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Precondition, map[string][]string, error) {
 	if isDemoURL(c.baseURL) {
-		return demoPreconditionsAndLinks(projectKey)
+		return demoPreconditionsAndLinks(themeFor(c.baseURL), projectKey)
 	}
 
 	typeID, typeName, err := c.resolvePreconditionType(ctx)

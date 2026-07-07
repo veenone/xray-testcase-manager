@@ -28,15 +28,17 @@ const NODE_COLORS: Record<string, string> = {
 function nodeColor(id: string): string {
   if (NODE_COLORS[id]) return NODE_COLORS[id];
   if (id.startsWith("req:")) return "#6366f1"; // requirement node
+  if (id.startsWith("epic:")) return "#7c3aed"; // epic node (purple)
   if (id.startsWith("plan:")) return "#0891b2"; // Test plan bucket
   if (id.startsWith("test:")) return "#0d9488"; // Test node
   if (id.startsWith("res:")) return "#6366f1"; // other Xray statuses (TODO, …)
   return "#64748b";
 }
 
-// The flow is always five layers: requirement → coverage status → Test plan →
-// Test → run result.
-const COLUMNS = ["Requirement", "Coverage", "Test plan", "Test", "Test result"];
+// The flow is up to six layers: requirement → epic (optional) → coverage status
+// → Test plan → Test → run result. Requirements without an epic link directly
+// to the coverage column, spanning the empty epic column.
+const COLUMNS = ["Requirement", "Epic", "Coverage", "Test plan", "Test", "Test result"];
 
 interface Placed {
   id: string;
@@ -198,7 +200,10 @@ function buildLayout(data: Sankey, width: number) {
   const maxLayer = data.nodes.reduce((m, n) => Math.max(m, n.layer), 0);
   const layers = Array.from({ length: maxLayer + 1 }, (_, i) => i);
   const byLayer = layers.map((L) => data.nodes.filter((n) => n.layer === L));
-  if (byLayer.some((col) => col.length === 0)) return null;
+  // Empty layers are allowed (e.g. the epic column when no requirement has an
+  // epic key). Links that skip the empty layer still render correctly because
+  // buildLayout positions nodes by their layer index (colX[layer]), so a
+  // requirement -> coverage link bypasses the epic column visually.
 
   const layerTotal = Math.max(
     ...byLayer.map((col) => col.reduce((a, n) => a + n.value, 0)),

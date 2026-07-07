@@ -9,14 +9,17 @@ import (
 
 // bugCreatePayload is the after_val of a bug_create pending change: everything
 // needed to POST the Bug issue and link it to the test on commit.
+// Fields carries the extra, createmeta-driven field values (already Jira-shaped)
+// that were collected from the Create Bug form at queue time.
 type bugCreatePayload struct {
-	ProjectKey  string   `json:"projectKey"`
-	IssueType   string   `json:"issueType"`
-	Summary     string   `json:"summary"`
-	Description string   `json:"description"`
-	Priority    string   `json:"priority"`
-	Labels      []string `json:"labels"`
-	TestKey     string   `json:"testKey"`
+	ProjectKey  string         `json:"projectKey"`
+	IssueType   string         `json:"issueType"`
+	Summary     string         `json:"summary"`
+	Description string         `json:"description"`
+	Priority    string         `json:"priority"`
+	Labels      []string       `json:"labels"`
+	TestKey     string         `json:"testKey"`
+	Fields      map[string]any `json:"fields,omitempty"`
 }
 
 // CreateBugForTest queues a brand-new local Bug (temp "NEW-BUG-N" key) linked to
@@ -53,7 +56,7 @@ func (r *Repository) CreateBugForTest(profileID, testKey, execKey string, d BugD
 
 	payload, _ := json.Marshal(bugCreatePayload{
 		ProjectKey: d.ProjectKey, IssueType: issueType, Summary: d.Summary, Description: d.Description,
-		Priority: d.Priority, Labels: d.Labels, TestKey: testKey,
+		Priority: d.Priority, Labels: d.Labels, TestKey: testKey, Fields: d.Fields,
 	})
 	if err := upsertPendingChange(
 		tx, profileID, entityBugCreate, tempKey, "bug", "", string(payload), "",

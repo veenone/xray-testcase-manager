@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xuri/excelize/v2"
+
 	"xray-test-manager/internal/testrepo"
 )
 
@@ -66,5 +68,54 @@ func TestExportTestsXLSXIsAValidWorkbook(t *testing.T) {
 	}
 	if len(data) == 0 {
 		t.Error("xlsx output is empty")
+	}
+}
+
+// TestExportTestsXLSXIsStyled exercises the shared fillSheet styling that every
+// flat XLSX export (tests, requirement audit, traceability, dashboard) goes
+// through: a distinct, bold, bordered header band and word-wrapped data cells.
+func TestExportTestsXLSXIsStyled(t *testing.T) {
+	repo := seedExportTests(t)
+
+	data, err := repo.ExportTests("p1", testrepo.Query{}, "xlsx")
+	if err != nil {
+		t.Fatalf("export xlsx: %v", err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	sheet := f.GetSheetList()[0]
+
+	headerStyleID, _ := f.GetCellStyle(sheet, "A1")
+	dataStyleID, _ := f.GetCellStyle(sheet, "A2")
+	if headerStyleID == 0 {
+		t.Error("header cell A1 is unstyled")
+	}
+	if headerStyleID == dataStyleID {
+		t.Error("header and data share a style; want a distinct header band")
+	}
+
+	hs, err := f.GetStyle(headerStyleID)
+	if err != nil {
+		t.Fatalf("GetStyle header: %v", err)
+	}
+	if hs.Font == nil || !hs.Font.Bold {
+		t.Error("header style is not bold")
+	}
+	if len(hs.Border) == 0 {
+		t.Error("header style has no borders")
+	}
+
+	ds, err := f.GetStyle(dataStyleID)
+	if err != nil {
+		t.Fatalf("GetStyle data: %v", err)
+	}
+	if ds.Alignment == nil || !ds.Alignment.WrapText {
+		t.Error("data cell does not enable word wrap")
+	}
+	if len(ds.Border) == 0 {
+		t.Error("data cell has no borders")
 	}
 }

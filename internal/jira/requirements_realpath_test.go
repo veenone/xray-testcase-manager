@@ -20,10 +20,19 @@ type recordedCall struct {
 // TestRealUpdateTestRequirementsLinksAndUnlinks exercises the live
 // UpdateTestRequirements path against a mock Jira: removeLinkIDs become
 // DELETE /rest/api/2/issueLink/{id} and add keys become POST
-// /rest/api/2/issueLink with the coverage link type and Test as outwardIssue.
+// /rest/api/2/issueLink with the resolved coverage link type and Test as
+// outwardIssue.
 func TestRealUpdateTestRequirementsLinksAndUnlinks(t *testing.T) {
 	var calls []recordedCall
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Serve the link-type discovery endpoint so resolveRequirementLinkType
+		// can run without recording a spurious call.
+		if r.Method == http.MethodGet && r.URL.Path == "/rest/api/2/issueLinkType" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"issueLinkTypes":[{"name":"Tested By"},{"name":"Tests"},{"name":"Relates"}]}`))
+			return
+		}
 		c := recordedCall{method: r.Method, path: r.URL.Path}
 		if r.Method == http.MethodPost {
 			raw, _ := io.ReadAll(r.Body)
@@ -78,8 +87,9 @@ func TestRealUpdateTestRequirementsLinksAndUnlinks(t *testing.T) {
 			t.Errorf("post path = %q, want /rest/api/2/issueLink", p.path)
 		}
 		typ, _ := p.body["type"].(map[string]any)
-		if typ == nil || typ["name"] != "Tests" {
-			t.Errorf("post type = %+v, want name=Tests", p.body["type"])
+		// resolveRequirementLinkType prefers "testedby" so "Tested By" wins.
+		if typ == nil || typ["name"] != "Tested By" {
+			t.Errorf("post type = %+v, want name=Tested By", p.body["type"])
 		}
 		out, _ := p.body["outwardIssue"].(map[string]any)
 		if out == nil || out["key"] != "QA-1" {

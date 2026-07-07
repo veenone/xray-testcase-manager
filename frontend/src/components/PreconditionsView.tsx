@@ -13,6 +13,7 @@ import type { PreconditionUsage, PreconditionTest } from "../api";
 import { Menu } from "./Menu";
 import { useConfirm } from "./useConfirm";
 import { AddTestsModal } from "./AddTestsModal";
+import { Markdown } from "./Markdown";
 import { MarkdownField } from "./MarkdownField";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
@@ -54,6 +55,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   const [selected, setSelected] = useViewState(profileId, "preconditions", "selected", "");
   const [tests, setTests] = useState<PreconditionTest[]>([]);
   const [filter, setFilter] = useViewState(profileId, "preconditions", "filter", "");
+  const [usageFilter, setUsageFilter] = useViewState<"all" | "with" | "without">(profileId, "preconditions", "usageFilter", "all");
   const [sortField, setSortField] = useViewState(profileId, "preconditions", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "preconditions", "sortDesc", true);
   const [loading, setLoading] = useState(true);
@@ -62,18 +64,50 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const { confirm, confirmUI } = useConfirm();
 
+  // editing toggles the detail pane between read-only display and an explicit
+  // edit session. Resets to false whenever the selected precondition changes so
+  // navigating away never leaves a stale edit session open.
+  const [editing, setEditing] = useState(false);
+
   const selectedPre = list.find((p) => p.key === selected) ?? null;
   const isLocal = selected.startsWith("new-precond-");
 
-  // Draft buffers for the markdown-rendered text fields. MarkdownField is
-  // controlled (renders markdown when idle, edits raw on click), so the value
-  // lives here and resyncs whenever the selected precondition reloads.
+  // Draft buffers for the editable text fields. These are only committed to
+  // Jira when the user explicitly clicks Save (not on blur). They resync from
+  // the remote whenever the selected precondition reloads, and editing resets
+  // to false so navigating to a new precondition always starts in read mode.
   const [summaryDraft, setSummaryDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
+  const [condDraft, setCondDraft] = useState("");
+  const [typeDraft, setTypeDraft] = useState("Manual");
+  // Collapsible read-only fields -- collapsed by default, reset on selection change.
+  const [condOpen, setCondOpen] = useState(false);
+  const [descOpen, setDescOpen] = useState(false);
   useEffect(() => {
+    setEditing(false);
     setSummaryDraft(selectedPre?.summary ?? "");
     setDescDraft(selectedPre?.description ?? "");
+    setCondDraft(selectedPre?.condition ?? "");
+    setTypeDraft(selectedPre?.type || "Manual");
+    setCondOpen(false);
+    setDescOpen(false);
   }, [selectedPre]);
+
+  // Per-bucket counts for the usage pill filter, computed from the text-filtered
+  // list so counts respond to the search input.
+  const usageCounts = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const base = !q
+      ? list
+      : list.filter(
+          (p) =>
+            p.key.toLowerCase().includes(q) ||
+            p.summary.toLowerCase().includes(q) ||
+            p.type.toLowerCase().includes(q),
+        );
+    const withTests = base.filter((p) => (p.testCount ?? 0) > 0).length;
+    return { all: base.length, with: withTests, without: base.length - withTests };
+  }, [list, filter]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -85,15 +119,21 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
             p.summary.toLowerCase().includes(q) ||
             p.type.toLowerCase().includes(q),
         );
-    return [...base].sort((a, b) => applyDir(cmpPre(a, b, sortField), sortDesc));
-  }, [list, filter, sortField, sortDesc]);
+    const usageFiltered =
+      usageFilter === "all"
+        ? base
+        : base.filter((p) =>
+            usageFilter === "with" ? (p.testCount ?? 0) > 0 : (p.testCount ?? 0) === 0,
+          );
+    return [...usageFiltered].sort((a, b) => applyDir(cmpPre(a, b, sortField), sortDesc));
+  }, [list, filter, usageFilter, sortField, sortDesc]);
 
   // Pagination of the precondition master list.
   const [listPage, setListPage] = useViewState(profileId, "preconditions", "listPage", 0);
   const [listPageSize, setListPageSize] = useViewState(profileId, "preconditions", "listPageSize", 15);
   useEffect(() => {
     setListPage(0);
-  }, [filter, sortField, sortDesc]);
+  }, [filter, usageFilter, sortField, sortDesc]);
   const listTotalPages = Math.max(1, Math.ceil(filtered.length / listPageSize));
   const listSafePage = Math.min(listPage, listTotalPages - 1);
   const pageList = filtered.slice(
@@ -161,9 +201,9 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
     };
   }, [profileId, selected, refreshKey]);
 
-  // saveField persists an inline field edit (summary / type / description).
+  // saveField persists an inline field edit (summary / type / description / condition).
   async function saveField(
-    field: "summary" | "type" | "description",
+    field: "summary" | "type" | "description" | "condition",
     value: string,
   ) {
     if (!selected || !selectedPre) return;
@@ -176,6 +216,26 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
     } catch (e) {
       setError(errMsg(e));
     }
+  }
+
+  // handleSave commits all draft values that differ from the stored values and
+  // then exits edit mode. Fields that are unchanged are skipped (saveField
+  // short-circuits on equality). Errors surface in the existing error banner.
+  async function handleSave() {
+    await saveField("summary", summaryDraft);
+    await saveField("type", typeDraft);
+    await saveField("condition", condDraft);
+    await saveField("description", descDraft);
+    setEditing(false);
+  }
+
+  // handleCancel discards all draft changes and returns to read-only mode.
+  function handleCancel() {
+    setSummaryDraft(selectedPre?.summary ?? "");
+    setDescDraft(selectedPre?.description ?? "");
+    setCondDraft(selectedPre?.condition ?? "");
+    setTypeDraft(selectedPre?.type || "Manual");
+    setEditing(false);
   }
 
   async function removeTest(testKey: string) {
@@ -243,6 +303,24 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
           >
             + New
           </button>
+        </div>
+        <div className="filter-pill-row">
+          {(
+            [
+              { value: "all", label: "All" },
+              { value: "with", label: "With tests" },
+              { value: "without", label: "Without tests" },
+            ] as const
+          ).map(({ value, label }) => (
+            <button
+              key={value}
+              className={`filter-pill${usageFilter === value ? " filter-pill-active" : ""}`}
+              onClick={() => setUsageFilter(value)}
+              title={`Filter by test usage: ${label}`}
+            >
+              {label} {usageCounts[value]}
+            </button>
+          ))}
         </div>
 
         {loading ? (
@@ -316,64 +394,177 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
                   </span>
                 )}
               </div>
-              <Menu
-                label="Actions"
-                align="right"
-                triggerClassName="btn"
-                title="Precondition actions"
-                items={[
-                  {
-                    key: "delete",
-                    label: "Delete precondition…",
-                    onClick: deletePrecondition,
-                    danger: true,
-                  },
-                ]}
-              />
+              <div className="precond-detail-actions">
+                {editing ? (
+                  <>
+                    <button
+                      className="btn"
+                      onClick={handleCancel}
+                      title="Discard edits and return to read-only view"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleSave}
+                      title="Save changes to the local store"
+                    >
+                      Save
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="btn"
+                      onClick={() => setEditing(true)}
+                      title="Edit this precondition's fields"
+                    >
+                      Edit
+                    </button>
+                    <Menu
+                      label="Actions"
+                      align="right"
+                      triggerClassName="btn"
+                      title="Precondition actions"
+                      items={[
+                        {
+                          key: "delete",
+                          label: "Delete precondition…",
+                          onClick: deletePrecondition,
+                          danger: true,
+                        },
+                      ]}
+                    />
+                  </>
+                )}
+              </div>
             </div>
 
-            <div className="precond-field">
-              <span>Summary</span>
-              <MarkdownField
-                className="detail-input"
-                multiline={false}
-                value={summaryDraft}
-                onChange={setSummaryDraft}
-                onCommit={() => saveField("summary", summaryDraft)}
-                placeholder="Click to edit — markdown supported."
-              />
-            </div>
+            {editing ? (
+              <>
+                <div className="precond-field">
+                  <span>Summary</span>
+                  <MarkdownField
+                    className="detail-input"
+                    multiline={false}
+                    value={summaryDraft}
+                    onChange={setSummaryDraft}
+                    onCommit={() => {}}
+                    placeholder="Markdown supported."
+                  />
+                </div>
 
-            <label className="precond-field">
-              <span>Type</span>
-              <select
-                className="detail-input"
-                value={selectedPre.type || "Manual"}
-                onChange={(e) => saveField("type", e.target.value)}
-              >
-                {PRECOND_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-                {selectedPre.type &&
-                  !PRECOND_TYPES.includes(selectedPre.type) && (
-                    <option value={selectedPre.type}>{selectedPre.type}</option>
-                  )}
-              </select>
-            </label>
+                <label className="precond-field">
+                  <span>Type</span>
+                  <select
+                    className="detail-input"
+                    value={typeDraft}
+                    onChange={(e) => setTypeDraft(e.target.value)}
+                  >
+                    {PRECOND_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                    {typeDraft && !PRECOND_TYPES.includes(typeDraft) && (
+                      <option value={typeDraft}>{typeDraft}</option>
+                    )}
+                  </select>
+                </label>
 
-            <div className="precond-field">
-              <span>Description</span>
-              <MarkdownField
-                className="detail-input precond-desc"
-                value={descDraft}
-                onChange={setDescDraft}
-                onCommit={() => saveField("description", descDraft)}
-                rows={5}
-                placeholder="No description. Click to add — markdown supported."
-              />
-            </div>
+                <div className="precond-field">
+                  <span>Condition</span>
+                  <MarkdownField
+                    className="detail-input precond-desc"
+                    value={condDraft}
+                    onChange={setCondDraft}
+                    onCommit={() => {}}
+                    rows={4}
+                    placeholder="Markdown supported."
+                  />
+                </div>
+
+                <div className="precond-field">
+                  <span>Description</span>
+                  <MarkdownField
+                    className="detail-input precond-desc"
+                    value={descDraft}
+                    onChange={setDescDraft}
+                    onCommit={() => {}}
+                    rows={5}
+                    placeholder="Markdown supported."
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="precond-field">
+                  <span>Summary</span>
+                  <div className="precond-ro-val">
+                    {selectedPre.summary.trim() ? (
+                      <Markdown>{selectedPre.summary}</Markdown>
+                    ) : (
+                      <span className="muted">No summary.</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="precond-field">
+                  <span>Type</span>
+                  <div className="precond-ro-val">
+                    {selectedPre.type || "Manual"}
+                  </div>
+                </div>
+
+                {selectedPre.condition?.trim() ? (
+                  <div className="detail-description">
+                    <button
+                      className="bugs-md-desc-toggle"
+                      onClick={() => setCondOpen((o) => !o)}
+                      aria-expanded={condOpen}
+                    >
+                      {condOpen ? "▾" : "▸"} Condition
+                    </button>
+                    {condOpen && (
+                      <div className="bugs-md-detail-extra-text">
+                        <Markdown>{selectedPre.condition}</Markdown>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="precond-field">
+                    <span>Condition</span>
+                    <div className="precond-ro-val">
+                      <span className="muted">No condition defined.</span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedPre.description?.trim() ? (
+                  <div className="detail-description">
+                    <button
+                      className="bugs-md-desc-toggle"
+                      onClick={() => setDescOpen((o) => !o)}
+                      aria-expanded={descOpen}
+                    >
+                      {descOpen ? "▾" : "▸"} Description
+                    </button>
+                    {descOpen && (
+                      <div className="bugs-md-detail-extra-text">
+                        <Markdown>{selectedPre.description}</Markdown>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="precond-field">
+                    <span>Description</span>
+                    <div className="precond-ro-val">
+                      <span className="muted">No description.</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="precond-tests-head">
               <h4>
@@ -475,8 +666,11 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   );
 }
 
-// CreatePreconditionModal collects a summary, type and description for a new
-// Precondition (FR-13.4 / 13.5), queued for creation in Jira on commit.
+// CreatePreconditionModal collects a summary, type, description and condition
+// for a new Precondition (FR-13.4 / 13.5), queued for creation in Jira on
+// commit. Description and Condition both use MarkdownField for consistency with
+// the detail pane. The condition is applied via EditPreconditionField after
+// create so the CreatePreconditionDetailed signature stays unchanged.
 function CreatePreconditionModal({
   profileId,
   onCancel,
@@ -489,6 +683,7 @@ function CreatePreconditionModal({
   const [summary, setSummary] = useState("");
   const [type, setType] = useState("Manual");
   const [description, setDescription] = useState("");
+  const [condition, setCondition] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -503,6 +698,11 @@ function CreatePreconditionModal({
         type,
         description,
       );
+      // Apply the condition via EditPreconditionField so the create signature
+      // stays unchanged (no wails binding regen needed).
+      if (condition.trim()) {
+        await EditPreconditionField(profileId, key, "condition", condition);
+      }
       onCreated(key);
     } catch (e) {
       setError(errMsg(e));
@@ -547,16 +747,28 @@ function CreatePreconditionModal({
               ))}
             </select>
           </label>
-          <label className="precond-field">
-            <span>Description</span>
-            <textarea
+          <div className="precond-field">
+            <span>Condition</span>
+            <MarkdownField
               className="detail-input precond-desc"
+              value={condition}
+              onChange={setCondition}
+              onCommit={() => {}}
               rows={3}
-              placeholder="Optional"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. Given the user is authenticated — markdown supported."
             />
-          </label>
+          </div>
+          <div className="precond-field">
+            <span>Description</span>
+            <MarkdownField
+              className="detail-input precond-desc"
+              value={description}
+              onChange={setDescription}
+              onCommit={() => {}}
+              rows={3}
+              placeholder="Optional — markdown supported."
+            />
+          </div>
           {error && <div className="error-text">{error}</div>}
         </div>
         <div className="pending-actions">

@@ -8,12 +8,19 @@ import {
   ExportRequirementAudit,
   SyncRequirements,
   BulkAssociateRequirements,
+  GetRequirementLinks,
   errMsg,
 } from "../api";
-import type { RequirementCoverage, RequirementTest } from "../api";
+import type { RequirementCoverage, RequirementTest, ReqReqLink } from "../api";
 import { RequirementSourcesModal } from "./RequirementSourcesModal";
 import { AddTestsModal } from "./AddTestsModal";
+import { LinkRequirementsModal } from "./LinkRequirementsModal";
+import { NewRequirementPanel } from "./NewRequirementPanel";
+import { ImportRequirementsModal } from "./ImportRequirementsModal";
 import { TestDetail } from "./TestDetail";
+import { Markdown } from "./Markdown";
+import { MarkdownField } from "./MarkdownField";
+import { Menu } from "./Menu";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
 import { keyCompare, cmpStr, applyDir } from "../sort";
@@ -78,14 +85,25 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   const [error, setError] = useState("");
   const [showSources, setShowSources] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [editingSummary, setEditingSummary] = useState(false);
+  const [showCreateReq, setShowCreateReq] = useState(false);
+  const [showImportReqs, setShowImportReqs] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [draftSummary, setDraftSummary] = useState("");
+  const [draftDescription, setDraftDescription] = useState("");
+  const [draftPriority, setDraftPriority] = useState("");
+  const [draftComponents, setDraftComponents] = useState("");
+  const [draftFixVersions, setDraftFixVersions] = useState("");
+  const [draftSprint, setDraftSprint] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const { confirm, confirmUI } = useConfirm();
+  // Collapsible description in the detail pane -- collapsed by default, resets on selection change.
+  const [descOpen, setDescOpen] = useState(false);
   // A covering test opened in a slide-over detail panel (#5).
   const [detailKey, setDetailKey] = useViewState(profileId, "requirements", "detailKey", "");
   const [detailVersion, setDetailVersion] = useState(0);
+  const [reqLinks, setReqLinks] = useState<ReqReqLink[]>([]);
+  const [showLinkReqs, setShowLinkReqs] = useState(false);
 
   useEffect(() => {
     if (!profileId) return;
@@ -134,8 +152,27 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   }, [profileId, selected, refreshKey]);
 
   useEffect(() => {
-    setEditingSummary(false);
+    setEditing(false);
+    setDescOpen(false);
   }, [selected]);
+
+  useEffect(() => {
+    if (!profileId || !selected) {
+      setReqLinks([]);
+      return;
+    }
+    let cancelled = false;
+    GetRequirementLinks(profileId, selected)
+      .then((ls) => {
+        if (!cancelled) setReqLinks(ls ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setReqLinks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, selected, refreshKey]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -216,27 +253,45 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   function startEdit() {
     if (!sel) return;
     setDraftSummary(sel.summary);
-    setEditingSummary(true);
+    setDraftDescription(sel.description ?? "");
+    setDraftPriority(sel.priority ?? "");
+    setDraftComponents(sel.components ?? "");
+    setDraftFixVersions(sel.fixVersions ?? "");
+    setDraftSprint(sel.sprint ?? "");
+    setEditing(true);
   }
 
-  async function saveSummary() {
+  // saveEdits persists all draft field values that differ from stored values and
+  // exits edit mode. Fields unchanged from their stored value are skipped.
+  async function saveEdits() {
     if (!sel) return;
-    const next = draftSummary.trim();
-    if (!next || next === sel.summary) {
-      setEditingSummary(false);
-      return;
-    }
     setBusy(true);
     setError("");
     try {
-      await EditRequirementField(profileId, sel.key, "summary", next);
-      setEditingSummary(false);
+      const fields: Array<[string, string, string]> = [
+        ["summary", draftSummary.trim(), sel.summary],
+        ["description", draftDescription, sel.description ?? ""],
+        ["priority", draftPriority, sel.priority ?? ""],
+        ["components", draftComponents, sel.components ?? ""],
+        ["fix_versions", draftFixVersions, sel.fixVersions ?? ""],
+        ["sprint", draftSprint, sel.sprint ?? ""],
+      ];
+      for (const [field, newVal, oldVal] of fields) {
+        if (newVal !== oldVal) {
+          await EditRequirementField(profileId, sel.key, field, newVal);
+        }
+      }
+      setEditing(false);
       onChanged?.();
     } catch (e) {
       setError(errMsg(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  function cancelEdit() {
+    setEditing(false);
   }
 
   async function deleteReq() {
@@ -266,11 +321,31 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   }
 
   return (
+    // #2: reqs-root is a flex row; NewRequirementPanel docks on the left,
+    // and the reqs grid fills the remaining space on the right.
+    <div className="reqs-root">
+    {showCreateReq && (
+      <NewRequirementPanel
+        profileId={profileId}
+        onCreated={(tempKey) => {
+          setShowCreateReq(false);
+          setSelected(tempKey);
+          onChanged?.();
+        }}
+        onCancel={() => setShowCreateReq(false)}
+      />
+    )}
     <div className={`reqs${detailKey ? " reqs-with-detail" : ""}`}>
       <div className="reqs-list">
         <div className="reqs-list-head">
-          <span className="reqs-list-title">Requirements</span>
-          <span className="reqs-list-actions">
+          {/* Primary row: filter (fills space) + Sync, Sources, Create — mirrors .precond-list-head */}
+          <div className="reqs-head-row">
+            <input
+              className="precond-search"
+              placeholder="Filter by key or summary…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
             <button
               className="btn"
               onClick={syncRequirements}
@@ -280,6 +355,23 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               {syncing ? "Syncing…" : "Sync"}
             </button>
             <button
+              className="btn reqs-sources-btn"
+              onClick={() => setShowSources(true)}
+              title="Configure which projects requirements are pulled from"
+            >
+              Sources…
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowCreateReq(true)}
+              title="Create a new requirement locally (pushed to Jira on commit)"
+            >
+              + Create
+            </button>
+          </div>
+          {/* Secondary row: audit + import actions */}
+          <div className="reqs-list-toolbar">
+            <button
               className="btn"
               onClick={exportAudit}
               disabled={busy || list.length === 0}
@@ -288,21 +380,15 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               Export audit…
             </button>
             <button
-              className="btn reqs-sources-btn"
-              onClick={() => setShowSources(true)}
-              title="Configure which projects requirements are pulled from"
+              className="btn"
+              onClick={() => setShowImportReqs(true)}
+              title="Import requirements from a CSV or XLSX file"
             >
-              Sources…
+              Import…
             </button>
-          </span>
+          </div>
+          {notice && <p className="reqs-notice muted">{notice}</p>}
         </div>
-        {notice && <p className="reqs-notice muted">{notice}</p>}
-        <input
-          className="search reqs-filter"
-          placeholder="Filter by key or summary…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
         <div className="reqs-coverage-summary">
           {COVERAGE_ORDER.map((c) => (
             <button
@@ -403,55 +489,201 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               >
                 {COVERAGE_LABEL[sel.coverage]}
               </span>
-              <span className="reqs-detail-actions">
-                {!editingSummary && (
-                  <button
-                    className="btn"
-                    onClick={startEdit}
-                    disabled={busy}
-                    title="Edit the requirement summary"
-                  >
-                    Edit
-                  </button>
+              <div className="precond-detail-actions">
+                {editing ? (
+                  <>
+                    <button
+                      className="btn"
+                      onClick={cancelEdit}
+                      disabled={busy}
+                      title="Discard edits and return to read-only view"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={saveEdits}
+                      disabled={busy}
+                      title="Save field changes to the local store"
+                    >
+                      Save
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="btn"
+                      onClick={startEdit}
+                      disabled={busy}
+                      title="Edit this requirement's fields"
+                    >
+                      Edit
+                    </button>
+                    <Menu
+                      label="Actions"
+                      align="right"
+                      triggerClassName="btn"
+                      title="Requirement actions"
+                      items={[
+                        {
+                          key: "delete",
+                          label: "Delete requirement…",
+                          onClick: deleteReq,
+                          danger: true,
+                        },
+                      ]}
+                    />
+                  </>
                 )}
-                <button
-                  className="btn btn-danger"
-                  onClick={deleteReq}
-                  disabled={busy}
-                  title="Delete this requirement (queued for commit)"
-                >
-                  Delete
-                </button>
-              </span>
+              </div>
             </div>
-            {editingSummary ? (
-              <div className="reqs-detail-edit">
-                <input
-                  className="search reqs-summary-input"
-                  value={draftSummary}
-                  autoFocus
-                  disabled={busy}
-                  onChange={(e) => setDraftSummary(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") saveSummary();
-                    if (e.key === "Escape") setEditingSummary(false);
-                  }}
-                />
-                <button className="btn" onClick={saveSummary} disabled={busy}>
-                  Save
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => setEditingSummary(false)}
-                  disabled={busy}
-                >
-                  Cancel
-                </button>
+            {editing ? (
+              <div className="reqs-detail-edit-form">
+                <div className="precond-field">
+                  <span>Summary</span>
+                  <input
+                    className="detail-input"
+                    value={draftSummary}
+                    autoFocus
+                    disabled={busy}
+                    onChange={(e) => setDraftSummary(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") cancelEdit();
+                    }}
+                    placeholder="Requirement summary"
+                  />
+                </div>
+                <div className="precond-field">
+                  <span>Description</span>
+                  <MarkdownField
+                    className="detail-input precond-desc"
+                    value={draftDescription}
+                    onChange={setDraftDescription}
+                    onCommit={() => {}}
+                    rows={5}
+                    placeholder="Markdown supported."
+                  />
+                </div>
+                <div className="precond-field">
+                  <span>Priority</span>
+                  <input
+                    className="detail-input"
+                    value={draftPriority}
+                    disabled={busy}
+                    onChange={(e) => setDraftPriority(e.target.value)}
+                    placeholder="e.g. High"
+                  />
+                </div>
+                <div className="precond-field">
+                  <span>Component(s)</span>
+                  <input
+                    className="detail-input"
+                    value={draftComponents}
+                    disabled={busy}
+                    onChange={(e) => setDraftComponents(e.target.value)}
+                    placeholder="Comma-separated, e.g. Backend, API"
+                  />
+                </div>
+                <div className="precond-field">
+                  <span>Fix Version(s)</span>
+                  <input
+                    className="detail-input"
+                    value={draftFixVersions}
+                    disabled={busy}
+                    onChange={(e) => setDraftFixVersions(e.target.value)}
+                    placeholder="Comma-separated, e.g. 2.0, 2.1"
+                  />
+                </div>
+                <div className="precond-field">
+                  <span>Sprint</span>
+                  <input
+                    className="detail-input"
+                    value={draftSprint}
+                    disabled={busy}
+                    onChange={(e) => setDraftSprint(e.target.value)}
+                    placeholder="e.g. Sprint 12"
+                  />
+                </div>
               </div>
             ) : (
               <h2 className="reqs-detail-summary">
                 {sel.summary || "(no summary)"}
               </h2>
+            )}
+
+            {/* Read-only metadata grid + collapsible description: hidden in edit mode
+                because the edit form shows these fields inline. */}
+            {!editing && (
+              <>
+                <dl className="detail-meta">
+                  {sel.priority && (
+                    <>
+                      <dt>Priority</dt>
+                      <dd>{sel.priority}</dd>
+                    </>
+                  )}
+                  {sel.components && (
+                    <>
+                      <dt>Component(s)</dt>
+                      <dd>{sel.components}</dd>
+                    </>
+                  )}
+                  {sel.fixVersions && (
+                    <>
+                      <dt>Fix Version(s)</dt>
+                      <dd>{sel.fixVersions}</dd>
+                    </>
+                  )}
+                  {sel.sprint && (
+                    <>
+                      <dt>Sprint</dt>
+                      <dd>{sel.sprint}</dd>
+                    </>
+                  )}
+                </dl>
+
+                {sel.description && (
+                  <div className="detail-description">
+                    <button
+                      className="bugs-md-desc-toggle"
+                      onClick={() => setDescOpen((o) => !o)}
+                      aria-expanded={descOpen}
+                    >
+                      {descOpen ? "▾" : "▸"} Description
+                    </button>
+                    {descOpen && (
+                      <div className="bugs-md-detail-extra-text">
+                        <Markdown>{sel.description}</Markdown>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Requirement -> Requirement links */}
+            <div className="precond-tests-head">
+              <h4>Requires ({reqLinks.length})</h4>
+              <button
+                className="btn"
+                onClick={() => setShowLinkReqs(true)}
+                disabled={!sel}
+                title="Link this requirement to other requirements it requires"
+              >
+                + Link requirements…
+              </button>
+            </div>
+            {reqLinks.length === 0 ? (
+              <p className="muted">This requirement has no outbound "requires" links.</p>
+            ) : (
+              <ul className="precond-list">
+                {reqLinks.map((l) => (
+                  <li key={`${l.fromKey}-${l.toKey}-${l.linkType}`} className="precond-item">
+                    <span className="mono">{l.toKey}</span>
+                    <span className="precond-type muted"> ({l.linkType})</span>
+                  </li>
+                ))}
+              </ul>
             )}
 
             <div className="precond-tests-head">
@@ -529,6 +761,19 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
         />
       )}
 
+      {showLinkReqs && sel && (
+        <LinkRequirementsModal
+          profileId={profileId}
+          fromKey={sel.key}
+          currentLinkedKeys={reqLinks.map((l) => l.toKey)}
+          onClose={() => setShowLinkReqs(false)}
+          onDone={() => {
+            setShowLinkReqs(false);
+            onChanged?.();
+          }}
+        />
+      )}
+
       {showAdd && sel && (
         <AddTestsModal
           profileId={profileId}
@@ -548,6 +793,17 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
         />
       )}
 
+      {showImportReqs && (
+        <ImportRequirementsModal
+          profileId={profileId}
+          onComplete={() => {
+            setShowImportReqs(false);
+            onChanged?.();
+          }}
+          onCancel={() => setShowImportReqs(false)}
+        />
+      )}
+
       {detailKey && (
         <TestDetail
           profileId={profileId}
@@ -563,6 +819,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
         />
       )}
       {confirmUI}
+    </div>
     </div>
   );
 }

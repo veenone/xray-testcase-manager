@@ -18,6 +18,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"xray-test-manager/internal/coverage"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/profile"
 	"xray-test-manager/internal/settings"
@@ -50,6 +51,7 @@ type App struct {
 	creds      profile.CredentialStore
 	settings   *settings.Manager
 	repo       *testrepo.Repository
+	cov        *coverage.Module
 	dbPath     string
 	logPath    string
 	startupErr string
@@ -114,6 +116,7 @@ func (a *App) initStore() error {
 	a.creds = profile.NewCredentialStore()
 	a.settings = settings.NewManager(st)
 	a.repo = testrepo.NewRepository(st)
+	a.cov = coverage.New(st, a.repo)
 	log.Printf("xtm: local store ready at %s", dbPath)
 	return nil
 }
@@ -369,7 +372,7 @@ func (a *App) ExportProfile(id string) (string, error) {
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export profile",
-		DefaultFilename: sanitizeFilename(p.Name) + "-profile.json",
+		DefaultFilename: exportFilename(sanitizeFilename(p.Name) + "-profile.json"),
 		Filters:         []runtime.FileFilter{{DisplayName: "JSON", Pattern: "*.json"}},
 	})
 	if err != nil {
@@ -443,6 +446,15 @@ func sanitizeFilename(name string) string {
 	return out
 }
 
+// exportFilename prefixes a default export filename with a local YYYYMMDDHHMM
+// timestamp, e.g. "202606261430_dashboard.xlsx". This keeps saved exports
+// sorted chronologically and stops a second export silently overwriting an
+// earlier one. The original title and extension are preserved (the files are
+// genuine XLSX/CSV, so their extension is kept accurate).
+func exportFilename(name string) string {
+	return time.Now().Format("200601021504") + "_" + name
+}
+
 // tlsOptions derives jira.Option values from a profile's TLS settings. When
 // neither CACert nor AllowUntrustedTLS is set the returned slice is empty and
 // NewClient uses the default system trust -- identical to the pre-feature
@@ -508,6 +520,43 @@ func (a *App) SetTheme(theme string) error {
 		return err
 	}
 	return a.settings.SetTheme(theme)
+}
+
+// SetRequirementLinkType persists the issue-link type name used when linking
+// Tests to Requirements on commit (FR-13 / #275). The change takes effect on
+// the next CommitPendingChanges call. Pass "" to revert to auto-resolve.
+func (a *App) SetRequirementLinkType(name string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.settings.SetRequirementLinkType(name)
+}
+
+// ListRequirementLinkTypes returns all issue-link type names defined on the
+// given profile's Jira instance, for populating the link-type config dropdown.
+// Demo mode returns a preset list without a network call.
+func (a *App) ListRequirementLinkTypes(profileID string) ([]string, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
+	}
+	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).ListIssueLinkTypes(a.ctx)
+}
+
+// SetShowCoverage records whether the (opt-in, hidden-by-default) Coverage
+// top-nav tab is shown.
+func (a *App) SetShowCoverage(show bool) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.settings.SetShowCoverage(show)
 }
 
 // --- Connection & sync (FR-1, FR-8) ---
@@ -610,13 +659,71 @@ func (a *App) SyncContainers(profileID string) error {
 	})
 }
 
-// SyncBugs refreshes just the defect issues linked to the profile's tests from
-// Jira, so the Bugs panel can refresh without triggering a full profile sync
-// (RND_P_4TFINT_05-214).
+// SyncBugs reconciles defect issues linked to the profile's tests (partial
+// sync behind the Bugs panel's refresh button). It also refreshes the
+// run/execution data for all bug-affected tests so the run-history breakdown
+// updates without a full re-sync. The run-data pass is best-effort: an error
+// there does not fail the bug sync.
 func (a *App) SyncBugs(profileID string) error {
 	return a.runPartialSync(profileID, "Syncing bugs", func(e *syncer.Engine, projectKey string, onProgress func(syncer.Progress)) error {
-		return e.SyncBugs(a.ctx, profileID, projectKey, onProgress)
+		if err := e.SyncBugs(a.ctx, profileID, projectKey, onProgress); err != nil {
+			return err
+		}
+		// Best-effort: refresh run data for bug-affected tests. A failure here
+		// is logged internally by SyncBugRunData and does not fail the sync.
+		if runErr := e.SyncBugRunData(a.ctx, profileID, onProgress); runErr != nil {
+			log.Printf("xtm: SyncBugs: run-data refresh: %v (continuing)", runErr)
+		}
+		return nil
 	})
+}
+
+// SyncTests refreshes just the project's Tests (and folder membership) from
+// Jira, the per-view partial sync behind the Browse / test-case view's Sync
+// button. Incremental against the last full sync's watermark; it does not
+// advance the watermark.
+func (a *App) SyncTests(profileID string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.runPartialSync(profileID, "Syncing tests", func(e *syncer.Engine, projectKey string, onProgress func(syncer.Progress)) error {
+		p, err := a.profiles.Get(profileID)
+		if err != nil {
+			return err
+		}
+		state, err := a.repo.GetSyncState(profileID)
+		if err != nil {
+			return fmt.Errorf("read sync state: %w", err)
+		}
+		return e.SyncTests(a.ctx, profileID, projectKey, p.ScopeJQL, state.LastSyncedAt, onProgress)
+	})
+}
+
+// GetBugDetail fetches the extended fields for a defect issue: description,
+// Defect Origin, Defect Analysis, and Correction Details. These are not cached
+// locally (the bug table only holds summary/status/priority); they are fetched
+// lazily on detail-panel open, mirroring GetTestMeta / GetTestCustomFields.
+//
+// Returns an empty BugDetail without a network call when bugKey looks like a
+// locally-created (not-yet-committed) issue.
+func (a *App) GetBugDetail(profileID, bugKey string) (jira.BugDetail, error) {
+	if err := a.requireStore(); err != nil {
+		return jira.BugDetail{}, err
+	}
+	// Local / not-yet-committed bug keys carry a "NEW-" prefix and have no Jira
+	// issue yet.
+	if strings.HasPrefix(bugKey, "NEW-") {
+		return jira.BugDetail{}, nil
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return jira.BugDetail{}, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return jira.BugDetail{}, fmt.Errorf("load credentials: %w", err)
+	}
+	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetBugDetail(a.ctx, bugKey)
 }
 
 // SyncTestCalls refreshes the "call test" relationships by re-pulling steps for
@@ -1050,12 +1157,59 @@ func (a *App) RemoveRequirementSource(profileID, projectKey string) error {
 	return a.repo.RemoveRequirementSource(profileID, projectKey)
 }
 
+// GetRequirementLinks returns the outbound Requirement->Requirement links for a
+// requirement (e.g. "requires" links). Keyed by fromKey; all link types are
+// returned.
+func (a *App) GetRequirementLinks(profileID, requirementKey string) ([]testrepo.ReqReqLink, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.GetRequirementLinks(profileID, requirementKey)
+}
+
+// SetRequirementLinks replaces this requirement's outbound links of the given
+// linkType (e.g. "requires") to the supplied target keys and queues the change
+// for commit. The local store is updated immediately; Jira is updated on the
+// next commit (FR-13 traceability).
+func (a *App) SetRequirementLinks(profileID, requirementKey, linkType string, linkedKeys []string) (err error) {
+	defer recoverToError("SetRequirementLinks", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.SetRequirementLinks(profileID, requirementKey, linkType, linkedKeys)
+}
+
 // --- Bug (defect) tracking ---
+
+// GetBugCreateFields returns the required fields for the profile's bug issue
+// type's create screen (beyond project/issuetype/summary/description/priority/
+// labels), so the Create Bug form can render and collect them before the commit.
+// The target project is resolved the same way CreateBugForTest does (profile
+// bug-project mode), with an empty execKey (the project key is available from
+// the profile before any specific execution is known).
+func (a *App) GetBugCreateFields(profileID string) (fields []jira.BugCreateField, err error) {
+	defer recoverToError("GetBugCreateFields", &err)
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
+	}
+	projKey := bugProjectKey(p, "")
+	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetBugCreateFields(a.ctx, projKey, p.BugIssueType)
+}
 
 // CreateBugForTest queues a new Bug issue linked to a failed Test, committed to
 // Jira on the next sync. The bug's project and issue type come from the profile.
-// Returns the placeholder key.
-func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description, priority string, labels []string) (key string, err error) {
+// extraFields carries any additional field values collected from the
+// createmeta-driven Create Bug form (keyed by Jira field id, values already
+// shaped for the POST body). Returns the placeholder key.
+func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description, priority string, labels []string, extraFields map[string]any) (key string, err error) {
 	defer recoverToError("CreateBugForTest", &err)
 	if err := a.requireStore(); err != nil {
 		return "", err
@@ -1066,7 +1220,7 @@ func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description
 	}
 	return a.repo.CreateBugForTest(profileID, testKey, execKey, testrepo.BugDraft{
 		ProjectKey: bugProjectKey(p, execKey), IssueType: p.BugIssueType, Summary: summary,
-		Description: description, Priority: priority, Labels: labels,
+		Description: description, Priority: priority, Labels: labels, Fields: extraFields,
 	})
 }
 
@@ -1134,12 +1288,138 @@ func (a *App) ListBugsForContainer(profileID, containerKey string) ([]testrepo.B
 
 // --- Test run history & rollups ---
 
-// GetTestRunHistory returns a test's run history across executions.
+// GetTestRunHistory returns a test's run history across executions. Before
+// reading from the local store it triggers a best-effort cross-project
+// execution discovery for real (non-local) test keys so that executions in
+// other projects, which the project-scoped sync misses, appear in the history
+// without requiring a full re-sync.
 func (a *App) GetTestRunHistory(profileID, testKey string) ([]testrepo.TestRunEntry, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
+	if !isLocalTestKey(testKey) {
+		a.refreshCrossProjectExecsForTest(profileID, testKey)
+	}
 	return a.repo.GetTestRunHistory(profileID, testKey)
+}
+
+// refreshCrossProjectExecsForTest performs a lightweight per-test cross-project
+// execution discovery: it looks up every Test Execution that testKey belongs to
+// (in any project) and additively merges newly found containers, links, and runs
+// into the local store. This is called lazily when GetTestRunHistory is invoked
+// so that cross-project sub-task executions (which the project-scoped sync
+// misses) appear in the run history without requiring a full re-sync.
+//
+// Errors are logged and ignored -- this is best-effort; the caller returns
+// whatever the local store already has.
+func (a *App) refreshCrossProjectExecsForTest(profileID, testKey string) {
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: load profile: %v", err)
+		return
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: load credentials: %v", err)
+		return
+	}
+	cl := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
+	ctx := context.Background()
+	containers, links, err := cl.TestExecutionsForTest(ctx, testKey)
+	if err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: %s: %v", testKey, err)
+		return
+	}
+	if len(containers) == 0 {
+		return
+	}
+	// Defensive: containers and links must be parallel slices (same length,
+	// same index). TestExecutionsForTest guarantees this, but guard here to
+	// prevent an out-of-bounds panic if that contract is ever relaxed.
+	if len(containers) != len(links) {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: %s: container/link length mismatch (%d vs %d), skipping",
+			testKey, len(containers), len(links))
+		return
+	}
+	// Check which containers are already in the local store so we do not
+	// overwrite links that the project-scoped sync already wrote correctly.
+	knownKeys, err := a.repo.AllContainerKeys(profileID)
+	if err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: list known keys: %v", err)
+		return
+	}
+
+	var newContainers []testrepo.Container
+	var newLinks []testrepo.ContainerLink
+	for i, c := range containers {
+		if knownKeys[c.Key] {
+			continue
+		}
+		newContainers = append(newContainers, testrepo.Container{
+			Key:           c.Key,
+			Kind:          c.Kind,
+			Summary:       c.Summary,
+			Status:        c.Status,
+			ParentKey:     c.ParentKey,
+			ParentSummary: c.ParentSummary,
+			IssueType:     c.IssueType,
+			Environments:  c.Environments,
+			FixVersions:   c.FixVersions,
+			Created:       c.Created,
+			Updated:       c.Updated,
+			Resolved:      c.Resolved,
+			Description:   c.Description,
+		})
+		newLinks = append(newLinks, testrepo.ContainerLink{
+			ContainerKey: links[i].ContainerKey,
+			TestKey:      links[i].TestKey,
+			RunStatus:    links[i].RunStatus,
+		})
+	}
+	if len(newContainers) == 0 {
+		return
+	}
+	if err := a.repo.UpsertContainers(profileID, newContainers); err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: upsert containers: %v", err)
+		return
+	}
+	if err := a.repo.UpsertContainerLinks(profileID, newLinks); err != nil {
+		log.Printf("xtm: refreshCrossProjectExecsForTest: upsert links: %v", err)
+		return
+	}
+	for _, ct := range newContainers {
+		runs, rErr := cl.GetTestRuns(ctx, ct.Key)
+		if rErr != nil {
+			log.Printf("xtm: refreshCrossProjectExecsForTest: get runs for %s: %v", ct.Key, rErr)
+			continue
+		}
+		rows := make([]testrepo.TestRunRow, 0, len(runs))
+		for _, tr := range runs {
+			defectsJSON := "[]"
+			if len(tr.Defects) > 0 {
+				if b, jerr := json.Marshal(tr.Defects); jerr == nil {
+					defectsJSON = string(b)
+				}
+			}
+			env := tr.Environment
+			if env == "" && len(ct.Environments) > 0 {
+				env = strings.Join(ct.Environments, ", ")
+			}
+			rows = append(rows, testrepo.TestRunRow{
+				ExecKey:     ct.Key,
+				TestKey:     tr.TestKey,
+				RunStatus:   tr.Status,
+				StartedAt:   tr.StartedAt,
+				FinishedAt:  tr.FinishedAt,
+				ExecutedBy:  tr.ExecutedBy,
+				Environment: env,
+				Defects:     defectsJSON,
+				CreatedAt:   tr.CreatedAt,
+				UpdatedAt:   tr.UpdatedAt,
+			})
+		}
+		_ = a.repo.ReplaceRunsForExec(profileID, ct.Key, rows)
+	}
 }
 
 // GetRunRollup returns the run-result roll-up for a Test Plan or Test Set.
@@ -1268,7 +1548,13 @@ func (a *App) CommitPendingChanges(profileID string) (out syncer.CommitResult, e
 	if err != nil {
 		return empty, fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
+	s, settingsErr := a.settings.Get()
+	if settingsErr != nil {
+		return empty, fmt.Errorf("read settings: %w", settingsErr)
+	}
+	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
+	client.SetRequirementLinkType(s.RequirementLinkType)
+	engine := syncer.New(client, a.repo)
 	return engine.CommitChanges(a.ctx, profileID, p.ProjectKey)
 }
 
@@ -1297,7 +1583,13 @@ func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (ou
 	if err != nil {
 		return empty, fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
+	s, settingsErr := a.settings.Get()
+	if settingsErr != nil {
+		return empty, fmt.Errorf("read settings: %w", settingsErr)
+	}
+	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
+	client.SetRequirementLinkType(s.RequirementLinkType)
+	engine := syncer.New(client, a.repo)
 	return engine.CommitChangesForIDs(a.ctx, profileID, p.ProjectKey, changeIDs)
 }
 
@@ -1901,7 +2193,7 @@ func (a *App) ExportPytest(profileID, containerKey, style string) (string, error
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save Python scaffold",
-		DefaultFilename: "test_" + sanitizeFilename(containerKey) + suffix + ".py",
+		DefaultFilename: exportFilename("test_" + sanitizeFilename(containerKey) + suffix + ".py"),
 		Filters:         []runtime.FileFilter{{DisplayName: "Python", Pattern: "*.py"}},
 	})
 	if err != nil {
@@ -2313,6 +2605,24 @@ func (a *App) ImportTests(profileID, contentB64 string, isXlsx bool, mapping tes
 	return a.repo.ImportTests(profileID, records, mapping, dryRun)
 }
 
+// CreateRequirement queues a brand-new Requirement locally (temp NEW-REQ-N key)
+// for the given project + issue type, pushed to Jira on commit.
+// The project key and issue types come from the configured requirement sources.
+// Returns the temp key.
+func (a *App) CreateRequirement(profileID, projectKey, issueType, summary, description, priority, components, fixVersions string) (key string, err error) {
+	defer recoverToError("CreateRequirement", &err)
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(summary) == "" {
+		return "", fmt.Errorf("a summary is required to create a requirement")
+	}
+	if strings.TrimSpace(projectKey) == "" {
+		return "", fmt.Errorf("a project key is required to create a requirement")
+	}
+	return a.repo.CreateRequirement(profileID, projectKey, issueType, summary, description, priority, components, fixVersions)
+}
+
 // CreateTest queues a brand-new Test locally (temp NEW-N key) with optional
 // steps, folder and precondition links, pushed to Jira on commit (FR-1).
 // Returns the temp key so the frontend can open the new Test in the detail panel.
@@ -2431,7 +2741,7 @@ func (a *App) ExportGapReport(result testrepo.GapResult, format string) (string,
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export gap analysis report",
-		DefaultFilename: defaultName,
+		DefaultFilename: exportFilename(defaultName),
 		Filters:         filters,
 	})
 	if err != nil {
@@ -2454,19 +2764,19 @@ func (a *App) ExportGapReport(result testrepo.GapResult, format string) (string,
 	return path, nil
 }
 
-// ExportTests writes the Tests matching a query to a user-chosen CSV or XLSX
-// file (FR-10.8). The format follows the saved file's extension. Returns the
-// saved path, or "" if cancelled.
+// ExportTests writes the Tests matching a query to a user-chosen XLSX or CSV
+// file (FR-10.8). XLSX is the default; the format follows the saved file's
+// extension. Returns the saved path, or "" if cancelled.
 func (a *App) ExportTests(profileID string, q testrepo.Query) (string, error) {
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export tests",
-		DefaultFilename: "tests-export.csv",
+		DefaultFilename: exportFilename("tests-export.xlsx"),
 		Filters: []runtime.FileFilter{
-			{DisplayName: "CSV", Pattern: "*.csv"},
 			{DisplayName: "Excel", Pattern: "*.xlsx"},
+			{DisplayName: "CSV", Pattern: "*.csv"},
 		},
 	})
 	if err != nil {
@@ -2475,9 +2785,9 @@ func (a *App) ExportTests(profileID string, q testrepo.Query) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	format := "csv"
-	if strings.HasSuffix(strings.ToLower(path), ".xlsx") {
-		format = "xlsx"
+	format := "xlsx"
+	if strings.HasSuffix(strings.ToLower(path), ".csv") {
+		format = "csv"
 	}
 	data, err := a.repo.ExportTests(profileID, q, format)
 	if err != nil {
@@ -2490,18 +2800,18 @@ func (a *App) ExportTests(profileID string, q testrepo.Query) (string, error) {
 }
 
 // ExportRequirementAudit writes the requirement coverage / sign-off audit to a
-// user-chosen CSV or XLSX file. The format follows the saved file's extension.
-// Returns the saved path, or "" if cancelled.
+// user-chosen XLSX or CSV file. XLSX is the default; the format follows the
+// saved file's extension. Returns the saved path, or "" if cancelled.
 func (a *App) ExportRequirementAudit(profileID string) (string, error) {
 	if err := a.requireStore(); err != nil {
 		return "", err
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export requirement audit",
-		DefaultFilename: "requirement-audit.csv",
+		DefaultFilename: exportFilename("requirement-audit.xlsx"),
 		Filters: []runtime.FileFilter{
-			{DisplayName: "CSV", Pattern: "*.csv"},
 			{DisplayName: "Excel", Pattern: "*.xlsx"},
+			{DisplayName: "CSV", Pattern: "*.csv"},
 		},
 	})
 	if err != nil {
@@ -2510,13 +2820,109 @@ func (a *App) ExportRequirementAudit(profileID string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	format := "csv"
-	if strings.HasSuffix(strings.ToLower(path), ".xlsx") {
-		format = "xlsx"
+	format := "xlsx"
+	if strings.HasSuffix(strings.ToLower(path), ".csv") {
+		format = "csv"
 	}
 	data, err := a.repo.ExportRequirementAudit(profileID, format)
 	if err != nil {
 		return "", err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "", fmt.Errorf("write export: %w", err)
+	}
+	return path, nil
+}
+
+// ExportBugsWithRunHistory exports the selected bugs with their affected-test
+// run history to an XLSX file chosen by the user. Returns the saved path, or
+// "" (no error) when the user cancels the save dialog. Best-effort on the
+// live GetBugDetail per bug: if the fetch fails, the live-only fields are left
+// blank and the cached fields are still exported.
+func (a *App) ExportBugsWithRunHistory(profileID string, bugKeys []string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	if len(bugKeys) == 0 {
+		return "", fmt.Errorf("no bug keys provided")
+	}
+
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export bugs",
+		DefaultFilename: exportFilename("bugs-run-history.xlsx"),
+		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+
+	// Load profile and credentials for the live detail fetch.
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return "", err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return "", fmt.Errorf("load credentials: %w", err)
+	}
+	cl := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
+
+	exports := make([]testrepo.BugExport, 0, len(bugKeys))
+	for _, key := range bugKeys {
+		bug, err := a.repo.GetBug(profileID, key)
+		if err != nil {
+			log.Printf("xtm: ExportBugsWithRunHistory: get bug %s: %v (skipping)", key, err)
+			continue
+		}
+		ex := testrepo.BugExport{
+			Key:        bug.Key,
+			ProjectKey: bug.ProjectKey,
+			IssueType:  bug.IssueType,
+			Status:     bug.Status,
+			Priority:   bug.Priority,
+			Summary:    bug.Summary,
+		}
+
+		// Best-effort live fetch for extended fields.
+		if detail, dErr := cl.GetBugDetail(a.ctx, key); dErr != nil {
+			log.Printf("xtm: ExportBugsWithRunHistory: GetBugDetail %s: %v (leaving detail fields blank)", key, dErr)
+		} else {
+			ex.Description = detail.Description
+			ex.DefectOrigin = detail.DefectOrigin
+			ex.DefectAnalysis = detail.DefectAnalysis
+			ex.CorrectionDetails = detail.CorrectionDetails
+			ex.Reporter = detail.Reporter
+			ex.Severity = detail.Severity
+		}
+
+		// A failure here drops only the affected-test rows: the bug still appears
+		// in the "Bugs" sheet (with its cached fields and a zero affected count)
+		// rather than vanishing from the export entirely.
+		affectedTests, tErr := a.repo.ListTestsForBug(profileID, key)
+		if tErr != nil {
+			log.Printf("xtm: ExportBugsWithRunHistory: list affected tests %s: %v (bug exported without test rows)", key, tErr)
+			affectedTests = nil
+		}
+		ex.AffectedTests = affectedTests
+
+		ex.RunHistory = make(map[string][]testrepo.TestRunEntry, len(affectedTests))
+		for _, bt := range affectedTests {
+			hist, hErr := a.repo.GetTestRunHistory(profileID, bt.Key)
+			if hErr != nil {
+				log.Printf("xtm: ExportBugsWithRunHistory: run history %s/%s: %v (skipping)", key, bt.Key, hErr)
+				continue
+			}
+			ex.RunHistory[bt.Key] = hist
+		}
+		exports = append(exports, ex)
+	}
+
+	data, err := a.repo.BuildBugExportWorkbook(exports)
+	if err != nil {
+		return "", fmt.Errorf("build workbook: %w", err)
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return "", fmt.Errorf("write export: %w", err)
@@ -2541,7 +2947,7 @@ func (a *App) ExportTraceability(profileID, kind string, planFilters, execFilter
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export traceability",
-		DefaultFilename: "traceability-" + kind + ".xlsx",
+		DefaultFilename: exportFilename("traceability-" + kind + ".xlsx"),
 		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
 	})
 	if err != nil {
@@ -2570,7 +2976,7 @@ func (a *App) ExportDashboard(profileID, folder, component, status string) (stri
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export dashboard",
-		DefaultFilename: "dashboard.xlsx",
+		DefaultFilename: exportFilename("dashboard.xlsx"),
 		Filters:         []runtime.FileFilter{{DisplayName: "Excel", Pattern: "*.xlsx"}},
 	})
 	if err != nil {
@@ -2594,7 +3000,7 @@ func (a *App) ExportDashboard(profileID, folder, component, status string) (stri
 func (a *App) ExportImportTemplate() (string, error) {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save import template",
-		DefaultFilename: "test-import-template.csv",
+		DefaultFilename: exportFilename("test-import-template.csv"),
 		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
 	})
 	if err != nil {
@@ -2615,7 +3021,7 @@ func (a *App) ExportImportTemplate() (string, error) {
 func (a *App) ExportSummaryTemplate() (string, error) {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save summary-only template",
-		DefaultFilename: "gap-summary-template.csv",
+		DefaultFilename: exportFilename("gap-summary-template.csv"),
 		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
 	})
 	if err != nil {
@@ -2635,7 +3041,7 @@ func (a *App) ExportSummaryTemplate() (string, error) {
 func (a *App) ExportSummaryFolderTemplate() (string, error) {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save summary + folder template",
-		DefaultFilename: "gap-summary-folder-template.csv",
+		DefaultFilename: exportFilename("gap-summary-folder-template.csv"),
 		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
 	})
 	if err != nil {
@@ -2648,6 +3054,60 @@ func (a *App) ExportSummaryFolderTemplate() (string, error) {
 		return "", fmt.Errorf("write template: %w", err)
 	}
 	return path, nil
+}
+
+// --- Requirement import (-267) ---
+
+// ExportRequirementImportTemplate writes a starter CSV requirement import
+// template to a user-chosen file. Returns the saved path, or "" if cancelled.
+func (a *App) ExportRequirementImportTemplate() (string, error) {
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save requirement import template",
+		DefaultFilename: exportFilename("requirement-import-template.csv"),
+		Filters:         []runtime.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(path, []byte(testrepo.RequirementImportTemplateCSV()), 0o644); err != nil {
+		return "", fmt.Errorf("write template: %w", err)
+	}
+	return path, nil
+}
+
+// AnalyzeRequirementImport parses an uploaded file and classifies each row as
+// "new" or "existing" by comparing normalized summaries against the store.
+func (a *App) AnalyzeRequirementImport(profileID, contentB64 string, isXlsx bool) (testrepo.RequirementImportPreview, error) {
+	empty := testrepo.RequirementImportPreview{Rows: []testrepo.RequirementImportRow{}}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	records, err := decodeImport(contentB64, isXlsx)
+	if err != nil {
+		return empty, err
+	}
+	return a.repo.AnalyzeRequirementImport(profileID, records)
+}
+
+// ImportRequirements parses an uploaded file and creates local pending
+// Requirements for rows whose normalized summary is not already in the store.
+// Existing-by-summary rows are skipped. Returns a result summary.
+func (a *App) ImportRequirements(profileID, projectKey, issueType, contentB64 string, isXlsx bool) (testrepo.RequirementImportResult, error) {
+	empty := testrepo.RequirementImportResult{Errors: []testrepo.ImportError{}}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	if strings.TrimSpace(projectKey) == "" {
+		return empty, fmt.Errorf("a project key is required")
+	}
+	records, err := decodeImport(contentB64, isXlsx)
+	if err != nil {
+		return empty, err
+	}
+	return a.repo.ImportRequirements(profileID, projectKey, issueType, records)
 }
 
 // --- Browse (FR-11) ---
@@ -2765,6 +3225,28 @@ func (a *App) jiraPriorities(profileID string) []string {
 	a.priorityCache[profileID] = priorities
 	a.statusMu.Unlock()
 	return priorities
+}
+
+// ListProjectComponents returns the Jira components configured for a project
+// key, as cached by the last sync. The list is used to populate the component
+// field in the requirement create/edit form. Returns an empty slice (not nil)
+// when no options are cached.
+func (a *App) ListProjectComponents(profileID, projectKey string) ([]string, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListProjectFieldOptions(profileID, projectKey, "component")
+}
+
+// ListProjectFixVersions returns the Jira fix versions configured for a
+// project key, as cached by the last sync. The list is used to populate the
+// fix version field in the requirement create/edit form. Returns an empty
+// slice (not nil) when no options are cached.
+func (a *App) ListProjectFixVersions(profileID, projectKey string) ([]string, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListProjectFieldOptions(profileID, projectKey, "fixversion")
 }
 
 // isLocalTestKey reports whether a Test key is a not-yet-committed local

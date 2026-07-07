@@ -257,19 +257,25 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
               </button>
             </div>
             {refSource === "file" && (
-              <label className="gap-file">
-                <input type="file" accept=".csv,.xlsx,text/csv" onChange={(e) => pick(setRefFile, e)} />
+              <div className="gap-file">
+                <label className="btn gap-file-btn">
+                  Choose file
+                  <input type="file" accept=".csv,.xlsx,text/csv" onChange={(e) => pick(setRefFile, e)} />
+                </label>
                 {refFile && <span className="muted gap-file-name">{refFile.name}</span>}
-              </label>
+              </div>
             )}
           </div>
 
           <div className="gap-row">
             <span className="gap-label">Target</span>
-            <label className="gap-file">
-              <input type="file" accept=".csv,.xlsx,text/csv" onChange={(e) => pick(setTargetFile, e)} />
+            <div className="gap-file">
+              <label className="btn gap-file-btn">
+                Choose file
+                <input type="file" accept=".csv,.xlsx,text/csv" onChange={(e) => pick(setTargetFile, e)} />
+              </label>
               {targetFile && <span className="muted gap-file-name">{targetFile.name}</span>}
-            </label>
+            </div>
           </div>
 
           <div className="gap-row">

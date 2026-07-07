@@ -30,6 +30,10 @@ export function AnalyzeJUnitImportNewExec(arg1, arg2, arg3) {
   return window['go']['main']['App']['AnalyzeJUnitImportNewExec'](arg1, arg2, arg3);
 }
 
+export function AnalyzeRequirementImport(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AnalyzeRequirementImport'](arg1, arg2, arg3);
+}
+
 export function ApplyJUnitImport(arg1, arg2, arg3) {
   return window['go']['main']['App']['ApplyJUnitImport'](arg1, arg2, arg3);
 }
@@ -94,6 +98,10 @@ export function CloneTestSteps(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CloneTestSteps'](arg1, arg2, arg3, arg4);
 }
 
+export function CloneVersion(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CloneVersion'](arg1, arg2, arg3, arg4);
+}
+
 export function CommitPendingChanges(arg1) {
   return window['go']['main']['App']['CommitPendingChanges'](arg1);
 }
@@ -102,8 +110,16 @@ export function CommitPendingChangesByIDs(arg1, arg2) {
   return window['go']['main']['App']['CommitPendingChangesByIDs'](arg1, arg2);
 }
 
-export function CreateBugForTest(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-  return window['go']['main']['App']['CreateBugForTest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+export function CreateBugForTest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['CreateBugForTest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
+export function CreateCanonicalRequirement(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreateCanonicalRequirement'](arg1, arg2, arg3, arg4);
+}
+
+export function CreateChangeRequest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['CreateChangeRequest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function CreateContainerAndAllocate(arg1, arg2, arg3, arg4) {
@@ -130,6 +146,10 @@ export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5, arg6, ar
   return window['go']['main']['App']['CreateProfileReusingToken'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
+export function CreateRequirement(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['CreateRequirement'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
 export function CreateSavedView(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateSavedView'](arg1, arg2, arg3);
 }
@@ -142,12 +162,28 @@ export function CreateTestsFromGaps(arg1, arg2) {
   return window['go']['main']['App']['CreateTestsFromGaps'](arg1, arg2);
 }
 
+export function CreateVersion(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['CreateVersion'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function DeallocateTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeallocateTests'](arg1, arg2, arg3);
 }
 
+export function DeleteCanonicalRequirement(arg1, arg2) {
+  return window['go']['main']['App']['DeleteCanonicalRequirement'](arg1, arg2);
+}
+
+export function DeleteChangeRequest(arg1, arg2) {
+  return window['go']['main']['App']['DeleteChangeRequest'](arg1, arg2);
+}
+
 export function DeleteContainer(arg1, arg2) {
   return window['go']['main']['App']['DeleteContainer'](arg1, arg2);
+}
+
+export function DeleteCoverageNode(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeleteCoverageNode'](arg1, arg2, arg3);
 }
 
 export function DeleteFolder(arg1, arg2) {
@@ -174,12 +210,24 @@ export function DeleteTestStep(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeleteTestStep'](arg1, arg2, arg3);
 }
 
+export function DeleteVersion(arg1, arg2) {
+  return window['go']['main']['App']['DeleteVersion'](arg1, arg2);
+}
+
+export function DetectStaleCoverageMappings(arg1, arg2) {
+  return window['go']['main']['App']['DetectStaleCoverageMappings'](arg1, arg2);
+}
+
 export function DiscardAllPendingChanges(arg1) {
   return window['go']['main']['App']['DiscardAllPendingChanges'](arg1);
 }
 
 export function DiscardPendingChange(arg1, arg2) {
   return window['go']['main']['App']['DiscardPendingChange'](arg1, arg2);
+}
+
+export function DownloadCoverageTemplate() {
+  return window['go']['main']['App']['DownloadCoverageTemplate']();
 }
 
 export function EditContainer(arg1, arg2, arg3) {
@@ -210,6 +258,14 @@ export function ExcludeFromDuplicates(arg1, arg2) {
   return window['go']['main']['App']['ExcludeFromDuplicates'](arg1, arg2);
 }
 
+export function ExportBugsWithRunHistory(arg1, arg2) {
+  return window['go']['main']['App']['ExportBugsWithRunHistory'](arg1, arg2);
+}
+
+export function ExportCoverageReport(arg1, arg2) {
+  return window['go']['main']['App']['ExportCoverageReport'](arg1, arg2);
+}
+
 export function ExportDashboard(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ExportDashboard'](arg1, arg2, arg3, arg4);
 }
@@ -238,6 +294,10 @@ export function ExportRequirementAudit(arg1) {
   return window['go']['main']['App']['ExportRequirementAudit'](arg1);
 }
 
+export function ExportRequirementImportTemplate() {
+  return window['go']['main']['App']['ExportRequirementImportTemplate']();
+}
+
 export function ExportSummaryFolderTemplate() {
   return window['go']['main']['App']['ExportSummaryFolderTemplate']();
 }
@@ -254,12 +314,40 @@ export function ExportTraceability(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['main']['App']['ExportTraceability'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
+export function GetBugCreateFields(arg1) {
+  return window['go']['main']['App']['GetBugCreateFields'](arg1);
+}
+
+export function GetBugDetail(arg1, arg2) {
+  return window['go']['main']['App']['GetBugDetail'](arg1, arg2);
+}
+
 export function GetBulkTransitionOptions(arg1, arg2) {
   return window['go']['main']['App']['GetBulkTransitionOptions'](arg1, arg2);
 }
 
+export function GetCRAdoption(arg1, arg2) {
+  return window['go']['main']['App']['GetCRAdoption'](arg1, arg2);
+}
+
+export function GetCRImpact(arg1, arg2) {
+  return window['go']['main']['App']['GetCRImpact'](arg1, arg2);
+}
+
 export function GetContainerBoard(arg1, arg2) {
   return window['go']['main']['App']['GetContainerBoard'](arg1, arg2);
+}
+
+export function GetCoverageProjectStatus(arg1) {
+  return window['go']['main']['App']['GetCoverageProjectStatus'](arg1);
+}
+
+export function GetCoverageRelationSankey(arg1) {
+  return window['go']['main']['App']['GetCoverageRelationSankey'](arg1);
+}
+
+export function GetCoverageReport(arg1, arg2) {
+  return window['go']['main']['App']['GetCoverageReport'](arg1, arg2);
 }
 
 export function GetDiagnostics() {
@@ -274,8 +362,16 @@ export function GetExecutionsForPlans(arg1, arg2) {
   return window['go']['main']['App']['GetExecutionsForPlans'](arg1, arg2);
 }
 
+export function GetParamModel(arg1, arg2) {
+  return window['go']['main']['App']['GetParamModel'](arg1, arg2);
+}
+
 export function GetProfileProjectKey(arg1) {
   return window['go']['main']['App']['GetProfileProjectKey'](arg1);
+}
+
+export function GetRequirementLinks(arg1, arg2) {
+  return window['go']['main']['App']['GetRequirementLinks'](arg1, arg2);
 }
 
 export function GetRequirementTraceability(arg1, arg2) {
@@ -350,12 +446,24 @@ export function GetTraceabilitySankey(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetTraceabilitySankey'](arg1, arg2, arg3, arg4);
 }
 
+export function GetVersionDistribution(arg1, arg2) {
+  return window['go']['main']['App']['GetVersionDistribution'](arg1, arg2);
+}
+
 export function Health() {
   return window['go']['main']['App']['Health']();
 }
 
+export function ImportCoverageTemplate(arg1, arg2) {
+  return window['go']['main']['App']['ImportCoverageTemplate'](arg1, arg2);
+}
+
 export function ImportProfile() {
   return window['go']['main']['App']['ImportProfile']();
+}
+
+export function ImportRequirements(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['ImportRequirements'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function ImportTests(arg1, arg2, arg3, arg4, arg5) {
@@ -378,12 +486,36 @@ export function ListBugsWithTests(arg1) {
   return window['go']['main']['App']['ListBugsWithTests'](arg1);
 }
 
+export function ListCanonicalRequirements(arg1) {
+  return window['go']['main']['App']['ListCanonicalRequirements'](arg1);
+}
+
+export function ListCanonicalReuse(arg1, arg2) {
+  return window['go']['main']['App']['ListCanonicalReuse'](arg1, arg2);
+}
+
+export function ListChangeRequests(arg1, arg2) {
+  return window['go']['main']['App']['ListChangeRequests'](arg1, arg2);
+}
+
 export function ListComponents(arg1) {
   return window['go']['main']['App']['ListComponents'](arg1);
 }
 
 export function ListContainers(arg1, arg2) {
   return window['go']['main']['App']['ListContainers'](arg1, arg2);
+}
+
+export function ListCoverageCandidateTests(arg1, arg2) {
+  return window['go']['main']['App']['ListCoverageCandidateTests'](arg1, arg2);
+}
+
+export function ListCoverageGaps(arg1, arg2) {
+  return window['go']['main']['App']['ListCoverageGaps'](arg1, arg2);
+}
+
+export function ListCoverageProjects(arg1) {
+  return window['go']['main']['App']['ListCoverageProjects'](arg1);
 }
 
 export function ListFolders(arg1) {
@@ -408,6 +540,18 @@ export function ListPriorities(arg1) {
 
 export function ListProfiles() {
   return window['go']['main']['App']['ListProfiles']();
+}
+
+export function ListProjectComponents(arg1, arg2) {
+  return window['go']['main']['App']['ListProjectComponents'](arg1, arg2);
+}
+
+export function ListProjectFixVersions(arg1, arg2) {
+  return window['go']['main']['App']['ListProjectFixVersions'](arg1, arg2);
+}
+
+export function ListRequirementLinkTypes(arg1) {
+  return window['go']['main']['App']['ListRequirementLinkTypes'](arg1);
 }
 
 export function ListRequirementSources(arg1) {
@@ -450,6 +594,14 @@ export function ListTestsForRequirement(arg1, arg2) {
   return window['go']['main']['App']['ListTestsForRequirement'](arg1, arg2);
 }
 
+export function ListValueTests(arg1, arg2) {
+  return window['go']['main']['App']['ListValueTests'](arg1, arg2);
+}
+
+export function ListVersions(arg1, arg2) {
+  return window['go']['main']['App']['ListVersions'](arg1, arg2);
+}
+
 export function MoveTestToFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveTestToFolder'](arg1, arg2, arg3);
 }
@@ -470,8 +622,16 @@ export function RemoveRequirementSource(arg1, arg2) {
   return window['go']['main']['App']['RemoveRequirementSource'](arg1, arg2);
 }
 
+export function RenameCanonicalRequirement(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RenameCanonicalRequirement'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function RenameFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['RenameFolder'](arg1, arg2, arg3);
+}
+
+export function RenameVersion(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RenameVersion'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function ReorderTestSteps(arg1, arg2, arg3) {
@@ -506,20 +666,60 @@ export function ScanDuplicates(arg1) {
   return window['go']['main']['App']['ScanDuplicates'](arg1);
 }
 
+export function SeedDemoCoverageExample(arg1) {
+  return window['go']['main']['App']['SeedDemoCoverageExample'](arg1);
+}
+
+export function SeedEUICCReference(arg1) {
+  return window['go']['main']['App']['SeedEUICCReference'](arg1);
+}
+
+export function SeedPKCS11Reference(arg1) {
+  return window['go']['main']['App']['SeedPKCS11Reference'](arg1);
+}
+
 export function SeedSampleContainers(arg1) {
   return window['go']['main']['App']['SeedSampleContainers'](arg1);
+}
+
+export function SetCRDecision(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SetCRDecision'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function SetCanonicalMembers(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetCanonicalMembers'](arg1, arg2, arg3);
 }
 
 export function SetContainerEnvironments(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetContainerEnvironments'](arg1, arg2, arg3);
 }
 
+export function SetCoverageProjects(arg1, arg2) {
+  return window['go']['main']['App']['SetCoverageProjects'](arg1, arg2);
+}
+
 export function SetDefaultProfile(arg1) {
   return window['go']['main']['App']['SetDefaultProfile'](arg1);
 }
 
+export function SetMemberVersion(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetMemberVersion'](arg1, arg2, arg3, arg4);
+}
+
+export function SetRequirementLinkType(arg1) {
+  return window['go']['main']['App']['SetRequirementLinkType'](arg1);
+}
+
+export function SetRequirementLinks(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetRequirementLinks'](arg1, arg2, arg3, arg4);
+}
+
 export function SetRequirementSource(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetRequirementSource'](arg1, arg2, arg3, arg4);
+}
+
+export function SetShowCoverage(arg1) {
+  return window['go']['main']['App']['SetShowCoverage'](arg1);
 }
 
 export function SetTestPreconditions(arg1, arg2, arg3) {
@@ -540,6 +740,14 @@ export function SetTestRunStatus(arg1, arg2, arg3, arg4) {
 
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
+}
+
+export function SetValueTests(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetValueTests'](arg1, arg2, arg3);
+}
+
+export function SetVersionStatus(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetVersionStatus'](arg1, arg2, arg3);
 }
 
 export function SyncBugs(arg1) {
@@ -566,6 +774,10 @@ export function SyncTestCalls(arg1) {
   return window['go']['main']['App']['SyncTestCalls'](arg1);
 }
 
+export function SyncTests(arg1) {
+  return window['go']['main']['App']['SyncTests'](arg1);
+}
+
 export function TestConnection(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4);
 }
@@ -582,6 +794,10 @@ export function UnexcludeFromDuplicates(arg1, arg2) {
   return window['go']['main']['App']['UnexcludeFromDuplicates'](arg1, arg2);
 }
 
+export function UpdateChangeRequest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['UpdateChangeRequest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
 export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
   return window['go']['main']['App']['UpdateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
@@ -592,4 +808,8 @@ export function UpdateProfileScope(arg1, arg2) {
 
 export function UpdateProfileToken(arg1, arg2) {
   return window['go']['main']['App']['UpdateProfileToken'](arg1, arg2);
+}
+
+export function UpsertCoverageNode(arg1, arg2) {
+  return window['go']['main']['App']['UpsertCoverageNode'](arg1, arg2);
 }

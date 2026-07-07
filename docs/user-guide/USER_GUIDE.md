@@ -835,6 +835,15 @@ requirements, bugs, custom fields).
 *Figure 30 — A sync in progress, with the phase and item counts in the status
 bar.*
 
+> **Profile switching is locked during a sync.** While any sync is running (a
+> full sync or a per-view refresh), the profile selector in the top bar is
+> disabled, so you can't switch projects mid-pull and race the in-flight writes.
+> It re-enables automatically as soon as the sync finishes.
+
+![Figure 54: Profile selector locked during sync](images/54-profile-locked-sync.png)
+*Figure 54 — During a sync the profile selector is greyed out and the **Sync**
+button reads "Syncing…"; switching profiles is blocked until it completes.*
+
 - **Sync** (top-right) — incremental pull since the last watermark.
 - **More → Full resync (re-pull folders)** — ignores the watermark and re-maps
   Test Repository folder membership. Slower; use after big folder reshuffles.

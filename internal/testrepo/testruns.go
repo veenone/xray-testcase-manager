@@ -17,14 +17,14 @@ type RunRollup struct {
 
 // ExecMemberRun is one member test of an execution with its run details.
 type ExecMemberRun struct {
-	TestKey     string   `json:"testKey"`
-	Summary     string   `json:"summary"`
-	Status      string   `json:"status"`
-	RunStatus   string   `json:"runStatus"`
-	StartedAt   string   `json:"startedAt"`
-	FinishedAt  string   `json:"finishedAt"`
-	ExecutedBy  string   `json:"executedBy"`
-	Environment string   `json:"environment"`
+	TestKey     string `json:"testKey"`
+	Summary     string `json:"summary"`
+	Status      string `json:"status"`
+	RunStatus   string `json:"runStatus"`
+	StartedAt   string `json:"startedAt"`
+	FinishedAt  string `json:"finishedAt"`
+	ExecutedBy  string `json:"executedBy"`
+	Environment string `json:"environment"`
 	// FixVersions are the Jira Fix Version(s) assigned to this member Test
 	// issue itself (from test_case.fix_versions), not the execution's fix
 	// versions. Empty when the Test has none or has not been synced locally.
@@ -180,6 +180,21 @@ type TestRunEntry struct {
 	Defects     []string `json:"defects"`
 	CreatedAt   string   `json:"createdAt"`
 	UpdatedAt   string   `json:"updatedAt"`
+	// ExecIssueType is the execution's Jira issue type (e.g. "Test Execution" or
+	// "Sub Test Execution"), and ExecParentKey / ExecParentSummary identify the
+	// parent issue of a sub-task Test Execution (both empty for a standalone
+	// execution). They let the run-history breakdown distinguish sub-task
+	// executions and link to their parent.
+	ExecIssueType     string `json:"execIssueType"`
+	ExecParentKey     string `json:"execParentKey"`
+	ExecParentSummary string `json:"execParentSummary"`
+	// ExecCreated, ExecUpdated, and ExecResolved are the ISO-8601 timestamps
+	// from the Test Execution issue itself (Jira created/updated/resolutiondate
+	// fields), distinct from the run's own started_at/finished_at. Empty when
+	// not yet synced or for non-execution containers.
+	ExecCreated  string `json:"execCreated"`
+	ExecUpdated  string `json:"execUpdated"`
+	ExecResolved string `json:"execResolved"`
 }
 
 // GetTestRunHistory returns every execution-run of a test, sorted by
@@ -198,7 +213,13 @@ func (r *Repository) GetTestRunHistory(profileID, testKey string) ([]TestRunEntr
 		       tr.defects,
 		       COALESCE(c.fix_versions, ''),
 		       tr.created_at,
-		       tr.updated_at
+		       tr.updated_at,
+		       COALESCE(c.issue_type, ''),
+		       COALESCE(c.parent_key, ''),
+		       COALESCE(c.parent_summary, ''),
+		       COALESCE(c.created, ''),
+		       COALESCE(c.updated, ''),
+		       COALESCE(c.resolved, '')
 		FROM test_run tr
 		LEFT JOIN test_container c
 		       ON c.profile_id = tr.profile_id AND c.jira_key = tr.exec_key
@@ -219,6 +240,8 @@ func (r *Repository) GetTestRunHistory(profileID, testKey string) ([]TestRunEntr
 			&e.StartedAt, &e.FinishedAt, &e.ExecutedBy, &e.Environment,
 			&defectsJSON, &fixJSON,
 			&e.CreatedAt, &e.UpdatedAt,
+			&e.ExecIssueType, &e.ExecParentKey, &e.ExecParentSummary,
+			&e.ExecCreated, &e.ExecUpdated, &e.ExecResolved,
 		); err != nil {
 			return nil, err
 		}

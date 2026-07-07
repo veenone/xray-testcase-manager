@@ -13,6 +13,7 @@ type preconditionDeleteSnapshot struct {
 	Summary     string   `json:"summary"`
 	Type        string   `json:"type"`
 	Description string   `json:"description"`
+	Condition   string   `json:"condition"`
 	Tests       []string `json:"tests"`
 }
 
@@ -23,7 +24,10 @@ type PreconditionUsage struct {
 	Summary     string `json:"summary"`
 	Type        string `json:"type"`
 	Description string `json:"description"`
-	TestCount   int    `json:"testCount"`
+	// Condition is the Xray precondition definition text (distinct from the Jira
+	// issue description). Empty when not set or when synced from live Jira.
+	Condition string `json:"condition"`
+	TestCount int    `json:"testCount"`
 }
 
 // PreconditionTest is one Test linked to a Precondition, with its summary and
@@ -39,13 +43,13 @@ type PreconditionTest struct {
 // dedicated Preconditions management view (FR-13.4).
 func (r *Repository) ListPreconditionsWithUsage(profileID string) ([]PreconditionUsage, error) {
 	rows, err := r.db.Query(
-		`SELECT p.jira_key, p.summary, p.type, p.description,
+		`SELECT p.jira_key, p.summary, p.type, p.description, p.condition,
 		        COUNT(tp.test_key) AS test_count
 		 FROM precondition p
 		 LEFT JOIN test_precondition tp
 		   ON tp.profile_id = p.profile_id AND tp.precondition_key = p.jira_key
 		 WHERE p.profile_id = ?
-		 GROUP BY p.jira_key, p.summary, p.type, p.description
+		 GROUP BY p.jira_key, p.summary, p.type, p.description, p.condition
 		 ORDER BY `+keyNumericOrderExpr("p.jira_key")+` DESC, p.jira_key DESC`,
 		profileID)
 	if err != nil {
@@ -56,7 +60,7 @@ func (r *Repository) ListPreconditionsWithUsage(profileID string) ([]Preconditio
 	out := []PreconditionUsage{}
 	for rows.Next() {
 		var u PreconditionUsage
-		if err := rows.Scan(&u.Key, &u.Summary, &u.Type, &u.Description, &u.TestCount); err != nil {
+		if err := rows.Scan(&u.Key, &u.Summary, &u.Type, &u.Description, &u.Condition, &u.TestCount); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -103,10 +107,10 @@ func (r *Repository) DeletePrecondition(profileID, key string) error {
 
 	var snap preconditionDeleteSnapshot
 	err = tx.QueryRow(
-		`SELECT summary, type, description FROM precondition
+		`SELECT summary, type, description, condition FROM precondition
 		 WHERE profile_id = ? AND jira_key = ?`,
 		profileID, key,
-	).Scan(&snap.Summary, &snap.Type, &snap.Description)
+	).Scan(&snap.Summary, &snap.Type, &snap.Description, &snap.Condition)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("precondition %s not found", key)
 	}

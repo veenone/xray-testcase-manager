@@ -6,11 +6,16 @@ import (
 	"strings"
 )
 
-// GetRequirementTraceability builds a five-layer requirement traceability flow:
-// requirement -> coverage status -> Test plan -> Test -> covering Test run result.
-// The flow unit is a coverage link (a requirement<->Test pair); each uncovered
-// requirement contributes one synthetic thread ("No plan" / "No test") so it
-// still appears in the diagram. Computed entirely from the local store.
+// GetRequirementTraceability builds a six-layer requirement traceability flow:
+//
+//	requirement(0) -> epic(1) -> coverage(2) -> Test plan(3) -> Test(4) -> run result(5)
+//
+// When a requirement has no EpicKey the epic layer is skipped and the link
+// runs directly from requirement(0) to coverage(2), spanning the empty epic
+// column. The flow unit is a coverage link (a requirement<->Test pair); each
+// uncovered requirement contributes one synthetic thread ("No plan" / "No
+// test") so it still appears in the diagram. Computed entirely from the local
+// store.
 //
 // The requirement is always the labelled first node ("KEY - summary").
 // reqFilters narrows the flow to the listed requirement keys; an empty list
@@ -53,7 +58,12 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 	value := map[string]int{}
 	label := map[string]string{}
 	layer := map[string]int{}
+	// reqEpic: requirement(0) -> epic(1) when EpicKey is set
+	reqEpic := map[[2]string]int{}
+	// reqCov: requirement(0) -> coverage(2) direct, when EpicKey is empty
 	reqCov := map[[2]string]int{}
+	// epicCov: epic(1) -> coverage(2) when EpicKey is set
+	epicCov := map[[2]string]int{}
 	covPlan := map[[2]string]int{}
 	planTest := map[[2]string]int{}
 	testResult := map[[2]string]int{}
@@ -64,15 +74,22 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 		layer[id] = lyr
 	}
 
-	// addThread records one coverage link across all five layers:
-	// requirement(0) -> coverage(1) -> Test plan(2) -> Test(3) -> run result(4).
-	addThread := func(reqID, reqLbl, covID, covLbl, planID, planLbl, testID, testLbl, resID, resLbl string) {
+	// addThread records one coverage link across all six layers.
+	// When epicID == "" the epic layer is bypassed: the req links directly to
+	// cov (spanning the empty epic column in the diagram).
+	addThread := func(reqID, reqLbl, epicID, epicLbl, covID, covLbl, planID, planLbl, testID, testLbl, resID, resLbl string) {
 		note(reqID, reqLbl, 0)
-		note(covID, covLbl, 1)
-		note(planID, planLbl, 2)
-		note(testID, testLbl, 3)
-		note(resID, resLbl, 4)
-		reqCov[[2]string{reqID, covID}]++
+		note(covID, covLbl, 2)
+		note(planID, planLbl, 3)
+		note(testID, testLbl, 4)
+		note(resID, resLbl, 5)
+		if epicID != "" {
+			note(epicID, epicLbl, 1)
+			reqEpic[[2]string{reqID, epicID}]++
+			epicCov[[2]string{epicID, covID}]++
+		} else {
+			reqCov[[2]string{reqID, covID}]++
+		}
 		covPlan[[2]string{covID, planID}]++
 		planTest[[2]string{planID, testID}]++
 		testResult[[2]string{testID, resID}]++
@@ -87,11 +104,20 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 		if s := strings.TrimSpace(rq.Summary); s != "" {
 			reqLbl = rq.Key + " — " + truncateRunes(s, 48)
 		}
+
+		// Epic node — present only when the requirement has an EpicKey.
+		epicID := ""
+		epicLbl := ""
+		if rq.EpicKey != "" {
+			epicID = "epic:" + rq.EpicKey
+			epicLbl = rq.EpicKey
+		}
+
 		covID := "cov:" + rq.Coverage
 		covLbl := requirementCoverageLabel(rq.Coverage)
 		tests := testsByReq[rq.Key]
 		if len(tests) == 0 {
-			addThread(reqID, reqLbl, covID, covLbl,
+			addThread(reqID, reqLbl, epicID, epicLbl, covID, covLbl,
 				"plan:__none__", "No plan",
 				"test:__none__", "No test",
 				"res:__notest__", "No test")
@@ -104,7 +130,7 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 			if s := strings.TrimSpace(testSummariesMap[tk]); s != "" {
 				testLbl = tk + " — " + truncateRunes(s, 48)
 			}
-			addThread(reqID, reqLbl, covID, covLbl,
+			addThread(reqID, reqLbl, epicID, epicLbl, covID, covLbl,
 				planID, planLbl,
 				"test:"+tk, testLbl,
 				resID, resLbl)
@@ -123,7 +149,9 @@ func (r *Repository) GetRequirementTraceability(profileID string, reqFilters []s
 		}
 		return out.Nodes[i].ID < out.Nodes[j].ID
 	})
+	out.Links = append(out.Links, flatten(reqEpic)...)
 	out.Links = append(out.Links, flatten(reqCov)...)
+	out.Links = append(out.Links, flatten(epicCov)...)
 	out.Links = append(out.Links, flatten(covPlan)...)
 	out.Links = append(out.Links, flatten(planTest)...)
 	out.Links = append(out.Links, flatten(testResult)...)

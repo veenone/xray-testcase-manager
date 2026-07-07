@@ -36,6 +36,8 @@ interface Props {
   onToggleSelect: (key: string) => void;
   onToggleSelectPage: (keys: string[]) => void;
   onSelectAllMatching: (keys: string[]) => void;
+  onSync?: () => void;
+  syncing?: boolean;
 }
 
 // Page-size choices for the grid pager. The backend caps a page at 500.
@@ -218,6 +220,8 @@ export function TestTable({
   onToggleSelect,
   onToggleSelectPage,
   onSelectAllMatching,
+  onSync,
+  syncing,
 }: Props) {
   const [search, setSearch] = useViewState(profileId, "browse", "search", "");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -595,6 +599,16 @@ export function TestTable({
             Save view
           </button>
         </div>
+        {onSync && (
+          <button
+            className="btn"
+            onClick={onSync}
+            disabled={syncing}
+            title="Pull the latest test data from Jira (tests only)"
+          >
+            {syncing ? "Syncing…" : "Sync"}
+          </button>
+        )}
         <button
           className="btn"
           onClick={exportTests}

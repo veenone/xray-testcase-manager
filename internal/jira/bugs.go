@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -281,18 +282,210 @@ func chunkKeys(keys []string, size int) [][]string {
 	return out
 }
 
+// BugFieldOption is one allowed value for a BugCreateField select or version
+// field. ID is the Jira internal id sent in the POST body; Value is the
+// human-readable label shown in the form.
+type BugFieldOption struct {
+	ID    string `json:"id"`
+	Value string `json:"value"`
+}
+
+// BugCreateField describes one required field on the bug issue type's create
+// screen (beyond project/issuetype/summary/description/priority/labels which the
+// form always handles). Type is a simplified kind:
+//
+//   "text"     plain string input
+//   "option"   single-select with AllowedValues (POST as {"id": ...})
+//   "version"  single version picker with AllowedValues (POST as {"id": ...})
+//   "versions" multi-version picker with AllowedValues (POST as [{"id": ...},...])
+//   "number"   numeric input (POST as string)
+//   "date"     date input (POST as string)
+//   "array"    generic array of option objects
+type BugCreateField struct {
+	ID            string           `json:"id"`
+	Name          string           `json:"name"`
+	Required      bool             `json:"required"`
+	Type          string           `json:"type"`
+	AllowedValues []BugFieldOption `json:"allowedValues"`
+}
+
+// GetBugCreateFields returns the required fields on the bug issue type's create
+// screen for the given project, beyond project/issuetype/summary/description/
+// priority/labels (which the Create Bug form always collects). The caller renders
+// them dynamically so the user can supply values before the commit.
+//
+// Demo mode: returns a representative set (Steps to Reproduce, Frequency,
+// Affects Version/s, Real Detection Phase) without a network call.
+//
+// Live path: GET /rest/api/2/issue/createmeta with
+// ?projectKeys=…&issuetypeNames=…&expand=projects.issuetypes.fields, then
+// returns every field that is marked required and is not in the already-handled
+// set (project/issuetype/summary/description/priority/labels). AllowedValues is
+// populated from the createmeta allowedValues array (value or name for labels).
+//
+// NOTE(xtm): the createmeta fields expansion (required flag, allowedValues
+// shape) follows Jira DC REST v2 conventions and must be verified against the
+// live Xray Server/DC 8.4.0 instance. Some instances disable the fields
+// expansion, in which case the method returns an empty slice without an error.
+func (c *Client) GetBugCreateFields(ctx context.Context, projectKey, issueType string) ([]BugCreateField, error) {
+	if isDemoURL(c.baseURL) {
+		return demoBugCreateFields(), nil
+	}
+	if strings.TrimSpace(issueType) == "" {
+		issueType = "Bug"
+	}
+	path := "/rest/api/2/issue/createmeta?projectKeys=" + url.QueryEscape(projectKey) +
+		"&issuetypeNames=" + url.QueryEscape(issueType) +
+		"&expand=projects.issuetypes.fields"
+
+	var meta struct {
+		Projects []struct {
+			IssueTypes []struct {
+				Fields map[string]struct {
+					Name     string `json:"name"`
+					Required bool   `json:"required"`
+					Schema   struct {
+						Type  string `json:"type"`
+						Items string `json:"items"`
+					} `json:"schema"`
+					AllowedValues []struct {
+						ID    string `json:"id"`
+						Value string `json:"value"`
+						Name  string `json:"name"`
+					} `json:"allowedValues"`
+				} `json:"fields"`
+			} `json:"issuetypes"`
+		} `json:"projects"`
+	}
+	if err := c.get(ctx, path, &meta); err != nil {
+		return nil, err
+	}
+
+	// Fields already handled by the Create Bug form — skip them.
+	skip := map[string]bool{
+		"project": true, "issuetype": true, "summary": true,
+		"description": true, "priority": true, "labels": true,
+	}
+	var out []BugCreateField
+	for _, proj := range meta.Projects {
+		for _, it := range proj.IssueTypes {
+			for id, fd := range it.Fields {
+				if skip[id] || !fd.Required {
+					continue
+				}
+				typ := bugCreateFieldKind(fd.Schema.Type, fd.Schema.Items)
+				avs := make([]BugFieldOption, 0, len(fd.AllowedValues))
+				for _, av := range fd.AllowedValues {
+					v := av.Value
+					if v == "" {
+						v = av.Name
+					}
+					avs = append(avs, BugFieldOption{ID: av.ID, Value: v})
+				}
+				out = append(out, BugCreateField{
+					ID:            id,
+					Name:          fd.Name,
+					Required:      true,
+					Type:          typ,
+					AllowedValues: avs,
+				})
+			}
+		}
+	}
+	return out, nil
+}
+
+// bugCreateFieldKind maps a createmeta schema type (and its items, when the
+// type is "array") to the simplified kind the Create Bug form uses.
+func bugCreateFieldKind(schemaType, items string) string {
+	switch schemaType {
+	case "option":
+		return "option"
+	case "number":
+		return "number"
+	case "date":
+		return "date"
+	case "version":
+		return "version"
+	case "array":
+		switch items {
+		case "version":
+			return "versions"
+		case "option":
+			return "option"
+		}
+		return "array"
+	default:
+		return "text"
+	}
+}
+
+// demoBugCreateFields returns a representative set of required extra create
+// fields for the demo mode, so the full create-bug flow works offline.
+func demoBugCreateFields() []BugCreateField {
+	return []BugCreateField{
+		{
+			ID:            "customfield_10300",
+			Name:          "Steps to Reproduce",
+			Required:      true,
+			Type:          "text",
+			AllowedValues: []BugFieldOption{},
+		},
+		{
+			ID:       "customfield_10301",
+			Name:     "Frequency",
+			Required: true,
+			Type:     "option",
+			AllowedValues: []BugFieldOption{
+				{ID: "10401", Value: "Always"},
+				{ID: "10402", Value: "Sometimes"},
+				{ID: "10403", Value: "Rarely"},
+				{ID: "10404", Value: "Once"},
+			},
+		},
+		{
+			ID:       "versions",
+			Name:     "Affects Version/s",
+			Required: true,
+			Type:     "versions",
+			AllowedValues: []BugFieldOption{
+				{ID: "10000", Value: "1.0"},
+				{ID: "10001", Value: "1.1"},
+				{ID: "10002", Value: "2.0"},
+			},
+		},
+		{
+			ID:       "customfield_10302",
+			Name:     "Real Detection Phase",
+			Required: true,
+			Type:     "option",
+			AllowedValues: []BugFieldOption{
+				{ID: "10501", Value: "Unit"},
+				{ID: "10502", Value: "Integration"},
+				{ID: "10503", Value: "System"},
+				{ID: "10504", Value: "Acceptance"},
+			},
+		},
+	}
+}
+
 // CreateBug creates a defect issue of the given issuetype (the profile's
 // configured bug issue type, default "Bug") and returns its key. Demo URLs
 // return a synthetic key.
 //
+// extraFields carries any additional field values collected from the
+// createmeta-driven Create Bug form (keyed by Jira field id, values already
+// shaped for the POST body: {"id":...} for options, [{"id":...}] for versions,
+// plain string for text/number/date). They are merged into the POST fields map
+// without overriding the basic fields.
+//
 // Live path: POST /rest/api/2/issue with fields {project:{key}, issuetype:{name:
 // issueType}, summary, description (if set), priority:{name} (if set), labels (if
-// any)}, mirroring CreateTest. NOTE(xtm): some instances mark extra fields
-// mandatory on the defect type (e.g. a detection phase or affects-version); when
-// the instance rejects the create, the returned error carries the Jira response
-// body which names the missing field. That requirement is instance-specific and
-// must be verified live.
-func (c *Client) CreateBug(ctx context.Context, projectKey, issueType, summary, description, priority string, labels []string) (string, error) {
+// any)}, plus any extra fields. NOTE(xtm): some instances mark additional fields
+// mandatory on the defect type; the createmeta-driven form should have collected
+// them, but if the instance rejects the create the returned error carries the
+// Jira response body which names the missing field.
+func (c *Client) CreateBug(ctx context.Context, projectKey, issueType, summary, description, priority string, labels []string, extraFields map[string]any) (string, error) {
 	if isDemoURL(c.baseURL) {
 		return fmt.Sprintf("%s-BUG-DEMO", projectKey), nil
 	}
@@ -312,6 +505,25 @@ func (c *Client) CreateBug(ctx context.Context, projectKey, issueType, summary, 
 	}
 	if len(labels) > 0 {
 		fields["labels"] = labels
+	}
+	// Auto-fill reporter with the authenticated user (PAT owner). Best-effort:
+	// if /myself fails on a live instance, the reporter field is simply omitted
+	// rather than failing the create. Demo mode sets "demo.user" via the same
+	// helper so the full flow can be exercised offline.
+	// NOTE(xtm): Jira DC REST v2 keys the reporter by login name ("name"); verify
+	// against the live Xray Server/DC 8.4.0 instance (some instances require
+	// "accountId" instead).
+	if username, uerr := c.currentUser(ctx); uerr == nil && username != "" {
+		fields["reporter"] = map[string]string{"name": username}
+	}
+	// Merge extra fields collected from the createmeta-driven form. Extra fields
+	// do not override the basic fields above (project / issuetype / summary /
+	// description / priority / labels / reporter), since those are skipped in
+	// GetBugCreateFields.
+	for k, v := range extraFields {
+		if _, exists := fields[k]; !exists {
+			fields[k] = v
+		}
 	}
 	var resp struct {
 		Key string `json:"key"`
@@ -496,4 +708,257 @@ func demoBugs(testProjectKey string, scope []string) ([]Bug, []BugLink) {
 	}
 
 	return bugs, links
+}
+
+// BugDetail holds the extended fields for a defect issue fetched lazily on
+// detail-panel open (description plus three instance-specific custom fields).
+type BugDetail struct {
+	Description       string `json:"description"`
+	DefectOrigin      string `json:"defectOrigin"`
+	DefectAnalysis    string `json:"defectAnalysis"`
+	CorrectionDetails string `json:"correctionDetails"`
+	// Reporter is the bug's Jira reporter display name. Severity is the value of
+	// the instance-specific "Severity" custom field (when defined).
+	Reporter string `json:"reporter"`
+	Severity string `json:"severity"`
+}
+
+// demoBugDetailOrigins is the pool of Defect Origin values cycled by a simple
+// hash of the bug key, so the demo returns a deterministic value per key.
+var demoBugDetailOrigins = []string{"Code", "Design", "Requirements", "Test"}
+
+// demoBugDetailReporters and demoBugDetailSeverities are cycled by a hash of the
+// bug key for deterministic demo values.
+var demoBugDetailReporters = []string{"Alice Tester", "Bob Reviewer", "Carol QA", "Dave Dev"}
+var demoBugDetailSeverities = []string{"Critical", "Major", "Minor", "Trivial"}
+
+// GetBugDetail fetches the extended fields for a defect issue: description and
+// three instance-specific custom fields (Defect Origin, Defect Analysis,
+// Correction Details). Called lazily on detail-panel open so the bulk sync
+// does not pay per-bug round-trip costs.
+//
+// Demo mode: returns a deterministic sample derived from bugKey without any
+// network call.
+//
+// NOTE(xtm): the three custom field display names ("Defect Origin", "Defect
+// Analysis", "Correction Details") are instance-specific and must be verified
+// and adjusted against the live Xray Server/DC 8.4.0 instance. The fields
+// may not exist on every Jira project; resolveCustomFieldID returns "" (no
+// error) when a field is absent, and that field is simply omitted from the
+// request.
+func (c *Client) GetBugDetail(ctx context.Context, bugKey string) (BugDetail, error) {
+	if isDemoURL(c.baseURL) {
+		// Deterministic hash of the key for the origin cycle.
+		h := 0
+		for _, ch := range bugKey {
+			h = h*31 + int(ch)
+		}
+		if h < 0 {
+			h = -h
+		}
+		origin := demoBugDetailOrigins[h%len(demoBugDetailOrigins)]
+		return BugDetail{
+			Description:       "Steps to reproduce: open the affected screen and trigger the failure condition described in the summary.",
+			DefectOrigin:      origin,
+			DefectAnalysis:    "Root cause: the logic at the point of failure does not handle the edge case introduced by the reported scenario.",
+			CorrectionDetails: "Fixed in the next patch: the guard condition was added and the relevant unit test updated.",
+			Reporter:          demoBugDetailReporters[h%len(demoBugDetailReporters)],
+			Severity:          demoBugDetailSeverities[h%len(demoBugDetailSeverities)],
+		}, nil
+	}
+
+	// Resolve the three custom field ids by display name; each may be "" when the
+	// instance does not define that field.
+	originID, err := c.resolveCustomFieldID(ctx, "Defect Origin")
+	if err != nil {
+		return BugDetail{}, fmt.Errorf("resolve Defect Origin field: %w", err)
+	}
+	analysisID, err := c.resolveCustomFieldID(ctx, "Defect Analysis")
+	if err != nil {
+		return BugDetail{}, fmt.Errorf("resolve Defect Analysis field: %w", err)
+	}
+	correctionID, err := c.resolveCustomFieldID(ctx, "Correction Details")
+	if err != nil {
+		return BugDetail{}, fmt.Errorf("resolve Correction Details field: %w", err)
+	}
+	// NOTE(xtm): "Severity" is also instance-specific; resolveCustomFieldID
+	// returns "" (no error) when the instance does not define it.
+	severityID, err := c.resolveCustomFieldID(ctx, "Severity")
+	if err != nil {
+		return BugDetail{}, fmt.Errorf("resolve Severity field: %w", err)
+	}
+
+	// Build the fields parameter: description and the standard reporter field are
+	// always included; custom field ids are added only when the instance defines
+	// them.
+	fieldParts := []string{"description", "reporter"}
+	for _, id := range []string{originID, analysisID, correctionID, severityID} {
+		if id != "" {
+			fieldParts = append(fieldParts, id)
+		}
+	}
+	q := url.Values{}
+	q.Set("fields", strings.Join(fieldParts, ","))
+
+	var resp struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	if err := c.get(ctx, "/rest/api/2/issue/"+bugKey+"?"+q.Encode(), &resp); err != nil {
+		return BugDetail{}, err
+	}
+
+	rawStr := func(raw json.RawMessage) string {
+		if len(raw) == 0 {
+			return ""
+		}
+		// description in Jira DC REST v2 is a plain string.
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			return s
+		}
+		return stringifyFieldValue(raw)
+	}
+
+	var detail BugDetail
+	if raw, ok := resp.Fields["description"]; ok {
+		detail.Description = rawStr(raw)
+	}
+	if originID != "" {
+		if raw, ok := resp.Fields[originID]; ok {
+			detail.DefectOrigin = stringifyFieldValue(raw)
+		}
+	}
+	if analysisID != "" {
+		if raw, ok := resp.Fields[analysisID]; ok {
+			detail.DefectAnalysis = stringifyFieldValue(raw)
+		}
+	}
+	if correctionID != "" {
+		if raw, ok := resp.Fields[correctionID]; ok {
+			detail.CorrectionDetails = stringifyFieldValue(raw)
+		}
+	}
+	// Reporter is a standard user object; stringifyFieldValue renders its
+	// displayName / name.
+	if raw, ok := resp.Fields["reporter"]; ok {
+		detail.Reporter = stringifyFieldValue(raw)
+	}
+	if severityID != "" {
+		if raw, ok := resp.Fields[severityID]; ok {
+			detail.Severity = stringifyFieldValue(raw)
+		}
+	}
+	return detail, nil
+}
+
+// projectBugSearchResponse is the /rest/api/2/search payload for the
+// project-wide bug search.
+type projectBugSearchResponse struct {
+	Total  int               `json:"total"`
+	Issues []projectBugIssue `json:"issues"`
+}
+
+// projectBugIssue is one issue returned by the project-wide bug search.
+type projectBugIssue struct {
+	Key    string           `json:"key"`
+	Fields projectBugFields `json:"fields"`
+}
+
+// projectBugFields holds the fields we request for a project-wide bug search.
+type projectBugFields struct {
+	Summary   string    `json:"summary"`
+	Status    *nameOnly `json:"status"`
+	Priority  *nameOnly `json:"priority"`
+	IssueType *nameOnly `json:"issuetype"`
+	Project   struct {
+		Key string `json:"key"`
+	} `json:"project"`
+	Updated string `json:"updated"`
+}
+
+// ListProjectBugs returns all defect issues in projKey whose issuetype
+// matches issueType (case-insensitive). Paginated with maxResults=100.
+//
+// Demo mode: returns the full demo bug set (deduped by key) regardless of
+// projKey, so the demo shows a sensible set of bugs without needing
+// project-specific seeding.
+//
+// Live path: issues a paginated JQL search
+//
+//	project = "<projKey>" AND issuetype = "<issueType>" ORDER BY key ASC
+//
+// with fields=summary,status,priority,issuetype,project,updated. Best-effort:
+// a 400 response logs and returns whatever has been accumulated so far.
+//
+// NOTE(xtm): the field names and Jira DC pagination behavior follow Jira DC
+// conventions and need live verification against the Xray Server/DC 8.4.0
+// instance. If a project key or issuetype name differs from the configured
+// value the JQL will return 0 results (not an error).
+func (c *Client) ListProjectBugs(ctx context.Context, projKey, issueType string) ([]Bug, error) {
+	if isDemoURL(c.baseURL) {
+		// Return the full demo bug set deduped by key.
+		allBugs, _ := demoBugs("", nil)
+		seen := map[string]struct{}{}
+		out := make([]Bug, 0, len(allBugs))
+		for _, b := range allBugs {
+			if _, dup := seen[b.Key]; dup {
+				continue
+			}
+			seen[b.Key] = struct{}{}
+			out = append(out, b)
+		}
+		return out, nil
+	}
+
+	if strings.TrimSpace(issueType) == "" {
+		issueType = "Bug"
+	}
+	jql := fmt.Sprintf(`project = "%s" AND issuetype = "%s" ORDER BY key ASC`,
+		strings.ReplaceAll(projKey, `"`, `\"`),
+		strings.ReplaceAll(issueType, `"`, `\"`))
+
+	out := []Bug{}
+	startAt := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		q := url.Values{}
+		q.Set("jql", jql)
+		q.Set("startAt", strconv.Itoa(startAt))
+		q.Set("maxResults", "100")
+		q.Set("fields", "summary,status,priority,issuetype,project,updated")
+
+		var resp projectBugSearchResponse
+		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
+			var he *HTTPError
+			if errors.As(err, &he) && he.Code == http.StatusBadRequest {
+				log.Printf("xtm: project bug search rejected (project=%s, issuetype=%s): %v",
+					projKey, issueType, err)
+				return out, nil
+			}
+			return out, err
+		}
+		for _, iss := range resp.Issues {
+			pk := iss.Fields.Project.Key
+			if pk == "" {
+				pk = bugProjectKey(iss.Key)
+			}
+			out = append(out, Bug{
+				Key:        iss.Key,
+				ProjectKey: pk,
+				IssueType:  iss.Fields.IssueType.nameOr(),
+				Summary:    iss.Fields.Summary,
+				Status:     iss.Fields.Status.nameOr(),
+				Priority:   iss.Fields.Priority.nameOr(),
+				Updated:    iss.Fields.Updated,
+			})
+		}
+		startAt += len(resp.Issues)
+		if len(resp.Issues) == 0 || startAt >= resp.Total {
+			break
+		}
+		time.Sleep(throttleContainers)
+	}
+	return out, nil
 }

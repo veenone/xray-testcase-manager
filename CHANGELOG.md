@@ -6,6 +6,94 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is single-sourced in `wails.json` (`info.productVersion`).
 
+## [Unreleased]
+
+## [1.8.0b] - 2026-07-07
+
+Preview release of the **Coverage module** — parameter-level coverage and cross-project functional-requirement reuse (Topics 1 + 3), per-version coverage with change-request tracking (Topic 2), a graphical **Coverage Map** with per-project status and a project→function→coverage Sankey, an enriched Excel report, and a `demo-pkcs` demo backend that synthesises a full PKCS#11 dataset across every view. All local; no Jira admin.
+
+### Added
+- **Coverage module (parameter-level test coverage + functional-requirement reuse).** A new **Coverage** tab adds a bounded, local-only capability beside test management: decompose a function into parameter *values* / error codes / boundaries, map existing Tests to each value, and measure coverage as *required values with ≥1 test* (the parameter-level definition — not combinatorial). Group equivalent requirement issues from many customer projects under a local **canonical functional requirement** so coverage is defined once and reused, and see which projects reuse it. Import the existing PKCS#11 parameter-extraction Excel workbook to seed a model, and export a styled coverage report (Summary + per-group + Gaps sheets) for Jira/Confluence. Run status reuses the existing requirement-coverage roll-up. Mappings that reference deleted Tests are flagged as stale (kept, never auto-pruned). All state is local (schema v35, `coverage_*`/`canonical_*` tables); nothing requires Jira admin.
+- **Coverage module — versions & change requests (Topic 2).** Each functional requirement can now hold multiple **versions** (e.g. 2.40/stable, 3.0/beta) — coverage is measured per version, and a version can be **cloned** to start a new release line from an existing one. Customer requirements are **locked to a version**, and **change requests** track each customer's can-accept / cannot-accept / pending decision, with **version-distribution and CR-adoption dashboards**. All local (schema v36); no Jira admin needed.
+- **Coverage module — Coverage Map view + project configuration.** A new **Coverage Map** sub-tab (reachable without selecting a function) graphically relates your in-scope projects to the canonical functional requirements: a **per-project coverage panel** (coverage %, requirements, functions reused) and a **Sankey** flowing *customer project → function → covered / gap*. The in-scope **project keys are now configuration** (a per-profile `source` / `customer` list, schema v37) that seeds itself from existing members and drives the view and the report. The coverage report gains **By-project** and **Reuse-map** sheets alongside Summary / per-group / Gaps. Coverage modals were restyled for a consistent centered/scrolling layout. All local; no Jira admin.
+- **PKCS#11 demo dataset (`demo-pkcs` profile).** Create a profile with the Jira base URL **`demo-pkcs`** and a normal **Sync** now produces a complete PKCS#11 dataset across *every* view — **Browse** (tests like `C_Sign with RSA-2048`, foldered under Signing / Key management for **C_Sign, C_GenerateKeyPair, C_Verify**), **Requirements** (`FUNC-PKCS11-*` reused by `CUST-HSM-BANK/SAMSU-*`), **Preconditions** (HSM-themed), and **Containers** (PKCS Test Sets / Plans / Executions with run status). On top of that, the Coverage tab's **Load PKCS#11 coverage** action layers the parameter models, two versions (2.40 / 3.0), member version-locks, and change requests with per-customer decisions onto the synced tests — so a value in the Coverage matrix is the same test key you can open in Browse. The demo backend is theme-driven: `demo-pkcs` swaps the demo vocabulary to PKCS while the plain `demo` dataset is unchanged. The profile form and `isDemoURL` accept a `demo-` prefix (e.g. `demo-pkcs`).
+
+## [1.7.1] - 2026-06-26
+
+Patch release: a live-testing fix for Test Repository subfolder creation, plus a dedicated Sync button on the test-case view.
+
+### Added
+- **Dedicated Sync button on the Browse / test-case view** (RND_P_4TFINT_05-260). A tests-only partial sync refreshes just the test grid and folder membership, incremental against the last full sync's watermark, without running the requirement / container / bug passes. The global header Sync is unchanged.
+
+### Fixed
+- **Creating a Test Repository subfolder now commits to Jira** (RND_P_4TFINT_05-252). The folder-create call targeted `.../testrepository/{project}/folders/{parentID}/folders`, which a live Xray Server / DC instance rejects with a 404; it now posts to the correct parent folder resource `.../folders/{parentID}` (verified against the docs and the live error).
+
+## [1.7.0] - 2026-06-26
+
+Stable **1.7.0** release. Rolls up the `1.7.0a` through `1.7.0a-5` alpha iterations (full per-iteration history in the sections below) into one release: a dedicated **Bugs management view** (detail card, affected-test run-history breakdown with sub-task and cross-project executions, markdown detail fields, Excel export), **collapsible-outline and timestamped Excel exports** across the app, **collapsible Traceability export**, and **pill-based filters** with tighter Bugs / Preconditions / Containers layouts. Highlights of the final iteration on top of `1.7.0a-4`:
+
+### Added
+- **Select all bugs across pages.** The Bugs list has a second select-all control that checks every bug matching the current filter across all pages, not just the visible one — so the whole filtered set can be exported in one action.
+- **Collapsible Traceability export.** The Traceability XLSX "Table" sheet is now a collapsible outline tree that stacks each thread by node (e.g. Test Plan > Test Execution > Test > Run status), de-duplicating shared parents and using Excel row grouping (+/− controls), matching the bug export. The Flow (Sankey edge list) sheet is unchanged.
+
+### Changed
+- **Styled bug Excel export.** The exported workbook is now banded by tier — bug, test, and execution rows each have their own fill — with cell borders and word-wrapped long-text columns (Details / Description / Defect Analysis / Correction Details) for readability.
+- **Timestamped export filenames.** Every export's default filename is prefixed with a `YYYYMMDDHHMM_` timestamp (e.g. `202606261430_dashboard.xlsx`), so saved exports sort chronologically and a second export never silently overwrites an earlier one.
+- **Pill-based filters.** The Bugs test-linkage filter (All / With tests / Without tests), the Preconditions usage filter (All / With tests / Without tests), and the Containers status filter (All statuses + one per status) are now labelled pills with live counts, matching the Requirements coverage filter, instead of dropdowns.
+- **Tighter Bugs and Preconditions layout.** In the Bugs list the filter pills and sort control share one row, the Export button (now "Export…") sits beside Sync, and the pager places the page nav next to the rows-per-page selector. In the Preconditions list the filter pills moved to their own line below the sort / New row, so the New button no longer stretches.
+
+### Fixed
+- **Bug Excel export collapse controls.** The workbook now declares its outline depth, so Excel reliably renders the Bug > Test > Execution row-group collapse (+/−) controls; previously the grouping data was present but some Excel builds showed the report flat.
+- Bug list (and the Containers Test Execution / Plan / Set member lists) now scroll with the pager pinned, instead of the list growing unbounded with a hidden scrollbar.
+- Bug card status pills no longer overlap the card (wider list, wrapping layout).
+
+## [1.7.0a-4] - 2026-06-25 (alpha)
+
+Fourth alpha iteration of the 1.7.0 work: Bugs-view improvements, plus sub-task and cross-project execution sync fixes from live testing.
+
+### Added
+- **Bug detail panel.** Selecting a bug now shows a structured detail card above the affected tests: key, status, summary, a two-column facts grid (Type / Project / Priority / Updated / Reporter / Severity / Affects), and the bug **Description** (collapsible, collapsed by default), **Defect Origin**, **Defect Analysis**, and **Correction Details** (fetched lazily on selection).
+- **Dynamic right sidebar.** The bug-view side panel is a placeholder for a test, a Test Plan, or a Test Execution: the affected-test open icon shows the test; the run-history **Plan** and **Execution** links open that container's detail (summary, run-status histogram, members) in the sidebar. The panel is width-resizable and all three share one persisted width.
+- **Bug list test-linkage filter.** Filter bugs by All / With tests / Without tests, with a per-card cue (a test-count badge, or a "no tests" chip).
+- **Sub-task executions in the run-history breakdown.** A test's run history and the bug breakdown now distinguish **Sub Test Executions** from standalone ones with a "Sub-task" badge and a link to the parent issue.
+- **Cross-project execution discovery.** Executions that live in another project (notably sub-task executions, which inherit their parent issue's project) are now discovered per test and cached, both during a full sync and lazily when a test's run history is opened, so their runs appear in the breakdown.
+- **Export bugs to Excel.** An "Export to Excel" action in the Bugs toolbar exports the checked bugs (or the open bug) to a single-sheet **collapsible outline** workbook that stacks **Bug > Test > Test Execution** using Excel row grouping (the +/- controls), so a bug collapses to hide its tests and a test collapses to hide its executions. Each level carries its own detail.
+- **Markdown in detail views.** The bug **Description**, **Defect Analysis**, and **Correction Details**, and the container / Test Execution **Description** in the detail sidebar, now render as GitHub-flavoured markdown.
+
+### Changed
+- **Bug sync fetches ALL bugs in the project.** Previously only bugs linked to a synced test were found; the sync now also runs a project-wide `project = <bugProject> AND issuetype = <type>` search and merges it with the test-link harvest, so unlinked project bugs appear too.
+- **Sub-task Test Execution issue type is discovered from the instance** (it defaults to "Sub Test Execution" but can be renamed / localised), instead of a hardcoded name that silently missed renamed types.
+- **The Bugs-view sync also refreshes affected-test run data.** Clicking Sync in the Bugs view now refreshes the run/execution data for every bug-affected test (including newly discovered cross-project and sub-task executions), so the run-history breakdown updates without needing a full project sync.
+
+### Fixed
+- **"Latest result" now matches the run history.** The affected-tests "Latest result" reads the most recent run from the run table (the same source as the breakdown), falling back to the consolidated membership status, instead of a worst-wins value that could disagree with the runs shown.
+- **Run-history breakdown columns.** The run-date column is renamed **Run Date** (to distinguish it from the execution timestamps) and **every column is now sortable**. The **Created / Updated / Resolved** columns show the Test Execution issue's own timestamps (created, updated, resolution date), fetched from the execution detail and cached on the container - the per-run Xray endpoint does not return them, so they were previously blank.
+- **Defect Analysis is collapsible** in the bug detail card (collapsed by default), matching the Description field, so a long analysis no longer pushes the affected tests down.
+
+## [1.7.0a-2] - 2026-06-25 (alpha)
+
+Second alpha iteration of the 1.7.0 work: live-testing fixes and follow-on features on top of `1.7.0a`.
+
+### Added
+- **Import JUnit XML results.** Update a Test Execution's run results by importing a JUnit-compatible report, matching each `<testcase name>` to a test by summary. Import into the selected execution, or create a new Test Execution from the report (optionally creating tests it does not match). Queued as pending changes with a preview before commit.
+- **Per-test Fix Version on executions.** Each member shows its own Jira Fix Version(s) in a column; the execution's Fix Version chips filter the member list.
+- **Per-run timestamps.** Test runs carry created / updated timestamps; the run-history tables are sortable by result, created, or updated.
+- **Run history nested by Test Plan.** A bug's per-test run breakdown groups runs under each Test Plan and adds Created / Updated columns.
+- **Traceability detail.** The Requirement Sankey gains a Test column (requirement → coverage → plan → test → result); the Sub-task Sankey labels each parent with its summary.
+- **Test connection while editing a profile** using the stored token.
+
+### Changed
+- **Live Xray run data (Server/DC).** Test runs are fetched from the `testexec/{key}/test` endpoint (paginated); the Test Plan association is read from the execution issue; the execution's environment is stamped onto its runs. Verified against a live instance.
+- **Requirement test detail** opens as a right-side panel instead of a full-screen overlay.
+- **Bugs panel.** Scrollable list with a select-all checkbox, working rows-per-page (default 5), full-colour run-status highlighting, and a two-row header so the Sync button is not clipped.
+- **Clearer Jira errors.** A failed request surfaces the Jira error message instead of the raw query URL.
+
+### Fixed
+- Cross-project test detail no longer shows "test not found" — it falls back to a live fetch.
+- Bulk-operation modal dropdowns are no longer clipped by the modal bounds.
+- Pager Prev/Go/Next show a clear enabled vs disabled state in the Bugs view.
+- Stability: a panic-recovery safety net so a backend error surfaces as a message instead of terminating the app.
+
 ## [1.7.0a] - 2026-06-23 (alpha)
 
 Alpha build of the 1.7.0 work, for internal validation.
