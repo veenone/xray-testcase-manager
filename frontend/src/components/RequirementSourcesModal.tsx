@@ -147,15 +147,18 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
                 onChange={(e) => saveLinkType(e.target.value)}
                 style={{ flex: 1 }}
               >
-                {linkTypes.length === 0 ? (
-                  <option value={selectedLinkType}>{selectedLinkType}</option>
-                ) : (
-                  linkTypes.map((t) => (
+                {/* Always include the current/default value as an option: the
+                    live instance's issue-link-type names (e.g. "Test", "Blocks")
+                    rarely include the "tested by" default, so without this the
+                    selected value has no matching <option> and can't be picked
+                    (RND_P_4TFINT_05-275). Merge it in, deduped, first. */}
+                {Array.from(new Set([selectedLinkType, ...linkTypes]))
+                  .filter((t) => t)
+                  .map((t) => (
                     <option key={t} value={t}>
                       {t}
                     </option>
-                  ))
-                )}
+                  ))}
               </select>
               {linkTypeBusy && <span className="muted">Saving…</span>}
             </div>
