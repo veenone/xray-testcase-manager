@@ -383,7 +383,7 @@ func (a *Adapter) Capabilities() backend.Capabilities {
 		SupportsIssueLinkTypes:      true,
 		SupportsEnvironments:        true,
 		SupportsContainers:          true,
-		ContainerKinds:              []string{"testset", "testplan", "testexec"},
+		ContainerKinds:              []string{jira.KindTestSet, jira.KindTestPlan, jira.KindTestExec},
 		SupportsTestRuns:            true,
 		StatusModel:                 "workflow",
 		SupportsWorkflowTransitions: true,

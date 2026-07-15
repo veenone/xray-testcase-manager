@@ -41,6 +41,21 @@ func TestAdapterSmokeDemo(t *testing.T) {
 		t.Fatalf("mapped Test missing key/summary: %+v", tests[0])
 	}
 
+	// ListTestsBasic maps nested IssueLinks, including the Priority field. The
+	// first XRAYINT cross-project member carries a priced bug link in demo mode.
+	basics, err := a.ListTestsBasic(ctx, []string{"XRAYINT-1"})
+	if err != nil {
+		t.Fatalf("ListTestsBasic: %v", err)
+	}
+	if len(basics) == 0 {
+		t.Fatalf("expected a basic for XRAYINT-1")
+	}
+	if len(basics[0].IssueLinks) > 0 {
+		if basics[0].IssueLinks[0].Priority == "" {
+			t.Fatalf("mapped BugLinkRef dropped Priority: %+v", basics[0].IssueLinks[0])
+		}
+	}
+
 	// Containers read maps both slices.
 	containers, links, err := a.ListContainers(ctx, "DEMO", nil)
 	if err != nil {

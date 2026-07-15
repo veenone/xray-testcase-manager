@@ -55,6 +55,7 @@ func toBugLinkRef(r jira.BugLinkRef) backend.BugLinkRef {
 		ProjectKey: r.ProjectKey,
 		Summary:    r.Summary,
 		Status:     r.Status,
+		Priority:   r.Priority,
 	}
 }
 

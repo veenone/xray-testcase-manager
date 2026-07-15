@@ -44,6 +44,7 @@ type BugLinkRef struct {
 	ProjectKey string
 	Summary    string
 	Status     string
+	Priority   string
 }
 
 // TestBasic is a lightweight test projection (key/summary/status + links).
