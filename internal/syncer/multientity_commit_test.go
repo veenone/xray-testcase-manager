@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/store"
 	"xray-test-manager/internal/syncer"
@@ -98,7 +99,7 @@ func TestCommitMultiEntityRoundTrip(t *testing.T) {
 		t.Fatal("expected pending changes queued before commit, got none")
 	}
 
-	eng := syncer.New(jira.NewClient("demo", "tok"), repo)
+	eng := syncer.New(xray.New(jira.NewClient("demo", "tok")), repo)
 	result, err := eng.CommitChanges(context.Background(), profileID, projectKey)
 	if err != nil {
 		t.Fatalf("CommitChanges: %v", err)

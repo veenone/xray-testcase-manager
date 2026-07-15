@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/store"
 	"xray-test-manager/internal/syncer"
@@ -79,7 +80,7 @@ func TestCommitAutoMergesNonOverlappingRemoteChange(t *testing.T) {
 	srv := conflictServer("Changed by someone else", "Medium", &put)
 	defer srv.Close()
 
-	res, err := syncer.New(jira.NewClient(srv.URL, "tok"), repo).
+	res, err := syncer.New(xray.New(jira.NewClient(srv.URL, "tok")), repo).
 		CommitChanges(context.Background(), "p1", "QA")
 	if err != nil {
 		t.Fatalf("commit: %v", err)
@@ -103,7 +104,7 @@ func TestCommitHoldsTrueConflict(t *testing.T) {
 	srv := conflictServer("Original", "Critical", &put)
 	defer srv.Close()
 
-	res, err := syncer.New(jira.NewClient(srv.URL, "tok"), repo).
+	res, err := syncer.New(xray.New(jira.NewClient(srv.URL, "tok")), repo).
 		CommitChanges(context.Background(), "p1", "QA")
 	if err != nil {
 		t.Fatalf("commit: %v", err)
@@ -173,7 +174,7 @@ func TestCommitHoldsStepReorderConflict(t *testing.T) {
 	srv := stepConflictServer(`[{"id":"11","index":1,"action":"a2"},{"id":"10","index":2,"action":"a1"},{"id":"12","index":3,"action":"a3"}]`)
 	defer srv.Close()
 
-	res, err := syncer.New(jira.NewClient(srv.URL, "tok"), repo).CommitChanges(context.Background(), "p1", "QA")
+	res, err := syncer.New(xray.New(jira.NewClient(srv.URL, "tok")), repo).CommitChanges(context.Background(), "p1", "QA")
 	if err != nil {
 		t.Fatalf("commit: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestCommitHoldsStepDeleteVsEditConflict(t *testing.T) {
 	srv := stepConflictServer(`[{"id":"10","index":1,"action":"a1"},{"id":"11","index":2,"action":"EDITED UPSTREAM"},{"id":"12","index":3,"action":"a3"}]`)
 	defer srv.Close()
 
-	res, err := syncer.New(jira.NewClient(srv.URL, "tok"), repo).CommitChanges(context.Background(), "p1", "QA")
+	res, err := syncer.New(xray.New(jira.NewClient(srv.URL, "tok")), repo).CommitChanges(context.Background(), "p1", "QA")
 	if err != nil {
 		t.Fatalf("commit: %v", err)
 	}

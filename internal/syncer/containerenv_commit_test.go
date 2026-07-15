@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/store"
 	"xray-test-manager/internal/syncer"
@@ -31,7 +32,7 @@ func TestCommitContainerEnvClearsInDemo(t *testing.T) {
 		t.Fatalf("set environments: %v", err)
 	}
 
-	res, err := syncer.New(jira.NewClient("demo", "tok"), repo).
+	res, err := syncer.New(xray.New(jira.NewClient("demo", "tok")), repo).
 		CommitChanges(context.Background(), "p1", "DEMO")
 	if err != nil {
 		t.Fatalf("commit: %v", err)

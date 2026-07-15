@@ -7,6 +7,7 @@ import (
 	"sort"
 	"testing"
 
+	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/store"
 	"xray-test-manager/internal/syncer"
@@ -37,7 +38,7 @@ func TestFullSyncStoreSnapshot(t *testing.T) {
 		profileID  = "p1"
 		projectKey = "DEMO"
 	)
-	eng := syncer.New(jira.NewClient("demo", "tok"), repo)
+	eng := syncer.New(xray.New(jira.NewClient("demo", "tok")), repo)
 	if err := eng.Sync(context.Background(), profileID, projectKey, "", "", nil); err != nil {
 		t.Fatalf("full sync: %v", err)
 	}

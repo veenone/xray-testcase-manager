@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"xray-test-manager/internal/jira"
+	"xray-test-manager/internal/backend"
 	"xray-test-manager/internal/testrepo"
 )
 
@@ -46,12 +46,12 @@ func emitStage(onProgress func(Progress), stage string) {
 	}
 }
 
-// mapRunRows converts a slice of jira.TestRun records (fetched from Xray) into
-// testrepo.TestRunRow values ready for storage. execKey is the owning
-// execution's Jira key. envFallback is joined and used when a run has no
-// Environment value of its own (the Xray testexec/test endpoint omits per-run
-// environments; they are set on the execution as a whole).
-func mapRunRows(runs []jira.TestRun, execKey string, envFallback []string) []testrepo.TestRunRow {
+// mapRunRows converts a slice of backend.TestRun records (fetched from the
+// backend) into testrepo.TestRunRow values ready for storage. execKey is the
+// owning execution's Jira key. envFallback is joined and used when a run has
+// no Environment value of its own (the Xray testexec/test endpoint omits
+// per-run environments; they are set on the execution as a whole).
+func mapRunRows(runs []backend.TestRun, execKey string, envFallback []string) []testrepo.TestRunRow {
 	rows := make([]testrepo.TestRunRow, 0, len(runs))
 	for _, tr := range runs {
 		defectsJSON := "[]"
@@ -82,13 +82,13 @@ func mapRunRows(runs []jira.TestRun, execKey string, envFallback []string) []tes
 
 // Engine runs a pull sync for one profile.
 type Engine struct {
-	client *jira.Client
-	repo   *testrepo.Repository
+	backend backend.Backend
+	repo    *testrepo.Repository
 }
 
-// New returns a sync engine bound to a Jira client and the local repository.
-func New(client *jira.Client, repo *testrepo.Repository) *Engine {
-	return &Engine{client: client, repo: repo}
+// New returns a sync engine bound to a backend and the local repository.
+func New(b backend.Backend, repo *testrepo.Repository) *Engine {
+	return &Engine{backend: b, repo: repo}
 }
 
 // pullTests fetches the project's Tests page by page into the local store,
@@ -101,7 +101,7 @@ func (e *Engine) pullTests(ctx context.Context, profileID, projectKey, scopeJQL,
 			return fetched, total, ctxErr
 		}
 
-		tests, pageTotal, pageErr := e.client.SearchTestsPage(ctx, projectKey, scopeJQL, since, fetched, pageSize)
+		tests, pageTotal, pageErr := e.backend.SearchTestsPage(ctx, projectKey, scopeJQL, since, fetched, pageSize)
 		if pageErr != nil {
 			return fetched, total, fmt.Errorf("fetch page at offset %d: %w", fetched, pageErr)
 		}
@@ -245,12 +245,12 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 	if err != nil {
 		return fmt.Errorf("bug affected test keys: %w", err)
 	}
-	isDemo := e.client.IsDemo()
+	isDemo := e.backend.IsDemo()
 	for i, testKey := range testKeys {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		containers, links, err := e.client.TestExecutionsForTest(ctx, testKey)
+		containers, links, err := e.backend.TestExecutionsForTest(ctx, testKey)
 		if err != nil {
 			log.Printf("xtm: SyncBugRunData: %s: TestExecutionsForTest: %v (skipping)", testKey, err)
 			if !isDemo {
@@ -313,7 +313,7 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			runs, rErr := e.client.GetTestRuns(ctx, ct.Key)
+			runs, rErr := e.backend.GetTestRuns(ctx, ct.Key)
 			if rErr != nil {
 				log.Printf("xtm: SyncBugRunData: %s: get runs for %s: %v (skipping)", testKey, ct.Key, rErr)
 			} else {
@@ -341,7 +341,7 @@ func (e *Engine) SyncBugRunData(ctx context.Context, profileID string, onProgres
 // can't block or fail the Test pull. Demo mode carries folder membership on the
 // Tests themselves, so neither pass is needed there.
 func (e *Engine) syncFolders(ctx context.Context, profileID, projectKey string, fullSync bool, onProgress func(Progress)) {
-	res, err := e.client.FolderTree(ctx, projectKey)
+	res, err := e.backend.FolderTree(ctx, projectKey)
 	if err != nil {
 		log.Printf("xtm: folder tree sync: %v", err)
 		return
@@ -383,7 +383,7 @@ func (e *Engine) syncFolders(ctx context.Context, profileID, projectKey string, 
 // already filtered out). It emits "folders"-phase progress so the walk doesn't
 // look stalled, and a per-folder failure is logged and skipped rather than
 // aborting — a partial mapping still helps, and the tree itself is already saved.
-func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey string, folders []jira.FolderRef, onProgress func(Progress)) {
+func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey string, folders []backend.FolderRef, onProgress func(Progress)) {
 	if len(folders) == 0 {
 		return
 	}
@@ -393,7 +393,7 @@ func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey
 		if ctx.Err() != nil {
 			return
 		}
-		keys, err := e.client.ListTestsInFolder(ctx, projectKey, f.ID)
+		keys, err := e.backend.ListTestsInFolder(ctx, projectKey, f.ID)
 		if err != nil {
 			log.Printf("xtm: folder %s (%s) membership: %v", f.Path, f.ID, err)
 		} else {
@@ -419,7 +419,7 @@ func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey
 // implementation is currently a no-op pending live verification (FR-13.4),
 // but demo mode populates them.
 func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
-	preconditions, links, err := e.client.ListPreconditions(ctx, projectKey, func(done, total int) {
+	preconditions, links, err := e.backend.ListPreconditions(ctx, projectKey, func(done, total int) {
 		if onProgress != nil {
 			onProgress(Progress{Phase: "preconditions", Stage: "Syncing preconditions", Fetched: done, Total: total})
 		}
@@ -451,7 +451,7 @@ func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey st
 // is tolerated — the real-Jira implementation is currently a no-op pending
 // live verification, but demo mode populates them.
 func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
-	containers, links, err := e.client.ListContainers(ctx, projectKey, func(done, total int) {
+	containers, links, err := e.backend.ListContainers(ctx, projectKey, func(done, total int) {
 		if onProgress != nil {
 			onProgress(Progress{Phase: "containers", Stage: "Syncing containers", Fetched: done, Total: total})
 		}
@@ -507,7 +507,7 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 	if len(missing) == 0 {
 		return nil
 	}
-	basics, err := e.client.ListTestsBasic(ctx, missing)
+	basics, err := e.backend.ListTestsBasic(ctx, missing)
 	if err != nil {
 		log.Printf("xtm: fetch external member basics: %v", err)
 		return nil
@@ -538,7 +538,7 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 	// is best-effort: a failed fetch for one execution is logged and skipped so a
 	// single bad execution cannot abort the whole container sync.
 	for _, c := range containers {
-		if c.Kind != jira.KindTestExec {
+		if c.Kind != backend.KindTestExec {
 			continue
 		}
 		execKey := c.Key
@@ -546,7 +546,7 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 			return err
 		}
 
-		runs, err := e.client.GetTestRuns(ctx, execKey)
+		runs, err := e.backend.GetTestRuns(ctx, execKey)
 		if err != nil {
 			log.Printf("xtm: get test runs for %s: %v (skipping)", execKey, err)
 		} else {
@@ -557,7 +557,7 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 			}
 		}
 
-		plans, err := e.client.ExecPlans(ctx, execKey)
+		plans, err := e.backend.ExecPlans(ctx, execKey)
 		if err != nil {
 			log.Printf("xtm: get exec plans for %s: %v (skipping)", execKey, err)
 		} else if len(plans) > 0 {
@@ -579,8 +579,9 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 
 // discoverCrossProjectExecs performs a per-test cross-project execution
 // discovery pass after the main container sync. For each test key in the
-// profile, it calls jira.Client.TestExecutionsForTest to find Test Executions
-// in any project (not only the profile project) that include that test. Newly
+// profile, it calls the backend's TestExecutionsForTest to find Test
+// Executions in any project (not only the profile project) that include that
+// test. Newly
 // found containers and links are written additively via UpsertContainerLinks
 // so they do not overwrite the project-scoped links that syncContainers already
 // wrote.
@@ -597,13 +598,13 @@ func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string
 		log.Printf("xtm: cross-project discovery: list test keys: %v (skipping)", err)
 		return
 	}
-	isDemo := e.client.IsDemo()
+	isDemo := e.backend.IsDemo()
 
 	for _, testKey := range testKeys {
 		if ctx.Err() != nil {
 			return
 		}
-		containers, links, err := e.client.TestExecutionsForTest(ctx, testKey)
+		containers, links, err := e.backend.TestExecutionsForTest(ctx, testKey)
 		if err != nil {
 			log.Printf("xtm: cross-project discovery: %s: %v (skipping)", testKey, err)
 			if !isDemo {
@@ -663,7 +664,7 @@ func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string
 					if ctx.Err() != nil {
 						return
 					}
-					runs, rErr := e.client.GetTestRuns(ctx, ct.Key)
+					runs, rErr := e.backend.GetTestRuns(ctx, ct.Key)
 					if rErr != nil {
 						log.Printf("xtm: cross-project discovery: %s: get runs for %s: %v (skipping)", testKey, ct.Key, rErr)
 					} else {
@@ -685,7 +686,7 @@ func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string
 // through cross-project member Tests, additively, so they are not clobbered by
 // the wipe-and-replace normal bug sync (which already ran). Only links whose
 // target issue type matches the profile's configured bug issue type are kept.
-func (e *Engine) harvestExternalBugs(profileID string, basics []jira.TestBasic) {
+func (e *Engine) harvestExternalBugs(profileID string, basics []backend.TestBasic) {
 	bugType := strings.ToLower(strings.TrimSpace(e.repo.ProfileBugIssueType(profileID)))
 	if bugType == "" {
 		bugType = "bug"
@@ -733,16 +734,16 @@ func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey str
 	if err != nil {
 		return err
 	}
-	specs := make([]jira.RequirementSourceSpec, len(sources))
+	specs := make([]backend.RequirementSourceSpec, len(sources))
 	for i, s := range sources {
-		specs[i] = jira.RequirementSourceSpec{
+		specs[i] = backend.RequirementSourceSpec{
 			ProjectKey: s.ProjectKey,
 			IssueTypes: strings.Fields(s.IssueTypes),
 			ScopeJQL:   s.ScopeJQL,
 		}
 	}
 
-	reqs, links, err := e.client.ListRequirements(ctx, projectKey, specs, nil)
+	reqs, links, err := e.backend.ListRequirements(ctx, projectKey, specs, nil)
 	if err != nil {
 		return err
 	}
@@ -787,7 +788,7 @@ func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey str
 	for i, rq := range reqs {
 		reqKeys[i] = rq.Key
 	}
-	rrLinks, err := e.client.ListReqToReqLinks(ctx, reqKeys)
+	rrLinks, err := e.backend.ListReqToReqLinks(ctx, reqKeys)
 	if err != nil {
 		return err
 	}
@@ -842,14 +843,14 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 	}
 
 	// Pass 1: project-wide bug search (best-effort).
-	projectBugs, projectBugErr := e.client.ListProjectBugs(ctx, bugProject, issueType)
+	projectBugs, projectBugErr := e.backend.ListProjectBugs(ctx, bugProject, issueType)
 	if projectBugErr != nil {
 		log.Printf("xtm: project-wide bug search failed (continuing with link harvest only): %v", projectBugErr)
 		projectBugs = nil
 	}
 
 	// Pass 2: link-harvest (authoritative source for BugLink records).
-	harvestBugs, links, err := e.client.ListBugs(ctx, projectKey, testKeys, issueType, nil)
+	harvestBugs, links, err := e.backend.ListBugs(ctx, projectKey, testKeys, issueType, nil)
 	if err != nil {
 		return err
 	}
@@ -857,7 +858,7 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 	// Merge: project-wide bugs seed the map (they have the Updated field);
 	// harvest bugs are added for any key not yet present (e.g. cross-project
 	// bugs linked to tests that are not in the bug project).
-	merged := make(map[string]jira.Bug, len(projectBugs)+len(harvestBugs))
+	merged := make(map[string]backend.Bug, len(projectBugs)+len(harvestBugs))
 	for _, b := range projectBugs {
 		merged[b.Key] = b
 	}
@@ -889,7 +890,7 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 // tolerated — the real-Jira implementation is currently a no-op pending live
 // verification, but demo mode populates them.
 func (e *Engine) syncCustomFields(ctx context.Context, profileID, projectKey string) error {
-	defs, err := e.client.ListCustomFields(ctx, projectKey)
+	defs, err := e.backend.ListCustomFields(ctx, projectKey)
 	if err != nil {
 		return fmt.Errorf("list custom fields: %w", err)
 	}
@@ -928,7 +929,7 @@ func (e *Engine) syncProjectFieldOptions(ctx context.Context, profileID, project
 		if ctx.Err() != nil {
 			return
 		}
-		components, err := e.client.ProjectComponents(ctx, key)
+		components, err := e.backend.ProjectComponents(ctx, key)
 		if err != nil {
 			log.Printf("xtm: syncProjectFieldOptions: components for %s: %v (skipping)", key, err)
 		} else if storeErr := e.repo.ReplaceProjectFieldOptions(profileID, key, "component", components); storeErr != nil {
@@ -938,7 +939,7 @@ func (e *Engine) syncProjectFieldOptions(ctx context.Context, profileID, project
 		if ctx.Err() != nil {
 			return
 		}
-		versions, err := e.client.ProjectVersions(ctx, key)
+		versions, err := e.backend.ProjectVersions(ctx, key)
 		if err != nil {
 			log.Printf("xtm: syncProjectFieldOptions: versions for %s: %v (skipping)", key, err)
 		} else if storeErr := e.repo.ReplaceProjectFieldOptions(profileID, key, "fixversion", versions); storeErr != nil {
@@ -947,8 +948,8 @@ func (e *Engine) syncProjectFieldOptions(ctx context.Context, profileID, project
 	}
 }
 
-// toRepoTests maps the Jira client's Test type to the repository's TestCase.
-func toRepoTests(in []jira.Test) []testrepo.TestCase {
+// toRepoTests maps the backend's Test type to the repository's TestCase.
+func toRepoTests(in []backend.Test) []testrepo.TestCase {
 	out := make([]testrepo.TestCase, len(in))
 	for i, t := range in {
 		out[i] = testrepo.TestCase{

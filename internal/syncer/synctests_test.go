@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/store"
 	"xray-test-manager/internal/syncer"
@@ -37,7 +38,7 @@ func TestSyncTests(t *testing.T) {
 		t.Fatalf("expected empty watermark before sync, got %q", stateBefore.LastSyncedAt)
 	}
 
-	eng := syncer.New(jira.NewClient("demo", "tok"), repo)
+	eng := syncer.New(xray.New(jira.NewClient("demo", "tok")), repo)
 	if err := eng.SyncTests(context.Background(), profileID, projectKey, "", "", nil); err != nil {
 		t.Fatalf("SyncTests: %v", err)
 	}

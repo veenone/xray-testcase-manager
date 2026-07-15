@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"xray-test-manager/internal/jira"
+	"xray-test-manager/internal/backend"
 	"xray-test-manager/internal/testrepo"
 )
 
@@ -41,7 +41,7 @@ type conflictScan struct {
 func (e *Engine) detectConflicts(ctx context.Context, testKey string, changes []testrepo.PendingChange) (conflictScan, error) {
 	var scan conflictScan
 
-	remoteTest, err := e.client.GetTestFields(ctx, testKey)
+	remoteTest, err := e.backend.GetTestFields(ctx, testKey)
 	if err != nil {
 		if isNotFoundErr(err) {
 			scan.deleted = true
@@ -54,7 +54,7 @@ func (e *Engine) detectConflicts(ctx context.Context, testKey string, changes []
 	// Remote steps are fetched only when a step change (content, delete, or
 	// reorder) is present.
 	var (
-		remoteSteps map[string]jira.Step
+		remoteSteps map[string]backend.Step
 		remoteOrder string // JSON id list in remote index order
 	)
 	needSteps, needCF := false, false
@@ -68,22 +68,22 @@ func (e *Engine) detectConflicts(ctx context.Context, testKey string, changes []
 	}
 	var remoteCustomFs map[string]string
 	if needCF {
-		cf, cErr := e.client.GetTestCustomFields(ctx, testKey)
+		cf, cErr := e.backend.GetTestCustomFields(ctx, testKey)
 		if cErr != nil {
 			return scan, cErr
 		}
 		remoteCustomFs = cf
 	}
 	if needSteps {
-		steps, serr := e.client.GetTestSteps(ctx, testKey)
+		steps, serr := e.backend.GetTestSteps(ctx, testKey)
 		if serr != nil {
 			return scan, serr
 		}
-		remoteSteps = make(map[string]jira.Step, len(steps))
+		remoteSteps = make(map[string]backend.Step, len(steps))
 		for _, s := range steps {
 			remoteSteps[s.ID] = s
 		}
-		ordered := make([]jira.Step, len(steps))
+		ordered := make([]backend.Step, len(steps))
 		copy(ordered, steps)
 		sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
 		ids := make([]string, 0, len(ordered))
@@ -132,7 +132,7 @@ func (e *Engine) detectConflicts(ctx context.Context, testKey string, changes []
 // classifyDelete handles a local step deletion: drop it when the remote already
 // deleted the step, keep it silent when the remote step is unchanged since my
 // base, and conflict when I'm deleting a step someone else edited.
-func (e *Engine) classifyDelete(c testrepo.PendingChange, steps map[string]jira.Step, scan *conflictScan) {
+func (e *Engine) classifyDelete(c testrepo.PendingChange, steps map[string]backend.Step, scan *conflictScan) {
 	_, xrayID, ok := parseStepKey(c.EntityKey)
 	if !ok {
 		return // malformed — leave it for the commit pass to report
@@ -208,7 +208,7 @@ func (e *Engine) classifyOrder(c testrepo.PendingChange, remoteOrder string, sca
 // for a pending change, and whether this change type/field is conflict-checked
 // in phase 1 (Test standard fields + step content). Unchecked types report
 // checked=false so the caller auto-merges them.
-func conflictTriple(c testrepo.PendingChange, t jira.Test, steps map[string]jira.Step, customFs map[string]string) (base, mine, remote, label string, checked bool) {
+func conflictTriple(c testrepo.PendingChange, t backend.Test, steps map[string]backend.Step, customFs map[string]string) (base, mine, remote, label string, checked bool) {
 	base, mine = c.BeforeVal, c.AfterVal
 	switch c.EntityType {
 	case "custom_field":

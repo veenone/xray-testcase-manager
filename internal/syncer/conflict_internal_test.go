@@ -3,7 +3,7 @@ package syncer
 import (
 	"testing"
 
-	"xray-test-manager/internal/jira"
+	"xray-test-manager/internal/backend"
 	"xray-test-manager/internal/testrepo"
 )
 
@@ -15,11 +15,11 @@ func TestConflictTripleCustomFieldPresenceGate(t *testing.T) {
 		EntityType: "custom_field", EntityKey: "QA-1:cf1", Field: "value",
 		BeforeVal: "Manual", AfterVal: "Automated",
 	}
-	base, mine, remote, label, checked := conflictTriple(c, jira.Test{}, nil, map[string]string{"cf1": "Generic"})
+	base, mine, remote, label, checked := conflictTriple(c, backend.Test{}, nil, map[string]string{"cf1": "Generic"})
 	if !checked || base != "Manual" || mine != "Automated" || remote != "Generic" || label != "Custom field" {
 		t.Fatalf("present: base=%q mine=%q remote=%q label=%q checked=%v", base, mine, remote, label, checked)
 	}
-	if _, _, _, _, checked2 := conflictTriple(c, jira.Test{}, nil, map[string]string{}); checked2 {
+	if _, _, _, _, checked2 := conflictTriple(c, backend.Test{}, nil, map[string]string{}); checked2 {
 		t.Errorf("absent custom field must not be conflict-checked (presence gate)")
 	}
 }

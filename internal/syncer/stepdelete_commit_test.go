@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/store"
 	"xray-test-manager/internal/syncer"
@@ -123,7 +124,7 @@ func TestCommitNewStepAddedThenDeletedThenReadded(t *testing.T) {
 	srv := newStepServer()
 	defer srv.Close()
 
-	res, err := syncer.New(jira.NewClient(srv.URL, "tok"), repo).
+	res, err := syncer.New(xray.New(jira.NewClient(srv.URL, "tok")), repo).
 		CommitChanges(context.Background(), "p1", "QA")
 	if err != nil {
 		t.Fatalf("commit: %v", err)
@@ -171,7 +172,7 @@ func TestCommitNewStepReorderedThenDeleted(t *testing.T) {
 	srv := newStepServer("10", "11")
 	defer srv.Close()
 
-	res, err := syncer.New(jira.NewClient(srv.URL, "tok"), repo).
+	res, err := syncer.New(xray.New(jira.NewClient(srv.URL, "tok")), repo).
 		CommitChanges(context.Background(), "p1", "QA")
 	if err != nil {
 		t.Fatalf("commit: %v", err)

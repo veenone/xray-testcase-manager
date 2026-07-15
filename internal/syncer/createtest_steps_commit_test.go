@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/store"
 	"xray-test-manager/internal/syncer"
@@ -87,7 +88,7 @@ func TestCommitNewTestWithReorderedStepsNoTempIDPut(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	engine := syncer.New(jira.NewClient(srv.URL, "t"), repo)
+	engine := syncer.New(xray.New(jira.NewClient(srv.URL, "t")), repo)
 	result, err := engine.CommitChanges(context.Background(), "p1", "QA")
 	if err != nil {
 		t.Fatalf("CommitChanges: %v", err)

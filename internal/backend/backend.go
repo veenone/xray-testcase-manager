@@ -15,6 +15,14 @@ var ErrUnsupported = errors.New("backend: operation not supported")
 // string-based GetIssueUpdated shape and does not consume VersionToken.
 type VersionToken string
 
+// Container kind identifiers, mirroring the jira.Kind* constants so callers
+// (the sync engine) can compare Container.Kind without importing internal/jira.
+const (
+	KindTestSet  = "testset"
+	KindTestPlan = "testplan"
+	KindTestExec = "testexec"
+)
+
 // Capabilities describes what a concrete backend supports so the app and sync
 // engine can gate features. Full capability gating is a later phase; this
 // struct is the minimal surface introduced now.
@@ -145,6 +153,13 @@ type Backend interface {
 
 	// --- comments ---
 	AddComment(ctx context.Context, issueKey, body string) error
+
+	// --- field payload shaping ---
+	// FieldsForJira translates the app's internal field/value pairs into the
+	// backend's native issue field-update payload shape. The result is opaque
+	// to callers outside the backend package — it is only ever relayed
+	// straight into UpdateIssue.
+	FieldsForJira(updates map[string]string) map[string]any
 
 	// --- capabilities ---
 	Capabilities() Capabilities

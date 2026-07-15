@@ -366,6 +366,12 @@ func (a *Adapter) AddComment(ctx context.Context, issueKey, body string) error {
 	return a.c.AddComment(ctx, issueKey, body)
 }
 
+// --- field payload shaping ---
+
+func (a *Adapter) FieldsForJira(updates map[string]string) map[string]any {
+	return jira.FieldsForJira(updates)
+}
+
 // --- capabilities ---
 
 // Capabilities reports the full Xray feature set. Xray (Server/DC) supports

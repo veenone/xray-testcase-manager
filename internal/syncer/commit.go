@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/testrepo"
 )
 
@@ -258,7 +257,7 @@ testLoop:
 		// and classify each change. Non-overlapping edits (and edits someone else
 		// already made) merge silently; only genuinely overlapping fields hold the
 		// Test back for the user to resolve.
-		remoteUpdated, err := e.client.GetIssueUpdated(ctx, testKey)
+		remoteUpdated, err := e.backend.GetIssueUpdated(ctx, testKey)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{
 				TestKey: testKey,
@@ -412,14 +411,14 @@ testLoop:
 			for _, c := range fieldChanges {
 				updates[c.Field] = c.AfterVal
 			}
-			fields := jira.FieldsForJira(updates)
+			fields := e.backend.FieldsForJira(updates)
 			// exec_type (Xray Test Type) is a custom field whose id varies per
 			// instance, so FieldsForJira leaves it out: resolve the field id here
 			// and inject {"value": ...}. Best-effort - if the field can't be
 			// resolved, log and push the rest of the update rather than fail
 			// the whole commit.
 			if execType, ok := updates["exec_type"]; ok {
-				fieldID, value, resolved, ferr := e.client.ExecTypeFieldValue(ctx, execType)
+				fieldID, value, resolved, ferr := e.backend.ExecTypeFieldValue(ctx, execType)
 				if ferr != nil {
 					log.Printf("xtm: resolve Test Type field for %s failed, committing without exec_type: %v", testKey, ferr)
 				} else if resolved {
@@ -434,7 +433,7 @@ testLoop:
 			// exec_type does above. Best-effort - if the type cannot be resolved
 			// the raw string is sent (CustomFieldValue defaults to it).
 			for fieldID, value := range customFields {
-				id, shaped, ferr := e.client.CustomFieldValue(ctx, fieldID, value)
+				id, shaped, ferr := e.backend.CustomFieldValue(ctx, fieldID, value)
 				if ferr != nil {
 					log.Printf("xtm: resolve custom field %s type for %s failed, committing raw string: %v", fieldID, testKey, ferr)
 					fields[fieldID] = value
@@ -442,7 +441,7 @@ testLoop:
 				}
 				fields[id] = shaped
 			}
-			if err := e.client.UpdateIssue(ctx, testKey, fields); err != nil {
+			if err := e.backend.UpdateIssue(ctx, testKey, fields); err != nil {
 				result.Failed = append(result.Failed, FailedCommit{
 					TestKey: testKey,
 					Error:   sanitizeError(err.Error()),
@@ -474,7 +473,7 @@ testLoop:
 				})
 				continue
 			}
-			if err := e.client.MoveTestToFolder(ctx, projectKey, testKey, xrayFolderID); err != nil {
+			if err := e.backend.MoveTestToFolder(ctx, projectKey, testKey, xrayFolderID); err != nil {
 				result.Failed = append(result.Failed, FailedCommit{
 					TestKey: testKey,
 					Error:   "move to folder: " + sanitizeError(err.Error()),
@@ -494,7 +493,7 @@ testLoop:
 				})
 				continue
 			}
-			if err := e.client.UpdateTestPreconditions(ctx, testKey, add, remove); err != nil {
+			if err := e.backend.UpdateTestPreconditions(ctx, testKey, add, remove); err != nil {
 				result.Failed = append(result.Failed, FailedCommit{
 					TestKey: testKey,
 					Error:   "preconditions: " + sanitizeError(err.Error()),
@@ -504,7 +503,7 @@ testLoop:
 		}
 
 		for _, xrayID := range stepDeletes {
-			if err := e.client.DeleteTestStep(ctx, testKey, xrayID); err != nil {
+			if err := e.backend.DeleteTestStep(ctx, testKey, xrayID); err != nil {
 				result.Failed = append(result.Failed, FailedCommit{
 					TestKey: testKey,
 					Error:   fmt.Sprintf("delete step %s: %s", xrayID, sanitizeError(err.Error())),
@@ -521,7 +520,7 @@ testLoop:
 			for _, c := range changes {
 				fields[c.Field] = c.AfterVal
 			}
-			if err := e.client.UpdateTestStep(ctx, testKey, xrayID, fields); err != nil {
+			if err := e.backend.UpdateTestStep(ctx, testKey, xrayID, fields); err != nil {
 				result.Failed = append(result.Failed, FailedCommit{
 					TestKey: testKey,
 					Error:   fmt.Sprintf("update step %s: %s", xrayID, sanitizeError(err.Error())),
@@ -599,7 +598,7 @@ testLoop:
 				}
 				pos++
 				sc := stepContent[id]
-				if err := e.client.MoveTestStep(ctx, testKey, id, pos, sc.Action, sc.Data, sc.Expected); err != nil {
+				if err := e.backend.MoveTestStep(ctx, testKey, id, pos, sc.Action, sc.Data, sc.Expected); err != nil {
 					result.Failed = append(result.Failed, FailedCommit{
 						TestKey: testKey,
 						Error:   fmt.Sprintf("reorder step %s: %s", id, sanitizeError(err.Error())),
@@ -629,7 +628,7 @@ testLoop:
 		// remaining items. (Full commits push everything at once, so there's
 		// nothing left to re-base.)
 		if only != nil {
-			if upd, uerr := e.client.GetIssueUpdated(ctx, testKey); uerr == nil && upd != "" {
+			if upd, uerr := e.backend.GetIssueUpdated(ctx, testKey); uerr == nil && upd != "" {
 				_ = e.repo.RebaseTestConflict(profileID, testKey, upd)
 			}
 		}
@@ -661,7 +660,7 @@ func (e *Engine) commitRuns(ctx context.Context, profileID string, rows []testre
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed run-status key"})
 			continue
 		}
-		if err := e.client.SetTestRunStatus(ctx, execKey, testKey, c.AfterVal); err != nil {
+		if err := e.backend.SetTestRunStatus(ctx, execKey, testKey, c.AfterVal); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "set run status: " + sanitizeError(err.Error())})
 			continue
 		}
@@ -712,7 +711,7 @@ func (e *Engine) commitRequirements(ctx context.Context, profileID string, rows 
 			}
 		}
 
-		if err := e.client.UpdateTestRequirements(ctx, testKey, add, removeLinkIDs); err != nil {
+		if err := e.backend.UpdateTestRequirements(ctx, testKey, add, removeLinkIDs); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "update requirement links: " + sanitizeError(err.Error())})
 			continue
 		}
@@ -745,7 +744,7 @@ func (e *Engine) commitRequirementEdits(ctx context.Context, profileID string, r
 			updates[c.Field] = c.AfterVal
 			ids[i] = c.ID
 		}
-		if err := e.client.UpdateIssue(ctx, key, jira.FieldsForJira(updates)); err != nil {
+		if err := e.backend.UpdateIssue(ctx, key, e.backend.FieldsForJira(updates)); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: key, Error: "update requirement: " + sanitizeError(err.Error())})
 			continue
 		}
@@ -762,7 +761,7 @@ func (e *Engine) commitRequirementEdits(ctx context.Context, profileID string, r
 // confirms the delete so a failure leaves it pending for retry.
 func (e *Engine) commitRequirementDeletes(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
 	for _, c := range rows {
-		if err := e.client.DeleteRequirement(ctx, c.EntityKey); err != nil {
+		if err := e.backend.DeleteRequirement(ctx, c.EntityKey); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "delete requirement: " + sanitizeError(err.Error())})
 			continue
 		}
@@ -792,7 +791,7 @@ func (e *Engine) commitBugCreates(ctx context.Context, profileID string, rows []
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed bug payload: " + err.Error()})
 			continue
 		}
-		realKey, err := e.client.CreateBug(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Labels, p.Fields)
+		realKey, err := e.backend.CreateBug(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Labels, p.Fields)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: p.TestKey, Error: "create bug: " + sanitizeError(err.Error())})
 			continue
@@ -804,7 +803,7 @@ func (e *Engine) commitBugCreates(ctx context.Context, profileID string, rows []
 			}
 			key = realKey
 		}
-		if err := e.client.CreateBugLink(ctx, p.TestKey, key); err != nil {
+		if err := e.backend.CreateBugLink(ctx, p.TestKey, key); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: p.TestKey, Error: "link bug: " + sanitizeError(err.Error())})
 			continue
 		}
@@ -833,7 +832,7 @@ func (e *Engine) commitRequirementCreates(ctx context.Context, profileID string,
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed requirement payload: " + err.Error()})
 			continue
 		}
-		realKey, err := e.client.CreateRequirement(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Components, p.FixVersions)
+		realKey, err := e.backend.CreateRequirement(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Components, p.FixVersions)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "create requirement: " + sanitizeError(err.Error())})
 			continue
@@ -865,7 +864,7 @@ func splitRunEntityKey(entityKey string) (execKey, testKey string, ok bool) {
 // commitComments posts each queued free-text comment on its Test (FR-4.4).
 func (e *Engine) commitComments(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
 	for _, c := range rows {
-		if err := e.client.AddComment(ctx, c.EntityKey, c.AfterVal); err != nil {
+		if err := e.backend.AddComment(ctx, c.EntityKey, c.AfterVal); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "post comment: " + sanitizeError(err.Error())})
 			continue
 		}
@@ -890,7 +889,7 @@ func (e *Engine) commitReviews(ctx context.Context, profileID string, rows []tes
 			continue
 		}
 		body := reviewComment(rv.Verdict, rv.Reviewer, rv.Note)
-		if err := e.client.AddComment(ctx, c.EntityKey, body); err != nil {
+		if err := e.backend.AddComment(ctx, c.EntityKey, body); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "post review: " + sanitizeError(err.Error())})
 			continue
 		}
@@ -948,7 +947,7 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 				components = append(components, s)
 			}
 		}
-		realKey, err := e.client.CreateTest(ctx, projectKey, p.Summary, p.Description, p.Priority, labels, components)
+		realKey, err := e.backend.CreateTest(ctx, projectKey, p.Summary, p.Description, p.Priority, labels, components)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "create test: " + sanitizeError(err.Error())})
 			continue
@@ -1023,9 +1022,9 @@ func (e *Engine) createStep(ctx context.Context, profileID, testKey string, s te
 		if tc, err := e.repo.GetTest(profileID, s.CalledTestKey); err == nil {
 			calledID = tc.ID
 		}
-		return e.client.CreateCalledTestStep(ctx, testKey, s.CalledTestKey, calledID)
+		return e.backend.CreateCalledTestStep(ctx, testKey, s.CalledTestKey, calledID)
 	}
-	return e.client.CreateTestStep(ctx, testKey, s.Action, s.Data, s.Expected)
+	return e.backend.CreateTestStep(ctx, testKey, s.Action, s.Data, s.Expected)
 }
 
 // stepPendingRowIDs returns the ids of step-level pending changes for a Test —
@@ -1069,7 +1068,7 @@ func (e *Engine) commitFolders(ctx context.Context, profileID, projectKey string
 				result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed folder payload: " + jErr.Error()})
 				continue
 			}
-			err = e.client.CreateFolder(ctx, projectKey, p.ParentPath, p.Name)
+			err = e.backend.CreateFolder(ctx, projectKey, p.ParentPath, p.Name)
 		case "folder_rename":
 			var p struct {
 				Path string `json:"path"`
@@ -1079,9 +1078,9 @@ func (e *Engine) commitFolders(ctx context.Context, profileID, projectKey string
 				result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed folder payload: " + jErr.Error()})
 				continue
 			}
-			err = e.client.RenameFolder(ctx, projectKey, c.EntityKey, p.Name)
+			err = e.backend.RenameFolder(ctx, projectKey, c.EntityKey, p.Name)
 		case "folder_delete":
-			err = e.client.DeleteFolder(ctx, projectKey, c.EntityKey)
+			err = e.backend.DeleteFolder(ctx, projectKey, c.EntityKey)
 		}
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "folder: " + sanitizeError(err.Error())})
@@ -1122,7 +1121,7 @@ func (e *Engine) commitPreconditionCreates(ctx context.Context, profileID, proje
 		if pk == "" {
 			pk = projectKey
 		}
-		realKey, err := e.client.CreatePrecondition(ctx, pk, payload.Summary, payload.Type, payload.Description)
+		realKey, err := e.backend.CreatePrecondition(ctx, pk, payload.Summary, payload.Type, payload.Description)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{
 				TestKey: c.EntityKey,
@@ -1175,7 +1174,7 @@ func (e *Engine) commitPreconditionEdits(ctx context.Context, profileID string, 
 			updates[c.Field] = c.AfterVal
 			ids[i] = c.ID
 		}
-		if err := e.client.UpdateIssue(ctx, key, jira.FieldsForJira(updates)); err != nil {
+		if err := e.backend.UpdateIssue(ctx, key, e.backend.FieldsForJira(updates)); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{
 				TestKey: key,
 				Error:   "update precondition: " + sanitizeError(err.Error()),
@@ -1198,7 +1197,7 @@ func (e *Engine) commitPreconditionEdits(ctx context.Context, profileID string, 
 // the delete so a failure leaves it pending for retry.
 func (e *Engine) commitPreconditionDeletes(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
 	for _, c := range rows {
-		if err := e.client.DeletePrecondition(ctx, c.EntityKey); err != nil {
+		if err := e.backend.DeletePrecondition(ctx, c.EntityKey); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{
 				TestKey: c.EntityKey,
 				Error:   "delete precondition: " + sanitizeError(err.Error()),
@@ -1260,7 +1259,7 @@ func (e *Engine) commitMemberships(ctx context.Context, profileID string, rows [
 		case "test_membership_remove":
 			key, err = e.commitMembershipRemove(ctx, c)
 		case "container_edit":
-			key, err = c.EntityKey, e.client.UpdateIssue(ctx, c.EntityKey, jira.FieldsForJira(map[string]string{"summary": c.AfterVal}))
+			key, err = c.EntityKey, e.backend.UpdateIssue(ctx, c.EntityKey, e.backend.FieldsForJira(map[string]string{"summary": c.AfterVal}))
 		case "container_delete":
 			key, err = e.commitContainerDelete(ctx, c)
 		case "container_env":
@@ -1293,7 +1292,7 @@ func (e *Engine) commitMembershipAdd(ctx context.Context, c testrepo.PendingChan
 	if err := json.Unmarshal([]byte(c.AfterVal), &payload); err != nil {
 		return c.EntityKey, fmt.Errorf("malformed membership payload: %s", err)
 	}
-	if err := e.client.AddTestsToContainer(ctx, payload.Kind, c.EntityKey, payload.Members); err != nil {
+	if err := e.backend.AddTestsToContainer(ctx, payload.Kind, c.EntityKey, payload.Members); err != nil {
 		return c.EntityKey, fmt.Errorf("allocate to %s: %s", c.EntityKey, sanitizeError(err.Error()))
 	}
 	return c.EntityKey, nil
@@ -1309,7 +1308,7 @@ func (e *Engine) commitMembershipRemove(ctx context.Context, c testrepo.PendingC
 	if err := json.Unmarshal([]byte(c.AfterVal), &payload); err != nil {
 		return c.EntityKey, fmt.Errorf("malformed membership payload: %s", err)
 	}
-	if err := e.client.RemoveTestsFromContainer(ctx, payload.Kind, c.EntityKey, payload.Members); err != nil {
+	if err := e.backend.RemoveTestsFromContainer(ctx, payload.Kind, c.EntityKey, payload.Members); err != nil {
 		return c.EntityKey, fmt.Errorf("deallocate from %s: %s", c.EntityKey, sanitizeError(err.Error()))
 	}
 	return c.EntityKey, nil
@@ -1324,7 +1323,7 @@ func (e *Engine) commitContainerDelete(ctx context.Context, c testrepo.PendingCh
 	if err := json.Unmarshal([]byte(c.BeforeVal), &snap); err != nil {
 		return c.EntityKey, fmt.Errorf("malformed container snapshot: %s", err)
 	}
-	if err := e.client.DeleteContainer(ctx, snap.Kind, c.EntityKey); err != nil {
+	if err := e.backend.DeleteContainer(ctx, snap.Kind, c.EntityKey); err != nil {
 		return c.EntityKey, fmt.Errorf("delete container %s: %s", c.EntityKey, sanitizeError(err.Error()))
 	}
 	return c.EntityKey, nil
@@ -1340,7 +1339,7 @@ func (e *Engine) commitContainerEnv(ctx context.Context, c testrepo.PendingChang
 	if err := json.Unmarshal([]byte(c.AfterVal), &envs); err != nil {
 		return c.EntityKey, fmt.Errorf("malformed environments payload: %s", err)
 	}
-	if err := e.client.SetContainerEnvironments(ctx, c.EntityKey, envs); err != nil {
+	if err := e.backend.SetContainerEnvironments(ctx, c.EntityKey, envs); err != nil {
 		return c.EntityKey, fmt.Errorf("set environments on %s: %s", c.EntityKey, sanitizeError(err.Error()))
 	}
 	return c.EntityKey, nil
@@ -1359,7 +1358,7 @@ func (e *Engine) commitContainerCreate(ctx context.Context, profileID string, c 
 	if err := json.Unmarshal([]byte(c.AfterVal), &payload); err != nil {
 		return c.EntityKey, fmt.Errorf("malformed container payload: %s", err)
 	}
-	realKey, err := e.client.CreateContainer(ctx, payload.ProjectKey, payload.Kind, payload.Summary)
+	realKey, err := e.backend.CreateContainer(ctx, payload.ProjectKey, payload.Kind, payload.Summary)
 	if err != nil {
 		return c.EntityKey, fmt.Errorf("create container: %s", sanitizeError(err.Error()))
 	}
@@ -1372,7 +1371,7 @@ func (e *Engine) commitContainerCreate(ctx context.Context, profileID string, c 
 		}
 		target = realKey
 	}
-	if err := e.client.AddTestsToContainer(ctx, payload.Kind, target, payload.Members); err != nil {
+	if err := e.backend.AddTestsToContainer(ctx, payload.Kind, target, payload.Members); err != nil {
 		return target, fmt.Errorf("allocate to %s: %s", target, sanitizeError(err.Error()))
 	}
 	return target, nil
@@ -1456,7 +1455,7 @@ func parseStepKey(s string) (testKey, xrayID string, ok bool) {
 // it. The current Jira status is the pending change's BeforeVal — that's
 // what Jira holds until our commit lands.
 func (e *Engine) applyTransition(ctx context.Context, testKey string, change *testrepo.PendingChange) error {
-	transitions, err := e.client.GetTransitions(ctx, testKey, change.BeforeVal)
+	transitions, err := e.backend.GetTransitions(ctx, testKey, change.BeforeVal)
 	if err != nil {
 		return fmt.Errorf("fetch transitions: %s", sanitizeError(err.Error()))
 	}
@@ -1473,7 +1472,7 @@ func (e *Engine) applyTransition(ctx context.Context, testKey string, change *te
 			change.AfterVal, change.BeforeVal,
 		)
 	}
-	if err := e.client.PostTransition(ctx, testKey, transitionID); err != nil {
+	if err := e.backend.PostTransition(ctx, testKey, transitionID); err != nil {
 		return fmt.Errorf("post transition: %s", sanitizeError(err.Error()))
 	}
 	return nil
@@ -1600,7 +1599,7 @@ func (e *Engine) commitReqReqLinks(ctx context.Context, profileID string, rows [
 				add = append(add, k)
 			}
 		}
-		if err := e.client.UpdateRequirementLinks(ctx, fromKey, add, removeLinkIDs); err != nil {
+		if err := e.backend.UpdateRequirementLinks(ctx, fromKey, add, removeLinkIDs); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: fromKey, Error: "update req links: " + sanitizeError(err.Error())})
 			continue
 		}
