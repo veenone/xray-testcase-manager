@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 39
+const schemaVersion = 40
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -500,6 +500,26 @@ CREATE TABLE IF NOT EXISTS coverage_project (
 	sort_order  INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (profile_id, project_key)
 );
+
+-- ── Neutral identity map (schema v40) ────────────────────────────────────────
+-- Maps a local entity id to its per-backend external key so one local dataset can
+-- map to multiple backends (Xray now, Kiwi later). Backfilled 1:1 from the entity
+-- tables with local_id == external_key == jira_key and connection == 'xray', so it
+-- is additive and behaviour-preserving: nothing consumes it yet (the commit path
+-- is rewired in a later phase). version_token carries the backend's opaque version
+-- (for Xray: the entity's "updated" timestamp); base_version and last_pulled_at are
+-- reserved for later phases.
+CREATE TABLE IF NOT EXISTS external_ref (
+	profile_id     TEXT NOT NULL,
+	entity_type    TEXT NOT NULL,   -- 'test' | 'precondition' | 'container' | 'bug' | 'requirement'
+	local_id       TEXT NOT NULL,   -- neutral local id (== jira_key for backfilled data)
+	connection     TEXT NOT NULL,   -- 'xray' for all current data
+	external_key   TEXT NOT NULL,   -- the backend's id/key (== jira_key for xray)
+	version_token  TEXT NOT NULL DEFAULT '',  -- opaque per-connection version (Xray: the entity's updated timestamp)
+	base_version   TEXT NOT NULL DEFAULT '',  -- reserved for later phases
+	last_pulled_at TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (profile_id, entity_type, local_id, connection)
+);
 `
 
 // indexSchema is applied *after* applyMigrations so every column referenced
@@ -537,6 +557,7 @@ CREATE INDEX IF NOT EXISTS idx_cr_decision_cr        ON cr_member_decision(profi
 CREATE INDEX IF NOT EXISTS idx_cr_decision_req       ON cr_member_decision(profile_id, requirement_key);
 CREATE INDEX IF NOT EXISTS idx_cov_group_version     ON coverage_param_group(profile_id, version_id);
 CREATE INDEX IF NOT EXISTS idx_coverage_project ON coverage_project(profile_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_external_ref_extkey ON external_ref(profile_id, connection, entity_type, external_key);
 `
 
 // Store wraps the SQLite connection for one local database file.
@@ -1029,6 +1050,37 @@ func applyMigrations(db *sql.DB) error {
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (profile_id, project_key))`); err != nil {
 			return err
+		}
+	}
+	// v40: backfill the neutral-identity table external_ref 1:1 from the existing
+	// entity tables. Each entity row gets exactly one 'xray' row with
+	// local_id == external_key == jira_key and version_token from the entity's
+	// "updated" column ('' for precondition, which has none). INSERT OR IGNORE
+	// against the (profile_id, entity_type, local_id, connection) primary key makes
+	// the backfill idempotent and O(rows), so re-running (or running on the large
+	// real DB) is a safe no-op. The table itself is created by baseSchema before
+	// this runs; nothing consumes external_ref yet, so this is behaviour-preserving.
+	if current < 40 {
+		for _, q := range []string{
+			`INSERT OR IGNORE INTO external_ref
+			   (profile_id, entity_type, local_id, connection, external_key, version_token, base_version, last_pulled_at)
+			 SELECT profile_id, 'test', jira_key, 'xray', jira_key, updated_at, '', '' FROM test_case`,
+			`INSERT OR IGNORE INTO external_ref
+			   (profile_id, entity_type, local_id, connection, external_key, version_token, base_version, last_pulled_at)
+			 SELECT profile_id, 'precondition', jira_key, 'xray', jira_key, '', '', '' FROM precondition`,
+			`INSERT OR IGNORE INTO external_ref
+			   (profile_id, entity_type, local_id, connection, external_key, version_token, base_version, last_pulled_at)
+			 SELECT profile_id, 'container', jira_key, 'xray', jira_key, updated, '', '' FROM test_container`,
+			`INSERT OR IGNORE INTO external_ref
+			   (profile_id, entity_type, local_id, connection, external_key, version_token, base_version, last_pulled_at)
+			 SELECT profile_id, 'bug', jira_key, 'xray', jira_key, updated_at, '', '' FROM bug`,
+			`INSERT OR IGNORE INTO external_ref
+			   (profile_id, entity_type, local_id, connection, external_key, version_token, base_version, last_pulled_at)
+			 SELECT profile_id, 'requirement', jira_key, 'xray', jira_key, updated_at, '', '' FROM requirement`,
+		} {
+			if _, err := db.Exec(q); err != nil {
+				return fmt.Errorf("v40 backfill external_ref: %w", err)
+			}
 		}
 	}
 	return nil
