@@ -70,16 +70,37 @@ func (a *Adapter) UpdateIssue(ctx context.Context, key string, fields map[string
 	return a.c.UpdateIssue(ctx, key, fields)
 }
 
-func (a *Adapter) GetIssueUpdated(ctx context.Context, key string) (string, error) {
-	return a.c.GetIssueUpdated(ctx, key)
-}
-
 func (a *Adapter) GetTestMeta(ctx context.Context, key string) (backend.TestMeta, error) {
 	m, err := a.c.GetTestMeta(ctx, key)
 	if err != nil {
 		return backend.TestMeta{}, err
 	}
 	return toTestMeta(m), nil
+}
+
+// --- concurrency ---
+
+// RemoteVersion returns the issue's current `updated` timestamp as an opaque
+// VersionToken. entityType is ignored — Xray versions every entity by its
+// Jira issue `updated` field.
+func (a *Adapter) RemoteVersion(ctx context.Context, entityType, externalKey string) (backend.VersionToken, error) {
+	upd, err := a.c.GetIssueUpdated(ctx, externalKey)
+	if err != nil {
+		return "", err
+	}
+	return backend.VersionToken(upd), nil
+}
+
+// RemoteAhead reports whether remote's Jira `updated` timestamp is strictly
+// later than base's. On parse failure it is permissive (returns false) so a
+// malformed remote string can't manufacture a phantom conflict.
+func (a *Adapter) RemoteAhead(base, remote backend.VersionToken) bool {
+	bt, ok1 := parseJiraTime(string(base))
+	rt, ok2 := parseJiraTime(string(remote))
+	if !ok1 || !ok2 {
+		return false
+	}
+	return rt.After(bt)
 }
 
 // --- steps ---

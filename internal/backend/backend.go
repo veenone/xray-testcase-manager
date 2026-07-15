@@ -11,8 +11,10 @@ import (
 var ErrUnsupported = errors.New("backend: operation not supported")
 
 // VersionToken is an opaque per-entity version marker used for optimistic
-// concurrency. It is defined now for later phases; this phase still uses the
-// string-based GetIssueUpdated shape and does not consume VersionToken.
+// concurrency. Each backend owns both how it produces a token
+// (RemoteVersion) and how it orders two tokens (RemoteAhead) — for Xray this
+// is a Jira `updated` timestamp string; other backends may use a content
+// hash or a numeric revision instead.
 type VersionToken string
 
 // Container kind identifiers, mirroring the jira.Kind* constants so callers
@@ -80,8 +82,20 @@ type Backend interface {
 	GetTestFields(ctx context.Context, key string) (Test, error)
 	CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error)
 	UpdateIssue(ctx context.Context, key string, fields map[string]any) error
-	GetIssueUpdated(ctx context.Context, key string) (string, error)
 	GetTestMeta(ctx context.Context, key string) (TestMeta, error)
+
+	// --- concurrency ---
+
+	// RemoteVersion returns the remote's current version token for an entity.
+	// entityType distinguishes entity kinds for backends that need it (e.g. a
+	// future backend versioning tests and preconditions differently); Xray
+	// ignores it and always returns the issue's `updated` timestamp.
+	RemoteVersion(ctx context.Context, entityType, externalKey string) (VersionToken, error)
+
+	// RemoteAhead reports whether remote represents a state strictly later
+	// than base. The backend owns the ordering — for Xray this parses both
+	// tokens as timestamps; other backends may compare hashes or revisions.
+	RemoteAhead(base, remote VersionToken) bool
 
 	// --- steps ---
 	GetTestSteps(ctx context.Context, key string) ([]Step, error)

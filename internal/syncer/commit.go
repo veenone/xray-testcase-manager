@@ -7,8 +7,8 @@ import (
 	"log"
 	"sort"
 	"strings"
-	"time"
 
+	"xray-test-manager/internal/backend"
 	"xray-test-manager/internal/testrepo"
 )
 
@@ -257,7 +257,7 @@ testLoop:
 		// and classify each change. Non-overlapping edits (and edits someone else
 		// already made) merge silently; only genuinely overlapping fields hold the
 		// Test back for the user to resolve.
-		remoteUpdated, err := e.backend.GetIssueUpdated(ctx, testKey)
+		remoteVer, err := e.backend.RemoteVersion(ctx, "test", testKey)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{
 				TestKey: testKey,
@@ -265,9 +265,9 @@ testLoop:
 			})
 			continue
 		}
-		if remoteUpdated != "" {
+		if remoteVer != "" {
 			oldest := oldestBaseVersion(testChanges)
-			if oldest != "" && isRemoteAhead(remoteUpdated, oldest) {
+			if oldest != "" && e.backend.RemoteAhead(backend.VersionToken(oldest), remoteVer) {
 				scan, derr := e.detectConflicts(ctx, testKey, testChanges)
 				if derr != nil {
 					result.Failed = append(result.Failed, FailedCommit{
@@ -280,7 +280,7 @@ testLoop:
 					result.Conflicted = append(result.Conflicted, Conflict{
 						TestKey:       testKey,
 						BaseVersion:   oldest,
-						RemoteVersion: remoteUpdated,
+						RemoteVersion: string(remoteVer),
 						RemoteDeleted: true,
 					})
 					continue
@@ -297,7 +297,7 @@ testLoop:
 						TestKey:       testKey,
 						TestSummary:   scan.testSummary,
 						BaseVersion:   oldest,
-						RemoteVersion: remoteUpdated,
+						RemoteVersion: string(remoteVer),
 						Fields:        scan.conflicts,
 					})
 					continue
@@ -307,7 +307,7 @@ testLoop:
 				if len(testChanges) == 0 {
 					continue
 				}
-				if rErr := e.repo.RebaseTestConflict(profileID, testKey, remoteUpdated); rErr != nil {
+				if rErr := e.repo.RebaseTestConflict(profileID, testKey, string(remoteVer)); rErr != nil {
 					result.Failed = append(result.Failed, FailedCommit{
 						TestKey: testKey,
 						Error:   "rebase after auto-merge failed: " + rErr.Error(),
@@ -628,8 +628,8 @@ testLoop:
 		// remaining items. (Full commits push everything at once, so there's
 		// nothing left to re-base.)
 		if only != nil {
-			if upd, uerr := e.backend.GetIssueUpdated(ctx, testKey); uerr == nil && upd != "" {
-				_ = e.repo.RebaseTestConflict(profileID, testKey, upd)
+			if upd, uerr := e.backend.RemoteVersion(ctx, "test", testKey); uerr == nil && upd != "" {
+				_ = e.repo.RebaseTestConflict(profileID, testKey, string(upd))
 			}
 		}
 	}
@@ -1511,37 +1511,6 @@ func oldestBaseVersion(changes []testrepo.PendingChange) string {
 		}
 	}
 	return oldest
-}
-
-// isRemoteAhead returns true if remote's timestamp is strictly later than
-// base's. Both arguments are timestamps as Jira returns them — typically
-// "yyyy-MM-ddTHH:mm:ss.SSS-HHMM" but RFC 3339 variants are also accepted.
-// On parse failure the function is permissive (returns false) so a malformed
-// remote string can't manufacture a phantom conflict.
-func isRemoteAhead(remote, base string) bool {
-	rt, ok1 := parseJiraTime(remote)
-	bt, ok2 := parseJiraTime(base)
-	if !ok1 || !ok2 {
-		return false
-	}
-	return rt.After(bt)
-}
-
-var jiraTimeFormats = []string{
-	"2006-01-02T15:04:05.000-0700",
-	"2006-01-02T15:04:05-0700",
-	"2006-01-02T15:04:05.000Z07:00",
-	time.RFC3339Nano,
-	time.RFC3339,
-}
-
-func parseJiraTime(s string) (time.Time, bool) {
-	for _, f := range jiraTimeFormats {
-		if t, err := time.Parse(f, s); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
 }
 
 // sanitizeError trims long Jira error responses so the UI shows a short,
