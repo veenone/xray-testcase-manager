@@ -6,6 +6,7 @@ import {syncer} from '../models';
 import {profile} from '../models';
 import {coverage} from '../models';
 import {jira} from '../models';
+import {backend} from '../models';
 import {settings} from '../models';
 
 export function AddCalledTestStep(arg1:string,arg2:string,arg3:string):Promise<testrepo.Step>;
@@ -173,6 +174,8 @@ export function GetBulkTransitionOptions(arg1:string,arg2:Array<string>):Promise
 export function GetCRAdoption(arg1:string,arg2:string):Promise<Array<coverage.CRShare>>;
 
 export function GetCRImpact(arg1:string,arg2:string):Promise<coverage.CRImpactResult>;
+
+export function GetCapabilities(arg1:string):Promise<backend.Capabilities>;
 
 export function GetContainerBoard(arg1:string,arg2:string):Promise<testrepo.TestPlanBoard>;
 

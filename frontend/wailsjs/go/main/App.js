@@ -334,6 +334,10 @@ export function GetCRImpact(arg1, arg2) {
   return window['go']['main']['App']['GetCRImpact'](arg1, arg2);
 }
 
+export function GetCapabilities(arg1) {
+  return window['go']['main']['App']['GetCapabilities'](arg1);
+}
+
 export function GetContainerBoard(arg1, arg2) {
   return window['go']['main']['App']['GetContainerBoard'](arg1, arg2);
 }

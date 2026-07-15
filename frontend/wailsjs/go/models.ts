@@ -1,3 +1,54 @@
+export namespace backend {
+	
+	export class Capabilities {
+	    Name: string;
+	    IDStyle: string;
+	    SupportsJQLScope: boolean;
+	    StepModel: string;
+	    SupportsTestTypes: boolean;
+	    SupportsFolders: boolean;
+	    SupportsPreconditionObjects: boolean;
+	    SupportsRequirementObjects: boolean;
+	    SupportsIssueLinkTypes: boolean;
+	    SupportsEnvironments: boolean;
+	    SupportsContainers: boolean;
+	    ContainerKinds: string[];
+	    SupportsTestRuns: boolean;
+	    StatusModel: string;
+	    SupportsWorkflowTransitions: boolean;
+	    SupportsBugCreation: boolean;
+	    SupportsBugLinks: boolean;
+	    SupportsTags: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Capabilities(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Name = source["Name"];
+	        this.IDStyle = source["IDStyle"];
+	        this.SupportsJQLScope = source["SupportsJQLScope"];
+	        this.StepModel = source["StepModel"];
+	        this.SupportsTestTypes = source["SupportsTestTypes"];
+	        this.SupportsFolders = source["SupportsFolders"];
+	        this.SupportsPreconditionObjects = source["SupportsPreconditionObjects"];
+	        this.SupportsRequirementObjects = source["SupportsRequirementObjects"];
+	        this.SupportsIssueLinkTypes = source["SupportsIssueLinkTypes"];
+	        this.SupportsEnvironments = source["SupportsEnvironments"];
+	        this.SupportsContainers = source["SupportsContainers"];
+	        this.ContainerKinds = source["ContainerKinds"];
+	        this.SupportsTestRuns = source["SupportsTestRuns"];
+	        this.StatusModel = source["StatusModel"];
+	        this.SupportsWorkflowTransitions = source["SupportsWorkflowTransitions"];
+	        this.SupportsBugCreation = source["SupportsBugCreation"];
+	        this.SupportsBugLinks = source["SupportsBugLinks"];
+	        this.SupportsTags = source["SupportsTags"];
+	    }
+	}
+
+}
+
 export namespace coverage {
 	
 	export class CRDecision {

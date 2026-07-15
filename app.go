@@ -611,6 +611,21 @@ func (a *App) ListRequirementLinkTypes(profileID string) ([]string, error) {
 	return b.ListIssueLinkTypes(a.ctx)
 }
 
+// GetCapabilities reports what the given profile's backend supports, so the
+// frontend can gate features once a non-Xray backend exists. Xray reports the
+// full/permissive capability set today (see xray.Adapter.Capabilities), so
+// this is currently informational only.
+func (a *App) GetCapabilities(profileID string) (backend.Capabilities, error) {
+	if err := a.requireStore(); err != nil {
+		return backend.Capabilities{}, err
+	}
+	b, err := a.backendFor(profileID)
+	if err != nil {
+		return backend.Capabilities{}, err
+	}
+	return b.Capabilities(), nil
+}
+
 // SetShowCoverage records whether the (opt-in, hidden-by-default) Coverage
 // top-nav tab is shown.
 func (a *App) SetShowCoverage(show bool) error {

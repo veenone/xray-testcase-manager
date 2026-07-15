@@ -14,6 +14,7 @@ export {
   SetTheme,
   SetRequirementLinkType,
   ListRequirementLinkTypes,
+  GetCapabilities,
   SetShowCoverage,
   ListProfiles,
   CreateProfile,
@@ -409,6 +410,33 @@ export interface Settings {
   theme: string; // "light" | "dark" | "system" | "" (= light)
   requirementLinkType: string; // Jira issue-link type for Test->Requirement coverage; default "tested by"
   showCoverage: boolean; // reveal the opt-in, hidden-by-default Coverage tab
+}
+
+// Capabilities mirrors backend.Capabilities — what the active profile's
+// backend supports. Xray reports the full/permissive set today (see
+// xray.Adapter.Capabilities); this is used to gate backend-specific UI once a
+// non-Xray backend exists. Field names match the JSON wire shape verbatim:
+// the Go struct has no json tags, so the keys are the exported Go field
+// names rather than the camelCase used elsewhere in this file.
+export interface Capabilities {
+  Name: string;
+  IDStyle: string;
+  SupportsJQLScope: boolean;
+  StepModel: string;
+  SupportsTestTypes: boolean;
+  SupportsFolders: boolean;
+  SupportsPreconditionObjects: boolean;
+  SupportsRequirementObjects: boolean;
+  SupportsIssueLinkTypes: boolean;
+  SupportsEnvironments: boolean;
+  SupportsContainers: boolean;
+  ContainerKinds: string[];
+  SupportsTestRuns: boolean;
+  StatusModel: string;
+  SupportsWorkflowTransitions: boolean;
+  SupportsBugCreation: boolean;
+  SupportsBugLinks: boolean;
+  SupportsTags: boolean;
 }
 
 export interface Profile {
