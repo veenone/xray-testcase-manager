@@ -18,6 +18,8 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"xray-test-manager/internal/backend"
+	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/coverage"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/profile"
@@ -470,6 +472,69 @@ func tlsOptions(p profile.Profile) []jira.Option {
 	return opts
 }
 
+// newBackend is the low-level backend constructor: it wraps a Jira/Xray
+// client as a backend.Backend. jira.NewClient is only ever called here and in
+// backendFor below (app.go is the composition root, Phase 1 wiring) -- every
+// other call site builds a Backend through one of these two helpers instead of
+// constructing a *jira.Client directly.
+func newBackend(jiraURL, token string, opts ...jira.Option) backend.Backend {
+	return xray.New(jira.NewClient(jiraURL, token, opts...))
+}
+
+// backendFor loads a profile and its stored credential and returns a Backend
+// bound to it -- the canonical builder for every profile-scoped call. Two
+// call sites (TestConnection / TestProfileConnection) test unsaved form
+// values rather than a saved profile, so they use newBackend directly.
+func (a *App) backendFor(profileID string) (backend.Backend, error) {
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
+	}
+	return newBackend(p.JiraURL, token, tlsOptions(p)...), nil
+}
+
+// --- Boundary conversions: backend.* -> jira.* -------------------------
+//
+// A handful of App methods are exported with jira.* return types that are
+// part of the Wails-generated frontend API surface (frontend/wailsjs). Phase 1
+// wiring moves the internals onto the neutral backend.Backend interface
+// without touching that surface, so these small converters translate the
+// backend.* result back to the jira.* shape at the boundary. The DTOs are
+// field-for-field identical (see internal/backend/dto.go), so this is a pure
+// relabeling, not a behavior change.
+
+// toJiraTransitions converts backend transitions to the jira.Transition shape
+// GetTestTransitions still exposes.
+func toJiraTransitions(in []backend.Transition) []jira.Transition {
+	out := make([]jira.Transition, len(in))
+	for i, t := range in {
+		out[i] = jira.Transition(t)
+	}
+	return out
+}
+
+// toJiraBugCreateFields converts backend bug-create-field descriptors to the
+// jira.BugCreateField shape GetBugCreateFields still exposes. A field-by-field
+// copy is needed (rather than a single type conversion) because the nested
+// AllowedValues slice element type differs between the two packages.
+func toJiraBugCreateFields(in []backend.BugCreateField) []jira.BugCreateField {
+	out := make([]jira.BugCreateField, len(in))
+	for i, f := range in {
+		opts := make([]jira.BugFieldOption, len(f.AllowedValues))
+		for j, o := range f.AllowedValues {
+			opts[j] = jira.BugFieldOption(o)
+		}
+		out[i] = jira.BugCreateField{
+			ID: f.ID, Name: f.Name, Required: f.Required, Type: f.Type, AllowedValues: opts,
+		}
+	}
+	return out
+}
+
 // DeleteProfile removes a profile and its stored credentials.
 func (a *App) DeleteProfile(id string) error {
 	if err := a.requireStore(); err != nil {
@@ -539,15 +604,11 @@ func (a *App) ListRequirementLinkTypes(profileID string) ([]string, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return nil, err
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		return nil, fmt.Errorf("load credentials: %w", err)
-	}
-	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).ListIssueLinkTypes(a.ctx)
+	return b.ListIssueLinkTypes(a.ctx)
 }
 
 // SetShowCoverage records whether the (opt-in, hidden-by-default) Coverage
@@ -574,7 +635,7 @@ func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bo
 	if allowUntrustedTLS {
 		opts = append(opts, jira.WithInsecureTLS(true))
 	}
-	user, err := jira.NewClient(jiraURL, token, opts...).TestConnection(a.ctx)
+	user, err := newBackend(jiraURL, token, opts...).TestConnection(a.ctx)
 	if err != nil {
 		return "", err
 	}
@@ -599,7 +660,7 @@ func (a *App) TestProfileConnection(profileID, jiraURL, caCert string, allowUntr
 	if allowUntrustedTLS {
 		opts = append(opts, jira.WithInsecureTLS(true))
 	}
-	user, err := jira.NewClient(jiraURL, token, opts...).TestConnection(a.ctx)
+	user, err := newBackend(jiraURL, token, opts...).TestConnection(a.ctx)
 	if err != nil {
 		return "", err
 	}
@@ -632,7 +693,7 @@ func (a *App) runPartialSync(profileID, stage string, fn func(*syncer.Engine, st
 	if err != nil {
 		return fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
+	engine := syncer.New(newBackend(p.JiraURL, token, tlsOptions(p)...), a.repo)
 
 	onProgress := func(pr syncer.Progress) {
 		runtime.EventsEmit(a.ctx, "sync:progress", pr)
@@ -715,15 +776,15 @@ func (a *App) GetBugDetail(profileID, bugKey string) (jira.BugDetail, error) {
 	if strings.HasPrefix(bugKey, "NEW-") {
 		return jira.BugDetail{}, nil
 	}
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return jira.BugDetail{}, err
 	}
-	token, err := a.creds.Load(profileID)
+	detail, err := b.GetBugDetail(a.ctx, bugKey)
 	if err != nil {
-		return jira.BugDetail{}, fmt.Errorf("load credentials: %w", err)
+		return jira.BugDetail{}, err
 	}
-	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetBugDetail(a.ctx, bugKey)
+	return jira.BugDetail(detail), nil
 }
 
 // SyncTestCalls refreshes the "call test" relationships by re-pulling steps for
@@ -754,15 +815,10 @@ func (a *App) SyncTestCalls(profileID string) error {
 	if len(refresh) == 0 {
 		return nil
 	}
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return err
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		return fmt.Errorf("load credentials: %w", err)
-	}
-	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
 
 	// Per-caller progress on a dedicated channel (not the global "sync:progress")
 	// so the Test Calls view shows its own bar without touching the footer sync
@@ -777,7 +833,7 @@ func (a *App) SyncTestCalls(profileID string) error {
 			Fetched: i + 1,
 			Total:   n,
 		})
-		remote, err := client.GetTestSteps(a.ctx, key)
+		remote, err := b.GetTestSteps(a.ctx, key)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("refresh %s: %w", key, err)
@@ -835,7 +891,7 @@ func (a *App) runSync(profileID string, forceFull bool) error {
 	if forceFull {
 		since = ""
 	}
-	engine := syncer.New(jira.NewClient(p.JiraURL, token, tlsOptions(p)...), a.repo)
+	engine := syncer.New(newBackend(p.JiraURL, token, tlsOptions(p)...), a.repo)
 	started := time.Now().UTC()
 	var lastFetched int
 	syncErr := engine.Sync(a.ctx, profileID, p.ProjectKey, p.ScopeJQL, since, func(pr syncer.Progress) {
@@ -1201,7 +1257,11 @@ func (a *App) GetBugCreateFields(profileID string) (fields []jira.BugCreateField
 		return nil, fmt.Errorf("load credentials: %w", err)
 	}
 	projKey := bugProjectKey(p, "")
-	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetBugCreateFields(a.ctx, projKey, p.BugIssueType)
+	bf, err := newBackend(p.JiraURL, token, tlsOptions(p)...).GetBugCreateFields(a.ctx, projKey, p.BugIssueType)
+	if err != nil {
+		return nil, err
+	}
+	return toJiraBugCreateFields(bf), nil
 }
 
 // CreateBugForTest queues a new Bug issue linked to a failed Test, committed to
@@ -1313,19 +1373,13 @@ func (a *App) GetTestRunHistory(profileID, testKey string) ([]testrepo.TestRunEn
 // Errors are logged and ignored -- this is best-effort; the caller returns
 // whatever the local store already has.
 func (a *App) refreshCrossProjectExecsForTest(profileID, testKey string) {
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
-		log.Printf("xtm: refreshCrossProjectExecsForTest: load profile: %v", err)
+		log.Printf("xtm: refreshCrossProjectExecsForTest: build backend: %v", err)
 		return
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		log.Printf("xtm: refreshCrossProjectExecsForTest: load credentials: %v", err)
-		return
-	}
-	cl := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
 	ctx := context.Background()
-	containers, links, err := cl.TestExecutionsForTest(ctx, testKey)
+	containers, links, err := b.TestExecutionsForTest(ctx, testKey)
 	if err != nil {
 		log.Printf("xtm: refreshCrossProjectExecsForTest: %s: %v", testKey, err)
 		return
@@ -1388,7 +1442,7 @@ func (a *App) refreshCrossProjectExecsForTest(profileID, testKey string) {
 		return
 	}
 	for _, ct := range newContainers {
-		runs, rErr := cl.GetTestRuns(ctx, ct.Key)
+		runs, rErr := b.GetTestRuns(ctx, ct.Key)
 		if rErr != nil {
 			log.Printf("xtm: refreshCrossProjectExecsForTest: get runs for %s: %v", ct.Key, rErr)
 			continue
@@ -1552,9 +1606,9 @@ func (a *App) CommitPendingChanges(profileID string) (out syncer.CommitResult, e
 	if settingsErr != nil {
 		return empty, fmt.Errorf("read settings: %w", settingsErr)
 	}
-	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
-	client.SetRequirementLinkType(s.RequirementLinkType)
-	engine := syncer.New(client, a.repo)
+	b := newBackend(p.JiraURL, token, tlsOptions(p)...)
+	b.SetRequirementLinkType(s.RequirementLinkType)
+	engine := syncer.New(b, a.repo)
 	return engine.CommitChanges(a.ctx, profileID, p.ProjectKey)
 }
 
@@ -1587,9 +1641,9 @@ func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (ou
 	if settingsErr != nil {
 		return empty, fmt.Errorf("read settings: %w", settingsErr)
 	}
-	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
-	client.SetRequirementLinkType(s.RequirementLinkType)
-	engine := syncer.New(client, a.repo)
+	b := newBackend(p.JiraURL, token, tlsOptions(p)...)
+	b.SetRequirementLinkType(s.RequirementLinkType)
+	engine := syncer.New(b, a.repo)
 	return engine.CommitChangesForIDs(a.ctx, profileID, p.ProjectKey, changeIDs)
 }
 
@@ -1612,15 +1666,15 @@ func (a *App) GetTestTransitions(profileID, testKey string) ([]jira.Transition, 
 	if err != nil {
 		return nil, err
 	}
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return nil, err
 	}
-	token, err := a.creds.Load(profileID)
+	ts, err := b.GetTransitions(a.ctx, testKey, test.Status)
 	if err != nil {
-		return nil, fmt.Errorf("load credentials: %w", err)
+		return nil, err
 	}
-	return jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTransitions(a.ctx, testKey, test.Status)
+	return toJiraTransitions(ts), nil
 }
 
 // TransitionTest queues a workflow transition locally (FR-4.2). The change
@@ -1758,15 +1812,11 @@ func (a *App) GetTestSteps(profileID, testKey string, forceRefresh bool) ([]test
 		}
 	}
 
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return nil, err
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		return nil, fmt.Errorf("load credentials: %w", err)
-	}
-	remote, err := jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTestSteps(a.ctx, testKey)
+	remote, err := b.GetTestSteps(a.ctx, testKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1808,15 +1858,11 @@ func (a *App) CheckJiraTestSteps(profileID, testKey string) (JiraStepInfo, error
 		// Uncommitted local Test — nothing in Jira to compare against.
 		return JiraStepInfo{}, nil
 	}
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return JiraStepInfo{}, err
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		return JiraStepInfo{}, fmt.Errorf("load credentials: %w", err)
-	}
-	remote, err := jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTestSteps(a.ctx, testKey)
+	remote, err := b.GetTestSteps(a.ctx, testKey)
 	if err != nil {
 		return JiraStepInfo{}, err
 	}
@@ -1855,15 +1901,11 @@ func (a *App) GetTestCustomFields(profileID, testKey string, forceRefresh bool) 
 		}
 	}
 
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return nil, err
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		return nil, fmt.Errorf("load credentials: %w", err)
-	}
-	values, err := jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTestCustomFields(a.ctx, testKey)
+	values, err := b.GetTestCustomFields(a.ctx, testKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1963,15 +2005,10 @@ func (a *App) GetBulkTransitionOptions(profileID string, testKeys []string) (Bul
 		return out, nil
 	}
 
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return out, err
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		return out, fmt.Errorf("load credentials: %w", err)
-	}
-	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
 
 	// We need a representative key per status to call GetTransitions for
 	// real Jira — the demo path ignores the key. Walk testKeys once and
@@ -1989,7 +2026,7 @@ func (a *App) GetBulkTransitionOptions(profileID string, testKeys []string) (Bul
 
 	targets := make(map[string]struct{})
 	for status, key := range repByStatus {
-		ts, err := client.GetTransitions(a.ctx, key, status)
+		ts, err := b.GetTransitions(a.ctx, key, status)
 		if err != nil {
 			return out, fmt.Errorf("fetch transitions for %q: %w", status, err)
 		}
@@ -2030,17 +2067,12 @@ func (a *App) BulkTransitionTests(profileID string, testKeys []string, targetSta
 		return result, fmt.Errorf("target status is required")
 	}
 
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return result, err
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		return result, fmt.Errorf("load credentials: %w", err)
-	}
-	client := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
 
-	transitionsByStatus := make(map[string][]jira.Transition)
+	transitionsByStatus := make(map[string][]backend.Transition)
 
 	for _, key := range testKeys {
 		test, err := a.repo.GetTest(profileID, key)
@@ -2058,7 +2090,7 @@ func (a *App) BulkTransitionTests(profileID string, testKeys []string, targetSta
 		}
 		ts, cached := transitionsByStatus[test.Status]
 		if !cached {
-			ts, err = client.GetTransitions(a.ctx, key, test.Status)
+			ts, err = b.GetTransitions(a.ctx, key, test.Status)
 			if err != nil {
 				result.Failed = append(result.Failed, testrepo.BulkFailure{
 					TestKey: key, Error: "fetch transitions: " + err.Error(),
@@ -2859,16 +2891,11 @@ func (a *App) ExportBugsWithRunHistory(profileID string, bugKeys []string) (stri
 		return "", nil
 	}
 
-	// Load profile and credentials for the live detail fetch.
-	p, err := a.profiles.Get(profileID)
+	// Load the backend for the live detail fetch.
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return "", err
 	}
-	token, err := a.creds.Load(profileID)
-	if err != nil {
-		return "", fmt.Errorf("load credentials: %w", err)
-	}
-	cl := jira.NewClient(p.JiraURL, token, tlsOptions(p)...)
 
 	exports := make([]testrepo.BugExport, 0, len(bugKeys))
 	for _, key := range bugKeys {
@@ -2887,7 +2914,7 @@ func (a *App) ExportBugsWithRunHistory(profileID string, bugKeys []string) (stri
 		}
 
 		// Best-effort live fetch for extended fields.
-		if detail, dErr := cl.GetBugDetail(a.ctx, key); dErr != nil {
+		if detail, dErr := b.GetBugDetail(a.ctx, key); dErr != nil {
 			log.Printf("xtm: ExportBugsWithRunHistory: GetBugDetail %s: %v (leaving detail fields blank)", key, dErr)
 		} else {
 			ex.Description = detail.Description
@@ -3173,7 +3200,7 @@ func (a *App) workflowStatuses(profileID string) []string {
 	if err != nil {
 		return nil
 	}
-	statuses, err := jira.NewClient(p.JiraURL, token).ListStatuses(a.ctx, p.ProjectKey)
+	statuses, err := newBackend(p.JiraURL, token, tlsOptions(p)...).ListStatuses(a.ctx, p.ProjectKey)
 	if err != nil || len(statuses) == 0 {
 		return nil
 	}
@@ -3217,7 +3244,7 @@ func (a *App) jiraPriorities(profileID string) []string {
 	if err != nil {
 		return nil
 	}
-	priorities, err := jira.NewClient(p.JiraURL, token).ListPriorities(a.ctx, p.ProjectKey)
+	priorities, err := newBackend(p.JiraURL, token, tlsOptions(p)...).ListPriorities(a.ctx, p.ProjectKey)
 	if err != nil || len(priorities) == 0 {
 		return nil
 	}
@@ -3310,7 +3337,7 @@ func (a *App) GetTest(profileID, key string) (testrepo.TestCase, error) {
 	if credErr != nil {
 		return testrepo.TestCase{}, err // return original ErrNotFound
 	}
-	t, fetchErr := jira.NewClient(p.JiraURL, token, tlsOptions(p)...).GetTestFields(a.ctx, key)
+	t, fetchErr := newBackend(p.JiraURL, token, tlsOptions(p)...).GetTestFields(a.ctx, key)
 	if fetchErr != nil {
 		return testrepo.TestCase{}, err // return original ErrNotFound on live failure
 	}
@@ -3342,15 +3369,15 @@ func (a *App) GetTestMeta(profileID, testKey string) (jira.TestMeta, error) {
 		// Uncommitted local Test — no Jira issue metadata yet.
 		return jira.TestMeta{}, nil
 	}
-	p, err := a.profiles.Get(profileID)
+	b, err := a.backendFor(profileID)
 	if err != nil {
 		return jira.TestMeta{}, err
 	}
-	token, err := a.creds.Load(profileID)
+	meta, err := b.GetTestMeta(a.ctx, testKey)
 	if err != nil {
-		return jira.TestMeta{}, fmt.Errorf("load credentials: %w", err)
+		return jira.TestMeta{}, err
 	}
-	return jira.NewClient(p.JiraURL, token).GetTestMeta(a.ctx, testKey)
+	return jira.TestMeta(meta), nil
 }
 
 // defaultDBPath returns <user-config-dir>/xray-test-manager/xtm.db, creating
