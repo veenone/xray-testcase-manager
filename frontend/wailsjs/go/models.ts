@@ -1,24 +1,24 @@
 export namespace backend {
 	
 	export class Capabilities {
-	    Name: string;
-	    IDStyle: string;
-	    SupportsJQLScope: boolean;
-	    StepModel: string;
-	    SupportsTestTypes: boolean;
-	    SupportsFolders: boolean;
-	    SupportsPreconditionObjects: boolean;
-	    SupportsRequirementObjects: boolean;
-	    SupportsIssueLinkTypes: boolean;
-	    SupportsEnvironments: boolean;
-	    SupportsContainers: boolean;
-	    ContainerKinds: string[];
-	    SupportsTestRuns: boolean;
-	    StatusModel: string;
-	    SupportsWorkflowTransitions: boolean;
-	    SupportsBugCreation: boolean;
-	    SupportsBugLinks: boolean;
-	    SupportsTags: boolean;
+	    name: string;
+	    idStyle: string;
+	    supportsJqlScope: boolean;
+	    stepModel: string;
+	    supportsTestTypes: boolean;
+	    supportsFolders: boolean;
+	    supportsPreconditionObjects: boolean;
+	    supportsRequirementObjects: boolean;
+	    supportsIssueLinkTypes: boolean;
+	    supportsEnvironments: boolean;
+	    supportsContainers: boolean;
+	    containerKinds: string[];
+	    supportsTestRuns: boolean;
+	    statusModel: string;
+	    supportsWorkflowTransitions: boolean;
+	    supportsBugCreation: boolean;
+	    supportsBugLinks: boolean;
+	    supportsTags: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Capabilities(source);
@@ -26,24 +26,24 @@ export namespace backend {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Name = source["Name"];
-	        this.IDStyle = source["IDStyle"];
-	        this.SupportsJQLScope = source["SupportsJQLScope"];
-	        this.StepModel = source["StepModel"];
-	        this.SupportsTestTypes = source["SupportsTestTypes"];
-	        this.SupportsFolders = source["SupportsFolders"];
-	        this.SupportsPreconditionObjects = source["SupportsPreconditionObjects"];
-	        this.SupportsRequirementObjects = source["SupportsRequirementObjects"];
-	        this.SupportsIssueLinkTypes = source["SupportsIssueLinkTypes"];
-	        this.SupportsEnvironments = source["SupportsEnvironments"];
-	        this.SupportsContainers = source["SupportsContainers"];
-	        this.ContainerKinds = source["ContainerKinds"];
-	        this.SupportsTestRuns = source["SupportsTestRuns"];
-	        this.StatusModel = source["StatusModel"];
-	        this.SupportsWorkflowTransitions = source["SupportsWorkflowTransitions"];
-	        this.SupportsBugCreation = source["SupportsBugCreation"];
-	        this.SupportsBugLinks = source["SupportsBugLinks"];
-	        this.SupportsTags = source["SupportsTags"];
+	        this.name = source["name"];
+	        this.idStyle = source["idStyle"];
+	        this.supportsJqlScope = source["supportsJqlScope"];
+	        this.stepModel = source["stepModel"];
+	        this.supportsTestTypes = source["supportsTestTypes"];
+	        this.supportsFolders = source["supportsFolders"];
+	        this.supportsPreconditionObjects = source["supportsPreconditionObjects"];
+	        this.supportsRequirementObjects = source["supportsRequirementObjects"];
+	        this.supportsIssueLinkTypes = source["supportsIssueLinkTypes"];
+	        this.supportsEnvironments = source["supportsEnvironments"];
+	        this.supportsContainers = source["supportsContainers"];
+	        this.containerKinds = source["containerKinds"];
+	        this.supportsTestRuns = source["supportsTestRuns"];
+	        this.statusModel = source["statusModel"];
+	        this.supportsWorkflowTransitions = source["supportsWorkflowTransitions"];
+	        this.supportsBugCreation = source["supportsBugCreation"];
+	        this.supportsBugLinks = source["supportsBugLinks"];
+	        this.supportsTags = source["supportsTags"];
 	    }
 	}
 

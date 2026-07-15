@@ -415,28 +415,29 @@ export interface Settings {
 // Capabilities mirrors backend.Capabilities — what the active profile's
 // backend supports. Xray reports the full/permissive set today (see
 // xray.Adapter.Capabilities); this is used to gate backend-specific UI once a
-// non-Xray backend exists. Field names match the JSON wire shape verbatim:
-// the Go struct has no json tags, so the keys are the exported Go field
-// names rather than the camelCase used elsewhere in this file.
+// non-Xray backend exists. Field names/casing match the generated
+// wailsjs/go/models.ts backend.Capabilities shape (camelCase, driven by the
+// json tags on the Go struct), matching the hand-defined-interface convention
+// used by the other domain types in this file.
 export interface Capabilities {
-  Name: string;
-  IDStyle: string;
-  SupportsJQLScope: boolean;
-  StepModel: string;
-  SupportsTestTypes: boolean;
-  SupportsFolders: boolean;
-  SupportsPreconditionObjects: boolean;
-  SupportsRequirementObjects: boolean;
-  SupportsIssueLinkTypes: boolean;
-  SupportsEnvironments: boolean;
-  SupportsContainers: boolean;
-  ContainerKinds: string[];
-  SupportsTestRuns: boolean;
-  StatusModel: string;
-  SupportsWorkflowTransitions: boolean;
-  SupportsBugCreation: boolean;
-  SupportsBugLinks: boolean;
-  SupportsTags: boolean;
+  name: string;
+  idStyle: string;
+  supportsJqlScope: boolean;
+  stepModel: string;
+  supportsTestTypes: boolean;
+  supportsFolders: boolean;
+  supportsPreconditionObjects: boolean;
+  supportsRequirementObjects: boolean;
+  supportsIssueLinkTypes: boolean;
+  supportsEnvironments: boolean;
+  supportsContainers: boolean;
+  containerKinds: string[];
+  supportsTestRuns: boolean;
+  statusModel: string;
+  supportsWorkflowTransitions: boolean;
+  supportsBugCreation: boolean;
+  supportsBugLinks: boolean;
+  supportsTags: boolean;
 }
 
 export interface Profile {

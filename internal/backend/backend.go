@@ -28,37 +28,37 @@ const (
 // struct is the minimal surface introduced now.
 type Capabilities struct {
 	// Name identifies the backend for diagnostics (e.g. "xray").
-	Name string
+	Name string `json:"name"`
 
 	// IDStyle is how entity ids are shaped ("opaque" for Xray issue keys).
-	IDStyle string
+	IDStyle string `json:"idStyle"`
 
 	// SupportsJQLScope reports whether saved-scope queries use JQL.
-	SupportsJQLScope bool
+	SupportsJQLScope bool `json:"supportsJqlScope"`
 
 	// StepModel is how test steps are represented ("objects" for Xray steps).
-	StepModel string
+	StepModel string `json:"stepModel"`
 
-	SupportsTestTypes           bool
-	SupportsFolders             bool
-	SupportsPreconditionObjects bool
-	SupportsRequirementObjects  bool
-	SupportsIssueLinkTypes      bool
-	SupportsEnvironments        bool
-	SupportsContainers          bool
+	SupportsTestTypes           bool `json:"supportsTestTypes"`
+	SupportsFolders             bool `json:"supportsFolders"`
+	SupportsPreconditionObjects bool `json:"supportsPreconditionObjects"`
+	SupportsRequirementObjects  bool `json:"supportsRequirementObjects"`
+	SupportsIssueLinkTypes      bool `json:"supportsIssueLinkTypes"`
+	SupportsEnvironments        bool `json:"supportsEnvironments"`
+	SupportsContainers          bool `json:"supportsContainers"`
 
 	// ContainerKinds are the container kind identifiers the backend supports.
-	ContainerKinds []string
+	ContainerKinds []string `json:"containerKinds"`
 
-	SupportsTestRuns bool
+	SupportsTestRuns bool `json:"supportsTestRuns"`
 
 	// StatusModel is how statuses transition ("workflow" for Jira).
-	StatusModel string
+	StatusModel string `json:"statusModel"`
 
-	SupportsWorkflowTransitions bool
-	SupportsBugCreation         bool
-	SupportsBugLinks            bool
-	SupportsTags                bool
+	SupportsWorkflowTransitions bool `json:"supportsWorkflowTransitions"`
+	SupportsBugCreation         bool `json:"supportsBugCreation"`
+	SupportsBugLinks            bool `json:"supportsBugLinks"`
+	SupportsTags                bool `json:"supportsTags"`
 }
 
 // Backend is the storage/tracker-agnostic contract the sync engine and app
