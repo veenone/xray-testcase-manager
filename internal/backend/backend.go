@@ -1,0 +1,151 @@
+package backend
+
+import (
+	"context"
+	"errors"
+)
+
+// ErrUnsupported is returned by a backend for an operation its target system
+// does not support. Callers gate on Capabilities first; ErrUnsupported is the
+// runtime backstop.
+var ErrUnsupported = errors.New("backend: operation not supported")
+
+// VersionToken is an opaque per-entity version marker used for optimistic
+// concurrency. It is defined now for later phases; this phase still uses the
+// string-based GetIssueUpdated shape and does not consume VersionToken.
+type VersionToken string
+
+// Capabilities describes what a concrete backend supports so the app and sync
+// engine can gate features. Full capability gating is a later phase; this
+// struct is the minimal surface introduced now.
+type Capabilities struct {
+	// Name identifies the backend for diagnostics (e.g. "xray").
+	Name string
+
+	// IDStyle is how entity ids are shaped ("opaque" for Xray issue keys).
+	IDStyle string
+
+	// SupportsJQLScope reports whether saved-scope queries use JQL.
+	SupportsJQLScope bool
+
+	// StepModel is how test steps are represented ("objects" for Xray steps).
+	StepModel string
+
+	SupportsTestTypes           bool
+	SupportsFolders             bool
+	SupportsPreconditionObjects bool
+	SupportsRequirementObjects  bool
+	SupportsIssueLinkTypes      bool
+	SupportsEnvironments        bool
+	SupportsContainers          bool
+
+	// ContainerKinds are the container kind identifiers the backend supports.
+	ContainerKinds []string
+
+	SupportsTestRuns bool
+
+	// StatusModel is how statuses transition ("workflow" for Jira).
+	StatusModel string
+
+	SupportsWorkflowTransitions bool
+	SupportsBugCreation         bool
+	SupportsBugLinks            bool
+	SupportsTags                bool
+}
+
+// Backend is the storage/tracker-agnostic contract the sync engine and app
+// layer target. It is a single "fat" interface: every method here is a method
+// currently invoked on *jira.Client from outside the internal/jira package.
+//
+// A concrete backend (internal/backend/xray) implements this by delegating to
+// its underlying client and mapping between the neutral DTOs in dto.go and the
+// backend-native shapes.
+type Backend interface {
+	// --- connection / auth ---
+	TestConnection(ctx context.Context) (*User, error)
+	IsDemo() bool
+	SetRequirementLinkType(name string)
+
+	// --- tests ---
+	SearchTestsPage(ctx context.Context, projectKey, scopeJQL, since string, startAt, maxResults int) ([]Test, int, error)
+	ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic, error)
+	GetTestFields(ctx context.Context, key string) (Test, error)
+	CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error)
+	UpdateIssue(ctx context.Context, key string, fields map[string]any) error
+	GetIssueUpdated(ctx context.Context, key string) (string, error)
+	GetTestMeta(ctx context.Context, key string) (TestMeta, error)
+
+	// --- steps ---
+	GetTestSteps(ctx context.Context, key string) ([]Step, error)
+	CreateTestStep(ctx context.Context, key, action, data, expected string) (string, error)
+	UpdateTestStep(ctx context.Context, key, stepID string, fields map[string]string) error
+	DeleteTestStep(ctx context.Context, key, stepID string) error
+	MoveTestStep(ctx context.Context, key, stepID string, index int, action, data, expected string) error
+	CreateCalledTestStep(ctx context.Context, key, calledTestKey, calledTestID string) (string, error)
+
+	// --- custom fields ---
+	ListCustomFields(ctx context.Context, projectKey string) ([]CustomFieldDef, error)
+	GetTestCustomFields(ctx context.Context, testKey string) (map[string]string, error)
+	CustomFieldValue(ctx context.Context, fieldID, value string) (string, any, error)
+	ExecTypeFieldValue(ctx context.Context, execType string) (fieldID string, value any, ok bool, err error)
+
+	// --- containers (Test Sets / Plans / Executions) ---
+	ListContainers(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Container, []ContainerLink, error)
+	TestExecutionsForTest(ctx context.Context, testKey string) ([]Container, []ContainerLink, error)
+	CreateContainer(ctx context.Context, projectKey, kind, summary string) (string, error)
+	AddTestsToContainer(ctx context.Context, kind, containerKey string, testKeys []string) error
+	RemoveTestsFromContainer(ctx context.Context, kind, containerKey string, testKeys []string) error
+	SetTestRunStatus(ctx context.Context, execKey, testKey, status string) error
+	SetContainerEnvironments(ctx context.Context, execKey string, envs []string) error
+	DeleteContainer(ctx context.Context, kind, containerKey string) error
+	GetTestRuns(ctx context.Context, execKey string) ([]TestRun, error)
+	ExecPlans(ctx context.Context, execKey string) ([]string, error)
+
+	// --- preconditions ---
+	ListPreconditions(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Precondition, map[string][]string, error)
+	CreatePrecondition(ctx context.Context, projectKey, summary, ptype, description string) (string, error)
+	UpdateTestPreconditions(ctx context.Context, testKey string, add, remove []string) error
+	DeletePrecondition(ctx context.Context, preconditionKey string) error
+
+	// --- requirements ---
+	ListRequirements(ctx context.Context, profileProjectKey string, sources []RequirementSourceSpec, onProgress func(done, total int)) ([]Requirement, []RequirementLink, error)
+	UpdateTestRequirements(ctx context.Context, testKey string, add []string, removeLinkIDs []string) error
+	ListIssueLinkTypes(ctx context.Context) ([]string, error)
+	CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error)
+	DeleteRequirement(ctx context.Context, requirementKey string) error
+	UpdateRequirementLinks(ctx context.Context, fromKey string, add []string, removeLinkIDs []string) error
+	ListReqToReqLinks(ctx context.Context, reqKeys []string) ([]ReqToReqLink, error)
+
+	// --- bugs ---
+	ListBugs(ctx context.Context, testProjectKey string, testKeys []string, issueType string, onProgress func(done, total int)) ([]Bug, []BugLink, error)
+	ListProjectBugs(ctx context.Context, projKey, issueType string) ([]Bug, error)
+	GetBugCreateFields(ctx context.Context, projectKey, issueType string) ([]BugCreateField, error)
+	CreateBug(ctx context.Context, projectKey, issueType, summary, description, priority string, labels []string, extraFields map[string]any) (string, error)
+	CreateBugLink(ctx context.Context, testKey, bugKey string) error
+	GetBugDetail(ctx context.Context, bugKey string) (BugDetail, error)
+
+	// --- folders (Test Repository) ---
+	FolderTree(ctx context.Context, projectKey string) (FolderTreeResult, error)
+	ListFolders(ctx context.Context, projectKey string) ([]Folder, error)
+	ListTestsInFolder(ctx context.Context, projectKey, folderID string) ([]string, error)
+	CreateFolder(ctx context.Context, projectKey, parentPath, name string) error
+	RenameFolder(ctx context.Context, projectKey, path, newName string) error
+	DeleteFolder(ctx context.Context, projectKey, path string) error
+	MoveTestToFolder(ctx context.Context, projectKey, testKey, folderID string) error
+
+	// --- workflow ---
+	GetTransitions(ctx context.Context, key, currentStatus string) ([]Transition, error)
+	PostTransition(ctx context.Context, key, transitionID string) error
+
+	// --- metadata ---
+	ListStatuses(ctx context.Context, projectKey string) ([]string, error)
+	ListPriorities(ctx context.Context, projectKey string) ([]string, error)
+	ProjectComponents(ctx context.Context, projectKey string) ([]string, error)
+	ProjectVersions(ctx context.Context, projectKey string) ([]string, error)
+
+	// --- comments ---
+	AddComment(ctx context.Context, issueKey, body string) error
+
+	// --- capabilities ---
+	Capabilities() Capabilities
+}
