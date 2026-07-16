@@ -1,66 +1,11 @@
 package kiwi
 
 import (
-	"bytes"
-	"encoding/json"
 	"strconv"
 	"strings"
 
 	"xray-test-manager/internal/backend"
 )
-
-// kiwiNames is a lenient decoder for a Kiwi m2m field that may serialize
-// EITHER as a bare string array (`["smoke","regression"]`) OR as an array
-// of objects carrying a name/value (`[{"id":1,"name":"smoke"}]`). modernrpc
-// serializes m2m relations inconsistently across Kiwi versions/plugins, and
-// no spec §9 fixture pins the tag/component element shape (spec §3.2 only
-// says "m2m names"), so hard-typing these as []string risks a whole-response
-// json.Unmarshal failure against a real instance — which would break the
-// entire test pull at once, the opposite of the brief's "inferred fields
-// degrade safely / best-effort" rule. This type accepts both shapes and
-// falls back to nil (not an error) on any genuinely unexpected shape, so one
-// odd field can never crash the whole TestCase decode.
-type kiwiNames []string
-
-func (n *kiwiNames) UnmarshalJSON(b []byte) error {
-	b = bytes.TrimSpace(b)
-	if len(b) == 0 || string(b) == "null" {
-		*n = nil
-		return nil
-	}
-
-	// Shape 1: a bare string array.
-	var strs []string
-	if err := json.Unmarshal(b, &strs); err == nil {
-		*n = strs
-		return nil
-	}
-
-	// Shape 2: an array of objects with a name or value field.
-	var objs []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}
-	if err := json.Unmarshal(b, &objs); err == nil {
-		out := make([]string, 0, len(objs))
-		for _, o := range objs {
-			switch {
-			case o.Name != "":
-				out = append(out, o.Name)
-			case o.Value != "":
-				out = append(out, o.Value)
-			}
-		}
-		*n = out
-		return nil
-	}
-
-	// Genuinely unexpected shape (e.g. a bare scalar, or objects with
-	// neither name nor value): degrade to nil rather than failing the
-	// entire enclosing TestCase.filter response.
-	*n = nil
-	return nil
-}
 
 // kiwiUser mirrors the subset of Kiwi's User RPC output that
 // Adapter.TestConnection needs: username, first_name, last_name, email
@@ -87,28 +32,25 @@ func toUser(u kiwiUser) *backend.User {
 }
 
 // kiwiTestCase mirrors the fields of a `TestCase.filter` row this package
-// maps into backend.Test / backend.TestBasic / backend.TestMeta (spec
-// §3.2, fixture §9.1b). FK fields are the resolved display forms Kiwi
-// annotates alongside the raw FK id (`case_status__name`,
-// `priority__value`, matching the fixture's own naming convention).
-// ProductName (`category__product__name`) reuses the exact dunder lookup
-// path spec §2 gives for scoping TestCase.filter by product — no fixture
-// shows the field on a TestCase row, so this is an inference from that cited
-// lookup path, not an invented shape; see convert_test/report for the note.
-// Tag/Component are read as plain name-string arrays per the spec table's
-// "(m2m names)" annotation (§3.2).
+// maps into backend.Test / backend.TestBasic / backend.TestMeta, per the
+// LIVE-VERIFIED shape in p4_verify-report.md (P4.6 fix, superseding the P4.2
+// inferred shape): the row carries neither `tag` nor `component` (both keys
+// are simply absent — fetched separately via Tag.filter/Component.filter,
+// see adapter.go's fetchTagsFor{Case,Cases}/fetchComponentsFor{Case,Cases})
+// nor `category__product__name` (only `category__name` is present, so
+// ProjectKey stays "" — see toTestBasic). The row DOES carry `history_date`,
+// which was present-but-unused before this fix; toTest/toTestMeta now map it
+// to Updated (Kiwi's TestCase has no native `updated` field).
 type kiwiTestCase struct {
-	ID             int       `json:"id"`
-	Summary        string    `json:"summary"`
-	Text           string    `json:"text"`
-	CaseStatusName string    `json:"case_status__name"`
-	PriorityValue  string    `json:"priority__value"`
-	IsAutomated    bool      `json:"is_automated"`
-	AuthorUsername string    `json:"author__username"`
-	CreateDate     string    `json:"create_date"`
-	Tag            kiwiNames `json:"tag"`
-	Component      kiwiNames `json:"component"`
-	ProductName    string    `json:"category__product__name"`
+	ID             int    `json:"id"`
+	Summary        string `json:"summary"`
+	Text           string `json:"text"`
+	CaseStatusName string `json:"case_status__name"`
+	PriorityValue  string `json:"priority__value"`
+	IsAutomated    bool   `json:"is_automated"`
+	AuthorUsername string `json:"author__username"`
+	CreateDate     string `json:"create_date"`
+	HistoryDate    string `json:"history_date"`
 }
 
 // flattenSteps is the SINGLE shared transform for Kiwi's inline-text step
@@ -126,15 +68,15 @@ func flattenSteps(text string) []backend.Step {
 	return []backend.Step{{ID: "1", Index: 1, Action: text}}
 }
 
-// toTest maps a kiwiTestCase to the neutral backend.Test per spec §3.2.
-// ExecType derives from is_automated (Automated/Manual); FolderID is always
-// empty (no folder concept in Kiwi core, spec §3.10); FixVersions is always
-// nil (fix versions live on the Run, not the TestCase, spec §3.2); Updated
-// is left empty because Kiwi's TestCase has no native `updated` field and
-// the only alternative (TestCase.history) has no documented RPC response
-// shape in spec §9 — populating it would mean inventing an API shape, which
-// the brief says to avoid (see report "spec gaps").
-func toTest(tc kiwiTestCase) backend.Test {
+// toTest maps a kiwiTestCase to the neutral backend.Test per spec §3.2,
+// plus its separately-fetched tag/component names (P4.6 fix item 1 — see
+// kiwiTestCase's doc comment). ExecType derives from is_automated
+// (Automated/Manual); FolderID is always empty (no folder concept in Kiwi
+// core, spec §3.10); FixVersions is always nil (fix versions live on the
+// Run, not the TestCase, spec §3.2); Updated maps from tc.HistoryDate (P4.6
+// fix item 3 — Kiwi's TestCase has no native `updated` field, but
+// `history_date` serves the same purpose and needs no extra RPC).
+func toTest(tc kiwiTestCase, tags, components []string) backend.Test {
 	steps := flattenSteps(tc.Text)
 	description := tc.Text
 	if len(steps) > 0 {
@@ -152,9 +94,9 @@ func toTest(tc kiwiTestCase) backend.Test {
 		Description: description,
 		Status:      tc.CaseStatusName,
 		Priority:    tc.PriorityValue,
-		Labels:      []string(tc.Tag),
-		Components:  []string(tc.Component),
-		Updated:     "",
+		Labels:      tags,
+		Components:  components,
+		Updated:     tc.HistoryDate,
 		FolderID:    "",
 		ExecType:    execType,
 		FixVersions: nil,
@@ -163,28 +105,30 @@ func toTest(tc kiwiTestCase) backend.Test {
 
 // toTestBasic maps a kiwiTestCase to the neutral backend.TestBasic per spec
 // §3.1. IssueLinks is always nil: Kiwi core has no cross-issue link concept
-// on a TestCase.
+// on a TestCase. ProjectKey is always "" (P4.6 fix item 2): the
+// live-verified TestCase.filter row exposes only `category__name`, never
+// `category__product__name` — product name would need a separate
+// Category/Product lookup, deferred rather than invented.
 func toTestBasic(tc kiwiTestCase) backend.TestBasic {
 	return backend.TestBasic{
 		Key:        strconv.Itoa(tc.ID),
 		Summary:    tc.Summary,
 		Status:     tc.CaseStatusName,
-		ProjectKey: tc.ProductName,
+		ProjectKey: "",
 		IssueLinks: nil,
 	}
 }
 
 // toTestMeta maps a kiwiTestCase to the neutral backend.TestMeta per spec
-// §3.1 ("GetTestMeta ... Updated best-effort"). Updated/UpdatedBy are left
-// empty: Kiwi exposes no native updated timestamp on TestCase, and the
-// documented alternative (TestCase.history) has no response shape given in
-// spec §9 to map against, so we use only what's actually documented
-// (create_date, author__username) rather than invent one.
+// §3.1 ("GetTestMeta ... Updated best-effort"). Updated maps from
+// tc.HistoryDate (P4.6 fix item 3, same source toTest uses for
+// backend.Test.Updated, so the two never disagree); UpdatedBy stays empty —
+// history_date carries no accompanying "who" field on the row.
 func toTestMeta(tc kiwiTestCase) backend.TestMeta {
 	return backend.TestMeta{
 		Created:   tc.CreateDate,
 		Creator:   tc.AuthorUsername,
-		Updated:   "",
+		Updated:   tc.HistoryDate,
 		UpdatedBy: "",
 	}
 }
@@ -315,4 +259,50 @@ type kiwiName struct {
 
 type kiwiValue struct {
 	Value string `json:"value"`
+}
+
+// kiwiTagRow mirrors one row of Tag.filter({"case":id}) /
+// Tag.filter({"case__in":[...]}) — LIVE-VERIFIED shape (p4_verify-report.md,
+// shape-tag.json): {"id":1,"name":"smoke","case":1,"plan":null,"run":null,
+// "execution":null,"bugs":null}. Case is the TestCase id the tag is attached
+// to; it is what lets a batched case__in fetch (adapter.go's
+// fetchTagsForCases) regroup a single flat result array back by case id.
+type kiwiTagRow struct {
+	Name string `json:"name"`
+	Case int    `json:"case"`
+}
+
+// kiwiComponentRow mirrors one row of Component.filter({"cases":id}) /
+// Component.filter({"cases__in":[...]}) — LIVE-VERIFIED shape
+// (p4_verify-report.md, shape-component.json): {"id":1,"name":"Login",
+// "product":1,"initial_owner":2,"description":"...","cases":1}. Note the
+// field is `cases`, not `case` — a verified asymmetry between the Tag and
+// Component RPCs' case-reference field names, kept exactly as observed
+// rather than normalized.
+type kiwiComponentRow struct {
+	Name  string `json:"name"`
+	Cases int    `json:"cases"`
+}
+
+// tagNamesByCase groups a batched Tag.filter({"case__in":ids}) result by
+// case id (adapter.go's fetchTagsForCases). A case with no tags simply has
+// no key in the returned map (nil slice on lookup), which is the same
+// "absent = no tags" shape a single-case fetch would degrade to.
+func tagNamesByCase(rows []kiwiTagRow) map[int][]string {
+	out := map[int][]string{}
+	for _, r := range rows {
+		out[r.Case] = append(out[r.Case], r.Name)
+	}
+	return out
+}
+
+// componentNamesByCase is tagNamesByCase's Component.filter counterpart,
+// grouping by the row's `cases` field (adapter.go's
+// fetchComponentsForCases).
+func componentNamesByCase(rows []kiwiComponentRow) map[int][]string {
+	out := map[int][]string{}
+	for _, r := range rows {
+		out[r.Cases] = append(out[r.Cases], r.Name)
+	}
+	return out
 }

@@ -204,6 +204,66 @@ func (a *Adapter) fetchTestCaseByID(ctx context.Context, id int) (kiwiTestCase, 
 	return rows[0], nil
 }
 
+// fetchTagsForCases and fetchComponentsForCases are the P4.6 fix for item 1
+// (tags/components are NOT on the TestCase row — live-verified, see
+// kiwiTestCase's doc comment): they fetch names for a whole PAGE of case ids
+// in ONE call each, via Kiwi's Django `__in` lookup
+// (Tag.filter({"case__in":ids}) / Component.filter({"cases__in":ids})),
+// grouping the flat result by case id. SearchTestsPage calls these ONCE per
+// page — never once per case — so a bulk pull stays O(1) extra RPCs per
+// page instead of O(n).
+
+func (a *Adapter) fetchTagsForCases(ctx context.Context, ids []int) (map[int][]string, error) {
+	if len(ids) == 0 {
+		return map[int][]string{}, nil
+	}
+	var rows []kiwiTagRow
+	if err := a.c.call(ctx, "Tag.filter", []any{map[string]any{"case__in": ids}}, &rows); err != nil {
+		return nil, err
+	}
+	return tagNamesByCase(rows), nil
+}
+
+func (a *Adapter) fetchComponentsForCases(ctx context.Context, ids []int) (map[int][]string, error) {
+	if len(ids) == 0 {
+		return map[int][]string{}, nil
+	}
+	var rows []kiwiComponentRow
+	if err := a.c.call(ctx, "Component.filter", []any{map[string]any{"cases__in": ids}}, &rows); err != nil {
+		return nil, err
+	}
+	return componentNamesByCase(rows), nil
+}
+
+// fetchTagsForCase and fetchComponentsForCase are the single-case forms
+// used by GetTestFields (spec fix item 1: "GetTestFields (single case) may
+// use the non-batched {"case": id} / {"cases": id} form" — one RPC per call
+// is fine here since GetTestFields already fetches exactly one TestCase).
+
+func (a *Adapter) fetchTagsForCase(ctx context.Context, id int) ([]string, error) {
+	var rows []kiwiTagRow
+	if err := a.c.call(ctx, "Tag.filter", []any{map[string]any{"case": id}}, &rows); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(rows))
+	for _, r := range rows {
+		names = append(names, r.Name)
+	}
+	return names, nil
+}
+
+func (a *Adapter) fetchComponentsForCase(ctx context.Context, id int) ([]string, error) {
+	var rows []kiwiComponentRow
+	if err := a.c.call(ctx, "Component.filter", []any{map[string]any{"cases": id}}, &rows); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(rows))
+	for _, r := range rows {
+		names = append(names, r.Name)
+	}
+	return names, nil
+}
+
 // SearchTestsPage is the core test pull (spec §3.1, §3.2). Kiwi's
 // TestCase.filter has no offset/limit in its RPC signature (spec §6): it
 // always returns the FULL matching array, so pagination is emulated
@@ -242,9 +302,23 @@ func (a *Adapter) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sin
 		end = startAt + maxResults
 	}
 	page := rows[startAt:end]
+	// Tags/components are not on the TestCase row (live-verified, P4.6): fetch
+	// them for the whole page in one call each, then attach by case id.
+	ids := make([]int, len(page))
+	for i, tc := range page {
+		ids[i] = tc.ID
+	}
+	tagsByCase, err := a.fetchTagsForCases(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	compsByCase, err := a.fetchComponentsForCases(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
 	out := make([]backend.Test, len(page))
 	for i, tc := range page {
-		out[i] = toTest(tc)
+		out[i] = toTest(tc, tagsByCase[tc.ID], compsByCase[tc.ID])
 	}
 	return out, total, nil
 }
@@ -284,7 +358,15 @@ func (a *Adapter) GetTestFields(ctx context.Context, key string) (backend.Test, 
 	if err != nil {
 		return backend.Test{}, err
 	}
-	return toTest(tc), nil
+	tags, err := a.fetchTagsForCase(ctx, id)
+	if err != nil {
+		return backend.Test{}, err
+	}
+	comps, err := a.fetchComponentsForCase(ctx, id)
+	if err != nil {
+		return backend.Test{}, err
+	}
+	return toTest(tc, tags, comps), nil
 }
 
 func (a *Adapter) CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error) {

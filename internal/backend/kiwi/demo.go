@@ -74,6 +74,13 @@ type kiwiDemoGenerator struct {
 	// requirements_test.go's TestListRequirementsMapsFilterAndCoverage
 	// fixture uses).
 	reqLinks map[int]map[string][]int
+
+	// caseTags / caseComponents hold the demo's per-case tag/component names.
+	// Live Kiwi does NOT put these on the TestCase row (P4.6, verified) — the
+	// adapter fetches them via Tag.filter/Component.filter — so the demo
+	// serves them the same way (see dispatch's Tag.filter/Component.filter).
+	caseTags       map[int][]string
+	caseComponents map[int][]string
 }
 
 // newKiwiDemoGenerator builds the fixed demo dataset: 40 test cases across
@@ -102,8 +109,10 @@ func newKiwiDemoGenerator() *kiwiDemoGenerator {
 	authors := []string{"alice", "bob", "carol"}
 
 	g := &kiwiDemoGenerator{
-		planCases: map[int][]int{},
-		reqLinks:  map[int]map[string][]int{},
+		planCases:      map[int][]int{},
+		reqLinks:       map[int]map[string][]int{},
+		caseTags:       map[int][]string{},
+		caseComponents: map[int][]string{},
 	}
 
 	// --- test cases: 10 features x 4 conditions = 40 cases, ids 1..40 ---
@@ -121,10 +130,12 @@ func newKiwiDemoGenerator() *kiwiDemoGenerator {
 				IsAutomated:    id%3 == 0,
 				AuthorUsername: authors[id%len(authors)],
 				CreateDate:     fmt.Sprintf("2026-01-%02dT09:00:00", (id%28)+1),
-				Tag:            kiwiNames(tagCycle[id%len(tagCycle)]),
-				Component:      kiwiNames{components[fi%len(components)]},
-				ProductName:    kiwiDemoProductName,
+				HistoryDate:    fmt.Sprintf("2026-02-%02dT09:00:00", (id%28)+1),
 			})
+			// Tags/components are served via Tag.filter/Component.filter, not on
+			// the TestCase row — mirror live Kiwi (P4.6).
+			g.caseTags[id] = append([]string(nil), tagCycle[id%len(tagCycle)]...)
+			g.caseComponents[id] = []string{components[fi%len(components)]}
 			id++
 		}
 	}
@@ -232,8 +243,7 @@ func idRange(from, to int) []int {
 // client.go). It dispatches by method name, then round-trips the result
 // through JSON (marshal then unmarshal into out) — the exact same decode
 // step call() itself performs on a real "result" payload — so the demo path
-// exercises the same lenient decoders (kiwiNames, etc.) a live Kiwi
-// response would.
+// exercises the same decode logic a live Kiwi response would.
 func (g *kiwiDemoGenerator) call(method string, params []any, out any) error {
 	result, err := g.dispatch(method, params)
 	if err != nil {
@@ -266,7 +276,19 @@ func (g *kiwiDemoGenerator) dispatch(method string, params []any) (any, error) {
 	case "TestExecution.filter":
 		return g.filterTestExecutions(filter), nil
 	case "Component.filter":
+		// Dual-use: ProjectComponents fetches ALL components (no case filter,
+		// decoded as []kiwiName); the P4.6 per-case fetch narrows by
+		// cases/cases__in and expects []kiwiComponentRow carrying the case
+		// linkage. Branch on the filter to serve the right shape.
+		if _, ok := filter["cases"]; ok {
+			return g.filterComponentsByCase(filter), nil
+		}
+		if _, ok := filter["cases__in"]; ok {
+			return g.filterComponentsByCase(filter), nil
+		}
 		return g.components, nil
+	case "Tag.filter":
+		return g.filterTags(filter), nil
 	case "Version.filter":
 		return g.versions, nil
 	case "TestCaseStatus.filter":
@@ -431,6 +453,48 @@ func (g *kiwiDemoGenerator) coverage(params []any) (any, error) {
 // round-trip would have produced, so the same helpers stay correct if a
 // future caller ever feeds them post-decode values.
 
+// filterTags serves the demo's Tag.filter: kiwiTagRow rows for the requested
+// case id(s) — single {"case":id} or batched {"case__in":[ids]} — mirroring
+// live Kiwi's per-(case, tag) row shape (P4.6).
+func (g *kiwiDemoGenerator) filterTags(filter map[string]any) []kiwiTagRow {
+	out := []kiwiTagRow{}
+	for _, cid := range g.demoCaseIDs(filter, "case", "case__in", g.caseTags) {
+		for _, name := range g.caseTags[cid] {
+			out = append(out, kiwiTagRow{Name: name, Case: cid})
+		}
+	}
+	return out
+}
+
+// filterComponentsByCase serves the demo's Component.filter when narrowed by
+// case (cases/cases__in): kiwiComponentRow rows carrying the case linkage.
+func (g *kiwiDemoGenerator) filterComponentsByCase(filter map[string]any) []kiwiComponentRow {
+	out := []kiwiComponentRow{}
+	for _, cid := range g.demoCaseIDs(filter, "cases", "cases__in", g.caseComponents) {
+		for _, name := range g.caseComponents[cid] {
+			out = append(out, kiwiComponentRow{Name: name, Cases: cid})
+		}
+	}
+	return out
+}
+
+// demoCaseIDs resolves the case id(s) a Tag/Component filter targets, honoring
+// the single ({"case":id}) and batched ({"case__in":[ids]}) forms; with no
+// case filter it falls back to every case in the given map.
+func (g *kiwiDemoGenerator) demoCaseIDs(filter map[string]any, single, batch string, all map[int][]string) []int {
+	if id, ok := demoIntParam(filter, single); ok {
+		return []int{id}
+	}
+	if ids, ok := demoIntSliceParam(filter, batch); ok {
+		return ids
+	}
+	ids := make([]int, 0, len(all))
+	for cid := range all {
+		ids = append(ids, cid)
+	}
+	return ids
+}
+
 func demoFilterParam(params []any) map[string]any {
 	if len(params) == 0 {
 		return nil
@@ -487,8 +551,8 @@ func demoScalarInt(v any) (int, bool) {
 
 // jsonRoundTrip marshals in, then unmarshals the bytes into out (a pointer)
 // -- the same two-step decode a real RPC response goes through in
-// Client.call, so a demo result exercises identical lenient-decoder logic
-// (e.g. kiwiNames) a live Kiwi payload would.
+// Client.call, so a demo result exercises identical decode logic a live
+// Kiwi payload would.
 func jsonRoundTrip(in, out any) error {
 	raw, err := json.Marshal(in)
 	if err != nil {

@@ -3,43 +3,37 @@ package kiwi
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"sort"
 	"strings"
 )
 
-// contentHash computes the P4.2 RemoteVersion token: a SHA-256 hex digest
-// over the fields spec §5's content-hash option calls "salient" (summary,
-// text, case_status, priority, sorted tags, sorted components).
+// contentHash computes the RemoteVersion token: a SHA-256 hex digest over the
+// TestCase ROW fields alone (summary, text, resolved case_status name,
+// resolved priority value, and history_date). It is computable from a single
+// TestCase.filter row with NO extra RPC, so the pull path and the
+// RemoteVersion path — which both read the same row — always produce an
+// identical token for the same remote state.
 //
-// Deviation from the spec's literal field list, documented: the spec names
-// the raw FK fields (`case_status`, `priority`); we hash the RESOLVED
-// display values instead (CaseStatusName/PriorityValue, i.e. the same
-// case_status__name/priority__value already surfaced on backend.Test). A
-// bare FK id has no meaning to the hub or the conflict-detection UI, and
-// hashing the id could miss a rename (a status keeping its id but changing
-// its label) while flagging a spurious change on a harmless renumbering.
-// Hashing the resolved values keeps "the hash changed" aligned with "what
-// the user would see changed" — which is what RemoteAhead's conflict check
-// (base != remote => ahead) actually needs to protect.
+// history_date (P4.6, live-verified) is Kiwi's per-object last-modified stamp
+// (django-simple-history): it advances on every save, so including it makes
+// the token change on any edit. Tags/components are DELIBERATELY excluded:
+// they are not on the TestCase row (fetched separately via Tag/Component
+// filter), so requiring them would force an extra RPC in RemoteVersion, and
+// they are display-only rather than part of the version identity.
 //
-// Fields are joined with a unit-separator byte (0x1F) rather than the
-// spec's illustrative "|" so a literal pipe inside a summary/text value
-// cannot collide with the delimiter.
+// We hash the RESOLVED display values (CaseStatusName/PriorityValue) rather
+// than the raw FK ids: a bare id has no meaning to the hub or the
+// conflict-detection UI, and hashing the id could miss a rename (same id, new
+// label) while flagging a spurious change on a harmless renumbering. Fields
+// are joined with a unit-separator byte (0x1F) rather than an illustrative
+// "|" so a literal delimiter inside a value cannot collide.
 func contentHash(tc kiwiTestCase) string {
 	const sep = "\x1f"
-
-	tags := append([]string(nil), tc.Tag...)
-	sort.Strings(tags)
-	comps := append([]string(nil), tc.Component...)
-	sort.Strings(comps)
-
 	parts := []string{
 		tc.Summary,
 		tc.Text,
 		tc.CaseStatusName,
 		tc.PriorityValue,
-		strings.Join(tags, sep),
-		strings.Join(comps, sep),
+		tc.HistoryDate,
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, sep)))
 	return hex.EncodeToString(sum[:])

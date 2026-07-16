@@ -38,6 +38,14 @@ func TestSearchTestsPageMapsFieldsAndPaginates(t *testing.T) {
 			"category__product__name": "DEMO",
 		},
 	})
+	// Tags/components are NOT on the TestCase row (P4.6, live-verified) — the
+	// adapter fetches them via Tag.filter/Component.filter and groups by case.
+	mock.handleResult("Tag.filter", []map[string]any{
+		{"name": "smoke", "case": 42}, {"name": "regression", "case": 42},
+	})
+	mock.handleResult("Component.filter", []map[string]any{
+		{"name": "login", "cases": 42}, {"name": "auth", "cases": 42},
+	})
 	a, closeFn := newTestAdapter(t, mock)
 	defer closeFn()
 
@@ -110,6 +118,8 @@ func TestGetTestFieldsSingleCase(t *testing.T) {
 		{"id": 42, "summary": "Login with valid creds", "text": "do the thing",
 			"case_status__name": "CONFIRMED", "priority__value": "P1", "is_automated": false},
 	})
+	mock.handleResult("Tag.filter", []map[string]any{})
+	mock.handleResult("Component.filter", []map[string]any{})
 	a, closeFn := newTestAdapter(t, mock)
 	defer closeFn()
 
@@ -131,81 +141,52 @@ func TestGetTestFieldsInvalidKey(t *testing.T) {
 	}
 }
 
-// TestTagComponentLenientDecode proves the kiwiNames lenient decoder: a
-// bare string array and an array of {id,name} objects both yield the same
-// []string on the mapped Test, and a genuinely unexpected shape (objects
-// with neither name nor value) degrades the field to nil WITHOUT crashing
-// the whole TestCase.filter decode (so the other fields still map).
-func TestTagComponentLenientDecode(t *testing.T) {
-	cases := []struct {
-		name       string
-		tag        any
-		component  any
-		wantLabels []string
-		wantComps  []string
-	}{
-		{
-			name:       "bare string arrays",
-			tag:        []string{"smoke", "regression"},
-			component:  []string{"login", "auth"},
-			wantLabels: []string{"smoke", "regression"},
-			wantComps:  []string{"login", "auth"},
-		},
-		{
-			name: "arrays of {id,name} objects",
-			tag: []map[string]any{
-				{"id": 1, "name": "smoke"}, {"id": 2, "name": "regression"},
-			},
-			component: []map[string]any{
-				{"id": 5, "name": "login"}, {"id": 6, "name": "auth"},
-			},
-			wantLabels: []string{"smoke", "regression"},
-			wantComps:  []string{"login", "auth"},
-		},
-		{
-			name:       "unexpected non-array shapes degrade to nil",
-			tag:        "not-even-an-array",
-			component:  42,
-			wantLabels: nil,
-			wantComps:  nil,
-		},
-		{
-			name:       "array of objects lacking name/value yields empty (understood shape, no names)",
-			tag:        []map[string]any{{"id": 1, "colour": "red"}},
-			component:  []string{},
-			wantLabels: []string{},
-			wantComps:  []string{},
-		},
+// TestTagsComponentsFetchedSeparately verifies the P4.6 fix: tags/components
+// are NOT on the TestCase row (live-verified) — the adapter fetches them via
+// Tag.filter({"case__in":...}) / Component.filter({"cases__in":...}) and
+// groups by case id. A page with two cases gets each case's own names, a case
+// with none maps to empty (no crash), and Updated maps from history_date.
+func TestTagsComponentsFetchedSeparately(t *testing.T) {
+	mock := newMockRPCServer(t)
+	mock.handleResult("TestCase.filter", []map[string]any{
+		{"id": 1, "summary": "case one", "text": "t1",
+			"case_status__name": "CONFIRMED", "priority__value": "P1",
+			"history_date": "2026-02-01T09:00:00"},
+		{"id": 2, "summary": "case two", "text": "t2",
+			"case_status__name": "PROPOSED", "priority__value": "P2"},
+	})
+	// One batched result covering both cases; the adapter regroups by case id.
+	mock.handleResult("Tag.filter", []map[string]any{
+		{"name": "smoke", "case": 1}, {"name": "regression", "case": 1},
+	})
+	mock.handleResult("Component.filter", []map[string]any{
+		{"name": "login", "cases": 1},
+	})
+	a, closeFn := newTestAdapter(t, mock)
+	defer closeFn()
+
+	tests, _, err := a.SearchTestsPage(context.Background(), "", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("SearchTestsPage: %v", err)
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			mock := newMockRPCServer(t)
-			mock.handleResult("TestCase.filter", []map[string]any{
-				{
-					"id": 42, "summary": "Login with valid creds", "text": "steps",
-					"case_status__name": "CONFIRMED", "priority__value": "P1",
-					"tag": tc.tag, "component": tc.component,
-				},
-			})
-			a, closeFn := newTestAdapter(t, mock)
-			defer closeFn()
-
-			got, err := a.GetTestFields(context.Background(), "42")
-			if err != nil {
-				t.Fatalf("GetTestFields: %v (a weird tag/component shape must not crash the whole decode)", err)
-			}
-			// The rest of the case must still map even when tag/component are odd.
-			if got.Summary != "Login with valid creds" || got.Status != "CONFIRMED" || got.Priority != "P1" {
-				t.Fatalf("core fields did not map: %#v", got)
-			}
-			if !reflect.DeepEqual([]string(got.Labels), tc.wantLabels) {
-				t.Errorf("Labels = %#v, want %#v", got.Labels, tc.wantLabels)
-			}
-			if !reflect.DeepEqual([]string(got.Components), tc.wantComps) {
-				t.Errorf("Components = %#v, want %#v", got.Components, tc.wantComps)
-			}
-		})
+	if len(tests) != 2 {
+		t.Fatalf("expected 2 tests, got %d", len(tests))
+	}
+	byKey := map[string]backend.Test{}
+	for _, tc := range tests {
+		byKey[tc.Key] = tc
+	}
+	// Case 1: tags + component from the separate fetch; Updated from history_date.
+	if got := byKey["1"]; !reflect.DeepEqual([]string(got.Labels), []string{"smoke", "regression"}) ||
+		!reflect.DeepEqual([]string(got.Components), []string{"login"}) {
+		t.Errorf("case 1 tags/components = %#v / %#v, want [smoke regression] / [login]", got.Labels, got.Components)
+	}
+	if byKey["1"].Updated != "2026-02-01T09:00:00" {
+		t.Errorf("case 1 Updated = %q, want the history_date value", byKey["1"].Updated)
+	}
+	// Case 2: no tags/components attached -> empty, no crash.
+	if len(byKey["2"].Labels) != 0 || len(byKey["2"].Components) != 0 {
+		t.Errorf("case 2 should have no tags/components, got %#v / %#v", byKey["2"].Labels, byKey["2"].Components)
 	}
 }
 
@@ -255,6 +236,8 @@ func TestStepFlattenSharedBetweenSearchAndSteps(t *testing.T) {
 	mock.handleResult("TestCase.filter", []map[string]any{
 		{"id": 42, "summary": "x", "text": text},
 	})
+	mock.handleResult("Tag.filter", []map[string]any{})
+	mock.handleResult("Component.filter", []map[string]any{})
 	a, closeFn := newTestAdapter(t, mock)
 	defer closeFn()
 
@@ -292,7 +275,8 @@ func TestListTestsBasicByIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTestsBasic: %v", err)
 	}
-	want := []backend.TestBasic{{Key: "42", Summary: "Login with valid creds", Status: "CONFIRMED", ProjectKey: "DEMO"}}
+	// ProjectKey is "" (P4.6, live-verified): category__product__name is not on the row.
+	want := []backend.TestBasic{{Key: "42", Summary: "Login with valid creds", Status: "CONFIRMED", ProjectKey: ""}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ListTestsBasic = %#v, want %#v", got, want)
 	}
