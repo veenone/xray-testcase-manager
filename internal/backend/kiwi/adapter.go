@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 
 	"xray-test-manager/internal/backend"
 )
@@ -17,30 +18,36 @@ import (
 // ListTestsBasic/GetTestMeta), containers + runs (ListContainers/
 // TestExecutionsForTest/GetTestRuns/ExecPlans), metadata (ListStatuses/
 // ListPriorities/ProjectComponents/ProjectVersions), and the content-hash
-// RemoteVersion. P4.3 (this task) wires the plugin-detection probe into
+// RemoteVersion. P4.3 wired the plugin-detection probe into
 // TestConnection/Capabilities (hasRequirementsPlugin/hasReviewPlugin) and
-// implements the requirements-plugin read path (ListRequirements, via
-// Requirement.filter + Requirement.coverage — see requirements.go). Review
-// plugin integration beyond caching hasReviewPlugin is explicitly DEFERRED
-// (needs a backend.Backend interface extension — see hasReviewPlugin's doc
-// comment). Bugs, req->req links, and every remaining WRITE method stay
-// stubs (Phase 5), and the genuinely-no-analog EMPTY reads (preconditions,
-// folders, transitions, custom fields) stay zero-value per §3 of
+// implemented the requirements-plugin read path (ListRequirements, via
+// Requirement.filter + Requirement.coverage — see requirements.go). P4.5
+// (this task) made that detection LAZY: app.go's backend factory builds a
+// fresh Adapter per call, and the sync path never calls TestConnection, so
+// caching the probe result only inside TestConnection left every sync-time
+// read stuck with hasRequirementsPlugin at its false zero-value. See
+// ensureDetected below — it is now the single place detection runs, called
+// from TestConnection AND every plugin-gated ctx read method. Review plugin
+// integration beyond caching hasReviewPlugin is explicitly DEFERRED (needs a
+// backend.Backend interface extension — see hasReviewPlugin's doc comment).
+// Bugs, req->req links, and every remaining WRITE method stay stubs (Phase
+// 5), and the genuinely-no-analog EMPTY reads (preconditions, folders,
+// transitions, custom fields) stay zero-value per §3 of
 // p4_0-kiwi-integration-spec.md.
 type Adapter struct {
 	c *Client
 
-	// hasRequirementsPlugin is set once by TestConnection's plugin-detection
-	// probe (spec §4.3, P4.3 brief item (a)): true when the
-	// kiwi-tcms-requirements plugin's Requirement.filter RPC is registered
-	// on the server. Capabilities() reads it to flip
+	// hasRequirementsPlugin is set by ensureDetected's plugin-detection probe
+	// (spec §4.3, P4.3 brief item (a); made lazy by P4.5 — see ensureDetected
+	// below): true when the kiwi-tcms-requirements plugin's Requirement.filter
+	// RPC is registered on the server. Capabilities() reads it to flip
 	// SupportsRequirementObjects, and ListRequirements reads it to decide
 	// between the real plugin-backed read and the EMPTY (base-Kiwi) return.
-	// Zero-value (false) is the safe default before TestConnection has run —
-	// same "off until proven present" behavior as a confirmed-absent probe.
+	// Zero-value (false) is the safe default before detection has run — same
+	// "off until proven present" behavior as a confirmed-absent probe.
 	hasRequirementsPlugin bool
 
-	// hasReviewPlugin is set by the same TestConnection probe, against the
+	// hasReviewPlugin is set by the same ensureDetected probe, against the
 	// kiwi-tcms-review-workflow plugin's ReviewRequest.filter RPC. It is
 	// cached here and DELIBERATELY UNEXPOSED in this task: per the P4.3
 	// brief, full review-plugin integration (a new backend.Capabilities
@@ -49,6 +56,20 @@ type Adapter struct {
 	// task. This flag exists purely so that future task doesn't have to
 	// redo detection.
 	hasReviewPlugin bool
+
+	// detectMu/detectDone guard ensureDetected (P4.5): detectMu serializes
+	// concurrent callers so two goroutines racing into ensureDetected on the
+	// same Adapter never double-probe or observe a half-written pair of
+	// flags, and detectDone latches once a probe round produced a CONFIRMED
+	// result for both plugins (see detectPlugin's confirmed return value in
+	// caps.go) so every later call is a no-op. This is deliberately NOT a
+	// bare sync.Once: a raw transport failure during a probe is
+	// unconfirmed — it carries no signal about whether the plugin is
+	// actually there — so latching it as "done" forever would permanently
+	// poison detection from one flaky request. See ensureDetected's doc
+	// comment for the full retry rule.
+	detectMu   sync.Mutex
+	detectDone bool
 }
 
 // New builds a Kiwi backend.Backend against baseURL, authenticating with
@@ -75,13 +96,17 @@ var _ backend.Backend = (*Adapter)(nil)
 // taking the first (and, for a non-staff Kiwi user, typically only) result.
 // Spec §3.1.
 //
-// Once the core connection succeeds, TestConnection also runs the P4.3
-// plugin-detection probe (spec §4.3): it has the ctx Capabilities() lacks,
-// which is why detection lives here rather than in Capabilities() itself
-// (design constraint from the P4.3 brief). A probe failure never fails
-// TestConnection as a whole — see detectPlugin's doc comment in caps.go for
-// exactly how each outcome (absent / installed-but-degraded / unknown
-// transport failure) is classified.
+// Once the core connection succeeds, TestConnection also runs plugin
+// detection via ensureDetected (spec §4.3; made lazy and idempotent by
+// P4.5 — see ensureDetected's doc comment). Routing through ensureDetected
+// here rather than probing directly keeps this the SAME code path
+// ListRequirements/ListIssueLinkTypes use when they self-detect during a
+// sync that never called TestConnection at all. ensureDetected never
+// returns a hard error (a probe failure degrades to "flag off, retry
+// later"), so it never fails TestConnection as a whole — see
+// detectPlugin's doc comment in caps.go for exactly how each outcome
+// (absent / installed-but-degraded / unknown transport failure) is
+// classified.
 func (a *Adapter) TestConnection(ctx context.Context) (*backend.User, error) {
 	if err := a.c.Login(ctx); err != nil {
 		return nil, err
@@ -91,13 +116,57 @@ func (a *Adapter) TestConnection(ctx context.Context) (*backend.User, error) {
 		return nil, err
 	}
 
-	a.hasRequirementsPlugin = detectPlugin(ctx, a.c, requirementsProbeMethod)
-	a.hasReviewPlugin = detectPlugin(ctx, a.c, reviewProbeMethod)
+	_ = a.ensureDetected(ctx) // never returns a hard error; see doc comment
 
 	if len(users) == 0 {
 		return &backend.User{}, nil
 	}
 	return toUser(users[0]), nil
+}
+
+// ensureDetected runs the plugin-detection probes (detectPlugin, caps.go)
+// exactly once per Adapter — lazily, on whichever call needs the result
+// first — and is safe to call repeatedly and concurrently. P4.5: this
+// closes the gap where TestConnection was the ONLY place detection ran,
+// but app.go's backend factory builds a FRESH Adapter per call and the
+// sync path never calls TestConnection, so a Kiwi profile's sync-time
+// ListRequirements always saw hasRequirementsPlugin at its unset false
+// zero-value and silently returned zero requirements even when the
+// requirements plugin was actually installed.
+//
+// Guard: detectMu + detectDone rather than a bare sync.Once, because a
+// probe outcome can be UNCONFIRMED (a raw transport failure carries no
+// signal either way — see detectPlugin's confirmed return). Only a
+// CONFIRMED round (both the requirements and review probes resolved to
+// registered / confirmed-absent / installed-but-degraded) latches
+// detectDone=true; an unconfirmed round leaves it false so the very next
+// ensureDetected call retries the probes instead of caching a false
+// negative forever from one flaky request. Concurrent callers serialize on
+// detectMu, so two goroutines racing into ensureDetected on the same
+// Adapter never double-probe or observe a half-written pair of flags.
+//
+// ensureDetected itself never returns a non-nil error today — a probe
+// failure always degrades to "flags off, retry later", exactly as
+// TestConnection's original P4.3 behavior did. The error return exists so
+// callers have one obviously-fallible call shape without a second
+// interface surface, reserved for a future case where a caller needs
+// detection to fail loudly instead of degrading.
+func (a *Adapter) ensureDetected(ctx context.Context) error {
+	a.detectMu.Lock()
+	defer a.detectMu.Unlock()
+	if a.detectDone {
+		return nil
+	}
+
+	reqPresent, reqConfirmed := detectPlugin(ctx, a.c, requirementsProbeMethod)
+	revPresent, revConfirmed := detectPlugin(ctx, a.c, reviewProbeMethod)
+	a.hasRequirementsPlugin = reqPresent
+	a.hasReviewPlugin = revPresent
+
+	if reqConfirmed && revConfirmed {
+		a.detectDone = true
+	}
+	return nil
 }
 
 // IsDemo reports whether this adapter targets the deterministic offline
@@ -520,12 +589,17 @@ func (a *Adapter) DeletePrecondition(ctx context.Context, preconditionKey string
 // --- requirements ---
 
 // ListRequirements is the requirements-plugin read path (spec §3.8, §8.1;
-// P4.3 brief deliverable (c)). When the plugin was NOT detected by
-// TestConnection (a.hasRequirementsPlugin is false — either confirmed
-// absent, or detection hasn't run yet), it returns empty+nil per spec §3.8's
-// EMPTY class for base Kiwi: base Kiwi's TestCase.requirement is just a
-// ≤255-char label field, not traceability, so there is nothing to read and
-// this is NOT an error condition.
+// P4.3 brief deliverable (c)). It calls ensureDetected FIRST (P4.5) so this
+// method self-detects the requirements plugin the first time it runs on a
+// given Adapter, instead of depending on a prior explicit TestConnection
+// call — this is what makes the sync path (which never calls
+// TestConnection) actually pull requirements. When the plugin was NOT
+// detected (a.hasRequirementsPlugin is false after ensureDetected — either
+// confirmed absent, or an unconfirmed probe that left it off pending
+// retry), it returns empty+nil per spec §3.8's EMPTY class for base Kiwi:
+// base Kiwi's TestCase.requirement is just a ≤255-char label field, not
+// traceability, so there is nothing to read and this is NOT an error
+// condition.
 //
 // When present, it calls the plugin's two RPC methods (the ONLY two the
 // plugin exposes — spec §4.3/§8.1):
@@ -545,6 +619,7 @@ func (a *Adapter) DeletePrecondition(ctx context.Context, preconditionKey string
 // mirroring ListContainers' progress-reporting shape elsewhere in this
 // adapter.
 func (a *Adapter) ListRequirements(ctx context.Context, profileProjectKey string, sources []backend.RequirementSourceSpec, onProgress func(done, total int)) ([]backend.Requirement, []backend.RequirementLink, error) {
+	_ = a.ensureDetected(ctx) // never returns a hard error; see doc comment
 	if !a.hasRequirementsPlugin {
 		return nil, nil, nil
 	}
@@ -600,7 +675,12 @@ func (a *Adapter) UpdateTestRequirements(ctx context.Context, testKey string, ad
 // edit can say a test "validates" vs "verifies" a requirement) is Phase 5:
 // backend.RequirementLink has no LinkType field yet, and dto.go is out of
 // scope here.
+//
+// Like ListRequirements, this calls ensureDetected FIRST (P4.5) so it
+// self-detects the plugin on a fresh Adapter rather than depending on a
+// prior TestConnection call.
 func (a *Adapter) ListIssueLinkTypes(ctx context.Context) ([]string, error) {
+	_ = a.ensureDetected(ctx) // never returns a hard error; see doc comment
 	if !a.hasRequirementsPlugin {
 		return nil, nil
 	}
@@ -771,17 +851,32 @@ func (a *Adapter) FieldsForJira(updates map[string]string) map[string]any {
 // --- capabilities ---
 
 // Capabilities reports the base-Kiwi feature set, with the
-// requirements-plugin delta applied if TestConnection's detection probe
-// found it (spec §4.1, §4.2). When the requirements plugin is present,
-// BOTH SupportsRequirementObjects AND SupportsIssueLinkTypes flip true —
-// the full spec §4.2 delta (typed test<->requirement links
+// requirements-plugin delta applied if detection already found it (spec
+// §4.1, §4.2). When the requirements plugin is present, BOTH
+// SupportsRequirementObjects AND SupportsIssueLinkTypes flip true — the
+// full spec §4.2 delta (typed test<->requirement links
 // verifies/validates/derives-from/related, served by ListIssueLinkTypes).
 // A SupportsReview field is deliberately NOT wired here — see
-// Adapter.hasReviewPlugin's doc comment for the deferred review scope. If
-// Capabilities() is called before TestConnection ever ran,
-// hasRequirementsPlugin is still its zero value (false), so the caps below
-// are the safe, plugin-off default (brief: "base caps when detection hasn't
-// run").
+// Adapter.hasReviewPlugin's doc comment for the deferred review scope.
+//
+// CAVEAT (P4.5, documented follow-up, deliberately NOT fixed by this
+// task): Capabilities() has no ctx, so unlike ListRequirements/
+// ListIssueLinkTypes/TestConnection it cannot call ensureDetected itself —
+// it only ever reads whatever hasRequirementsPlugin already holds. If
+// Capabilities() is called on an Adapter that has NOT yet had a ctx call
+// (TestConnection or a plugin-gated read) run on it, hasRequirementsPlugin
+// is still its zero value (false), so the caps below are the safe,
+// plugin-off default (brief: "base caps when detection hasn't run") — this
+// is CORRECT here, but it means app.go's GetCapabilities (called on a
+// freshly-built, never-yet-used Adapter per newBackend's stateless
+// pattern) will always report plugin capabilities off to the frontend, even
+// against a Kiwi server that has the requirements plugin installed.
+// Surfacing plugin capabilities through that frontend-facing path is a
+// separate cross-cutting change (giving Capabilities()/GetCapabilities a
+// ctx, or having app.go run a detection call before reading capabilities)
+// left for a future capability-gating task; this task's job was only the
+// DATA pull (ListRequirements actually returning rows during a sync), which
+// ensureDetected now delivers regardless of what Capabilities() reports.
 func (a *Adapter) Capabilities() backend.Capabilities {
 	caps := backend.Capabilities{
 		Name:                        "kiwi",

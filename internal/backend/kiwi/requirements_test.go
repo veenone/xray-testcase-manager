@@ -255,3 +255,95 @@ func TestListRequirementsCoverageDegradesOnUnknownLinkTypesShape(t *testing.T) {
 		t.Fatalf("expected 0 links (degraded, not invented), got %#v", links)
 	}
 }
+
+// countCalls counts how many recorded requests on mock invoked method,
+// letting a test assert on the exact number of probe/data round trips
+// ensureDetected and ListRequirements made.
+func countCalls(mock *mockRPCServer, method string) int {
+	n := 0
+	for _, r := range mock.requests {
+		if r.Method == method {
+			n++
+		}
+	}
+	return n
+}
+
+// TestListRequirementsLazyDetectionWithoutTestConnection is the P4.5
+// regression test: it proves ListRequirements returns real requirements the
+// FIRST time it is called on a fresh Adapter that never had TestConnection
+// called on it -- exactly the shape of a real sync, where app.go's backend
+// factory builds a stateless, fresh Adapter per call and the sync path goes
+// straight to ListRequirements. Before this task, hasRequirementsPlugin
+// stayed at its unset false zero-value in this scenario and ListRequirements
+// silently returned (nil, nil, nil) even with the requirements plugin
+// present on the server -- this test would have failed against the P4.3
+// code and passes now that ListRequirements calls ensureDetected itself.
+func TestListRequirementsLazyDetectionWithoutTestConnection(t *testing.T) {
+	mock := newMockRPCServer(t)
+	// Deliberately NOT calling loginOK/TestConnection here.
+	mock.handleResult("Requirement.filter", []map[string]any{
+		{"id": 11, "title": "User can log in", "status": "approved", "priority": "P1"},
+	})
+	mock.handle("Requirement.coverage", func(params []json.RawMessage) (any, *rpcErrorObj) {
+		return map[string]any{
+			"id": 11, "link_count": 1, "suspect_count": 0,
+			"link_types": map[string]any{"verifies": []int{42}},
+		}, nil
+	})
+	// ReviewRequest.filter intentionally left unregistered -> -32601 -> absent.
+	a, closeFn := newTestAdapter(t, mock)
+	defer closeFn()
+
+	reqs, links, err := a.ListRequirements(context.Background(), "DEMO", nil, nil)
+	if err != nil {
+		t.Fatalf("ListRequirements without a prior TestConnection: %v", err)
+	}
+	if len(reqs) != 1 {
+		t.Fatalf("ListRequirements returned %d requirements without a prior TestConnection call, want 1 (lazy self-detection failed)", len(reqs))
+	}
+	if len(links) != 1 {
+		t.Fatalf("ListRequirements returned %d coverage links, want 1", len(links))
+	}
+	if !a.hasRequirementsPlugin {
+		t.Error("expected hasRequirementsPlugin=true after ListRequirements self-detected the plugin")
+	}
+}
+
+// TestEnsureDetectedIsIdempotent asserts the detection probes run exactly
+// once across two ListRequirements calls on the same Adapter, not once per
+// call -- the concurrency-safe idempotency ensureDetected is required to
+// provide (P4.5 brief). Requirement.filter is used BOTH as the detection
+// probe (empty-params call) AND the real per-call data fetch, so its count
+// is probe(1) + data(1) + data(1) = 3 across two ListRequirements calls;
+// ReviewRequest.filter is ONLY ever the probe, so it must appear exactly
+// once total. A non-idempotent ensureDetected would double both counts.
+func TestEnsureDetectedIsIdempotent(t *testing.T) {
+	mock := newMockRPCServer(t)
+	mock.handleResult("Requirement.filter", []map[string]any{
+		{"id": 11, "title": "User can log in", "status": "approved", "priority": "P1"},
+	})
+	mock.handleResult("Requirement.coverage", map[string]any{
+		"id": 11, "link_count": 0, "suspect_count": 0, "link_types": map[string]any{},
+	})
+	// ReviewRequest.filter intentionally left unregistered -> -32601 -> confirmed absent.
+	a, closeFn := newTestAdapter(t, mock)
+	defer closeFn()
+
+	if _, _, err := a.ListRequirements(context.Background(), "DEMO", nil, nil); err != nil {
+		t.Fatalf("ListRequirements (1st call): %v", err)
+	}
+	if _, _, err := a.ListRequirements(context.Background(), "DEMO", nil, nil); err != nil {
+		t.Fatalf("ListRequirements (2nd call): %v", err)
+	}
+
+	if got := countCalls(mock, "Requirement.filter"); got != 3 {
+		t.Errorf("Requirement.filter called %d times across 2 ListRequirements calls, want 3 (1 detection probe + 2 data fetches) -- ensureDetected is not idempotent", got)
+	}
+	if got := countCalls(mock, "ReviewRequest.filter"); got != 1 {
+		t.Errorf("ReviewRequest.filter called %d times across 2 ListRequirements calls, want 1 (probe-only, and only on the first call) -- ensureDetected is not idempotent", got)
+	}
+	if !a.detectDone {
+		t.Error("expected detectDone=true after a confirmed detection round")
+	}
+}

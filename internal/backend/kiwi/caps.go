@@ -58,17 +58,18 @@ const (
 // whether the plugin appears installed, per spec §4.3's rule refined by the
 // P4.3 brief's extra guidance on transport failures:
 //
-//   - err == nil                     -> method is registered: true.
-//   - isMethodNotFound(err)          -> -32601: plugin/method absent: false.
+//   - err == nil                     -> method is registered: present=true.
+//   - isMethodNotFound(err)          -> -32601: plugin/method absent: present=false.
 //   - err is a *kiwiRPCError (other) -> the request reached modernrpc and
 //     the method IS registered server-side, but failed for another
 //     application reason (e.g. PermissionDenied/ValueError) -- spec §4.3
 //     calls this "installed, but the token lacks permission": treat as
-//     installed-but-degraded (true). The capability this flips (e.g.
-//     SupportsRequirementObjects) will surface the same degraded error to
-//     the caller the moment ListRequirements is actually used, which is
-//     this package's way of "not silently swallowing" the failure without
-//     adding a second error-return path to TestConnection's signature.
+//     installed-but-degraded (present=true). The capability this flips
+//     (e.g. SupportsRequirementObjects) will surface the same degraded
+//     error to the caller the moment ListRequirements is actually used,
+//     which is this package's way of "not silently swallowing" the failure
+//     without adding a second error-return path to TestConnection's
+//     signature.
 //   - anything else (a raw transport/HTTP/decode failure, not a typed
 //     *kiwiRPCError) -> carries NO signal about whether the method is
 //     registered. The brief's detection guidance is explicit here: "treat a
@@ -77,18 +78,27 @@ const (
 //     confirmed-registered-but-degraded RPC errors. This is why detectPlugin
 //     re-inspects the error type instead of using methodExists' bool return
 //     directly.
-func detectPlugin(ctx context.Context, c *Client, method string) bool {
-	present, err := methodExists(ctx, c, method, []any{map[string]any{}})
+//
+// The second return value, confirmed, is the P4.5 addition Adapter.
+// ensureDetected relies on to decide whether a probe outcome may be cached
+// forever or must be retried on a later call: confirmed is true for the
+// first three outcomes above (registered, confirmed absent, or
+// installed-but-degraded — all of these are a real, reproducible signal
+// from the server), and false only for the last one (an unknown transport
+// failure carries no signal either way, so it must not poison detection
+// permanently).
+func detectPlugin(ctx context.Context, c *Client, method string) (present, confirmed bool) {
+	ok, err := methodExists(ctx, c, method, []any{map[string]any{}})
 	if err == nil {
-		return present
+		return ok, true
 	}
 	var rpcErr *kiwiRPCError
 	if errors.As(err, &rpcErr) {
 		// methodExists already special-cased -32601 into (false, nil), so
 		// any *kiwiRPCError reaching here is a non-32601 application error:
 		// installed, degraded.
-		return true
+		return true, true
 	}
-	// Raw transport/HTTP/decode failure: unknown -> default OFF.
-	return false
+	// Raw transport/HTTP/decode failure: unknown -> default OFF, unconfirmed.
+	return false, false
 }
