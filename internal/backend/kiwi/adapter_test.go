@@ -118,7 +118,7 @@ func TestCapabilitiesBaseValues(t *testing.T) {
 func TestIsDemoAndSetRequirementLinkType(t *testing.T) {
 	a := New("http://example.invalid", "alice:secret")
 	if a.IsDemo() {
-		t.Fatal("IsDemo() should be false until P4.4 wires the kiwi-demo short-circuit")
+		t.Fatal("IsDemo() should be false for a non-kiwi-demo URL")
 	}
 	// Must not panic; genuinely a no-op today.
 	a.SetRequirementLinkType("verifies")

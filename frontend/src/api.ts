@@ -1314,11 +1314,21 @@ export function errMsg(e: unknown): string {
 
 // isDemoUrl reports whether a profile's Jira URL selects demo mode: "demo", a
 // "demo:" / "mock:" prefix, or a "demo-" variant like "demo-pkcs" that picks a
-// built-in dataset. The single source of truth for the frontend — keep in sync
-// with isDemoURL in the Go backend (internal/jira/demo.go) and the validation in
-// ProfileForm.tsx.
+// built-in dataset. Also matches "kiwi-demo" (and its "kiwi-demo:"/"kiwi-demo-"
+// variants) — the offline Kiwi demo (internal/backend/kiwi/demo.go), so the
+// DEMO chip shows for a kiwi-demo profile too. The single source of truth for
+// the frontend — keep in sync with isDemoURL in the Go backend
+// (internal/jira/demo.go) and the validation in ProfileForm.tsx.
 export function isDemoUrl(url?: string): boolean {
-  return /^(demo|demo[-:].*|mock:.*)$/i.test((url ?? "").trim());
+  return /^(demo|demo[-:].*|mock:.*|kiwi-demo|kiwi-demo[-:].*)$/i.test((url ?? "").trim());
+}
+
+// isKiwiDemoUrl reports whether a profile's Jira URL selects the offline Kiwi
+// demo specifically (as opposed to the Xray demo). Kept separate from
+// demoVariant, whose return type is pinned to the Xray-demo theme names
+// ("pkcs" | "euicc" | "") consumed by CoverageMap/CoverageView.
+export function isKiwiDemoUrl(url?: string): boolean {
+  return /^(kiwi-demo|kiwi-demo[-:].*)$/i.test((url ?? "").trim());
 }
 
 // demoVariant returns the named demo dataset variant embedded in a profile's

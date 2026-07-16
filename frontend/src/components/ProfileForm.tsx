@@ -47,11 +47,14 @@ function normalizeJiraUrl(url: string): string {
 // "demo:" / "mock:" prefix, or a "demo-" suffixed variant like "demo-pkcs" (used
 // to pick a specific built-in demo dataset); otherwise it must be a well-formed
 // http(s) URL with a host and no spaces. Keep in sync with isDemoURL in the Go
-// backend (internal/jira/demo.go).
+// backend (internal/jira/demo.go). "kiwi-demo" (and "kiwi-demo:"/"kiwi-demo-"
+// variants) is also allowed — the offline Kiwi demo, routed by app.go's
+// backend factory to kiwi.New instead of the Xray path (kiwi.IsKiwiDemoURL,
+// internal/backend/kiwi/demo.go).
 function jiraUrlError(url: string): string {
   const u = normalizeJiraUrl(url);
   if (u === "") return "";
-  if (/^(demo|demo[-:].*|mock:.*)$/i.test(u)) return "";
+  if (/^(demo|demo[-:].*|mock:.*|kiwi-demo|kiwi-demo[-:].*)$/i.test(u)) return "";
   if (/\s/.test(u)) {
     return "The URL must not contain spaces.";
   }

@@ -36,6 +36,11 @@ type Client struct {
 	authHeaderValue string
 
 	nextID int64
+
+	// demo is non-nil when baseURL selected the offline kiwi-demo mode
+	// (P4.4, demo.go). When set, call() dispatches to it instead of doing
+	// any HTTP.
+	demo *kiwiDemoGenerator
 }
 
 // Option customizes a Client at construction time.
@@ -74,6 +79,9 @@ func NewClient(baseURL, credential string, opts ...Option) *Client {
 	c := &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{Jar: jar},
+	}
+	if IsKiwiDemoURL(baseURL) {
+		c.demo = newKiwiDemoGenerator()
 	}
 	user, pass := splitCredential(credential)
 	c.auth = &sessionLogin{user: user, pass: pass}
@@ -152,6 +160,10 @@ func isMethodNotFound(err error) bool {
 // JSON-RPC error object is returned as a *kiwiRPCError; transport/HTTP
 // failures are returned as plain wrapped errors. Spec §1.1/§1.3.
 func (c *Client) call(ctx context.Context, method string, params []any, out any) error {
+	if c.demo != nil {
+		return c.demo.call(method, params, out)
+	}
+
 	id := atomic.AddInt64(&c.nextID, 1)
 	if params == nil {
 		params = []any{}

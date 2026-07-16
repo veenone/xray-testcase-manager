@@ -19,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"xray-test-manager/internal/backend"
+	"xray-test-manager/internal/backend/kiwi"
 	"xray-test-manager/internal/backend/xray"
 	"xray-test-manager/internal/coverage"
 	"xray-test-manager/internal/jira"
@@ -472,12 +473,20 @@ func tlsOptions(p profile.Profile) []jira.Option {
 	return opts
 }
 
-// newBackend is the low-level backend constructor: it wraps a Jira/Xray
-// client as a backend.Backend. jira.NewClient is only ever called here and in
-// backendFor below (app.go is the composition root, Phase 1 wiring) -- every
-// other call site builds a Backend through one of these two helpers instead of
-// constructing a *jira.Client directly.
+// newBackend is the low-level backend constructor: it wraps a Jira/Xray or
+// Kiwi client as a backend.Backend, picking the implementation from the
+// URL. jira.NewClient/kiwi.New are only ever called here and in backendFor
+// below (app.go is the composition root, Phase 1 wiring, extended in P4.4
+// for the kiwi-demo variant) -- every other call site builds a Backend
+// through one of these two helpers instead of constructing a client
+// directly. Real (non-demo) Kiwi URL detection/routing is a later task
+// (Phase 6 connection model); only kiwi-demo routes to kiwi.New today. TLS
+// opts are Xray-specific and dropped on the Kiwi path -- kiwi-demo performs
+// no I/O, so they have nothing to apply to.
 func newBackend(jiraURL, token string, opts ...jira.Option) backend.Backend {
+	if kiwi.IsKiwiDemoURL(jiraURL) {
+		return kiwi.New(jiraURL, token)
+	}
 	return xray.New(jira.NewClient(jiraURL, token, opts...))
 }
 

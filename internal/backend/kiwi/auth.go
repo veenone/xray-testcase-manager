@@ -34,7 +34,11 @@ func (s *sessionLogin) Authenticate(ctx context.Context, c *Client) error {
 	if err := c.call(ctx, "Auth.login", []any{s.user, s.pass}, &sessionID); err != nil {
 		return err
 	}
-	if sessionID == "" || c.http.Jar == nil {
+	if sessionID == "" || c.http.Jar == nil || c.demo != nil {
+		// Demo mode (c.demo != nil): baseURL is "kiwi-demo", not a real URL,
+		// and there is no real session to persist — call() already served
+		// the fake sessionID above without touching the network, so seeding
+		// a cookie against a non-URL baseURL would be meaningless at best.
 		return nil
 	}
 	u, err := url.Parse(c.baseURL)

@@ -101,9 +101,9 @@ func (a *Adapter) TestConnection(ctx context.Context) (*backend.User, error) {
 }
 
 // IsDemo reports whether this adapter targets the deterministic offline
-// demo generator. Always false for now — the kiwi-demo short-circuit is
-// P4.4.
-func (a *Adapter) IsDemo() bool { return false }
+// kiwi-demo generator (P4.4, demo.go) — true whenever the Client was built
+// against a "kiwi-demo" URL.
+func (a *Adapter) IsDemo() bool { return a.c.demo != nil }
 
 // SetRequirementLinkType is a no-op today: Kiwi core has no requirement
 // link-type concept, and the requirements-plugin typed links
