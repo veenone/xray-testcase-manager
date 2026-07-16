@@ -584,28 +584,18 @@ func (a *Adapter) TestExecutionsForTest(ctx context.Context, testKey string) ([]
 	return containers, links, nil
 }
 
-func (a *Adapter) CreateContainer(ctx context.Context, projectKey, kind, summary string) (string, error) {
-	return "", backend.ErrUnsupported // P4.2 (write)
-}
+// CreateContainer, AddTestsToContainer, RemoveTestsFromContainer,
+// SetTestRunStatus, and DeleteContainer are implemented in
+// container_write.go (P5.2 — the Kiwi container/run WRITE surface).
 
-func (a *Adapter) AddTestsToContainer(ctx context.Context, kind, containerKey string, testKeys []string) error {
-	return backend.ErrUnsupported // P4.2 (write)
-}
-
-func (a *Adapter) RemoveTestsFromContainer(ctx context.Context, kind, containerKey string, testKeys []string) error {
-	return backend.ErrUnsupported // P4.2 (write)
-}
-
-func (a *Adapter) SetTestRunStatus(ctx context.Context, execKey, testKey, status string) error {
-	return backend.ErrUnsupported // P4.2 (write)
-}
-
+// SetContainerEnvironments stays ErrUnsupported: Kiwi has no Test
+// Environments concept on a TestRun/TestExecution (a Build stands in for an
+// "environment" elsewhere in this adapter — see Capabilities'
+// SupportsEnvironments comment — but there is no separate multi-value
+// environment field to write). P5.2 confirmed this is a genuine EMPTY/UNSUP,
+// not a deferred implementation.
 func (a *Adapter) SetContainerEnvironments(ctx context.Context, execKey string, envs []string) error {
-	return backend.ErrUnsupported // P4.2 (write)
-}
-
-func (a *Adapter) DeleteContainer(ctx context.Context, kind, containerKey string) error {
-	return backend.ErrUnsupported // P4.2 (write)
+	return backend.ErrUnsupported // P4.2/P5.2 (write) — no Kiwi analog
 }
 
 // GetTestRuns returns the per-case execution rows of a TestRun (spec §3.7).
