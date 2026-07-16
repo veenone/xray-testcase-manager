@@ -153,14 +153,14 @@ func TestRemoteAhead(t *testing.T) {
 // 2-return, 3-return, 4-return) to confirm they surface backend.ErrUnsupported
 // rather than a silent zero value. SearchTestsPage/GetTestFields/
 // ListStatuses/ListContainers/RemoteVersion moved to read_test.go once P4.2
-// implemented them for real.
+// implemented them for real; UpdateIssue/CreateTest/FieldsForJira moved to
+// write_test.go once P5.1 implemented the TestCase write surface for real
+// (an empty fields map is now a legitimate no-op call, not ErrUnsupported —
+// see TestUpdateIssueResolvesIdsAndAppliesFields and friends).
 func TestUnimplementedMethodsReturnErrUnsupported(t *testing.T) {
 	a := New("http://example.invalid", "alice:secret")
 	ctx := context.Background()
 
-	if err := a.UpdateIssue(ctx, "1", map[string]any{}); !errors.Is(err, backend.ErrUnsupported) {
-		t.Errorf("UpdateIssue: expected ErrUnsupported, got %v", err)
-	}
 	if _, _, ok, err := a.ExecTypeFieldValue(ctx, "Manual"); err != nil || ok {
 		t.Errorf("ExecTypeFieldValue: expected (ok=false, err=nil), got (ok=%v, err=%v)", ok, err)
 	}
@@ -205,12 +205,6 @@ func TestEmptyStubsReturnEmptyNoError(t *testing.T) {
 	}
 }
 
-// TestFieldsForJiraStub confirms the no-error stub shape (the interface
-// method has no error return).
-func TestFieldsForJiraStub(t *testing.T) {
-	a := New("http://example.invalid", "alice:secret")
-	got := a.FieldsForJira(map[string]string{"summary": "x"})
-	if len(got) != 0 {
-		t.Errorf("FieldsForJira: expected an empty map stub, got %#v", got)
-	}
-}
+// FieldsForJira's real (P5.1) mapping behavior is exercised in
+// write_test.go (TestFieldsForJiraMapsNeutralNames /
+// TestFieldsForJiraEmptyForUnknownFields).

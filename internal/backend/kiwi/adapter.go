@@ -369,13 +369,8 @@ func (a *Adapter) GetTestFields(ctx context.Context, key string) (backend.Test, 
 	return toTest(tc, tags, comps), nil
 }
 
-func (a *Adapter) CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error) {
-	return "", backend.ErrUnsupported // P4.2 (write, out of P4 read scope)
-}
-
-func (a *Adapter) UpdateIssue(ctx context.Context, key string, fields map[string]any) error {
-	return backend.ErrUnsupported // P4.2 (write)
-}
+// CreateTest, UpdateIssue are implemented in write.go (P5.1 — the Kiwi
+// TestCase write surface).
 
 // GetTestMeta maps author/created fields per spec §3.1 ("Updated
 // best-effort"); see toTestMeta for why Updated/UpdatedBy stay empty.
@@ -926,9 +921,7 @@ func (a *Adapter) AddComment(ctx context.Context, issueKey, body string) error {
 
 // --- field payload shaping ---
 
-func (a *Adapter) FieldsForJira(updates map[string]string) map[string]any {
-	return map[string]any{} // P4.2 — translate to a TestCase.update dict (spec §3.13)
-}
+// FieldsForJira is implemented in write.go (P5.1).
 
 // --- capabilities ---
 
