@@ -17,11 +17,35 @@ import (
 // Created maps each newly-created Test's temporary "NEW-N" key to the real Jira
 // key it was assigned, so the UI can re-point an open detail view (FR-1).
 type CommitResult struct {
-	Succeeded  []string       `json:"succeeded"`
-	Conflicted []Conflict     `json:"conflicted"`
-	Failed     []FailedCommit `json:"failed"`
-	Created    []CreatedTest  `json:"created"`
+	Succeeded  []string        `json:"succeeded"`
+	Conflicted []Conflict      `json:"conflicted"`
+	Failed     []FailedCommit  `json:"failed"`
+	Created    []CreatedTest   `json:"created"`
+	Skipped    []SkippedCommit `json:"skipped"`
 }
+
+// SkippedCommit is one pending row the current backend cannot commit because
+// the operation is unsupported by its capabilities (e.g. Test Repository
+// folders or precondition objects on a Kiwi backend). The row is NOT pushed and
+// NOT cleared — it stays pending, like a conflict, so the user can discard it;
+// nothing is silently dropped. Xray reports all capabilities on, so it never
+// populates this list (additive/back-compatible JSON field).
+type SkippedCommit struct {
+	EntityKey  string `json:"entityKey"`
+	EntityType string `json:"entityType"`
+	Reason     string `json:"reason"`
+}
+
+// Skip reasons for capability-gated buckets. These are surfaced verbatim in
+// SkippedCommit.Reason.
+const (
+	skipReasonFolders       = "backend does not support Test Repository folders"
+	skipReasonPreconditions = "backend does not support precondition objects"
+	skipReasonRequirements  = "backend does not support requirement writes"
+	skipReasonReviews       = "backend does not support test reviews"
+	skipReasonContainerEdit = "backend does not support container rename"
+	skipReasonBugCreate     = "backend does not support bug creation"
+)
 
 // CreatedTest records that a locally-created Test (TempKey, "NEW-N") was created
 // in Jira under Key during this commit (FR-1).
@@ -92,7 +116,14 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		Conflicted: []Conflict{},
 		Failed:     []FailedCommit{},
 		Created:    []CreatedTest{},
+		Skipped:    []SkippedCommit{},
 	}
+
+	// caps drives every capability gate below. For Xray all capabilities are on,
+	// so each `if caps.X { ... } else { skip }` gate takes the original branch and
+	// the commit path is unchanged. For a Kiwi backend the unsupported buckets are
+	// skipped (reported, kept pending) and status/steps route to field updates.
+	caps := e.backend.Capabilities()
 
 	changes, err := e.repo.ListPendingChanges(profileID)
 	if err != nil {
@@ -104,12 +135,16 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 	// references a temporary precondition key is rewritten to the real key
 	// before the per-Test pass reads it; re-read on success to pick up the
 	// rewritten association rows.
-	if e.commitPreconditionCreates(ctx, profileID, projectKey, changes, &result) {
-		changes, err = e.repo.ListPendingChanges(profileID)
-		if err != nil {
-			return result, err
+	if caps.SupportsPreconditionObjects {
+		if e.commitPreconditionCreates(ctx, profileID, projectKey, changes, &result) {
+			changes, err = e.repo.ListPendingChanges(profileID)
+			if err != nil {
+				return result, err
+			}
+			changes = filterChangesByID(changes, only)
 		}
-		changes = filterChangesByID(changes, only)
+	} else {
+		e.skipRowsOfType(changes, "precondition_add", skipReasonPreconditions, &result)
 	}
 
 	// Create new Containers (Test Sets / Plans / Executions) next, for the same
@@ -251,6 +286,12 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 testLoop:
 	for _, testKey := range order {
 		testChanges := byTest[testKey]
+
+		// skippedIDs holds this Test's pending rows that were capability-skipped
+		// (folder move / precondition association on a backend that lacks them):
+		// they are recorded in result.Skipped and excluded from the final
+		// CommitPendingChanges so they stay pending. Empty for Xray (all caps on).
+		skippedIDs := make(map[int64]bool)
 
 		// Conflict pre-check (FR-1.4) with per-field auto-merge: when the remote
 		// `updated` has advanced past our base, fetch the current remote values
@@ -450,21 +491,45 @@ testLoop:
 			}
 		}
 
-		// POST workflow transition if a status change is pending.
+		// Apply a pending status change. Xray (SupportsWorkflowTransitions) POSTs a
+		// workflow transition, exactly as before. A settable-status backend (Kiwi)
+		// has no workflow graph, so the status is written as a plain field update —
+		// FieldsForJira maps "status" to the backend's status field (case_status)
+		// and UpdateIssue applies it. Both paths use the same statusChange row, so
+		// base-version/conflict handling above is preserved identically.
 		if statusChange != nil {
-			if err := e.applyTransition(ctx, testKey, statusChange); err != nil {
-				result.Failed = append(result.Failed, FailedCommit{
-					TestKey: testKey,
-					Error:   err.Error(),
-				})
-				continue
+			if caps.SupportsWorkflowTransitions {
+				if err := e.applyTransition(ctx, testKey, statusChange); err != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   err.Error(),
+					})
+					continue
+				}
+			} else {
+				fields := e.backend.FieldsForJira(map[string]string{"status": statusChange.AfterVal})
+				if err := e.backend.UpdateIssue(ctx, testKey, fields); err != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   "set status: " + sanitizeError(err.Error()),
+					})
+					continue
+				}
 			}
 		}
 
 		// Test Repository move (FR-13.3). The pending change stores the target
 		// folder *path*; the Xray move endpoint needs the native folder id, so
-		// resolve it from the synced tree first.
-		if folderChange != nil {
+		// resolve it from the synced tree first. Backends without folders (Kiwi)
+		// skip the move and keep the row pending.
+		if folderChange != nil && !caps.SupportsFolders {
+			result.Skipped = append(result.Skipped, SkippedCommit{
+				EntityKey:  testKey,
+				EntityType: folderChange.EntityType,
+				Reason:     skipReasonFolders,
+			})
+			skippedIDs[folderChange.ID] = true
+		} else if folderChange != nil {
 			xrayFolderID, ferr := e.repo.FolderXrayID(profileID, folderChange.AfterVal)
 			if ferr != nil {
 				result.Failed = append(result.Failed, FailedCommit{
@@ -483,8 +548,16 @@ testLoop:
 		}
 
 		// Associate / disassociate Preconditions (FR-13.5 / 13.6) by diffing
-		// the before / after sets into add and remove lists.
-		if preconditionChange != nil {
+		// the before / after sets into add and remove lists. Backends without
+		// precondition objects (Kiwi) skip this and keep the row pending.
+		if preconditionChange != nil && !caps.SupportsPreconditionObjects {
+			result.Skipped = append(result.Skipped, SkippedCommit{
+				EntityKey:  testKey,
+				EntityType: preconditionChange.EntityType,
+				Reason:     skipReasonPreconditions,
+			})
+			skippedIDs[preconditionChange.ID] = true
+		} else if preconditionChange != nil {
 			add, remove, perr := diffPreconditionSets(preconditionChange.BeforeVal, preconditionChange.AfterVal)
 			if perr != nil {
 				result.Failed = append(result.Failed, FailedCommit{
@@ -502,153 +575,291 @@ testLoop:
 			}
 		}
 
-		for _, xrayID := range stepDeletes {
-			if err := e.backend.DeleteTestStep(ctx, testKey, xrayID); err != nil {
-				result.Failed = append(result.Failed, FailedCommit{
-					TestKey: testKey,
-					Error:   fmt.Sprintf("delete step %s: %s", xrayID, sanitizeError(err.Error())),
-				})
-				continue testLoop
-			}
-		}
-
-		// PUT each step that has pending edits, batching the step's changes
-		// into one body. The first step to fail aborts further step PUTs
-		// for this Test — the user resolves and retries.
-		for xrayID, changes := range stepChanges {
-			fields := make(map[string]string, len(changes))
-			for _, c := range changes {
-				fields[c.Field] = c.AfterVal
-			}
-			if err := e.backend.UpdateTestStep(ctx, testKey, xrayID, fields); err != nil {
-				result.Failed = append(result.Failed, FailedCommit{
-					TestKey: testKey,
-					Error:   fmt.Sprintf("update step %s: %s", xrayID, sanitizeError(err.Error())),
-				})
-				continue testLoop
-			}
-		}
-
-		// POST new steps last, in index order — Xray appends each created
-		// step to the end of the list, so creating them ascending preserves
-		// the order the user arranged. On success we rename the local "new-N"
-		// placeholder to the real id Xray returned.
-		sort.SliceStable(stepAdds, func(i, j int) bool {
-			return stepAdds[i].Index < stepAdds[j].Index
-		})
-		// idMap translates a newly-created step's temporary "new-N" id to the
-		// real id Xray assigned, so a reorder queued against the temp id can
-		// still target the right remote step.
-		idMap := make(map[string]string, len(stepAdds))
-		for _, s := range stepAdds {
-			newID, err := e.createStep(ctx, profileID, testKey, s)
-			if err != nil {
-				result.Failed = append(result.Failed, FailedCommit{
-					TestKey: testKey,
-					Error:   fmt.Sprintf("add step: %s", sanitizeError(err.Error())),
-				})
-				continue testLoop
-			}
-			if newID != "" {
-				idMap[s.XrayID] = newID
-			}
-			if err := e.repo.RenameTestStepID(profileID, testKey, s.XrayID, newID); err != nil {
-				// The remote create already succeeded; a cache-rename hiccup
-				// must not fail the commit. The stale placeholder reconciles
-				// on the next steps refresh.
-				continue
-			}
-		}
-
-		// Apply the new step order last, once every step has its real id.
-		// PUT each step to its target 1-based position in order; steps deleted
-		// in this same commit are skipped, and temp ids are mapped to real
-		// ones.
-		if orderChange != nil {
-			deleted := make(map[string]struct{}, len(stepDeletes))
-			for _, id := range stepDeletes {
-				deleted[id] = struct{}{}
-			}
-			var order []string
-			if err := json.Unmarshal([]byte(orderChange.AfterVal), &order); err != nil {
-				result.Failed = append(result.Failed, FailedCommit{
-					TestKey: testKey,
-					Error:   fmt.Sprintf("malformed step order payload: %s", err),
-				})
-				continue testLoop
-			}
-			// Xray's step PUT 400s unless the body carries the step's content
-			// fields, so look up each step's cached action/data/expected to send
-			// with the reorder. By now the cache holds the real ids (new steps
-			// were renamed above), keyed the same way the order list is after
-			// idMap mapping.
-			stepContent := map[string]testrepo.Step{}
-			if cs, err := e.repo.ListTestSteps(profileID, testKey); err == nil {
-				for _, s := range cs {
-					stepContent[s.XrayID] = s
-				}
-			}
-			pos := 0
-			for _, id := range order {
-				if _, gone := deleted[id]; gone {
-					continue
-				}
-				if real, ok := idMap[id]; ok {
-					id = real
-				}
-				pos++
-				sc := stepContent[id]
-				if err := e.backend.MoveTestStep(ctx, testKey, id, pos, sc.Action, sc.Data, sc.Expected); err != nil {
+		// Steps. Xray applies per-step CRUD (delete/update/add/reorder). A backend
+		// whose steps are a single inline-text field (Kiwi, StepModel "inline-text")
+		// has no step objects, so ALL queued step changes for this Test collapse
+		// into ONE text field update: the resulting neutral step list — already
+		// materialised in the local cache by the step edits — is flattened back to
+		// text, the inverse of the read-path flattenSteps. Per-step CRUD is
+		// ErrUnsupported there and is never called. Xray keeps the branch below
+		// verbatim.
+		if caps.StepModel == "inline-text" {
+			if len(stepDeletes) > 0 || len(stepChanges) > 0 || len(stepAdds) > 0 || orderChange != nil {
+				text, terr := e.flattenStepsToText(profileID, testKey)
+				if terr != nil {
 					result.Failed = append(result.Failed, FailedCommit{
 						TestKey: testKey,
-						Error:   fmt.Sprintf("reorder step %s: %s", id, sanitizeError(err.Error())),
+						Error:   "flatten steps: " + sanitizeError(terr.Error()),
+					})
+					continue
+				}
+				fields := e.backend.FieldsForJira(map[string]string{"description": text})
+				if err := e.backend.UpdateIssue(ctx, testKey, fields); err != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   "update steps text: " + sanitizeError(err.Error()),
+					})
+					continue
+				}
+			}
+		} else {
+			for _, xrayID := range stepDeletes {
+				if err := e.backend.DeleteTestStep(ctx, testKey, xrayID); err != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   fmt.Sprintf("delete step %s: %s", xrayID, sanitizeError(err.Error())),
 					})
 					continue testLoop
 				}
 			}
-		}
 
-		ids := make([]int64, len(testChanges))
-		for i, c := range testChanges {
-			ids[i] = c.ID
-		}
-		if err := e.repo.CommitPendingChanges(profileID, ids); err != nil {
-			result.Failed = append(result.Failed, FailedCommit{
-				TestKey: testKey,
-				Error:   "Jira accepted update but local cleanup failed: " + err.Error(),
+			// PUT each step that has pending edits, batching the step's changes
+			// into one body. The first step to fail aborts further step PUTs
+			// for this Test — the user resolves and retries.
+			for xrayID, changes := range stepChanges {
+				fields := make(map[string]string, len(changes))
+				for _, c := range changes {
+					fields[c.Field] = c.AfterVal
+				}
+				if err := e.backend.UpdateTestStep(ctx, testKey, xrayID, fields); err != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   fmt.Sprintf("update step %s: %s", xrayID, sanitizeError(err.Error())),
+					})
+					continue testLoop
+				}
+			}
+
+			// POST new steps last, in index order — Xray appends each created
+			// step to the end of the list, so creating them ascending preserves
+			// the order the user arranged. On success we rename the local "new-N"
+			// placeholder to the real id Xray returned.
+			sort.SliceStable(stepAdds, func(i, j int) bool {
+				return stepAdds[i].Index < stepAdds[j].Index
 			})
-			continue
-		}
-		result.Succeeded = append(result.Succeeded, testKey)
+			// idMap translates a newly-created step's temporary "new-N" id to the
+			// real id Xray assigned, so a reorder queued against the temp id can
+			// still target the right remote step.
+			idMap := make(map[string]string, len(stepAdds))
+			for _, s := range stepAdds {
+				newID, err := e.createStep(ctx, profileID, testKey, s)
+				if err != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   fmt.Sprintf("add step: %s", sanitizeError(err.Error())),
+					})
+					continue testLoop
+				}
+				if newID != "" {
+					idMap[s.XrayID] = newID
+				}
+				if err := e.repo.RenameTestStepID(profileID, testKey, s.XrayID, newID); err != nil {
+					// The remote create already succeeded; a cache-rename hiccup
+					// must not fail the commit. The stale placeholder reconciles
+					// on the next steps refresh.
+					continue
+				}
+			}
 
-		// Selective commit: our PUT just advanced this Test's remote `updated`,
-		// so any of its OTHER pending edits (not in this commit) would now look
-		// stale and conflict on their next commit. Re-base them onto the fresh
-		// remote version so a per-item commit doesn't poison the Test's
-		// remaining items. (Full commits push everything at once, so there's
-		// nothing left to re-base.)
-		if only != nil {
-			if upd, uerr := e.backend.RemoteVersion(ctx, "test", testKey); uerr == nil && upd != "" {
-				_ = e.repo.RebaseTestConflict(profileID, testKey, string(upd))
+			// Apply the new step order last, once every step has its real id.
+			// PUT each step to its target 1-based position in order; steps deleted
+			// in this same commit are skipped, and temp ids are mapped to real
+			// ones.
+			if orderChange != nil {
+				deleted := make(map[string]struct{}, len(stepDeletes))
+				for _, id := range stepDeletes {
+					deleted[id] = struct{}{}
+				}
+				var order []string
+				if err := json.Unmarshal([]byte(orderChange.AfterVal), &order); err != nil {
+					result.Failed = append(result.Failed, FailedCommit{
+						TestKey: testKey,
+						Error:   fmt.Sprintf("malformed step order payload: %s", err),
+					})
+					continue testLoop
+				}
+				// Xray's step PUT 400s unless the body carries the step's content
+				// fields, so look up each step's cached action/data/expected to send
+				// with the reorder. By now the cache holds the real ids (new steps
+				// were renamed above), keyed the same way the order list is after
+				// idMap mapping.
+				stepContent := map[string]testrepo.Step{}
+				if cs, err := e.repo.ListTestSteps(profileID, testKey); err == nil {
+					for _, s := range cs {
+						stepContent[s.XrayID] = s
+					}
+				}
+				pos := 0
+				for _, id := range order {
+					if _, gone := deleted[id]; gone {
+						continue
+					}
+					if real, ok := idMap[id]; ok {
+						id = real
+					}
+					pos++
+					sc := stepContent[id]
+					if err := e.backend.MoveTestStep(ctx, testKey, id, pos, sc.Action, sc.Data, sc.Expected); err != nil {
+						result.Failed = append(result.Failed, FailedCommit{
+							TestKey: testKey,
+							Error:   fmt.Sprintf("reorder step %s: %s", id, sanitizeError(err.Error())),
+						})
+						continue testLoop
+					}
+				}
+			}
+
+		}
+
+		// Clear every committed pending row for this Test. Capability-skipped rows
+		// (folder / precondition on a backend that lacks them) are excluded so they
+		// stay pending — like a conflict, nothing is silently dropped. For Xray
+		// skippedIDs is empty, so this is the original "clear all rows" behavior and
+		// Succeeded/rebase always run.
+		ids := make([]int64, 0, len(testChanges))
+		for _, c := range testChanges {
+			if skippedIDs[c.ID] {
+				continue
+			}
+			ids = append(ids, c.ID)
+		}
+		if len(ids) > 0 {
+			if err := e.repo.CommitPendingChanges(profileID, ids); err != nil {
+				result.Failed = append(result.Failed, FailedCommit{
+					TestKey: testKey,
+					Error:   "Jira accepted update but local cleanup failed: " + err.Error(),
+				})
+				continue
+			}
+			result.Succeeded = append(result.Succeeded, testKey)
+
+			// Selective commit: our PUT just advanced this Test's remote `updated`,
+			// so any of its OTHER pending edits (not in this commit) would now look
+			// stale and conflict on their next commit. Re-base them onto the fresh
+			// remote version so a per-item commit doesn't poison the Test's
+			// remaining items. (Full commits push everything at once, so there's
+			// nothing left to re-base.)
+			if only != nil {
+				if upd, uerr := e.backend.RemoteVersion(ctx, "test", testKey); uerr == nil && upd != "" {
+					_ = e.repo.RebaseTestConflict(profileID, testKey, string(upd))
+				}
 			}
 		}
 	}
 
-	e.commitMemberships(ctx, profileID, membershipRows, &result)
-	e.commitPreconditionEdits(ctx, profileID, preconditionEditRows, &result)
-	e.commitPreconditionDeletes(ctx, profileID, preconditionDeleteRows, &result)
-	e.commitFolders(ctx, profileID, projectKey, folderRows, &result)
-	e.commitReviews(ctx, profileID, reviewRows, &result)
+	// Capability-gated bucket dispatch. Each `if caps.X { run } else { skip }` gate
+	// is a no-op for Xray (all capabilities on) — it takes the run branch exactly
+	// as before. A Kiwi backend skips the buckets its model can't express; those
+	// rows are reported in result.Skipped and stay pending. Containers, comments
+	// and runs are supported on both backends and run unconditionally (container
+	// rename is gated inside commitMemberships).
+	e.commitMemberships(ctx, profileID, membershipRows, caps, &result)
+	if caps.SupportsPreconditionObjects {
+		e.commitPreconditionEdits(ctx, profileID, preconditionEditRows, &result)
+		e.commitPreconditionDeletes(ctx, profileID, preconditionDeleteRows, &result)
+	} else {
+		e.skipRows(preconditionEditRows, skipReasonPreconditions, &result)
+		e.skipRows(preconditionDeleteRows, skipReasonPreconditions, &result)
+	}
+	if caps.SupportsFolders {
+		e.commitFolders(ctx, profileID, projectKey, folderRows, &result)
+	} else {
+		e.skipRows(folderRows, skipReasonFolders, &result)
+	}
+	if issueBackedWrites(caps) {
+		e.commitReviews(ctx, profileID, reviewRows, &result)
+	} else {
+		e.skipRows(reviewRows, skipReasonReviews, &result)
+	}
 	e.commitComments(ctx, profileID, commentRows, &result)
 	e.commitRuns(ctx, profileID, runRows, &result)
-	e.commitRequirements(ctx, profileID, requirementRows, &result)
-	e.commitRequirementEdits(ctx, profileID, requirementEditRows, &result)
-	e.commitRequirementDeletes(ctx, profileID, requirementDeleteRows, &result)
-	e.commitBugCreates(ctx, profileID, bugCreateRows, &result)
-	e.commitRequirementCreates(ctx, profileID, requirementCreateRows, &result)
-	e.commitReqReqLinks(ctx, profileID, reqReqLinkRows, &result)
+	if requirementWritesSupported(caps) {
+		e.commitRequirements(ctx, profileID, requirementRows, &result)
+		e.commitRequirementEdits(ctx, profileID, requirementEditRows, &result)
+		e.commitRequirementDeletes(ctx, profileID, requirementDeleteRows, &result)
+		e.commitRequirementCreates(ctx, profileID, requirementCreateRows, &result)
+		e.commitReqReqLinks(ctx, profileID, reqReqLinkRows, &result)
+	} else {
+		e.skipRows(requirementRows, skipReasonRequirements, &result)
+		e.skipRows(requirementEditRows, skipReasonRequirements, &result)
+		e.skipRows(requirementDeleteRows, skipReasonRequirements, &result)
+		e.skipRows(requirementCreateRows, skipReasonRequirements, &result)
+		e.skipRows(reqReqLinkRows, skipReasonRequirements, &result)
+	}
+	if caps.SupportsBugCreation {
+		e.commitBugCreates(ctx, profileID, bugCreateRows, &result)
+	} else {
+		e.skipRows(bugCreateRows, skipReasonBugCreate, &result)
+	}
 
 	return result, nil
+}
+
+// issueBackedWrites reports whether the backend stores entities as issues that
+// accept generic issue writes routed through UpdateIssue / issue comments —
+// workflow-transitioned Jira issues (Xray). It gates buckets that have no
+// dedicated capability flag but only work against an issue-shaped backend:
+// test reviews (posted as issue comments) and container rename (UpdateIssue on
+// a container key). A settable-status backend (Kiwi) returns false, so those
+// buckets are skipped. Xray returns true and every such bucket runs unchanged.
+func issueBackedWrites(caps backend.Capabilities) bool {
+	return caps.SupportsWorkflowTransitions
+}
+
+// requirementWritesSupported reports whether requirement create/edit/delete/link
+// writes can be committed. This needs BOTH a requirement object model AND an
+// issue-backed write surface (requirements are created/deleted as Jira issues
+// and linked via issue links). Kiwi's requirements plugin is read-only — it can
+// report SupportsRequirementObjects for the read/coverage path but has no create
+// RPC — so requirement WRITES are treated as unsupported there. Xray has both and
+// runs the buckets unchanged.
+func requirementWritesSupported(caps backend.Capabilities) bool {
+	return caps.SupportsRequirementObjects && issueBackedWrites(caps)
+}
+
+// skipRows records each pending row as capability-skipped (reported, kept
+// pending). Used when a bucket's capability is off so the rows are neither
+// pushed nor cleared.
+func (e *Engine) skipRows(rows []testrepo.PendingChange, reason string, result *CommitResult) {
+	for _, c := range rows {
+		result.Skipped = append(result.Skipped, SkippedCommit{
+			EntityKey:  c.EntityKey,
+			EntityType: c.EntityType,
+			Reason:     reason,
+		})
+	}
+}
+
+// skipRowsOfType records only the rows of the given entity type as skipped.
+// Used for buckets whose rows are still interleaved in the full change list
+// (e.g. precondition_add before the create pass).
+func (e *Engine) skipRowsOfType(changes []testrepo.PendingChange, entityType, reason string, result *CommitResult) {
+	for _, c := range changes {
+		if c.EntityType == entityType {
+			result.Skipped = append(result.Skipped, SkippedCommit{
+				EntityKey:  c.EntityKey,
+				EntityType: c.EntityType,
+				Reason:     reason,
+			})
+		}
+	}
+}
+
+// flattenStepsToText collapses a Test's cached neutral step list into a single
+// text blob for a backend whose step model is one inline-text field (Kiwi). It
+// is the inverse of the read-path flattenSteps: for the common single-step case
+// the text is exactly that step's Action, so a read→edit→write round-trips
+// losslessly; multiple steps are joined with a blank-line separator.
+func (e *Engine) flattenStepsToText(profileID, testKey string) (string, error) {
+	steps, err := e.repo.ListTestSteps(profileID, testKey)
+	if err != nil {
+		return "", err
+	}
+	parts := make([]string, 0, len(steps))
+	for _, s := range steps {
+		parts = append(parts, s.Action)
+	}
+	return strings.Join(parts, "\n\n"), nil
 }
 
 // commitRuns pushes Test-run result updates to Xray. Each pending row is keyed
@@ -1249,8 +1460,21 @@ func (e *Engine) commitContainerCreates(ctx context.Context, profileID string, c
 // test_container_add row first creates the Container, then populates it. Each
 // is reported under the Container key. These are additive, so no conflict
 // pre-check is applied.
-func (e *Engine) commitMemberships(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+func (e *Engine) commitMemberships(ctx context.Context, profileID string, rows []testrepo.PendingChange, caps backend.Capabilities, result *CommitResult) {
 	for _, c := range rows {
+		// container_edit (rename) writes through UpdateIssue on the CONTAINER key.
+		// That is only valid where containers are Jira issues (Xray). A backend
+		// with a separate container namespace (Kiwi) would misread the container
+		// key as a TestCase pk, so skip the rename and keep the row pending. Xray
+		// keeps the UpdateIssue path unchanged.
+		if c.EntityType == "container_edit" && !issueBackedWrites(caps) {
+			result.Skipped = append(result.Skipped, SkippedCommit{
+				EntityKey:  c.EntityKey,
+				EntityType: c.EntityType,
+				Reason:     skipReasonContainerEdit,
+			})
+			continue
+		}
 		var key string
 		var err error
 		switch c.EntityType {
