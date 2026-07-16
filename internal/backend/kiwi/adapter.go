@@ -12,17 +12,43 @@ import (
 // Adapter implements backend.Backend against a Kiwi TCMS instance's
 // JSON-RPC API. P4.1 built TestConnection, Capabilities, IsDemo,
 // SetRequirementLinkType, RemoteAhead, and the transport/auth/error-typing/
-// plugin-detection-probe they sit on. P4.2 (this task) adds the core read
+// plugin-detection-probe mechanism they sit on. P4.2 added the core read
 // mapping: the test pull (SearchTestsPage/GetTestFields/GetTestSteps/
 // ListTestsBasic/GetTestMeta), containers + runs (ListContainers/
 // TestExecutionsForTest/GetTestRuns/ExecPlans), metadata (ListStatuses/
 // ListPriorities/ProjectComponents/ProjectVersions), and the content-hash
-// RemoteVersion. Requirements/review-plugin reads, bugs, and every WRITE
-// method remain stubs (marked // P4.3), and the genuinely-no-analog EMPTY
-// reads (preconditions, folders, transitions, custom fields) stay
-// zero-value per §3 of p4_0-kiwi-integration-spec.md.
+// RemoteVersion. P4.3 (this task) wires the plugin-detection probe into
+// TestConnection/Capabilities (hasRequirementsPlugin/hasReviewPlugin) and
+// implements the requirements-plugin read path (ListRequirements, via
+// Requirement.filter + Requirement.coverage — see requirements.go). Review
+// plugin integration beyond caching hasReviewPlugin is explicitly DEFERRED
+// (needs a backend.Backend interface extension — see hasReviewPlugin's doc
+// comment). Bugs, req->req links, and every remaining WRITE method stay
+// stubs (Phase 5), and the genuinely-no-analog EMPTY reads (preconditions,
+// folders, transitions, custom fields) stay zero-value per §3 of
+// p4_0-kiwi-integration-spec.md.
 type Adapter struct {
 	c *Client
+
+	// hasRequirementsPlugin is set once by TestConnection's plugin-detection
+	// probe (spec §4.3, P4.3 brief item (a)): true when the
+	// kiwi-tcms-requirements plugin's Requirement.filter RPC is registered
+	// on the server. Capabilities() reads it to flip
+	// SupportsRequirementObjects, and ListRequirements reads it to decide
+	// between the real plugin-backed read and the EMPTY (base-Kiwi) return.
+	// Zero-value (false) is the safe default before TestConnection has run —
+	// same "off until proven present" behavior as a confirmed-absent probe.
+	hasRequirementsPlugin bool
+
+	// hasReviewPlugin is set by the same TestConnection probe, against the
+	// kiwi-tcms-review-workflow plugin's ReviewRequest.filter RPC. It is
+	// cached here and DELIBERATELY UNEXPOSED in this task: per the P4.3
+	// brief, full review-plugin integration (a new backend.Capabilities
+	// SupportsReview field, a review-read interface method, and the
+	// XTM-verdict mapping) is an interface extension deferred to a future
+	// task. This flag exists purely so that future task doesn't have to
+	// redo detection.
+	hasReviewPlugin bool
 }
 
 // New builds a Kiwi backend.Backend against baseURL, authenticating with
@@ -48,6 +74,14 @@ var _ backend.Backend = (*Adapter)(nil)
 // then resolves the authenticated user via User.filter({"is_active":true}),
 // taking the first (and, for a non-staff Kiwi user, typically only) result.
 // Spec §3.1.
+//
+// Once the core connection succeeds, TestConnection also runs the P4.3
+// plugin-detection probe (spec §4.3): it has the ctx Capabilities() lacks,
+// which is why detection lives here rather than in Capabilities() itself
+// (design constraint from the P4.3 brief). A probe failure never fails
+// TestConnection as a whole — see detectPlugin's doc comment in caps.go for
+// exactly how each outcome (absent / installed-but-degraded / unknown
+// transport failure) is classified.
 func (a *Adapter) TestConnection(ctx context.Context) (*backend.User, error) {
 	if err := a.c.Login(ctx); err != nil {
 		return nil, err
@@ -56,6 +90,10 @@ func (a *Adapter) TestConnection(ctx context.Context) (*backend.User, error) {
 	if err := a.c.call(ctx, "User.filter", []any{map[string]any{"is_active": true}}, &users); err != nil {
 		return nil, err
 	}
+
+	a.hasRequirementsPlugin = detectPlugin(ctx, a.c, requirementsProbeMethod)
+	a.hasReviewPlugin = detectPlugin(ctx, a.c, reviewProbeMethod)
+
 	if len(users) == 0 {
 		return &backend.User{}, nil
 	}
@@ -481,32 +519,91 @@ func (a *Adapter) DeletePrecondition(ctx context.Context, preconditionKey string
 
 // --- requirements ---
 
+// ListRequirements is the requirements-plugin read path (spec §3.8, §8.1;
+// P4.3 brief deliverable (c)). When the plugin was NOT detected by
+// TestConnection (a.hasRequirementsPlugin is false — either confirmed
+// absent, or detection hasn't run yet), it returns empty+nil per spec §3.8's
+// EMPTY class for base Kiwi: base Kiwi's TestCase.requirement is just a
+// ≤255-char label field, not traceability, so there is nothing to read and
+// this is NOT an error condition.
+//
+// When present, it calls the plugin's two RPC methods (the ONLY two the
+// plugin exposes — spec §4.3/§8.1):
+//   - Requirement.filter({}) once, for the full requirement registry
+//     (spec §3.8's ListRequirements table entry cites this exact call+query
+//     for pulling every Requirement row; the plugin's small response shape
+//     has no product field to scope by — OQ-4 — so profileProjectKey/
+//     sources cannot narrow this call and are accepted but unused, matching
+//     how the xray-specific ScopeSpec fields are still under the shared
+//     interface signature per spec §2).
+//   - Requirement.coverage(id) once per requirement returned above, to
+//     recover individual test<->requirement links (see requirements.go's
+//     kiwiRequirementCoverage doc comment for the FLAGGED, unconfirmed
+//     link_types shape this relies on, and how it degrades safely if wrong).
+//
+// onProgress reports per-requirement completion of the coverage sweep,
+// mirroring ListContainers' progress-reporting shape elsewhere in this
+// adapter.
 func (a *Adapter) ListRequirements(ctx context.Context, profileProjectKey string, sources []backend.RequirementSourceSpec, onProgress func(done, total int)) ([]backend.Requirement, []backend.RequirementLink, error) {
-	return nil, nil, nil // P4.3 — EMPTY until the requirements plugin is detected+wired (spec §3.8)
+	if !a.hasRequirementsPlugin {
+		return nil, nil, nil
+	}
+
+	var rows []kiwiRequirement
+	if err := a.c.call(ctx, "Requirement.filter", []any{map[string]any{}}, &rows); err != nil {
+		return nil, nil, err
+	}
+
+	reqs := make([]backend.Requirement, len(rows))
+	for i, r := range rows {
+		reqs[i] = toRequirement(r)
+	}
+
+	total := len(rows)
+	done := 0
+	links := make([]backend.RequirementLink, 0)
+	for _, r := range rows {
+		var cov kiwiRequirementCoverage
+		// Requirement.coverage(requirement_id) takes a single positional
+		// scalar arg (spec §4.3/§8.1's literal call form), not a query
+		// dict — so params is a one-element array holding the bare id,
+		// unlike the *.filter calls elsewhere in this package.
+		if err := a.c.call(ctx, "Requirement.coverage", []any{r.ID}, &cov); err != nil {
+			return nil, nil, err
+		}
+		links = append(links, toRequirementLinks(cov, strconv.Itoa(r.ID))...)
+
+		done++
+		if onProgress != nil {
+			onProgress(done, total)
+		}
+	}
+
+	return reqs, links, nil
 }
 
 func (a *Adapter) UpdateTestRequirements(ctx context.Context, testKey string, add []string, removeLinkIDs []string) error {
-	return backend.ErrUnsupported // P4.3 (write)
+	return backend.ErrUnsupported // Phase 5 (write)
 }
 
 func (a *Adapter) ListIssueLinkTypes(ctx context.Context) ([]string, error) {
-	return nil, backend.ErrUnsupported // P4.3 — gated on requirements-plugin detection (spec §3.8)
+	return nil, backend.ErrUnsupported // out of this task's scope: the P4.3 brief's deliverables don't call for wiring this (see Capabilities' SupportsIssueLinkTypes note); left as the P4.1 stub
 }
 
 func (a *Adapter) CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error) {
-	return "", backend.ErrUnsupported // P4.3 (write)
+	return "", backend.ErrUnsupported // Phase 5 (write)
 }
 
 func (a *Adapter) DeleteRequirement(ctx context.Context, requirementKey string) error {
-	return backend.ErrUnsupported // P4.3 (write)
+	return backend.ErrUnsupported // Phase 5 (write)
 }
 
 func (a *Adapter) UpdateRequirementLinks(ctx context.Context, fromKey string, add []string, removeLinkIDs []string) error {
-	return backend.ErrUnsupported // P4.3 (write)
+	return backend.ErrUnsupported // Phase 5 (write)
 }
 
 func (a *Adapter) ListReqToReqLinks(ctx context.Context, reqKeys []string) ([]backend.ReqToReqLink, error) {
-	return nil, nil // P4.3 — EMPTY: no req->req RPC in the plugin today (spec §3.8, OQ-3)
+	return nil, nil // EMPTY: no req->req RPC in the plugin today (spec §3.8, OQ-3); brief deliverable (4)
 }
 
 // --- bugs ---
@@ -656,13 +753,18 @@ func (a *Adapter) FieldsForJira(updates map[string]string) map[string]any {
 
 // --- capabilities ---
 
-// Capabilities reports the base-Kiwi feature set (no plugins detected).
-// Plugin deltas (SupportsRequirementObjects, SupportsIssueLinkTypes, and a
-// future SupportsReview field) are wired in P4.3 once the plugin-detection
-// probe (caps.go) is connected to this method — this task does not add any
-// new Capabilities fields (per the P4.1 brief). Spec §4.1.
+// Capabilities reports the base-Kiwi feature set, with the
+// requirements-plugin delta applied if TestConnection's detection probe
+// found it (spec §4.1, §4.2). SupportsRequirementObjects is the ONLY field
+// this task flips per the P4.3 brief's explicit deliverable (b); spec
+// §4.2's "SupportsIssueLinkTypes=true" pairing and any SupportsReview field
+// are deliberately NOT wired here — see this method's flip below and
+// Adapter.hasReviewPlugin's doc comment for why. If Capabilities() is
+// called before TestConnection ever ran, hasRequirementsPlugin is still its
+// zero value (false), so the caps below are the safe, plugin-off default
+// (brief: "base caps when detection hasn't run").
 func (a *Adapter) Capabilities() backend.Capabilities {
-	return backend.Capabilities{
+	caps := backend.Capabilities{
 		Name:                        "kiwi",
 		IDStyle:                     "numeric", // Kiwi pks are ints (spec §4.1; see p4_1-report.md for the "integer" vs "numeric" note)
 		SupportsJQLScope:            false,     // Product/Version/Build + ORM filters, not JQL
@@ -670,8 +772,8 @@ func (a *Adapter) Capabilities() backend.Capabilities {
 		SupportsTestTypes:           true, // is_automated -> Manual/Automated
 		SupportsFolders:             false,
 		SupportsPreconditionObjects: false,
-		SupportsRequirementObjects:  false, // flips true with the requirements plugin (P4.3)
-		SupportsIssueLinkTypes:      false, // flips true with the requirements plugin (P4.3)
+		SupportsRequirementObjects:  false, // flipped below if the requirements plugin was detected
+		SupportsIssueLinkTypes:      false, // NOT flipped in this task: brief's deliverable (b) names only SupportsRequirementObjects; ListIssueLinkTypes stays an ErrUnsupported stub (see adapter.go's requirements section)
 		SupportsEnvironments:        true,  // Build ~= environment
 		SupportsContainers:          true,
 		ContainerKinds:              []string{backend.KindTestPlan, backend.KindTestExec}, // no KindTestSet in Kiwi
@@ -682,4 +784,8 @@ func (a *Adapter) Capabilities() backend.Capabilities {
 		SupportsBugLinks:            true,  // TestExecution hyperlinks
 		SupportsTags:                true,  // Tag m2m on TestCase
 	}
+	if a.hasRequirementsPlugin {
+		caps.SupportsRequirementObjects = true
+	}
+	return caps
 }
