@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"xray-test-manager/internal/backend"
@@ -152,18 +153,22 @@ func TestAddTestsToContainerTestPlanCallsAddCase(t *testing.T) {
 	if n := callCount(mock, "TestPlan.add_case"); n != 2 {
 		t.Fatalf("expected 2 TestPlan.add_case calls, got %d", n)
 	}
-	var planID, caseID int
+	var gotCaseIDs []int
 	for _, r := range mock.requests {
 		if r.Method != "TestPlan.add_case" {
 			continue
 		}
+		var planID, caseID int
 		_ = json.Unmarshal(r.Params[0], &planID)
 		_ = json.Unmarshal(r.Params[1], &caseID)
 		if planID != 1 {
 			t.Errorf("plan id = %d, want 1", planID)
 		}
+		gotCaseIDs = append(gotCaseIDs, caseID)
 	}
-	_ = caseID
+	if !reflect.DeepEqual(gotCaseIDs, []int{10, 11}) {
+		t.Errorf("add_case case ids = %v, want [10 11]", gotCaseIDs)
+	}
 }
 
 func TestAddTestsToContainerTestExecCallsRunAddCase(t *testing.T) {
