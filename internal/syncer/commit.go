@@ -1157,6 +1157,7 @@ func reviewComment(verdict, reviewer, note string) string {
 // commitTestCreates creates imported Tests (FR-10), renaming each local "NEW-N"
 // placeholder to the real key Jira assigned. Reported under the created key.
 func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey string, rows []testrepo.PendingChange, result *CommitResult) {
+	caps := e.backend.Capabilities()
 	for _, c := range rows {
 		var p struct {
 			Summary     string `json:"summary"`
@@ -1215,15 +1216,37 @@ func (e *Engine) commitTestCreates(ctx context.Context, profileID, projectKey st
 				stepSrc = append(stepSrc, testrepo.Step{Action: s.Action, Data: s.Data, Expected: s.Expected})
 			}
 		}
+		// A backend whose steps are a single inline-text field (Kiwi,
+		// StepModel "inline-text") has no step objects to POST individually —
+		// per-step CreateTestStep is ErrUnsupported there. Instead, the new
+		// Test's resulting steps are flattened into the same text blob the
+		// edit path uses (see the StepModel routing in commitChanges) and
+		// applied with ONE UpdateIssue; CreateTest already seeded the text
+		// from the create description, so an empty stepSrc needs no extra
+		// call. Xray keeps the per-step createStep loop below verbatim.
 		stepErr := ""
-		for _, s := range stepSrc {
-			newID, sErr := e.createStep(ctx, profileID, key, s)
-			if sErr != nil {
-				stepErr = sanitizeError(sErr.Error())
-				break
+		if caps.StepModel == "inline-text" {
+			if len(stepSrc) > 0 {
+				text, terr := e.flattenStepsToText(profileID, key)
+				if terr != nil {
+					stepErr = sanitizeError(terr.Error())
+				} else {
+					fields := e.backend.FieldsForJira(map[string]string{"description": text})
+					if err := e.backend.UpdateIssue(ctx, key, fields); err != nil {
+						stepErr = sanitizeError(err.Error())
+					}
+				}
 			}
-			if newID != "" && s.XrayID != "" {
-				_ = e.repo.RenameTestStepID(profileID, key, s.XrayID, newID)
+		} else {
+			for _, s := range stepSrc {
+				newID, sErr := e.createStep(ctx, profileID, key, s)
+				if sErr != nil {
+					stepErr = sanitizeError(sErr.Error())
+					break
+				}
+				if newID != "" && s.XrayID != "" {
+					_ = e.repo.RenameTestStepID(profileID, key, s.XrayID, newID)
+				}
 			}
 		}
 		if stepErr != "" {

@@ -24,6 +24,10 @@ type kiwiFakeBackend struct {
 	caps        backend.Capabilities
 	mu          sync.Mutex
 	updateCalls []fakeUpdateCall
+	// createTestKey, when set, is the key CreateTest returns; createTestCalls
+	// records each CreateTest invocation for assertions.
+	createTestKey   string
+	createTestCalls int
 }
 
 type fakeUpdateCall struct {
@@ -92,6 +96,17 @@ func (b *kiwiFakeBackend) UpdateIssue(ctx context.Context, key string, fields ma
 	defer b.mu.Unlock()
 	b.updateCalls = append(b.updateCalls, fakeUpdateCall{key: key, fields: fields})
 	return nil
+}
+
+// CreateTest mirrors the Kiwi adapter's numeric-key create: it returns the
+// configured createTestKey (a plain integer string, e.g. "42", not a
+// "PROJ-123" Jira key) and records the call so the test can assert exactly
+// one create happened.
+func (b *kiwiFakeBackend) CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.createTestCalls++
+	return b.createTestKey, nil
 }
 
 func (b *kiwiFakeBackend) callsWithField(field string) []fakeUpdateCall {
@@ -415,5 +430,93 @@ func TestKiwiCommitSkipsExecType(t *testing.T) {
 	}
 	if after[0].Field != "exec_type" {
 		t.Errorf("remaining pending row = %+v, want field exec_type", after[0])
+	}
+}
+
+// TestKiwiCommitTestCreateWithStepsRoutesToOneTextUpdate proves the new-test
+// create path is capability-gated the same way the edit path is: on an
+// inline-text backend, committing a freshly-drafted Test with steps must
+// flatten those steps into ONE UpdateIssue text field update, never call
+// per-step CreateTestStep (unimplemented on the fake — any call panics and
+// fails the test), succeed, and clear both the test_create row and any
+// step-level pending rows.
+func TestKiwiCommitTestCreateWithStepsRoutesToOneTextUpdate(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	repo := testrepo.NewRepository(st)
+
+	const profileID = "p1"
+	tempKey, err := repo.CreateTest(profileID, testrepo.TestDraft{
+		Summary:     "New Kiwi test",
+		Description: "seed description",
+		Priority:    "P1",
+		Steps: []testrepo.StepDraft{
+			{Action: "Open the login page", Expected: "Login form is shown"},
+			{Action: "Enter valid credentials", Expected: "Dashboard is shown"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateTest: %v", err)
+	}
+
+	before, err := repo.ListPendingChanges(profileID)
+	if err != nil {
+		t.Fatalf("list pending before: %v", err)
+	}
+	if len(before) == 0 {
+		t.Fatal("expected at least the test_create pending row before commit")
+	}
+
+	fake := newKiwiFakeBackend()
+	fake.createTestKey = "42" // Kiwi issues a numeric integer key.
+	eng := syncer.New(fake, repo)
+	result, err := eng.CommitChanges(context.Background(), profileID, "PROD")
+	if err != nil {
+		t.Fatalf("CommitChanges: %v", err)
+	}
+	if len(result.Failed) != 0 {
+		t.Fatalf("unexpected failures: %+v", result.Failed)
+	}
+	if fake.createTestCalls != 1 {
+		t.Errorf("CreateTest calls = %d, want 1", fake.createTestCalls)
+	}
+	if !containsStr(result.Succeeded, "42") {
+		t.Errorf("Succeeded = %v, want it to contain the real key 42", result.Succeeded)
+	}
+	found := false
+	for _, cr := range result.Created {
+		if cr.TempKey == tempKey && cr.Key == "42" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Created = %+v, want a mapping from %q to 42", result.Created, tempKey)
+	}
+
+	// Exactly one text update, carrying both steps flattened together — no
+	// per-step CreateTestStep call (that method panics on this fake, so a
+	// mis-route would fail the test outright rather than silently pass).
+	textCalls := fake.callsWithField("text")
+	if len(textCalls) != 1 {
+		t.Fatalf("text field updates = %d, want exactly 1 (inline-text create collapse): %+v", len(textCalls), fake.updateCalls)
+	}
+	if textCalls[0].key != "42" {
+		t.Errorf("text update targeted %q, want the real key 42", textCalls[0].key)
+	}
+	wantText := "Open the login page\n\nEnter valid credentials"
+	if textCalls[0].fields["text"] != wantText {
+		t.Errorf("text = %q, want %q", textCalls[0].fields["text"], wantText)
+	}
+
+	// The create row (and any step rows) are cleared, nothing left pending.
+	after, err := repo.ListPendingChanges(profileID)
+	if err != nil {
+		t.Fatalf("list pending after: %v", err)
+	}
+	if len(after) != 0 {
+		t.Errorf("pending not cleared after Kiwi create commit: %+v", after)
 	}
 }
