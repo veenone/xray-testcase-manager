@@ -383,9 +383,13 @@ func (a *Adapter) UpdateIssue(ctx context.Context, key string, fields map[string
 // contract treats any non-nil CreateTest error as "the whole create failed"
 // and never renames the temp key onto the returned id (see commit.go's
 // commitTestCreates: `if err != nil { ...; continue }` — the realKey is
-// simply dropped). That is a pre-existing engine-level gap in how a
-// partial-success create is reconciled, not something this Kiwi-only,
-// engine-untouched task can fix; flagging it for the P5.4/P5.5 engine work.
+// simply dropped). This partial-success window is NEW to Kiwi and does not
+// exist for Xray: Xray's CreateTest is a single atomic issue POST with
+// labels/components embedded in the payload (internal/jira), so it can never
+// half-succeed. The engine's drop-the-id-on-any-error contract is what's
+// pre-existing; the multi-RPC create-then-attach shape that can trip it is
+// Kiwi-specific. Reconciling it needs an engine change (out of this
+// Kiwi-only task's scope) — flagging it for the P5.4/P5.5 engine work.
 func (a *Adapter) CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error) {
 	priorityID, err := a.resolvePriorityID(ctx, priority)
 	if err != nil {
