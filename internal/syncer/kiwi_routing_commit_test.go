@@ -80,6 +80,13 @@ func (b *kiwiFakeBackend) FieldsForJira(updates map[string]string) map[string]an
 	return out
 }
 
+// ExecTypeFieldValue mirrors the Kiwi adapter: exec type derives from
+// is_automated rather than a settable custom field, so it always reports
+// ok=false, err=nil — never a real field id/value pair.
+func (b *kiwiFakeBackend) ExecTypeFieldValue(ctx context.Context, execType string) (fieldID string, value any, ok bool, err error) {
+	return "", nil, false, nil
+}
+
 func (b *kiwiFakeBackend) UpdateIssue(ctx context.Context, key string, fields map[string]any) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -278,5 +285,135 @@ func TestKiwiCommitSkipsUnsupportedBuckets(t *testing.T) {
 	}
 	if len(after) != len(before) {
 		t.Errorf("pending rows changed: before=%d after=%d (skipped rows must stay pending)", len(before), len(after))
+	}
+}
+
+// TestKiwiCommitSkipsComments proves that a free-text comment (issue_comment)
+// queued against a Kiwi backend is reported Skipped — not Failed — and stays
+// pending. The Kiwi adapter's AddComment returns backend.ErrUnsupported (it has
+// no issue-comment RPC), so committing it unconditionally would report the row
+// as a failure instead of a capability skip. AddComment is intentionally left
+// unimplemented on the fake, so a mis-routed call panics and fails the test.
+func TestKiwiCommitSkipsComments(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	repo := testrepo.NewRepository(st)
+
+	const profileID = "p1"
+	if err := repo.UpsertTests(profileID, []testrepo.TestCase{
+		{Key: "42", ID: "42", Summary: "T", Status: "CONFIRMED", Priority: "Medium", Updated: "2026-01-01T00:00:00Z"},
+	}); err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	if err := repo.AddTestComment(profileID, "42", "please retest"); err != nil {
+		t.Fatalf("add comment: %v", err)
+	}
+
+	before, err := repo.ListPendingChanges(profileID)
+	if err != nil {
+		t.Fatalf("list pending before: %v", err)
+	}
+
+	fake := newKiwiFakeBackend()
+	eng := syncer.New(fake, repo)
+	result, err := eng.CommitChanges(context.Background(), profileID, "PROD")
+	if err != nil {
+		t.Fatalf("CommitChanges: %v", err)
+	}
+	if len(result.Failed) != 0 {
+		t.Fatalf("comment on Kiwi must be skipped, not failed: %+v", result.Failed)
+	}
+
+	found := false
+	for _, s := range result.Skipped {
+		if s.EntityType == "issue_comment" && s.EntityKey == "42" {
+			found = true
+			if s.Reason == "" {
+				t.Errorf("skipped comment row missing a reason: %+v", s)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected a skipped issue_comment row, got skipped=%+v", result.Skipped)
+	}
+
+	after, err := repo.ListPendingChanges(profileID)
+	if err != nil {
+		t.Fatalf("list pending after: %v", err)
+	}
+	if len(after) != len(before) {
+		t.Errorf("pending rows changed: before=%d after=%d (skipped comment must stay pending)", len(before), len(after))
+	}
+}
+
+// TestKiwiCommitSkipsExecType proves that an exec_type field edit on a Kiwi
+// backend is reported Skipped and stays pending, rather than being silently
+// cleared. Kiwi's ExecTypeFieldValue always returns ok=false (exec type derives
+// from is_automated, not a settable field), so a naive commit would apply the
+// rest of the field update, drop exec_type from the payload, and then clear the
+// exec_type pending row anyway — losing the edit without telling the user.
+func TestKiwiCommitSkipsExecType(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	repo := testrepo.NewRepository(st)
+
+	const profileID = "p1"
+	if err := repo.UpsertTests(profileID, []testrepo.TestCase{
+		{Key: "42", ID: "42", Summary: "T", Status: "CONFIRMED", Priority: "Medium", Updated: "2026-01-01T00:00:00Z"},
+	}); err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	if err := repo.EditTestField(profileID, "42", "summary", "Updated summary"); err != nil {
+		t.Fatalf("edit summary: %v", err)
+	}
+	if err := repo.EditTestField(profileID, "42", "exec_type", "Automated"); err != nil {
+		t.Fatalf("edit exec_type: %v", err)
+	}
+
+	fake := newKiwiFakeBackend()
+	eng := syncer.New(fake, repo)
+	result, err := eng.CommitChanges(context.Background(), profileID, "PROD")
+	if err != nil {
+		t.Fatalf("CommitChanges: %v", err)
+	}
+	if len(result.Failed) != 0 {
+		t.Fatalf("unexpected failures: %+v", result.Failed)
+	}
+
+	// The rest of the field update (summary) still commits normally.
+	if got := fake.callsWithField("summary"); len(got) != 1 {
+		t.Errorf("summary field updates = %d, want 1 (unaffected by exec_type skip)", len(got))
+	}
+	// exec_type must never reach the backend's field payload.
+	if got := fake.callsWithField("exec_type"); len(got) != 0 {
+		t.Errorf("exec_type must not be sent to UpdateIssue on Kiwi: %+v", got)
+	}
+
+	found := false
+	for _, s := range result.Skipped {
+		if s.EntityType == "test_case" && s.EntityKey == "42" && s.Reason != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a skipped exec_type row, got skipped=%+v", result.Skipped)
+	}
+
+	// The exec_type edit must stay pending; only the summary row clears.
+	after, err := repo.ListPendingChanges(profileID)
+	if err != nil {
+		t.Fatalf("list pending after: %v", err)
+	}
+	if len(after) != 1 {
+		t.Fatalf("expected exactly 1 pending row (exec_type) to remain, got %d: %+v", len(after), after)
+	}
+	if after[0].Field != "exec_type" {
+		t.Errorf("remaining pending row = %+v, want field exec_type", after[0])
 	}
 }

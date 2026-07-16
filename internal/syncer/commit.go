@@ -45,6 +45,8 @@ const (
 	skipReasonReviews       = "backend does not support test reviews"
 	skipReasonContainerEdit = "backend does not support container rename"
 	skipReasonBugCreate     = "backend does not support bug creation"
+	skipReasonComments      = "backend does not support issue comments"
+	skipReasonExecType      = "backend does not support the Test Type (exec_type) field"
 )
 
 // CreatedTest records that a locally-created Test (TempKey, "NEW-N") was created
@@ -449,8 +451,13 @@ testLoop:
 		// their raw Jira id (FR-2.6).
 		if len(fieldChanges) > 0 || len(customFields) > 0 {
 			updates := make(map[string]string, len(fieldChanges))
-			for _, c := range fieldChanges {
+			var execTypeRow *testrepo.PendingChange
+			for i := range fieldChanges {
+				c := fieldChanges[i]
 				updates[c.Field] = c.AfterVal
+				if c.Field == "exec_type" {
+					execTypeRow = &fieldChanges[i]
+				}
 			}
 			fields := e.backend.FieldsForJira(updates)
 			// exec_type (Xray Test Type) is a custom field whose id varies per
@@ -465,7 +472,21 @@ testLoop:
 				} else if resolved {
 					fields[fieldID] = value
 				} else {
+					// The backend has no exec-type field to resolve into (no Test
+					// Type custom field on this instance, or a backend that has no
+					// exec-type concept at all, like Kiwi). Applying the rest of the
+					// update but silently clearing this row would drop the edit on
+					// the floor, so record it as skipped and keep it pending instead
+					// — like folder/precondition rows on a capability-less backend.
 					log.Printf("xtm: no Test Type custom field on this instance, committing %s without exec_type", testKey)
+					if execTypeRow != nil {
+						result.Skipped = append(result.Skipped, SkippedCommit{
+							EntityKey:  testKey,
+							EntityType: execTypeRow.EntityType,
+							Reason:     skipReasonExecType,
+						})
+						skippedIDs[execTypeRow.ID] = true
+					}
 				}
 			}
 			// Generic custom field edits (FR-2.6) share this PUT. The journaled
@@ -750,9 +771,10 @@ testLoop:
 	// Capability-gated bucket dispatch. Each `if caps.X { run } else { skip }` gate
 	// is a no-op for Xray (all capabilities on) — it takes the run branch exactly
 	// as before. A Kiwi backend skips the buckets its model can't express; those
-	// rows are reported in result.Skipped and stay pending. Containers, comments
-	// and runs are supported on both backends and run unconditionally (container
-	// rename is gated inside commitMemberships).
+	// rows are reported in result.Skipped and stay pending. Containers and runs
+	// are supported on both backends and run unconditionally (container rename is
+	// gated inside commitMemberships). Comments post as issue comments, so they
+	// need the same issue-backed write surface as reviews.
 	e.commitMemberships(ctx, profileID, membershipRows, caps, &result)
 	if caps.SupportsPreconditionObjects {
 		e.commitPreconditionEdits(ctx, profileID, preconditionEditRows, &result)
@@ -771,7 +793,11 @@ testLoop:
 	} else {
 		e.skipRows(reviewRows, skipReasonReviews, &result)
 	}
-	e.commitComments(ctx, profileID, commentRows, &result)
+	if issueBackedWrites(caps) {
+		e.commitComments(ctx, profileID, commentRows, &result)
+	} else {
+		e.skipRows(commentRows, skipReasonComments, &result)
+	}
 	e.commitRuns(ctx, profileID, runRows, &result)
 	if requirementWritesSupported(caps) {
 		e.commitRequirements(ctx, profileID, requirementRows, &result)
