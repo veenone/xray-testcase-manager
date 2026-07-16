@@ -149,30 +149,17 @@ func TestRemoteAhead(t *testing.T) {
 }
 
 // TestUnimplementedMethodsReturnErrUnsupported spot-checks a representative
-// sample of the P4.2/P4.3 stubs across signature shapes (read, write,
+// sample of the P4.3-and-later stubs across signature shapes (read, write,
 // 2-return, 3-return, 4-return) to confirm they surface backend.ErrUnsupported
-// rather than a silent zero value.
+// rather than a silent zero value. SearchTestsPage/GetTestFields/
+// ListStatuses/ListContainers/RemoteVersion moved to read_test.go once P4.2
+// implemented them for real.
 func TestUnimplementedMethodsReturnErrUnsupported(t *testing.T) {
 	a := New("http://example.invalid", "alice:secret")
 	ctx := context.Background()
 
-	if _, _, err := a.SearchTestsPage(ctx, "PROJ", "", "", 0, 50); !errors.Is(err, backend.ErrUnsupported) {
-		t.Errorf("SearchTestsPage: expected ErrUnsupported, got %v", err)
-	}
-	if _, err := a.GetTestFields(ctx, "1"); !errors.Is(err, backend.ErrUnsupported) {
-		t.Errorf("GetTestFields: expected ErrUnsupported, got %v", err)
-	}
-	if _, err := a.ListStatuses(ctx, "PROJ"); !errors.Is(err, backend.ErrUnsupported) {
-		t.Errorf("ListStatuses: expected ErrUnsupported, got %v", err)
-	}
 	if err := a.UpdateIssue(ctx, "1", map[string]any{}); !errors.Is(err, backend.ErrUnsupported) {
 		t.Errorf("UpdateIssue: expected ErrUnsupported, got %v", err)
-	}
-	if _, _, err := a.ListContainers(ctx, "PROJ", nil); !errors.Is(err, backend.ErrUnsupported) {
-		t.Errorf("ListContainers: expected ErrUnsupported, got %v", err)
-	}
-	if _, err := a.RemoteVersion(ctx, "test", "1"); !errors.Is(err, backend.ErrUnsupported) {
-		t.Errorf("RemoteVersion: expected ErrUnsupported, got %v", err)
 	}
 	if _, _, ok, err := a.ExecTypeFieldValue(ctx, "Manual"); err != nil || ok {
 		t.Errorf("ExecTypeFieldValue: expected (ok=false, err=nil), got (ok=%v, err=%v)", ok, err)

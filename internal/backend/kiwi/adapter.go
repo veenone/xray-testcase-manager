@@ -2,18 +2,25 @@ package kiwi
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strconv"
 
 	"xray-test-manager/internal/backend"
 )
 
 // Adapter implements backend.Backend against a Kiwi TCMS instance's
-// JSON-RPC API. In THIS task (P4.1) only the following are real:
-// TestConnection, Capabilities, IsDemo, SetRequirementLinkType, RemoteAhead,
-// and the transport/auth/error-typing/plugin-detection-probe they sit on.
-// Every other method is a stub returning backend.ErrUnsupported (or an
-// EMPTY zero-value read where the spec already decided that — see §3 of
-// p4_0-kiwi-integration-spec.md) with a // P4.2 or // P4.3 marker for the
-// task that fills it in.
+// JSON-RPC API. P4.1 built TestConnection, Capabilities, IsDemo,
+// SetRequirementLinkType, RemoteAhead, and the transport/auth/error-typing/
+// plugin-detection-probe they sit on. P4.2 (this task) adds the core read
+// mapping: the test pull (SearchTestsPage/GetTestFields/GetTestSteps/
+// ListTestsBasic/GetTestMeta), containers + runs (ListContainers/
+// TestExecutionsForTest/GetTestRuns/ExecPlans), metadata (ListStatuses/
+// ListPriorities/ProjectComponents/ProjectVersions), and the content-hash
+// RemoteVersion. Requirements/review-plugin reads, bugs, and every WRITE
+// method remain stubs (marked // P4.3), and the genuinely-no-analog EMPTY
+// reads (preconditions, folders, transitions, custom fields) stay
+// zero-value per §3 of p4_0-kiwi-integration-spec.md.
 type Adapter struct {
 	c *Client
 }
@@ -67,16 +74,110 @@ func (a *Adapter) SetRequirementLinkType(name string) {}
 
 // --- tests ---
 
+// fetchTestCases calls TestCase.filter(filter) and decodes the result into
+// []kiwiTestCase (spec §3.2/§9.1b).
+func (a *Adapter) fetchTestCases(ctx context.Context, filter map[string]any) ([]kiwiTestCase, error) {
+	var rows []kiwiTestCase
+	if err := a.c.call(ctx, "TestCase.filter", []any{filter}, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// fetchTestCaseByID fetches a single TestCase by pk via
+// TestCase.filter({"pk": id}), erroring if no row is returned.
+func (a *Adapter) fetchTestCaseByID(ctx context.Context, id int) (kiwiTestCase, error) {
+	rows, err := a.fetchTestCases(ctx, map[string]any{"pk": id})
+	if err != nil {
+		return kiwiTestCase{}, err
+	}
+	if len(rows) == 0 {
+		return kiwiTestCase{}, fmt.Errorf("kiwi: test case %d not found", id)
+	}
+	return rows[0], nil
+}
+
+// SearchTestsPage is the core test pull (spec §3.1, §3.2). Kiwi's
+// TestCase.filter has no offset/limit in its RPC signature (spec §6): it
+// always returns the FULL matching array, so pagination is emulated
+// client-side by sorting the result by pk ascending and slicing
+// [startAt:startAt+maxResults] — a fresh full-scope fetch per call (no
+// cross-call id cache in this task; see p4_2-report.md "pagination
+// approach" for the perf tradeoff, spec OQ-7).
+//
+// projectKey narrows via `category__product__name` — the exact dunder
+// lookup path spec §2 gives as Kiwi's product-scoping example
+// (`TestCase.filter({"category__product__name": <product>})`). scopeJQL is
+// always ignored (Kiwi has no JQL; spec §2). since is always ignored: Kiwi's
+// TestCase has no native `updated` field to filter on server-side, so a
+// Kiwi pull is always "full" and the hub diffs locally via content-hash
+// (spec §5 OQ-2).
 func (a *Adapter) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, since string, startAt, maxResults int) ([]backend.Test, int, error) {
-	return nil, 0, backend.ErrUnsupported // P4.2
+	filter := map[string]any{}
+	if projectKey != "" {
+		filter["category__product__name"] = projectKey
+	}
+	rows, err := a.fetchTestCases(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+
+	total := len(rows)
+	if startAt < 0 {
+		startAt = 0
+	}
+	if startAt >= total {
+		return []backend.Test{}, total, nil
+	}
+	end := total
+	if maxResults > 0 && startAt+maxResults < total {
+		end = startAt + maxResults
+	}
+	page := rows[startAt:end]
+	out := make([]backend.Test, len(page))
+	for i, tc := range page {
+		out[i] = toTest(tc)
+	}
+	return out, total, nil
 }
 
+// ListTestsBasic maps keys (Kiwi pks, stringified) via
+// TestCase.filter({"pk__in": [...]}) per spec §3.1.
 func (a *Adapter) ListTestsBasic(ctx context.Context, keys []string) ([]backend.TestBasic, error) {
-	return nil, backend.ErrUnsupported // P4.2
+	if len(keys) == 0 {
+		return []backend.TestBasic{}, nil
+	}
+	ids := make([]int, len(keys))
+	for i, k := range keys {
+		id, err := parseKiwiID(k)
+		if err != nil {
+			return nil, err
+		}
+		ids[i] = id
+	}
+	rows, err := a.fetchTestCases(ctx, map[string]any{"pk__in": ids})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]backend.TestBasic, len(rows))
+	for i, tc := range rows {
+		out[i] = toTestBasic(tc)
+	}
+	return out, nil
 }
 
+// GetTestFields is a single TestCase refetch by pk (spec §3.1).
 func (a *Adapter) GetTestFields(ctx context.Context, key string) (backend.Test, error) {
-	return backend.Test{}, backend.ErrUnsupported // P4.2
+	id, err := parseKiwiID(key)
+	if err != nil {
+		return backend.Test{}, err
+	}
+	tc, err := a.fetchTestCaseByID(ctx, id)
+	if err != nil {
+		return backend.Test{}, err
+	}
+	return toTest(tc), nil
 }
 
 func (a *Adapter) CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error) {
@@ -87,16 +188,38 @@ func (a *Adapter) UpdateIssue(ctx context.Context, key string, fields map[string
 	return backend.ErrUnsupported // P4.2 (write)
 }
 
+// GetTestMeta maps author/created fields per spec §3.1 ("Updated
+// best-effort"); see toTestMeta for why Updated/UpdatedBy stay empty.
 func (a *Adapter) GetTestMeta(ctx context.Context, key string) (backend.TestMeta, error) {
-	return backend.TestMeta{}, backend.ErrUnsupported // P4.2
+	id, err := parseKiwiID(key)
+	if err != nil {
+		return backend.TestMeta{}, err
+	}
+	tc, err := a.fetchTestCaseByID(ctx, id)
+	if err != nil {
+		return backend.TestMeta{}, err
+	}
+	return toTestMeta(tc), nil
 }
 
 // --- concurrency ---
 
-// RemoteVersion is stubbed until P4.2 wires the content-hash token (spec
-// §5: hash of summary|text|case_status|priority|sorted(tags)|sorted(components)).
+// RemoteVersion computes the content-hash token (spec §5 option 2) for the
+// TestCase identified by externalKey. entityType is accepted but unused:
+// every caller in this codebase passes "test" (internal/syncer/commit.go),
+// and Kiwi has no other entity kind with pending-change concurrency
+// tracking in P4.2 (preconditions/containers are read-only here). See
+// version.go for the exact hashed field set.
 func (a *Adapter) RemoteVersion(ctx context.Context, entityType, externalKey string) (backend.VersionToken, error) {
-	return "", backend.ErrUnsupported // P4.2
+	id, err := parseKiwiID(externalKey)
+	if err != nil {
+		return "", err
+	}
+	tc, err := a.fetchTestCaseByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return backend.VersionToken(contentHash(tc)), nil
 }
 
 // RemoteAhead implements the content-hash ordering rule from spec §5: two
@@ -118,8 +241,19 @@ func (a *Adapter) RemoteAhead(base, remote backend.VersionToken) bool {
 
 // --- steps ---
 
+// GetTestSteps returns the flattened steps for one TestCase (spec §3.3,
+// §7), using the SAME flattenSteps helper toTest calls when building
+// Test.Description — the shared transform the brief requires.
 func (a *Adapter) GetTestSteps(ctx context.Context, key string) ([]backend.Step, error) {
-	return nil, backend.ErrUnsupported // P4.2 (inline-text flattening, spec §7)
+	id, err := parseKiwiID(key)
+	if err != nil {
+		return nil, err
+	}
+	tc, err := a.fetchTestCaseByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return flattenSteps(tc.Text), nil
 }
 
 func (a *Adapter) CreateTestStep(ctx context.Context, key, action, data, expected string) (string, error) {
@@ -162,12 +296,108 @@ func (a *Adapter) ExecTypeFieldValue(ctx context.Context, execType string) (fiel
 
 // --- containers ---
 
+// ListContainers pulls TestPlans and TestRuns for the product (spec §3.5).
+// Each plan/run is fetched once, then its membership is fetched with a
+// second per-container call (TestCase.filter({"plan":id}) /
+// TestExecution.filter({"run":id})) exactly as spec §3.5's table
+// describes it — Kiwi's RPC surface has no single call that returns
+// container + membership together. There is no KindTestSet: Kiwi has no
+// Test Set concept (spec §3.5, §4.1).
 func (a *Adapter) ListContainers(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]backend.Container, []backend.ContainerLink, error) {
-	return nil, nil, backend.ErrUnsupported // P4.2
+	planFilter := map[string]any{}
+	runFilter := map[string]any{}
+	if projectKey != "" {
+		planFilter["product__name"] = projectKey
+		runFilter["plan__product__name"] = projectKey
+	}
+
+	var plans []kiwiTestPlan
+	if err := a.c.call(ctx, "TestPlan.filter", []any{planFilter}, &plans); err != nil {
+		return nil, nil, err
+	}
+	var runs []kiwiTestRun
+	if err := a.c.call(ctx, "TestRun.filter", []any{runFilter}, &runs); err != nil {
+		return nil, nil, err
+	}
+
+	total := len(plans) + len(runs)
+	done := 0
+	report := func() {
+		done++
+		if onProgress != nil {
+			onProgress(done, total)
+		}
+	}
+
+	containers := make([]backend.Container, 0, total)
+	links := make([]backend.ContainerLink, 0)
+
+	for _, p := range plans {
+		containers = append(containers, toContainerFromPlan(p))
+		cases, err := a.fetchTestCases(ctx, map[string]any{"plan": p.ID})
+		if err != nil {
+			return nil, nil, err
+		}
+		planKey := strconv.Itoa(p.ID)
+		for _, c := range cases {
+			links = append(links, backend.ContainerLink{ContainerKey: planKey, TestKey: strconv.Itoa(c.ID)})
+		}
+		report()
+	}
+
+	for _, r := range runs {
+		containers = append(containers, toContainerFromRun(r))
+		var execs []kiwiTestExecution
+		if err := a.c.call(ctx, "TestExecution.filter", []any{map[string]any{"run": r.ID}}, &execs); err != nil {
+			return nil, nil, err
+		}
+		for _, e := range execs {
+			links = append(links, toExecContainerLink(e))
+		}
+		report()
+	}
+
+	return containers, links, nil
 }
 
+// TestExecutionsForTest finds the executions referencing a case and returns
+// their parent runs as KindTestExec containers, plus the per-execution
+// membership links (spec §3.5).
 func (a *Adapter) TestExecutionsForTest(ctx context.Context, testKey string) ([]backend.Container, []backend.ContainerLink, error) {
-	return nil, nil, backend.ErrUnsupported // P4.2
+	id, err := parseKiwiID(testKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	var execs []kiwiTestExecution
+	if err := a.c.call(ctx, "TestExecution.filter", []any{map[string]any{"case": id}}, &execs); err != nil {
+		return nil, nil, err
+	}
+	if len(execs) == 0 {
+		return []backend.Container{}, []backend.ContainerLink{}, nil
+	}
+
+	seen := map[int]bool{}
+	runIDs := make([]int, 0, len(execs))
+	for _, e := range execs {
+		if !seen[e.Run] {
+			seen[e.Run] = true
+			runIDs = append(runIDs, e.Run)
+		}
+	}
+	var runs []kiwiTestRun
+	if err := a.c.call(ctx, "TestRun.filter", []any{map[string]any{"pk__in": runIDs}}, &runs); err != nil {
+		return nil, nil, err
+	}
+
+	containers := make([]backend.Container, len(runs))
+	for i, r := range runs {
+		containers[i] = toContainerFromRun(r)
+	}
+	links := make([]backend.ContainerLink, len(execs))
+	for i, e := range execs {
+		links[i] = toExecContainerLink(e)
+	}
+	return containers, links, nil
 }
 
 func (a *Adapter) CreateContainer(ctx context.Context, projectKey, kind, summary string) (string, error) {
@@ -194,12 +424,41 @@ func (a *Adapter) DeleteContainer(ctx context.Context, kind, containerKey string
 	return backend.ErrUnsupported // P4.2 (write)
 }
 
+// GetTestRuns returns the per-case execution rows of a TestRun (spec §3.7).
+// "execKey" is the Kiwi TestRun id, matching how the interface's Xray
+// implementation treats a Test Execution issue key.
 func (a *Adapter) GetTestRuns(ctx context.Context, execKey string) ([]backend.TestRun, error) {
-	return nil, backend.ErrUnsupported // P4.2
+	id, err := parseKiwiID(execKey)
+	if err != nil {
+		return nil, err
+	}
+	var execs []kiwiTestExecution
+	if err := a.c.call(ctx, "TestExecution.filter", []any{map[string]any{"run": id}}, &execs); err != nil {
+		return nil, err
+	}
+	out := make([]backend.TestRun, len(execs))
+	for i, e := range execs {
+		out[i] = toTestRunDTO(e)
+	}
+	return out, nil
 }
 
+// ExecPlans returns the plan(s) a run belongs to. A Kiwi TestRun belongs to
+// exactly one TestPlan (spec §3.5), so this returns a single-element slice
+// (or empty if the run id doesn't resolve).
 func (a *Adapter) ExecPlans(ctx context.Context, execKey string) ([]string, error) {
-	return nil, backend.ErrUnsupported // P4.2
+	id, err := parseKiwiID(execKey)
+	if err != nil {
+		return nil, err
+	}
+	var runs []kiwiTestRun
+	if err := a.c.call(ctx, "TestRun.filter", []any{map[string]any{"pk": id}}, &runs); err != nil {
+		return nil, err
+	}
+	if len(runs) == 0 {
+		return []string{}, nil
+	}
+	return []string{strconv.Itoa(runs[0].Plan)}, nil
 }
 
 // --- preconditions ---
@@ -318,20 +577,69 @@ func (a *Adapter) PostTransition(ctx context.Context, key, transitionID string) 
 
 // --- metadata ---
 
+// ListStatuses returns every TestCaseStatus name. Kiwi statuses are a
+// global enum, not per-project, so projectKey is unused (spec §3.12's table
+// filters TestCaseStatus.filter({}) — no product narrowing).
 func (a *Adapter) ListStatuses(ctx context.Context, projectKey string) ([]string, error) {
-	return nil, backend.ErrUnsupported // P4.2
+	var rows []kiwiName
+	if err := a.c.call(ctx, "TestCaseStatus.filter", []any{map[string]any{}}, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.Name
+	}
+	return out, nil
 }
 
+// ListPriorities returns every active Priority value. Global, not
+// per-project (spec §3.12: Priority.filter({"is_active":true})).
 func (a *Adapter) ListPriorities(ctx context.Context, projectKey string) ([]string, error) {
-	return nil, backend.ErrUnsupported // P4.2
+	var rows []kiwiValue
+	if err := a.c.call(ctx, "Priority.filter", []any{map[string]any{"is_active": true}}, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.Value
+	}
+	return out, nil
 }
 
+// ProjectComponents returns component names scoped to the product (spec
+// §3.12: Component.filter({"product__name":P})).
 func (a *Adapter) ProjectComponents(ctx context.Context, projectKey string) ([]string, error) {
-	return nil, backend.ErrUnsupported // P4.2
+	filter := map[string]any{}
+	if projectKey != "" {
+		filter["product__name"] = projectKey
+	}
+	var rows []kiwiName
+	if err := a.c.call(ctx, "Component.filter", []any{filter}, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.Name
+	}
+	return out, nil
 }
 
+// ProjectVersions returns version values scoped to the product (spec
+// §3.12: Version.filter({"product__name":P})).
 func (a *Adapter) ProjectVersions(ctx context.Context, projectKey string) ([]string, error) {
-	return nil, backend.ErrUnsupported // P4.2
+	filter := map[string]any{}
+	if projectKey != "" {
+		filter["product__name"] = projectKey
+	}
+	var rows []kiwiValue
+	if err := a.c.call(ctx, "Version.filter", []any{filter}, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.Value
+	}
+	return out, nil
 }
 
 // --- comments ---
