@@ -1,11 +1,66 @@
 package kiwi
 
 import (
+	"bytes"
+	"encoding/json"
 	"strconv"
 	"strings"
 
 	"xray-test-manager/internal/backend"
 )
+
+// kiwiNames is a lenient decoder for a Kiwi m2m field that may serialize
+// EITHER as a bare string array (`["smoke","regression"]`) OR as an array
+// of objects carrying a name/value (`[{"id":1,"name":"smoke"}]`). modernrpc
+// serializes m2m relations inconsistently across Kiwi versions/plugins, and
+// no spec §9 fixture pins the tag/component element shape (spec §3.2 only
+// says "m2m names"), so hard-typing these as []string risks a whole-response
+// json.Unmarshal failure against a real instance — which would break the
+// entire test pull at once, the opposite of the brief's "inferred fields
+// degrade safely / best-effort" rule. This type accepts both shapes and
+// falls back to nil (not an error) on any genuinely unexpected shape, so one
+// odd field can never crash the whole TestCase decode.
+type kiwiNames []string
+
+func (n *kiwiNames) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || string(b) == "null" {
+		*n = nil
+		return nil
+	}
+
+	// Shape 1: a bare string array.
+	var strs []string
+	if err := json.Unmarshal(b, &strs); err == nil {
+		*n = strs
+		return nil
+	}
+
+	// Shape 2: an array of objects with a name or value field.
+	var objs []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(b, &objs); err == nil {
+		out := make([]string, 0, len(objs))
+		for _, o := range objs {
+			switch {
+			case o.Name != "":
+				out = append(out, o.Name)
+			case o.Value != "":
+				out = append(out, o.Value)
+			}
+		}
+		*n = out
+		return nil
+	}
+
+	// Genuinely unexpected shape (e.g. a bare scalar, or objects with
+	// neither name nor value): degrade to nil rather than failing the
+	// entire enclosing TestCase.filter response.
+	*n = nil
+	return nil
+}
 
 // kiwiUser mirrors the subset of Kiwi's User RPC output that
 // Adapter.TestConnection needs: username, first_name, last_name, email
@@ -43,17 +98,17 @@ func toUser(u kiwiUser) *backend.User {
 // Tag/Component are read as plain name-string arrays per the spec table's
 // "(m2m names)" annotation (§3.2).
 type kiwiTestCase struct {
-	ID             int      `json:"id"`
-	Summary        string   `json:"summary"`
-	Text           string   `json:"text"`
-	CaseStatusName string   `json:"case_status__name"`
-	PriorityValue  string   `json:"priority__value"`
-	IsAutomated    bool     `json:"is_automated"`
-	AuthorUsername string   `json:"author__username"`
-	CreateDate     string   `json:"create_date"`
-	Tag            []string `json:"tag"`
-	Component      []string `json:"component"`
-	ProductName    string   `json:"category__product__name"`
+	ID             int       `json:"id"`
+	Summary        string    `json:"summary"`
+	Text           string    `json:"text"`
+	CaseStatusName string    `json:"case_status__name"`
+	PriorityValue  string    `json:"priority__value"`
+	IsAutomated    bool      `json:"is_automated"`
+	AuthorUsername string    `json:"author__username"`
+	CreateDate     string    `json:"create_date"`
+	Tag            kiwiNames `json:"tag"`
+	Component      kiwiNames `json:"component"`
+	ProductName    string    `json:"category__product__name"`
 }
 
 // flattenSteps is the SINGLE shared transform for Kiwi's inline-text step
@@ -97,8 +152,8 @@ func toTest(tc kiwiTestCase) backend.Test {
 		Description: description,
 		Status:      tc.CaseStatusName,
 		Priority:    tc.PriorityValue,
-		Labels:      tc.Tag,
-		Components:  tc.Component,
+		Labels:      []string(tc.Tag),
+		Components:  []string(tc.Component),
 		Updated:     "",
 		FolderID:    "",
 		ExecType:    execType,

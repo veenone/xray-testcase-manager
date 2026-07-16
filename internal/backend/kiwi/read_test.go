@@ -131,6 +131,84 @@ func TestGetTestFieldsInvalidKey(t *testing.T) {
 	}
 }
 
+// TestTagComponentLenientDecode proves the kiwiNames lenient decoder: a
+// bare string array and an array of {id,name} objects both yield the same
+// []string on the mapped Test, and a genuinely unexpected shape (objects
+// with neither name nor value) degrades the field to nil WITHOUT crashing
+// the whole TestCase.filter decode (so the other fields still map).
+func TestTagComponentLenientDecode(t *testing.T) {
+	cases := []struct {
+		name       string
+		tag        any
+		component  any
+		wantLabels []string
+		wantComps  []string
+	}{
+		{
+			name:       "bare string arrays",
+			tag:        []string{"smoke", "regression"},
+			component:  []string{"login", "auth"},
+			wantLabels: []string{"smoke", "regression"},
+			wantComps:  []string{"login", "auth"},
+		},
+		{
+			name: "arrays of {id,name} objects",
+			tag: []map[string]any{
+				{"id": 1, "name": "smoke"}, {"id": 2, "name": "regression"},
+			},
+			component: []map[string]any{
+				{"id": 5, "name": "login"}, {"id": 6, "name": "auth"},
+			},
+			wantLabels: []string{"smoke", "regression"},
+			wantComps:  []string{"login", "auth"},
+		},
+		{
+			name:       "unexpected non-array shapes degrade to nil",
+			tag:        "not-even-an-array",
+			component:  42,
+			wantLabels: nil,
+			wantComps:  nil,
+		},
+		{
+			name:       "array of objects lacking name/value yields empty (understood shape, no names)",
+			tag:        []map[string]any{{"id": 1, "colour": "red"}},
+			component:  []string{},
+			wantLabels: []string{},
+			wantComps:  []string{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := newMockRPCServer(t)
+			mock.handleResult("TestCase.filter", []map[string]any{
+				{
+					"id": 42, "summary": "Login with valid creds", "text": "steps",
+					"case_status__name": "CONFIRMED", "priority__value": "P1",
+					"tag": tc.tag, "component": tc.component,
+				},
+			})
+			a, closeFn := newTestAdapter(t, mock)
+			defer closeFn()
+
+			got, err := a.GetTestFields(context.Background(), "42")
+			if err != nil {
+				t.Fatalf("GetTestFields: %v (a weird tag/component shape must not crash the whole decode)", err)
+			}
+			// The rest of the case must still map even when tag/component are odd.
+			if got.Summary != "Login with valid creds" || got.Status != "CONFIRMED" || got.Priority != "P1" {
+				t.Fatalf("core fields did not map: %#v", got)
+			}
+			if !reflect.DeepEqual([]string(got.Labels), tc.wantLabels) {
+				t.Errorf("Labels = %#v, want %#v", got.Labels, tc.wantLabels)
+			}
+			if !reflect.DeepEqual([]string(got.Components), tc.wantComps) {
+				t.Errorf("Components = %#v, want %#v", got.Components, tc.wantComps)
+			}
+		})
+	}
+}
+
 // --- steps (spec §3.3, §7) ---
 
 // TestGetTestStepsFlattenAndEmpty covers both branches of flattenSteps:
