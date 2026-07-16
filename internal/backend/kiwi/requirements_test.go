@@ -48,11 +48,20 @@ func TestPluginDetectionRequirementsPresent(t *testing.T) {
 	if got := a.Capabilities().SupportsRequirementObjects; !got {
 		t.Error("Capabilities().SupportsRequirementObjects = false, want true after requirements-plugin detection")
 	}
-	// SupportsIssueLinkTypes is deliberately NOT flipped by this task (see
-	// adapter.go's Capabilities doc comment) even though the requirements
-	// plugin was detected.
-	if got := a.Capabilities().SupportsIssueLinkTypes; got {
-		t.Error("Capabilities().SupportsIssueLinkTypes = true, want false: not wired in this task")
+	// SupportsIssueLinkTypes flips true alongside SupportsRequirementObjects
+	// (spec §4.2's full requirements-plugin delta).
+	if got := a.Capabilities().SupportsIssueLinkTypes; !got {
+		t.Error("Capabilities().SupportsIssueLinkTypes = false, want true after requirements-plugin detection")
+	}
+	// ListIssueLinkTypes serves the static vocabulary once the plugin is
+	// detected (spec §3.8).
+	lts, err := a.ListIssueLinkTypes(context.Background())
+	if err != nil {
+		t.Fatalf("ListIssueLinkTypes: %v", err)
+	}
+	wantLTs := []string{"verifies", "validates", "derives-from", "related"}
+	if !reflect.DeepEqual(lts, wantLTs) {
+		t.Errorf("ListIssueLinkTypes = %#v, want %#v", lts, wantLTs)
 	}
 }
 
@@ -118,6 +127,46 @@ func TestPluginDetectionDegradedStillPresent(t *testing.T) {
 	}
 	if !a.hasReviewPlugin {
 		t.Error("expected hasReviewPlugin=true: a 403 proves the method IS registered (installed, degraded)")
+	}
+}
+
+// TestPluginDetectionTransportErrorLeavesFlagOff is the safety-critical
+// fallback: if the plugin probe hits a RAW TRANSPORT error (HTTP 500 with a
+// non-JSON body here — could equally be a closed connection or truncated
+// response), the error carries NO signal about whether the method is
+// registered, so detectPlugin must default the flag OFF, NOT misread it as
+// "installed". Login + User.filter succeed, so TestConnection itself still
+// returns OK — only the plugin probe transport-fails. Asserts
+// Capabilities().SupportsRequirementObjects/SupportsIssueLinkTypes stay
+// false and ListIssueLinkTypes stays empty.
+func TestPluginDetectionTransportErrorLeavesFlagOff(t *testing.T) {
+	mock := newMockRPCServer(t)
+	loginOK(mock)
+	// The requirements probe transport-fails; the review probe is simply
+	// unregistered (-32601 -> absent), keeping the setup focused.
+	mock.handleTransportFail("Requirement.filter")
+	a, closeFn := newTestAdapter(t, mock)
+	defer closeFn()
+
+	u, err := a.TestConnection(context.Background())
+	if err != nil {
+		t.Fatalf("TestConnection should still succeed (login/user-fetch are fine): %v", err)
+	}
+	if u == nil {
+		t.Fatal("expected a non-nil user from a successful TestConnection")
+	}
+	if a.hasRequirementsPlugin {
+		t.Error("expected hasRequirementsPlugin=false: a raw transport error must NOT be read as installed")
+	}
+	caps := a.Capabilities()
+	if caps.SupportsRequirementObjects {
+		t.Error("Capabilities().SupportsRequirementObjects = true, want false after a transport-errored probe")
+	}
+	if caps.SupportsIssueLinkTypes {
+		t.Error("Capabilities().SupportsIssueLinkTypes = true, want false after a transport-errored probe")
+	}
+	if lts, err := a.ListIssueLinkTypes(context.Background()); err != nil || len(lts) != 0 {
+		t.Errorf("ListIssueLinkTypes: expected (empty, nil) after a transport-errored probe, got (%v, %v)", lts, err)
 	}
 }
 

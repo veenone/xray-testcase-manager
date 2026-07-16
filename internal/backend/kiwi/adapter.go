@@ -586,8 +586,25 @@ func (a *Adapter) UpdateTestRequirements(ctx context.Context, testKey string, ad
 	return backend.ErrUnsupported // Phase 5 (write)
 }
 
+// ListIssueLinkTypes returns the requirements-plugin's static typed-link
+// vocabulary when the plugin was detected, else empty (spec §3.8: "static:
+// [\"verifies\",\"validates\",\"derives-from\",\"related\"] (the plugin's
+// link_type values, from rpc.py per-case output link_type)"). This is a
+// fixed list, not an RPC call — the plugin exposes no "list link types" RPC,
+// only these values appearing as the `link_type` field on per-case rows.
+// Absent-plugin returns (nil, nil), not an error, mirroring ListRequirements'
+// EMPTY behavior.
+//
+// NOTE: this task only advertises the capability and the read-only type
+// list. Carrying the CHOSEN link type per coverage link on WRITE (so an
+// edit can say a test "validates" vs "verifies" a requirement) is Phase 5:
+// backend.RequirementLink has no LinkType field yet, and dto.go is out of
+// scope here.
 func (a *Adapter) ListIssueLinkTypes(ctx context.Context) ([]string, error) {
-	return nil, backend.ErrUnsupported // out of this task's scope: the P4.3 brief's deliverables don't call for wiring this (see Capabilities' SupportsIssueLinkTypes note); left as the P4.1 stub
+	if !a.hasRequirementsPlugin {
+		return nil, nil
+	}
+	return []string{"verifies", "validates", "derives-from", "related"}, nil
 }
 
 func (a *Adapter) CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error) {
@@ -755,14 +772,16 @@ func (a *Adapter) FieldsForJira(updates map[string]string) map[string]any {
 
 // Capabilities reports the base-Kiwi feature set, with the
 // requirements-plugin delta applied if TestConnection's detection probe
-// found it (spec §4.1, §4.2). SupportsRequirementObjects is the ONLY field
-// this task flips per the P4.3 brief's explicit deliverable (b); spec
-// §4.2's "SupportsIssueLinkTypes=true" pairing and any SupportsReview field
-// are deliberately NOT wired here — see this method's flip below and
-// Adapter.hasReviewPlugin's doc comment for why. If Capabilities() is
-// called before TestConnection ever ran, hasRequirementsPlugin is still its
-// zero value (false), so the caps below are the safe, plugin-off default
-// (brief: "base caps when detection hasn't run").
+// found it (spec §4.1, §4.2). When the requirements plugin is present,
+// BOTH SupportsRequirementObjects AND SupportsIssueLinkTypes flip true —
+// the full spec §4.2 delta (typed test<->requirement links
+// verifies/validates/derives-from/related, served by ListIssueLinkTypes).
+// A SupportsReview field is deliberately NOT wired here — see
+// Adapter.hasReviewPlugin's doc comment for the deferred review scope. If
+// Capabilities() is called before TestConnection ever ran,
+// hasRequirementsPlugin is still its zero value (false), so the caps below
+// are the safe, plugin-off default (brief: "base caps when detection hasn't
+// run").
 func (a *Adapter) Capabilities() backend.Capabilities {
 	caps := backend.Capabilities{
 		Name:                        "kiwi",
@@ -773,7 +792,7 @@ func (a *Adapter) Capabilities() backend.Capabilities {
 		SupportsFolders:             false,
 		SupportsPreconditionObjects: false,
 		SupportsRequirementObjects:  false, // flipped below if the requirements plugin was detected
-		SupportsIssueLinkTypes:      false, // NOT flipped in this task: brief's deliverable (b) names only SupportsRequirementObjects; ListIssueLinkTypes stays an ErrUnsupported stub (see adapter.go's requirements section)
+		SupportsIssueLinkTypes:      false, // flipped below if the requirements plugin was detected (typed links verifies/validates/derives-from/related, spec §3.8/§4.2)
 		SupportsEnvironments:        true,  // Build ~= environment
 		SupportsContainers:          true,
 		ContainerKinds:              []string{backend.KindTestPlan, backend.KindTestExec}, // no KindTestSet in Kiwi
@@ -786,6 +805,7 @@ func (a *Adapter) Capabilities() backend.Capabilities {
 	}
 	if a.hasRequirementsPlugin {
 		caps.SupportsRequirementObjects = true
+		caps.SupportsIssueLinkTypes = true // typed test<->requirement links (spec §3.8/§4.2); ListIssueLinkTypes serves the static vocabulary
 	}
 	return caps
 }

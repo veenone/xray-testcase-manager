@@ -15,7 +15,14 @@ import (
 type mockRPCServer struct {
 	t        *testing.T
 	handlers map[string]func(params []json.RawMessage) (result any, rpcErr *rpcErrorObj)
-	requests []recordedRequest
+	// transportFail names methods that respond with a RAW transport-level
+	// failure (HTTP 500 + a non-JSON body) instead of a well-formed
+	// JSON-RPC envelope — simulating a proxy/server error or a truncated
+	// response. The client surfaces this as a plain wrapped error, NOT a
+	// *kiwiRPCError, which is exactly the "unknown → default OFF" case
+	// detectPlugin must handle without misreading it as "installed".
+	transportFail map[string]bool
+	requests      []recordedRequest
 }
 
 // recordedRequest captures one decoded call for assertions (e.g. that the
@@ -29,8 +36,9 @@ type recordedRequest struct {
 func newMockRPCServer(t *testing.T) *mockRPCServer {
 	t.Helper()
 	return &mockRPCServer{
-		t:        t,
-		handlers: map[string]func(params []json.RawMessage) (any, *rpcErrorObj){},
+		t:             t,
+		handlers:      map[string]func(params []json.RawMessage) (any, *rpcErrorObj){},
+		transportFail: map[string]bool{},
 	}
 }
 
@@ -54,6 +62,13 @@ func (m *mockRPCServer) handleError(method string, code int, message string) {
 	})
 }
 
+// handleTransportFail marks method to respond with a raw HTTP 500 +
+// non-JSON body, so the client sees a transport-level error rather than a
+// decoded JSON-RPC error object.
+func (m *mockRPCServer) handleTransportFail(method string) {
+	m.transportFail[method] = true
+}
+
 func (m *mockRPCServer) start() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(m.serveHTTP))
 }
@@ -75,6 +90,13 @@ func (m *mockRPCServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m.requests = append(m.requests, recordedRequest{Method: req.Method, Params: req.Params, Cookies: r.Cookies()})
+
+	if m.transportFail[req.Method] {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("502 Bad Gateway (mock transport failure)"))
+		return
+	}
 
 	resp := struct {
 		JSONRPC string       `json:"jsonrpc"`

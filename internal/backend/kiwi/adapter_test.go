@@ -170,9 +170,6 @@ func TestUnimplementedMethodsReturnErrUnsupported(t *testing.T) {
 	if err := a.PostTransition(ctx, "1", "11"); !errors.Is(err, backend.ErrUnsupported) {
 		t.Errorf("PostTransition: expected ErrUnsupported, got %v", err)
 	}
-	if _, err := a.ListIssueLinkTypes(ctx); !errors.Is(err, backend.ErrUnsupported) {
-		t.Errorf("ListIssueLinkTypes: expected ErrUnsupported, got %v", err)
-	}
 	if _, _, err := a.ListBugs(ctx, "PROJ", nil, "Bug", nil); !errors.Is(err, backend.ErrUnsupported) {
 		t.Errorf("ListBugs: expected ErrUnsupported, got %v", err)
 	}
@@ -199,6 +196,12 @@ func TestEmptyStubsReturnEmptyNoError(t *testing.T) {
 	}
 	if links, err := a.ListReqToReqLinks(ctx, []string{"1"}); err != nil || len(links) != 0 {
 		t.Errorf("ListReqToReqLinks: expected (empty, nil), got (%v, %v)", links, err)
+	}
+	// ListIssueLinkTypes with no plugin detected (fresh adapter, no
+	// TestConnection) returns empty, not an error — same EMPTY class as the
+	// absent requirements read path.
+	if lts, err := a.ListIssueLinkTypes(ctx); err != nil || len(lts) != 0 {
+		t.Errorf("ListIssueLinkTypes (plugin absent): expected (empty, nil), got (%v, %v)", lts, err)
 	}
 }
 
