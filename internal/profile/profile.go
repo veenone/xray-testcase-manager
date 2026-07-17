@@ -43,8 +43,15 @@ type Profile struct {
 	// AllowUntrustedTLS disables TLS certificate verification for this
 	// profile's Jira connection. Only use this for trusted internal servers
 	// where no CA certificate is available.
-	AllowUntrustedTLS bool      `json:"allowUntrustedTls"`
-	CreatedAt         time.Time `json:"createdAt"`
+	AllowUntrustedTLS bool `json:"allowUntrustedTls"`
+	// Backend selects which system this profile talks to: "xray" (default,
+	// Jira Data Center + Xray Server/DC) or "kiwi" (Kiwi TCMS). A blank value
+	// reads as "xray" (back-compat for rows written before this column
+	// existed). For a "kiwi" profile, the credential stored in the OS
+	// credential manager holds "username:password" (Kiwi session-login),
+	// not a PAT.
+	Backend   string    `json:"backend"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // Manager is the profile CRUD service backed by the local store (FR-5.1).
@@ -60,7 +67,7 @@ func NewManager(s *store.Store) *Manager {
 // List returns all profiles, ordered by name.
 func (m *Manager) List() ([]Profile, error) {
 	rows, err := m.db.Query(
-		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, created_at FROM profiles ORDER BY name`)
+		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, backend, created_at FROM profiles ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list profiles: %w", err)
 	}
@@ -80,7 +87,7 @@ func (m *Manager) List() ([]Profile, error) {
 // Get returns one profile by id, or ErrNotFound.
 func (m *Manager) Get(id string) (Profile, error) {
 	row := m.db.QueryRow(
-		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, created_at FROM profiles WHERE id = ?`, id)
+		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, backend, created_at FROM profiles WHERE id = ?`, id)
 	p, err := scanProfile(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Profile{}, ErrNotFound
@@ -94,8 +101,9 @@ func (m *Manager) Get(id string) (Profile, error) {
 // to "Bug"); bugProjectMode / bugProjectKey choose which project a filed defect
 // lands in (blank mode defaults to "test"). caCert is an optional PEM-encoded CA
 // certificate to trust when connecting; allowUntrustedTLS disables certificate
-// verification (RND_P_4TFINT_05-243).
-func (m *Manager) Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert string, allowUntrustedTLS bool) (Profile, error) {
+// verification (RND_P_4TFINT_05-243). backendType selects the connection
+// backend ("xray" default | "kiwi"); blank normalizes to "xray".
+func (m *Manager) Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert string, allowUntrustedTLS bool, backendType string) (Profile, error) {
 	p := Profile{
 		ID:                uuid.NewString(),
 		Name:              name,
@@ -107,12 +115,13 @@ func (m *Manager) Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugP
 		BugProjectKey:     strings.TrimSpace(bugProjectKey),
 		CACert:            strings.TrimSpace(caCert),
 		AllowUntrustedTLS: allowUntrustedTLS,
+		Backend:           backendOrDefault(backendType),
 		CreatedAt:         time.Now().UTC(),
 	}
 	_, err := m.db.Exec(
-		`INSERT INTO profiles (id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.Name, p.JiraURL, p.ProjectKey, p.ScopeJQL, p.BugIssueType, p.BugProjectMode, p.BugProjectKey, p.CACert, boolToInt(p.AllowUntrustedTLS), p.CreatedAt.Format(time.RFC3339))
+		`INSERT INTO profiles (id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, backend, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Name, p.JiraURL, p.ProjectKey, p.ScopeJQL, p.BugIssueType, p.BugProjectMode, p.BugProjectKey, p.CACert, boolToInt(p.AllowUntrustedTLS), p.Backend, p.CreatedAt.Format(time.RFC3339))
 	if err != nil {
 		return Profile{}, fmt.Errorf("create profile: %w", err)
 	}
@@ -139,18 +148,29 @@ func bugProjectModeOrDefault(mode string) string {
 	}
 }
 
+// backendOrDefault normalises the connection backend, falling back to "xray"
+// for blank or unrecognized values (back-compat for rows written before the
+// backend column existed).
+func backendOrDefault(backendType string) string {
+	if strings.TrimSpace(backendType) == "kiwi" {
+		return "kiwi"
+	}
+	return "xray"
+}
+
 // Update changes a profile's editable fields — name, Jira URL, project key, JQL
 // scope, bug issue type, bug project, and TLS settings (FR-5) — e.g. to correct
 // a wrong project key. Returns ErrNotFound if the id doesn't exist. Credentials
 // are managed separately. A blank bugIssueType defaults to "Bug"; a blank
 // bugProjectMode defaults to "test". caCert and allowUntrustedTLS update the
-// TLS trust settings (RND_P_4TFINT_05-243).
-func (m *Manager) Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert string, allowUntrustedTLS bool) error {
+// TLS trust settings (RND_P_4TFINT_05-243). backendType selects the connection
+// backend ("xray" default | "kiwi"); blank normalizes to "xray".
+func (m *Manager) Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert string, allowUntrustedTLS bool, backendType string) error {
 	res, err := m.db.Exec(
-		`UPDATE profiles SET name = ?, jira_url = ?, project_key = ?, scope_jql = ?, bug_issue_type = ?, bug_project_mode = ?, bug_project_key = ?, ca_cert = ?, allow_untrusted_tls = ? WHERE id = ?`,
+		`UPDATE profiles SET name = ?, jira_url = ?, project_key = ?, scope_jql = ?, bug_issue_type = ?, bug_project_mode = ?, bug_project_key = ?, ca_cert = ?, allow_untrusted_tls = ?, backend = ? WHERE id = ?`,
 		name, jiraURL, projectKey, scopeJQL, bugIssueTypeOrDefault(bugIssueType),
 		bugProjectModeOrDefault(bugProjectMode), strings.TrimSpace(bugProjectKey),
-		strings.TrimSpace(caCert), boolToInt(allowUntrustedTLS), id)
+		strings.TrimSpace(caCert), boolToInt(allowUntrustedTLS), backendOrDefault(backendType), id)
 	if err != nil {
 		return fmt.Errorf("update profile: %w", err)
 	}
@@ -197,10 +217,11 @@ func scanProfile(s scanner) (Profile, error) {
 		allowUntrustedInt int
 		created          string
 	)
-	if err := s.Scan(&p.ID, &p.Name, &p.JiraURL, &p.ProjectKey, &p.ScopeJQL, &p.BugIssueType, &p.BugProjectMode, &p.BugProjectKey, &p.CACert, &allowUntrustedInt, &created); err != nil {
+	if err := s.Scan(&p.ID, &p.Name, &p.JiraURL, &p.ProjectKey, &p.ScopeJQL, &p.BugIssueType, &p.BugProjectMode, &p.BugProjectKey, &p.CACert, &allowUntrustedInt, &p.Backend, &created); err != nil {
 		return Profile{}, err
 	}
 	p.AllowUntrustedTLS = allowUntrustedInt != 0
+	p.Backend = backendOrDefault(p.Backend)
 	p.CreatedAt, _ = time.Parse(time.RFC3339, created)
 	return p, nil
 }

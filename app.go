@@ -264,7 +264,7 @@ func (a *App) CreateProfile(name, jiraURL, projectKey, scopeJQL, bugIssueType, b
 	if err := a.requireStore(); err != nil {
 		return profile.Profile{}, err
 	}
-	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS)
+	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, "")
 	if err != nil {
 		return profile.Profile{}, err
 	}
@@ -290,7 +290,7 @@ func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bug
 	if strings.TrimSpace(token) == "" {
 		return profile.Profile{}, fmt.Errorf("the selected profile has no stored token to reuse")
 	}
-	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, "", false)
+	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, "", false, "")
 	if err != nil {
 		return profile.Profile{}, err
 	}
@@ -315,7 +315,7 @@ func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, bugIssueTyp
 	if err != nil {
 		return profile.Profile{}, err
 	}
-	if err := a.profiles.Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS); err != nil {
+	if err := a.profiles.Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, old.Backend); err != nil {
 		return profile.Profile{}, err
 	}
 	if strings.TrimSpace(token) != "" {
@@ -419,7 +419,7 @@ func (a *App) ImportProfile() (profile.Profile, error) {
 	if strings.TrimSpace(cfg.Name) == "" || strings.TrimSpace(cfg.JiraURL) == "" || strings.TrimSpace(cfg.ProjectKey) == "" {
 		return profile.Profile{}, fmt.Errorf("profile file is missing name, URL or project key")
 	}
-	return a.profiles.Create(cfg.Name, cfg.JiraURL, cfg.ProjectKey, cfg.ScopeJQL, cfg.BugIssueType, cfg.BugProjectMode, cfg.BugProjectKey, "", false)
+	return a.profiles.Create(cfg.Name, cfg.JiraURL, cfg.ProjectKey, cfg.ScopeJQL, cfg.BugIssueType, cfg.BugProjectMode, cfg.BugProjectKey, "", false, "")
 }
 
 // UpdateProfileToken replaces a profile's stored PAT in the OS credential
@@ -475,16 +475,19 @@ func tlsOptions(p profile.Profile) []jira.Option {
 
 // newBackend is the low-level backend constructor: it wraps a Jira/Xray or
 // Kiwi client as a backend.Backend, picking the implementation from the
-// URL. jira.NewClient/kiwi.New are only ever called here and in backendFor
-// below (app.go is the composition root, Phase 1 wiring, extended in P4.4
-// for the kiwi-demo variant) -- every other call site builds a Backend
-// through one of these two helpers instead of constructing a client
-// directly. Real (non-demo) Kiwi URL detection/routing is a later task
-// (Phase 6 connection model); only kiwi-demo routes to kiwi.New today. TLS
-// opts are Xray-specific and dropped on the Kiwi path -- kiwi-demo performs
-// no I/O, so they have nothing to apply to.
-func newBackend(jiraURL, token string, opts ...jira.Option) backend.Backend {
-	if kiwi.IsKiwiDemoURL(jiraURL) {
+// profile's backend type, falling back to URL-based detection. jira.NewClient/
+// kiwi.New are only ever called here and in backendFor below (app.go is the
+// composition root, Phase 1 wiring, extended in P4.4 for the kiwi-demo variant
+// and P6.1 for a real Kiwi connection) -- every other call site builds a
+// Backend through one of these two helpers instead of constructing a client
+// directly. backendType is a Profile.Backend value ("kiwi" routes to
+// kiwi.New regardless of URL); a kiwi-demo URL routes to kiwi.New even when
+// backendType is blank/"xray" (unsaved-profile callers that don't have a
+// Profile to read a backend type from still get the existing kiwi-demo
+// behaviour). TLS opts are Xray-specific and dropped on the Kiwi path --
+// kiwi-demo performs no I/O, so they have nothing to apply to.
+func newBackend(backendType, jiraURL, token string, opts ...jira.Option) backend.Backend {
+	if backendType == "kiwi" || kiwi.IsKiwiDemoURL(jiraURL) {
 		return kiwi.New(jiraURL, token)
 	}
 	return xray.New(jira.NewClient(jiraURL, token, opts...))
@@ -503,7 +506,7 @@ func (a *App) backendFor(profileID string) (backend.Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load credentials: %w", err)
 	}
-	return newBackend(p.JiraURL, token, tlsOptions(p)...), nil
+	return newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...), nil
 }
 
 // --- Boundary conversions: backend.* -> jira.* -------------------------
@@ -659,7 +662,7 @@ func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bo
 	if allowUntrustedTLS {
 		opts = append(opts, jira.WithInsecureTLS(true))
 	}
-	user, err := newBackend(jiraURL, token, opts...).TestConnection(a.ctx)
+	user, err := newBackend("", jiraURL, token, opts...).TestConnection(a.ctx)
 	if err != nil {
 		return "", err
 	}
@@ -670,8 +673,9 @@ func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bo
 // PAT. Unlike TestConnection, no token is required from the caller -- it is
 // loaded from the credential manager so the button works when editing a profile
 // (where the token field is blank). jiraURL, caCert, and allowUntrustedTLS
-// reflect unsaved form edits, not the saved profile (FR-8.4). Returns the
-// authenticated user's display name.
+// reflect unsaved form edits, not the saved profile (FR-8.4); the backend type
+// (xray/kiwi) is read from the saved profile since the form doesn't offer to
+// change it yet. Returns the authenticated user's display name.
 func (a *App) TestProfileConnection(profileID, jiraURL, caCert string, allowUntrustedTLS bool) (string, error) {
 	token, err := a.creds.Load(profileID)
 	if err != nil {
@@ -684,7 +688,8 @@ func (a *App) TestProfileConnection(profileID, jiraURL, caCert string, allowUntr
 	if allowUntrustedTLS {
 		opts = append(opts, jira.WithInsecureTLS(true))
 	}
-	user, err := newBackend(jiraURL, token, opts...).TestConnection(a.ctx)
+	p, _ := a.profiles.Get(profileID) // best-effort: backend type only, blank if unavailable
+	user, err := newBackend(p.Backend, jiraURL, token, opts...).TestConnection(a.ctx)
 	if err != nil {
 		return "", err
 	}
@@ -717,7 +722,7 @@ func (a *App) runPartialSync(profileID, stage string, fn func(*syncer.Engine, st
 	if err != nil {
 		return fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(newBackend(p.JiraURL, token, tlsOptions(p)...), a.repo)
+	engine := syncer.New(newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...), a.repo)
 
 	onProgress := func(pr syncer.Progress) {
 		runtime.EventsEmit(a.ctx, "sync:progress", pr)
@@ -915,7 +920,7 @@ func (a *App) runSync(profileID string, forceFull bool) error {
 	if forceFull {
 		since = ""
 	}
-	engine := syncer.New(newBackend(p.JiraURL, token, tlsOptions(p)...), a.repo)
+	engine := syncer.New(newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...), a.repo)
 	started := time.Now().UTC()
 	var lastFetched int
 	syncErr := engine.Sync(a.ctx, profileID, p.ProjectKey, p.ScopeJQL, since, func(pr syncer.Progress) {
@@ -1281,7 +1286,7 @@ func (a *App) GetBugCreateFields(profileID string) (fields []jira.BugCreateField
 		return nil, fmt.Errorf("load credentials: %w", err)
 	}
 	projKey := bugProjectKey(p, "")
-	bf, err := newBackend(p.JiraURL, token, tlsOptions(p)...).GetBugCreateFields(a.ctx, projKey, p.BugIssueType)
+	bf, err := newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...).GetBugCreateFields(a.ctx, projKey, p.BugIssueType)
 	if err != nil {
 		return nil, err
 	}
@@ -1630,7 +1635,7 @@ func (a *App) CommitPendingChanges(profileID string) (out syncer.CommitResult, e
 	if settingsErr != nil {
 		return empty, fmt.Errorf("read settings: %w", settingsErr)
 	}
-	b := newBackend(p.JiraURL, token, tlsOptions(p)...)
+	b := newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...)
 	b.SetRequirementLinkType(s.RequirementLinkType)
 	engine := syncer.New(b, a.repo)
 	return engine.CommitChanges(a.ctx, profileID, p.ProjectKey)
@@ -1665,7 +1670,7 @@ func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (ou
 	if settingsErr != nil {
 		return empty, fmt.Errorf("read settings: %w", settingsErr)
 	}
-	b := newBackend(p.JiraURL, token, tlsOptions(p)...)
+	b := newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...)
 	b.SetRequirementLinkType(s.RequirementLinkType)
 	engine := syncer.New(b, a.repo)
 	return engine.CommitChangesForIDs(a.ctx, profileID, p.ProjectKey, changeIDs)
@@ -3254,7 +3259,7 @@ func (a *App) workflowStatuses(profileID string) []string {
 	if err != nil {
 		return nil
 	}
-	statuses, err := newBackend(p.JiraURL, token, tlsOptions(p)...).ListStatuses(a.ctx, p.ProjectKey)
+	statuses, err := newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...).ListStatuses(a.ctx, p.ProjectKey)
 	if err != nil || len(statuses) == 0 {
 		return nil
 	}
@@ -3298,7 +3303,7 @@ func (a *App) jiraPriorities(profileID string) []string {
 	if err != nil {
 		return nil
 	}
-	priorities, err := newBackend(p.JiraURL, token, tlsOptions(p)...).ListPriorities(a.ctx, p.ProjectKey)
+	priorities, err := newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...).ListPriorities(a.ctx, p.ProjectKey)
 	if err != nil || len(priorities) == 0 {
 		return nil
 	}
@@ -3391,7 +3396,7 @@ func (a *App) GetTest(profileID, key string) (testrepo.TestCase, error) {
 	if credErr != nil {
 		return testrepo.TestCase{}, err // return original ErrNotFound
 	}
-	t, fetchErr := newBackend(p.JiraURL, token, tlsOptions(p)...).GetTestFields(a.ctx, key)
+	t, fetchErr := newBackend(p.Backend, p.JiraURL, token, tlsOptions(p)...).GetTestFields(a.ctx, key)
 	if fetchErr != nil {
 		return testrepo.TestCase{}, err // return original ErrNotFound on live failure
 	}

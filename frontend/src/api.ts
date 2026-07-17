@@ -454,6 +454,11 @@ export interface Profile {
   bugProjectKey: string;
   caCert: string;
   allowUntrustedTls: boolean;
+  // backend selects which system this profile connects to: "xray" (default,
+  // Jira Data Center + Xray Server/DC) or "kiwi" (Kiwi TCMS). Not yet
+  // settable from the profile form (P6.1b) -- reserved here so the type
+  // matches the backend's Profile shape.
+  backend: string;
   createdAt: string;
 }
 

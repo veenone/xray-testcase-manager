@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 41
+const schemaVersion = 42
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS profiles (
 	bug_project_mode TEXT NOT NULL DEFAULT 'test',
 	bug_project_key TEXT NOT NULL DEFAULT '',
 	ca_cert TEXT NOT NULL DEFAULT '',
-	allow_untrusted_tls INTEGER NOT NULL DEFAULT 0
+	allow_untrusted_tls INTEGER NOT NULL DEFAULT 0,
+	backend TEXT NOT NULL DEFAULT 'xray'
 );
 
 CREATE TABLE IF NOT EXISTS sync_state (
@@ -1103,6 +1104,17 @@ func applyMigrations(db *sql.DB) error {
 			if _, err := db.Exec(q); err != nil {
 				return fmt.Errorf("v40 backfill external_ref: %w", err)
 			}
+		}
+	}
+	// v42: profiles.backend selects which system a profile connects to ("xray"
+	// default | "kiwi") so app.go's backend factory can route real (non-demo)
+	// Kiwi connections. Fresh installs get it from the CREATE above; this ALTER
+	// catches pre-v42 databases. Additive; existing rows default to 'xray'.
+	if current < 42 {
+		if _, err := db.Exec(
+			`ALTER TABLE profiles ADD COLUMN backend TEXT NOT NULL DEFAULT 'xray'`,
+		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("v42 add profiles.backend: %w", err)
 		}
 	}
 	return nil

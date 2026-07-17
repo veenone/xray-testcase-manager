@@ -50,8 +50,8 @@ func TestMigrationV40AddsRunDefectsAndCommentColumns(t *testing.T) {
 		t.Fatalf("got test_run.comment=%q, want %q", runComment, "run remark")
 	}
 
-	if SchemaVersion() != 41 {
-		t.Fatalf("SchemaVersion() = %d, want 41", SchemaVersion())
+	if SchemaVersion() != 42 {
+		t.Fatalf("SchemaVersion() = %d, want 42", SchemaVersion())
 	}
 }
 
