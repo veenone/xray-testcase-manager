@@ -4487,6 +4487,8 @@ const (
 	entityTestReview         = "test_review"
 	entityIssueComment       = "issue_comment"
 	entityTestRun            = "test_run"
+	entityTestRunDefect      = "test_run_defect"
+	entityTestRunComment     = "test_run_comment"
 	entityRequirementSet     = "requirement_set"
 	entityRequirementEdit    = "requirement_edit"
 	entityRequirementDelete  = "requirement_delete"
@@ -4570,6 +4572,26 @@ func upsertPendingChange(tx *sql.Tx, profileID, entityType, entityKey, field, cu
 		newValue, now, profileID, entityType, entityKey, field,
 	); uerr != nil {
 		return fmt.Errorf("update pending: %w", uerr)
+	}
+	return nil
+}
+
+// dropPendingChange removes a pending_change row outright. Used when a caller
+// has already determined — by comparing its candidate new value against a
+// freshly-read base, not against pending_change.before_val — that a local
+// edit exactly reverts to that base (stageRunDefects / SetTestRunComment).
+// upsertPendingChange's own revert detection compares against the frozen
+// before_val from when the row was first created, which cannot see a base
+// that moved since (e.g. a re-sync); calling this directly instead keeps the
+// entity_key's test_container_test staging column and the pending_change
+// table in the same state regardless of that drift.
+func dropPendingChange(tx *sql.Tx, profileID, entityType, entityKey, field string) error {
+	if _, err := tx.Exec(
+		`DELETE FROM pending_change
+		 WHERE profile_id = ? AND entity_type = ? AND entity_key = ? AND field = ?`,
+		profileID, entityType, entityKey, field,
+	); err != nil {
+		return fmt.Errorf("drop pending change: %w", err)
 	}
 	return nil
 }

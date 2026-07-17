@@ -29,6 +29,12 @@ type ExecMemberRun struct {
 	// issue itself (from test_case.fix_versions), not the execution's fix
 	// versions. Empty when the Test has none or has not been synced locally.
 	FixVersions []string `json:"fixVersions"`
+	// Defects and Comment are staged-over-synced: when a test_run_defect /
+	// test_run_comment pending change exists for this run, the local
+	// (test_container_test) value wins; otherwise the Xray-synced test_run
+	// value is used. See GetExecutionMembersWithRuns.
+	Defects []string `json:"defects"`
+	Comment string   `json:"comment"`
 }
 
 // GetRunRollup returns a run-status rollup for the member tests of a Test Plan
@@ -122,6 +128,14 @@ func (r *Repository) GetRunRollup(profileID, containerKey string) (RunRollup, er
 // resolved from the local test_case cache, falling back to the external_test
 // cache for cross-project members. RunStatus prefers the test_run row, falling
 // back to the test_container_test membership run_status.
+//
+// Defects and Comment are staged-over-synced, chosen by the PRESENCE of a
+// test_run_defect / test_run_comment pending_change row for this run (LEFT
+// JOINed on entity_key = container_key||':'||test_key), not by whether
+// l.run_defects/l.run_comment happen to be non-empty — a staged empty defect
+// set ("[]") or a cleared comment ("") must still read back as the local
+// value, and the column alone can't tell "cleared" apart from "never edited"
+// for a comment.
 func (r *Repository) GetExecutionMembersWithRuns(profileID, execKey string) ([]ExecMemberRun, error) {
 	rows, err := r.db.Query(
 		`SELECT l.test_key,
@@ -132,16 +146,26 @@ func (r *Repository) GetExecutionMembersWithRuns(profileID, execKey string) ([]E
 		        COALESCE(tr.finished_at,  '') AS finished_at,
 		        COALESCE(tr.executed_by,  '') AS executed_by,
 		        COALESCE(tr.environment,  '') AS environment,
-		        COALESCE(t.fix_versions,  '') AS fix_versions
+		        COALESCE(t.fix_versions,  '') AS fix_versions,
+		        CASE WHEN pd.entity_key IS NOT NULL THEN l.run_defects ELSE COALESCE(tr.defects, '') END AS defects,
+		        CASE WHEN pc.entity_key IS NOT NULL THEN l.run_comment ELSE COALESCE(tr.comment, '') END AS comment
 		 FROM test_container_test l
 		 LEFT JOIN test_case     t  ON t.profile_id  = l.profile_id AND t.jira_key = l.test_key
 		 LEFT JOIN external_test x  ON x.profile_id  = l.profile_id AND x.jira_key = l.test_key
 		 LEFT JOIN test_run      tr ON tr.profile_id = l.profile_id
 		                           AND tr.exec_key   = l.container_key
 		                           AND tr.test_key   = l.test_key
+		 LEFT JOIN pending_change pd ON pd.profile_id  = l.profile_id
+		                            AND pd.entity_type = ?
+		                            AND pd.entity_key  = l.container_key || ':' || l.test_key
+		                            AND pd.field       = 'run_defects'
+		 LEFT JOIN pending_change pc ON pc.profile_id  = l.profile_id
+		                            AND pc.entity_type = ?
+		                            AND pc.entity_key  = l.container_key || ':' || l.test_key
+		                            AND pc.field       = 'run_comment'
 		 WHERE l.profile_id = ? AND l.container_key = ?
 		 ORDER BY l.test_key`,
-		profileID, execKey)
+		entityTestRunDefect, entityTestRunComment, profileID, execKey)
 	if err != nil {
 		return nil, err
 	}
@@ -150,15 +174,17 @@ func (r *Repository) GetExecutionMembersWithRuns(profileID, execKey string) ([]E
 	var out []ExecMemberRun
 	for rows.Next() {
 		var m ExecMemberRun
-		var fixVersionsJSON string
+		var fixVersionsJSON, defectsJSON string
 		if err := rows.Scan(
 			&m.TestKey, &m.Summary, &m.Status,
 			&m.RunStatus, &m.StartedAt, &m.FinishedAt,
 			&m.ExecutedBy, &m.Environment, &fixVersionsJSON,
+			&defectsJSON, &m.Comment,
 		); err != nil {
 			return nil, err
 		}
 		m.FixVersions = decodeFixVersions(fixVersionsJSON)
+		m.Defects = decodeFixVersions(defectsJSON)
 		out = append(out, m)
 	}
 	return out, rows.Err()

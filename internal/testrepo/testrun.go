@@ -2,6 +2,7 @@ package testrepo
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,7 +10,8 @@ import (
 
 // TestRunRow holds per-execution run details for a single Test, as stored in
 // the test_run table. Defects is a JSON array string (e.g. `["PROJ-1"]`).
-// CreatedAt and UpdatedAt are ISO-8601 strings from Xray (empty when unknown).
+// Comment is the Xray-synced run remark (empty when unset). CreatedAt and
+// UpdatedAt are ISO-8601 strings from Xray (empty when unknown).
 type TestRunRow struct {
 	ExecKey     string
 	TestKey     string
@@ -21,6 +23,7 @@ type TestRunRow struct {
 	Defects     string
 	CreatedAt   string
 	UpdatedAt   string
+	Comment     string
 }
 
 // ReplaceRunsForExec atomically replaces all test_run rows for the given
@@ -42,11 +45,11 @@ func (r *Repository) ReplaceRunsForExec(profileID, execKey string, runs []TestRu
 		if _, err := tx.Exec(
 			`INSERT INTO test_run
 			  (profile_id, exec_key, test_key, run_status, started_at, finished_at,
-			   executed_by, environment, defects, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			   executed_by, environment, defects, created_at, updated_at, comment)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			profileID, row.ExecKey, row.TestKey, row.RunStatus,
 			row.StartedAt, row.FinishedAt, row.ExecutedBy, row.Environment, row.Defects,
-			row.CreatedAt, row.UpdatedAt,
+			row.CreatedAt, row.UpdatedAt, row.Comment,
 		); err != nil {
 			return fmt.Errorf("insert test run: %w", err)
 		}
@@ -200,6 +203,249 @@ func (r *Repository) BulkSetTestRunStatus(profileID, execKey string, testKeys []
 		result.Succeeded = append(result.Succeeded, key)
 	}
 	return result
+}
+
+// encodeDefectSet serialises a defect-key set into its staged JSON array
+// form, deduped and sorted for stable comparison (reuses uniqueSorted, so
+// equality checks don't depend on caller order). Unlike encodeEnvironments,
+// an empty set encodes as "[]" — not "" — so a deliberately staged empty
+// defect set stays distinguishable from run_defects = "" (no local edit at
+// all).
+func encodeDefectSet(set []string) string {
+	clean := uniqueSorted(set)
+	b, err := json.Marshal(clean)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+// AddTestRunDefect stages a bug key onto a Test's run-defect set for one Test
+// Execution and queues it for commit to Xray. Adding a bug already present in
+// the current effective set is a no-op. See stageRunDefects for the
+// read-modify-write and revert semantics.
+func (r *Repository) AddTestRunDefect(profileID, execKey, testKey, bugKey string) error {
+	return r.stageRunDefects(profileID, execKey, testKey, func(set []string) []string {
+		return append(append([]string{}, set...), bugKey)
+	})
+}
+
+// RemoveTestRunDefect unstages a bug key from a Test's run-defect set for one
+// Test Execution and queues the change for commit to Xray. Removing a bug not
+// present in the current effective set is a no-op. See stageRunDefects for
+// the read-modify-write and revert semantics.
+func (r *Repository) RemoveTestRunDefect(profileID, execKey, testKey, bugKey string) error {
+	return r.stageRunDefects(profileID, execKey, testKey, func(set []string) []string {
+		out := make([]string, 0, len(set))
+		for _, k := range set {
+			if k != bugKey {
+				out = append(out, k)
+			}
+		}
+		return out
+	})
+}
+
+// stageRunDefects is the shared read-modify-write behind AddTestRunDefect and
+// RemoveTestRunDefect. The Test must already be a member of the execution
+// (ErrNoRows on the membership read becomes a "not in execution" error, as in
+// SetTestRunStatus).
+//
+// The current effective set is the staged run_defects from an existing
+// test_run_defect pending change if one exists, else the synced set from
+// test_run.defects — this is deliberately keyed off pending-change presence
+// (queried here), not off run_defects != "", mirroring how
+// GetExecutionMembersWithRuns reads it back. mutate receives that set and
+// returns the desired new set; the result is deduped/sorted and compared
+// against the current effective set first (no-op if unchanged), then against
+// the synced base:
+//
+//   - new set == synced base: the local edit reverts. run_defects resets to
+//     "" and the pending row is dropped outright (dropPendingChange, not
+//     upsertPendingChange's own before_val comparison — see its doc comment).
+//   - otherwise: run_defects is set to the new set's JSON, which is "[]" (not
+//     "") when the new set is empty, so removing the last staged defect while
+//     the synced set is non-empty stays staged rather than reading back as
+//     "no local edit". The pending change is upserted.
+func (r *Repository) stageRunDefects(profileID, execKey, testKey string, mutate func([]string) []string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var member string
+	err = tx.QueryRow(
+		`SELECT run_defects FROM test_container_test
+		 WHERE profile_id = ? AND container_key = ? AND test_key = ?`,
+		profileID, execKey, testKey,
+	).Scan(&member)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%s is not in execution %s", testKey, execKey)
+	}
+	if err != nil {
+		return fmt.Errorf("read run defects: %w", err)
+	}
+
+	var syncedRaw string
+	// No test_run row yet (never synced) is fine — treat the synced base as empty.
+	_ = tx.QueryRow(
+		`SELECT defects FROM test_run WHERE profile_id = ? AND exec_key = ? AND test_key = ?`,
+		profileID, execKey, testKey,
+	).Scan(&syncedRaw)
+	syncedJSON := encodeDefectSet(decodeFixVersions(syncedRaw))
+
+	ek := runKey(execKey, testKey)
+	var stagedJSON string
+	pErr := tx.QueryRow(
+		`SELECT after_val FROM pending_change
+		 WHERE profile_id = ? AND entity_type = ? AND entity_key = ? AND field = 'run_defects'`,
+		profileID, entityTestRunDefect, ek,
+	).Scan(&stagedJSON)
+	hasPending := pErr == nil
+	if pErr != nil && !errors.Is(pErr, sql.ErrNoRows) {
+		return fmt.Errorf("read pending run defects: %w", pErr)
+	}
+
+	currentJSON := syncedJSON
+	if hasPending {
+		currentJSON = encodeDefectSet(decodeFixVersions(stagedJSON))
+	}
+
+	nextJSON := encodeDefectSet(mutate(decodeFixVersions(currentJSON)))
+	if nextJSON == currentJSON {
+		return nil
+	}
+
+	if nextJSON == syncedJSON {
+		if _, err := tx.Exec(
+			`UPDATE test_container_test SET run_defects = ''
+			 WHERE profile_id = ? AND container_key = ? AND test_key = ?`,
+			profileID, execKey, testKey,
+		); err != nil {
+			return fmt.Errorf("update run defects: %w", err)
+		}
+		if err := dropPendingChange(tx, profileID, entityTestRunDefect, ek, "run_defects"); err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.Exec(
+			`UPDATE test_container_test SET run_defects = ?
+			 WHERE profile_id = ? AND container_key = ? AND test_key = ?`,
+			nextJSON, profileID, execKey, testKey,
+		); err != nil {
+			return fmt.Errorf("update run defects: %w", err)
+		}
+		if err := upsertPendingChange(
+			tx, profileID, entityTestRunDefect, ek, "run_defects", currentJSON, nextJSON, "",
+		); err != nil {
+			return err
+		}
+	}
+	if err := writeAudit(
+		tx, profileID, entityTestRunDefect, ek, "run-defect-local", "run_defects", currentJSON, nextJSON, "",
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SetTestRunComment stages a run remark for a Test within a Test Execution
+// and queues it for commit to Xray. The Test must already be a member of the
+// execution. Setting the comment to what is already effective (staged, or
+// synced when nothing is staged) is a no-op.
+//
+// The current effective comment, like the defect set above, is read via
+// pending-change presence rather than the run_comment column alone: unlike
+// the defect JSON, an empty comment has no separate "staged empty" encoding
+// (run_comment = "" both when nothing is staged and when a clear IS staged),
+// so the pending_change row's existence is the only reliable signal — this
+// matches how GetExecutionMembersWithRuns reads it back.
+//
+// Setting the comment to Xray's synced value (test_run.comment) reverts the
+// local edit: run_comment resets to "" and the pending row is dropped
+// outright (dropPendingChange). Otherwise run_comment is set to the given
+// text — including "" — and the pending change is upserted, so clearing a
+// comment that differs from a non-empty synced comment stays staged rather
+// than silently reverting.
+func (r *Repository) SetTestRunComment(profileID, execKey, testKey, comment string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var member string
+	err = tx.QueryRow(
+		`SELECT run_comment FROM test_container_test
+		 WHERE profile_id = ? AND container_key = ? AND test_key = ?`,
+		profileID, execKey, testKey,
+	).Scan(&member)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%s is not in execution %s", testKey, execKey)
+	}
+	if err != nil {
+		return fmt.Errorf("read run comment: %w", err)
+	}
+
+	var syncedComment string
+	// No test_run row yet (never synced) is fine — treat the synced base as empty.
+	_ = tx.QueryRow(
+		`SELECT comment FROM test_run WHERE profile_id = ? AND exec_key = ? AND test_key = ?`,
+		profileID, execKey, testKey,
+	).Scan(&syncedComment)
+
+	ek := runKey(execKey, testKey)
+	var stagedComment string
+	pErr := tx.QueryRow(
+		`SELECT after_val FROM pending_change
+		 WHERE profile_id = ? AND entity_type = ? AND entity_key = ? AND field = 'run_comment'`,
+		profileID, entityTestRunComment, ek,
+	).Scan(&stagedComment)
+	hasPending := pErr == nil
+	if pErr != nil && !errors.Is(pErr, sql.ErrNoRows) {
+		return fmt.Errorf("read pending run comment: %w", pErr)
+	}
+
+	current := syncedComment
+	if hasPending {
+		current = stagedComment
+	}
+	if comment == current {
+		return nil
+	}
+
+	if comment == syncedComment {
+		if _, err := tx.Exec(
+			`UPDATE test_container_test SET run_comment = ''
+			 WHERE profile_id = ? AND container_key = ? AND test_key = ?`,
+			profileID, execKey, testKey,
+		); err != nil {
+			return fmt.Errorf("update run comment: %w", err)
+		}
+		if err := dropPendingChange(tx, profileID, entityTestRunComment, ek, "run_comment"); err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.Exec(
+			`UPDATE test_container_test SET run_comment = ?
+			 WHERE profile_id = ? AND container_key = ? AND test_key = ?`,
+			comment, profileID, execKey, testKey,
+		); err != nil {
+			return fmt.Errorf("update run comment: %w", err)
+		}
+		if err := upsertPendingChange(
+			tx, profileID, entityTestRunComment, ek, "run_comment", current, comment, "",
+		); err != nil {
+			return err
+		}
+	}
+	if err := writeAudit(
+		tx, profileID, entityTestRunComment, ek, "run-comment-local", "run_comment", current, comment, "",
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func runKey(execKey, testKey string) string { return execKey + ":" + testKey }
