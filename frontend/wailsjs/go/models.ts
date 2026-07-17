@@ -1499,6 +1499,8 @@ export namespace testrepo {
 	    executedBy: string;
 	    environment: string;
 	    fixVersions: string[];
+	    defects: string[];
+	    comment: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ExecMemberRun(source);
@@ -1515,6 +1517,8 @@ export namespace testrepo {
 	        this.executedBy = source["executedBy"];
 	        this.environment = source["environment"];
 	        this.fixVersions = source["fixVersions"];
+	        this.defects = source["defects"];
+	        this.comment = source["comment"];
 	    }
 	}
 	export class Folder {
