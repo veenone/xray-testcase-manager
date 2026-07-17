@@ -11,6 +11,12 @@ import (
 
 func newTestAdapter(t *testing.T, mock *mockRPCServer) (*Adapter, func()) {
 	t.Helper()
+	// Lazy session-login now runs before the first authenticated call, so
+	// every adapter test needs Auth.login answered. Tests that assert a
+	// specific login response register their own first; this is the default.
+	if _, ok := mock.handlers["Auth.login"]; !ok {
+		mock.handleResult("Auth.login", "test-session")
+	}
 	srv := mock.start()
 	return New(srv.URL, "alice:secret"), srv.Close
 }

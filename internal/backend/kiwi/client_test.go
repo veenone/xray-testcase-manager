@@ -10,6 +10,7 @@ import (
 // /json-rpc/ -> decode "result" into out. Spec §1.1.
 func TestClientCallRoundTrip(t *testing.T) {
 	mock := newMockRPCServer(t)
+	mock.handleResult("Auth.login", "sess") // lazy login runs before the first call
 	mock.handleResult("TestCase.filter", []map[string]any{
 		{"id": 42, "summary": "Login with valid creds"},
 	})
@@ -28,8 +29,9 @@ func TestClientCallRoundTrip(t *testing.T) {
 	if out[0]["summary"] != "Login with valid creds" {
 		t.Fatalf("unexpected result: %#v", out[0])
 	}
-	if len(mock.requests) != 1 || mock.requests[0].Method != "TestCase.filter" {
-		t.Fatalf("expected server to record the TestCase.filter call, got %#v", mock.requests)
+	// Lazy login first, then the actual call.
+	if len(mock.requests) != 2 || mock.requests[0].Method != "Auth.login" || mock.requests[1].Method != "TestCase.filter" {
+		t.Fatalf("expected [Auth.login, TestCase.filter], got %#v", mock.requests)
 	}
 }
 
@@ -49,10 +51,9 @@ func TestSessionLoginSeedsCookie(t *testing.T) {
 	c := NewClient(srv.URL, "alice:secret")
 	ctx := context.Background()
 
-	if err := c.Login(ctx); err != nil {
-		t.Fatalf("Login: %v", err)
-	}
-
+	// The first authenticated call lazily logs in (Auth.login) and the
+	// Authenticator seeds the sessionid cookie, which is then replayed on
+	// this same request's downstream calls.
 	var out []map[string]any
 	if err := c.call(ctx, "User.filter", []any{map[string]any{}}, &out); err != nil {
 		t.Fatalf("call after login: %v", err)
@@ -82,6 +83,7 @@ func TestSessionLoginSeedsCookie(t *testing.T) {
 // isMethodNotFound only fires for code -32601. Spec §1.3.
 func TestKiwiRPCErrorDecodeAndMethodNotFound(t *testing.T) {
 	mock := newMockRPCServer(t)
+	mock.handleResult("Auth.login", "sess") // lazy login precedes the probed calls
 	mock.handleError("Bug.report", 403, "PermissionDenied: cannot create bugs")
 	// "Requirement.filter" is intentionally left unregistered so the mock
 	// falls back to -32601, mirroring an absent plugin RPC.
@@ -119,6 +121,7 @@ func TestKiwiRPCErrorDecodeAndMethodNotFound(t *testing.T) {
 // yet wired to Capabilities — that's P4.3). Spec §4.3.
 func TestMethodExistsProbe(t *testing.T) {
 	mock := newMockRPCServer(t)
+	mock.handleResult("Auth.login", "sess") // lazy login precedes the probed calls
 	mock.handleResult("Requirement.filter", []map[string]any{})
 	mock.handleError("ReviewRequest.filter", 403, "PermissionDenied")
 	// "AnotherPlugin.filter" left unregistered -> -32601.

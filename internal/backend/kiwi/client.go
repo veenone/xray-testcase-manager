@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -43,6 +44,15 @@ type Client struct {
 	// (P4.4, demo.go). When set, call() dispatches to it instead of doing
 	// any HTTP.
 	demo *kiwiDemoGenerator
+
+	// loginMu/loginDone guard lazy session-login: the first authenticated
+	// call() on a fresh client runs Login once (session-login has no bearer
+	// token, so every request relies on the session cookie). Without this a
+	// sync-created client -- which, unlike TestConnection, never calls Login
+	// explicitly -- would send TestCase.filter with no session and get
+	// "Authentication failed" (-32603).
+	loginMu   sync.Mutex
+	loginDone bool
 }
 
 // Option customizes a Client at construction time.
@@ -128,6 +138,24 @@ func (c *Client) Login(ctx context.Context) error {
 	return c.auth.Authenticate(ctx, c)
 }
 
+// ensureLoggedIn runs Login exactly once per client (subsequent calls are a
+// no-op), so any authenticated method self-establishes the session cookie.
+// call() invokes it before every non-Auth.login request; the mutex serializes
+// a fresh client's concurrent first calls. An explicit Login (e.g.
+// TestConnection) also marks the client logged in.
+func (c *Client) ensureLoggedIn(ctx context.Context) error {
+	c.loginMu.Lock()
+	defer c.loginMu.Unlock()
+	if c.loginDone {
+		return nil
+	}
+	if err := c.Login(ctx); err != nil {
+		return err
+	}
+	c.loginDone = true
+	return nil
+}
+
 // rpcRequest is the JSON-RPC 2.0 envelope Kiwi's modernrpc layer expects.
 // Params is positional: Kiwi RPC methods like `TestCase.filter` take a
 // single query-dict positional argument (so Params is a one-element array
@@ -189,6 +217,14 @@ func isMethodNotFound(err error) bool {
 func (c *Client) call(ctx context.Context, method string, params []any, out any) error {
 	if c.demo != nil {
 		return c.demo.call(method, params, out)
+	}
+
+	// Establish the session before any authenticated call (Auth.login itself
+	// is the exception -- it IS the login and must not recurse).
+	if method != "Auth.login" {
+		if err := c.ensureLoggedIn(ctx); err != nil {
+			return err
+		}
 	}
 
 	id := atomic.AddInt64(&c.nextID, 1)
