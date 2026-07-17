@@ -12,6 +12,7 @@ import {
   GetTestContainers,
   DeallocateTests,
   GetTestTransitions,
+  ListStatuses,
   GetTestSteps,
   CheckJiraTestSteps,
   GetTestMeta,
@@ -180,6 +181,10 @@ export function TestDetail({
   );
   const [reviewNote, setReviewNote] = useState("");
   const [transitions, setTransitions] = useState<Transition[]>([]);
+  // The settable-status dropdown's option list (P6.2b, Kiwi statusModel
+  // "settable"): every valid status, same source TestTable's workflow-status
+  // filter uses. Xray never reads this — it uses `transitions` instead.
+  const [allStatuses, setAllStatuses] = useState<string[]>([]);
   const [steps, setSteps] = useState<Step[]>([]);
   const [stepsLoading, setStepsLoading] = useState(false);
   const [stepsError, setStepsError] = useState("");
@@ -278,16 +283,9 @@ export function TestDetail({
         setAllRequirements(allReqs ?? []);
         setBugs((testBugs as TestBug[]) ?? []);
         setReviewNote(rev?.note ?? "");
-        // Transitions load alongside but can fail without blocking the
-        // rest of the detail panel — workflow may not be set up yet, or
-        // the user may not have edit permission.
-        GetTestTransitions(profileId, testKey)
-          .then((ts) => {
-            if (!cancelled) setTransitions(ts ?? []);
-          })
-          .catch((e) => {
-            if (!cancelled) console.error("transitions:", errMsg(e));
-          });
+        // Transitions (Xray workflow) / all-statuses (Kiwi settable status)
+        // load in their own effect below, gated on
+        // caps.supportsWorkflowTransitions.
         // Steps load lazily: cache hit is instant, cache miss makes one
         // Xray call. Failure renders inline next to the Steps heading
         // rather than blocking the whole panel.
@@ -359,6 +357,38 @@ export function TestDetail({
       cancelled = true;
     };
   }, [profileId, testKey, version]);
+
+  // Status source (P6.2b): Xray (workflow) loads the transitions available
+  // from the current status; Kiwi (settable) loads every valid status once
+  // per profile, the same source TestTable's workflow-status filter uses.
+  // Gated on caps.supportsWorkflowTransitions so a Kiwi profile never calls
+  // GetTestTransitions (there are no transitions to fetch).
+  useEffect(() => {
+    let cancelled = false;
+    if (caps.supportsWorkflowTransitions) {
+      // Transitions load alongside the rest of the panel but can fail
+      // without blocking it — workflow may not be set up yet, or the user
+      // may not have edit permission.
+      GetTestTransitions(profileId, testKey)
+        .then((ts) => {
+          if (!cancelled) setTransitions(ts ?? []);
+        })
+        .catch((e) => {
+          if (!cancelled) console.error("transitions:", errMsg(e));
+        });
+    } else {
+      ListStatuses(profileId)
+        .then((s) => {
+          if (!cancelled) setAllStatuses(s ?? []);
+        })
+        .catch((e) => {
+          if (!cancelled) console.error("list statuses:", errMsg(e));
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, testKey, caps.supportsWorkflowTransitions]);
 
   async function saveField(field: EditableField, value: string) {
     if (readOnly) return;
@@ -673,11 +703,15 @@ export function TestDetail({
       if (comment && comment.trim()) {
         await AddTestComment(profileId, testKey, comment.trim());
       }
-      try {
-        const ts = await GetTestTransitions(profileId, testKey);
-        setTransitions(ts ?? []);
-      } catch (e) {
-        console.error("re-fetch transitions:", errMsg(e));
+      // Xray (workflow): re-query the transitions available from the new
+      // status. Kiwi (settable): there are no transitions to fetch.
+      if (caps.supportsWorkflowTransitions) {
+        try {
+          const ts = await GetTestTransitions(profileId, testKey);
+          setTransitions(ts ?? []);
+        } catch (e) {
+          console.error("re-fetch transitions:", errMsg(e));
+        }
       }
       onEdited();
     } catch (e) {
@@ -794,21 +828,48 @@ export function TestDetail({
             <dd>
               <div className="status-row">
                 <span className="status-pill">{test.status || "—"}</span>
-                {!readOnly && transitions.length > 0 && (
-                  <select
-                    className="transition-select"
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) applyTransition(e.target.value);
-                    }}
-                  >
-                    <option value="">Move to…</option>
-                    {transitions.map((t) => (
-                      <option key={t.id} value={t.to}>
-                        {t.name} → {t.to}
-                      </option>
-                    ))}
-                  </select>
+                {caps.supportsWorkflowTransitions ? (
+                  // Xray: the existing workflow-transition picker, unchanged.
+                  !readOnly &&
+                  transitions.length > 0 && (
+                    <select
+                      className="transition-select"
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) applyTransition(e.target.value);
+                      }}
+                    >
+                      <option value="">Move to…</option>
+                      {transitions.map((t) => (
+                        <option key={t.id} value={t.to}>
+                          {t.name} → {t.to}
+                        </option>
+                      ))}
+                    </select>
+                  )
+                ) : (
+                  // Kiwi (statusModel "settable"): no workflow, just a
+                  // dropdown of every valid status. Picking one calls the
+                  // same TransitionTest — the commit engine routes it to
+                  // Kiwi's case_status field.
+                  !readOnly &&
+                  allStatuses.length > 0 && (
+                    <select
+                      className="transition-select"
+                      value={test.status || ""}
+                      onChange={(e) => {
+                        if (e.target.value && e.target.value !== test.status) {
+                          applyTransition(e.target.value);
+                        }
+                      }}
+                    >
+                      {allStatuses.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  )
                 )}
               </div>
             </dd>
@@ -1317,11 +1378,12 @@ export function TestDetail({
 
           <h4 className="steps-head">
             Steps
-            {pendingForTest.some((p) => p.entityType === "test_step_order") && (
-              <span className="steps-reordered" title="Step order changed">
-                reordered
-              </span>
-            )}
+            {caps.stepModel === "objects" &&
+              pendingForTest.some((p) => p.entityType === "test_step_order") && (
+                <span className="steps-reordered" title="Step order changed">
+                  reordered
+                </span>
+              )}
             <button
               className="link-btn steps-refresh"
               onClick={refreshSteps}
@@ -1330,7 +1392,7 @@ export function TestDetail({
             >
               {stepsLoading ? "Loading…" : "Refresh"}
             </button>
-            {!readOnly && (
+            {!readOnly && caps.stepModel === "objects" && (
               <button
                 className="link-btn steps-clone"
                 onClick={() => setShowCloneSteps(true)}
@@ -1342,75 +1404,101 @@ export function TestDetail({
             )}
           </h4>
           {stepsError && <div className="error-text">{stepsError}</div>}
-          {!stepsError &&
-            !stepsLoading &&
-            steps.length === 0 &&
-            (jiraStepInfo && jiraStepInfo.count > 0 ? (
-              <div className="steps-warning">
-                ⚠ Jira reports {jiraStepInfo.count} step
-                {jiraStepInfo.count === 1 ? "" : "s"} for this test that didn't
-                load here. Don't add new steps yet — that would create
-                duplicates.{" "}
-                <button className="link-btn" onClick={refreshSteps}>
-                  Load from Jira
-                </button>
-              </div>
-            ) : (
-              <p className="muted">No steps defined for this test.</p>
-            ))}
-          {!stepsError &&
-            !stepsLoading &&
-            steps.length > 0 &&
-            steps.every((s) => !s.action && !s.data && !s.expected) && (
-              <div className="steps-warning">
-                ⚠ These steps loaded without content — this Xray instance may use
-                a step format the tool doesn't recognise yet. Avoid editing them
-                to prevent overwriting the real steps in Jira.
-              </div>
-            )}
-          {steps.length > 0 && (
-            <ol className="steps-list">
-              {steps.map((s, i) => (
-                <StepRow
-                  key={s.xrayId}
-                  profileId={profileId}
-                  testKey={testKey}
-                  step={s}
-                  pendingForTest={pendingForTest}
-                  isFirst={i === 0}
-                  isLast={i === steps.length - 1}
-                  readOnly={readOnly}
-                  confirm={confirm}
-                  onMove={(dir) => moveStep(i, dir)}
-                  onDuplicate={() => duplicateStep(s)}
-                  onLocalChange={(field, value) => {
-                    setSteps((prev) =>
-                      prev.map((p) =>
-                        p.xrayId === s.xrayId ? { ...p, [field]: value } : p,
-                      ),
-                    );
-                  }}
-                  onLocalDelete={(xrayId) => {
-                    setSteps((prev) => prev.filter((p) => p.xrayId !== xrayId));
-                  }}
-                  onEdited={onEdited}
-                />
-              ))}
-            </ol>
-          )}
-          {!readOnly && !stepsError && !stepsLoading && (
-            <div className="steps-add-row">
-              <button className="link-btn steps-add" onClick={addStep}>
-                + Add step
-              </button>
-              <button
-                className="link-btn steps-add"
-                onClick={() => setShowCallPicker(true)}
-                title="Add a step that calls another test"
-              >
-                + Call test
-              </button>
-            </div>
+          {caps.stepModel === "objects" ? (
+            // Xray: the existing multi-step CRUD list, unchanged.
+            <>
+              {!stepsError &&
+                !stepsLoading &&
+                steps.length === 0 &&
+                (jiraStepInfo && jiraStepInfo.count > 0 ? (
+                  <div className="steps-warning">
+                    ⚠ Jira reports {jiraStepInfo.count} step
+                    {jiraStepInfo.count === 1 ? "" : "s"} for this test that didn't
+                    load here. Don't add new steps yet — that would create
+                    duplicates.{" "}
+                    <button className="link-btn" onClick={refreshSteps}>
+                      Load from Jira
+                    </button>
+                  </div>
+                ) : (
+                  <p className="muted">No steps defined for this test.</p>
+                ))}
+              {!stepsError &&
+                !stepsLoading &&
+                steps.length > 0 &&
+                steps.every((s) => !s.action && !s.data && !s.expected) && (
+                  <div className="steps-warning">
+                    ⚠ These steps loaded without content — this Xray instance may use
+                    a step format the tool doesn't recognise yet. Avoid editing them
+                    to prevent overwriting the real steps in Jira.
+                  </div>
+                )}
+              {steps.length > 0 && (
+                <ol className="steps-list">
+                  {steps.map((s, i) => (
+                    <StepRow
+                      key={s.xrayId}
+                      profileId={profileId}
+                      testKey={testKey}
+                      step={s}
+                      pendingForTest={pendingForTest}
+                      isFirst={i === 0}
+                      isLast={i === steps.length - 1}
+                      readOnly={readOnly}
+                      confirm={confirm}
+                      onMove={(dir) => moveStep(i, dir)}
+                      onDuplicate={() => duplicateStep(s)}
+                      onLocalChange={(field, value) => {
+                        setSteps((prev) =>
+                          prev.map((p) =>
+                            p.xrayId === s.xrayId ? { ...p, [field]: value } : p,
+                          ),
+                        );
+                      }}
+                      onLocalDelete={(xrayId) => {
+                        setSteps((prev) => prev.filter((p) => p.xrayId !== xrayId));
+                      }}
+                      onEdited={onEdited}
+                    />
+                  ))}
+                </ol>
+              )}
+              {!readOnly && !stepsError && !stepsLoading && (
+                <div className="steps-add-row">
+                  <button className="link-btn steps-add" onClick={addStep}>
+                    + Add step
+                  </button>
+                  <button
+                    className="link-btn steps-add"
+                    onClick={() => setShowCallPicker(true)}
+                    title="Add a step that calls another test"
+                  >
+                    + Call test
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            // Kiwi (stepModel "inline-text"): one flattened step, edited as a
+            // single multi-line text field — no add/delete/reorder/call-step.
+            !stepsError &&
+            !stepsLoading && (
+              <InlineStepsEditor
+                profileId={profileId}
+                testKey={testKey}
+                step={steps[0]}
+                readOnly={readOnly}
+                onLocalChange={(xrayId, value) =>
+                  setSteps((prev) =>
+                    prev.map((p) =>
+                      p.xrayId === xrayId ? { ...p, action: value } : p,
+                    ),
+                  )
+                }
+                onLocalCreate={(s) => setSteps((prev) => [...prev, s])}
+                onEdited={onEdited}
+              />
+            )
           )}
 
           {!readOnly && (
@@ -1870,6 +1958,79 @@ function StepRow({
       </div>
       {saveError && <div className="error-text step-save-error">{saveError}</div>}
     </li>
+  );
+}
+
+// InlineStepsEditor renders Kiwi's single inline-text step model
+// (caps.stepModel "inline-text") in place of the Xray multi-step CRUD list.
+// Kiwi has no step objects — flattenSteps (read path) collapses its one
+// `text` field to at most one neutral Step — so there is nothing to
+// add/delete/reorder, just one multi-line field. Saving calls
+// EditTestStepField on that step's id when it already exists; when there is
+// no step yet (empty text), it calls AddTestStep to create the first one.
+// Either way the commit engine collapses the result back to Kiwi's single
+// `text` field (see internal/syncer/commit.go).
+function InlineStepsEditor({
+  profileId,
+  testKey,
+  step,
+  readOnly,
+  onLocalChange,
+  onLocalCreate,
+  onEdited,
+}: {
+  profileId: string;
+  testKey: string;
+  step: Step | undefined;
+  readOnly?: boolean;
+  onLocalChange: (xrayId: string, value: string) => void;
+  onLocalCreate: (step: Step) => void;
+  onEdited: () => void;
+}) {
+  const [text, setText] = useState(step?.action ?? "");
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    setText(step?.action ?? "");
+  }, [step?.xrayId, step?.action]);
+
+  async function save() {
+    if (readOnly) return;
+    setSaveError("");
+    try {
+      if (step) {
+        if (text === step.action) return;
+        await EditTestStepField(profileId, testKey, step.xrayId, "action", text);
+        onLocalChange(step.xrayId, text);
+      } else {
+        if (!text.trim()) return;
+        const s = await AddTestStep(profileId, testKey, text, "", "");
+        onLocalCreate(s);
+      }
+      onEdited();
+    } catch (e) {
+      setSaveError(errMsg(e));
+    }
+  }
+
+  return (
+    <div className="steps-inline">
+      {readOnly ? (
+        <p className="detail-input detail-input-static detail-desc-static">
+          {text || <span className="muted">No steps defined for this test.</span>}
+        </p>
+      ) : (
+        <MarkdownField
+          className="detail-desc-edit"
+          value={text}
+          onChange={setText}
+          onCommit={save}
+          rows={8}
+          placeholder="Steps for this test."
+        />
+      )}
+      {saveError && <div className="error-text step-save-error">{saveError}</div>}
+    </div>
   );
 }
 
