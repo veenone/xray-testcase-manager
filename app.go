@@ -260,11 +260,15 @@ func (a *App) ListProfiles() ([]profile.Profile, error) {
 // manager. The token is never written to the database. scopeJQL is an optional
 // JQL fragment that narrows which Tests sync (FR-5.4). caCert and
 // allowUntrustedTLS configure TLS trust for the new profile (RND_P_4TFINT_05-243).
-func (a *App) CreateProfile(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token, caCert string, allowUntrustedTLS bool) (profile.Profile, error) {
+// backendType selects which system the profile connects to ("xray" or "kiwi",
+// normalized server-side -- see profile.backendOrDefault). For a "kiwi"
+// profile, token holds the combined "username:password" session-login
+// credential rather than a PAT (P6.1).
+func (a *App) CreateProfile(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token, caCert string, allowUntrustedTLS bool, backendType string) (profile.Profile, error) {
 	if err := a.requireStore(); err != nil {
 		return profile.Profile{}, err
 	}
-	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, "")
+	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, backendType)
 	if err != nil {
 		return profile.Profile{}, err
 	}
@@ -278,8 +282,9 @@ func (a *App) CreateProfile(name, jiraURL, projectKey, scopeJQL, bugIssueType, b
 // CreateProfileReusingToken creates a new profile that reuses the Personal
 // Access Token already stored for an existing profile (FR-5) — convenient when
 // several projects share one Jira instance. The token is copied within the OS
-// credential manager and never exposed to the frontend.
-func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, sourceProfileID string) (profile.Profile, error) {
+// credential manager and never exposed to the frontend. backendType selects
+// which system the new profile connects to ("xray" or "kiwi").
+func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, sourceProfileID, backendType string) (profile.Profile, error) {
 	if err := a.requireStore(); err != nil {
 		return profile.Profile{}, err
 	}
@@ -290,7 +295,7 @@ func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bug
 	if strings.TrimSpace(token) == "" {
 		return profile.Profile{}, fmt.Errorf("the selected profile has no stored token to reuse")
 	}
-	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, "", false, "")
+	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, "", false, backendType)
 	if err != nil {
 		return profile.Profile{}, err
 	}
@@ -307,7 +312,11 @@ func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bug
 // project cleanly, and the per-session status/priority caches are dropped. A
 // non-empty token replaces the stored PAT; an empty token leaves it unchanged.
 // caCert and allowUntrustedTLS update the TLS trust settings (RND_P_4TFINT_05-243).
-func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token, caCert string, allowUntrustedTLS bool) (profile.Profile, error) {
+// backendType is the form's currently selected backend ("xray" or "kiwi");
+// ProfileForm seeds its selector from the saved profile but lets it be
+// changed, so an edit can switch a profile between backends (the caller is
+// then responsible for entering a matching credential/URL/Product).
+func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token, caCert string, allowUntrustedTLS bool, backendType string) (profile.Profile, error) {
 	if err := a.requireStore(); err != nil {
 		return profile.Profile{}, err
 	}
@@ -315,7 +324,7 @@ func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, bugIssueTyp
 	if err != nil {
 		return profile.Profile{}, err
 	}
-	if err := a.profiles.Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, old.Backend); err != nil {
+	if err := a.profiles.Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, backendType); err != nil {
 		return profile.Profile{}, err
 	}
 	if strings.TrimSpace(token) != "" {
@@ -354,6 +363,7 @@ type profileConfig struct {
 	BugIssueType   string `json:"bugIssueType"`
 	BugProjectMode string `json:"bugProjectMode"`
 	BugProjectKey  string `json:"bugProjectKey"`
+	Backend        string `json:"backend"`
 }
 
 // ExportProfile writes a profile's configuration (without its token) to a
@@ -369,6 +379,7 @@ func (a *App) ExportProfile(id string) (string, error) {
 	data, err := json.MarshalIndent(profileConfig{
 		Name: p.Name, JiraURL: p.JiraURL, ProjectKey: p.ProjectKey, ScopeJQL: p.ScopeJQL,
 		BugIssueType: p.BugIssueType, BugProjectMode: p.BugProjectMode, BugProjectKey: p.BugProjectKey,
+		Backend: p.Backend,
 	}, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("encode profile: %w", err)
@@ -419,7 +430,7 @@ func (a *App) ImportProfile() (profile.Profile, error) {
 	if strings.TrimSpace(cfg.Name) == "" || strings.TrimSpace(cfg.JiraURL) == "" || strings.TrimSpace(cfg.ProjectKey) == "" {
 		return profile.Profile{}, fmt.Errorf("profile file is missing name, URL or project key")
 	}
-	return a.profiles.Create(cfg.Name, cfg.JiraURL, cfg.ProjectKey, cfg.ScopeJQL, cfg.BugIssueType, cfg.BugProjectMode, cfg.BugProjectKey, "", false, "")
+	return a.profiles.Create(cfg.Name, cfg.JiraURL, cfg.ProjectKey, cfg.ScopeJQL, cfg.BugIssueType, cfg.BugProjectMode, cfg.BugProjectKey, "", false, cfg.Backend)
 }
 
 // UpdateProfileToken replaces a profile's stored PAT in the OS credential
@@ -649,12 +660,16 @@ func (a *App) SetShowCoverage(show bool) error {
 
 // --- Connection & sync (FR-1, FR-8) ---
 
-// TestConnection verifies a Jira URL and PAT, returning the display name of
-// the authenticated user (FR-8.4). It does not depend on the local store --
-// useful for diagnosing PAT issues even if the store failed to initialise.
-// caCert and allowUntrustedTLS are applied directly so the connection test
-// reflects the profile's TLS settings before the profile is saved.
-func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bool) (string, error) {
+// TestConnection verifies a server URL and credential, returning the display
+// name of the authenticated user (FR-8.4). It does not depend on the local
+// store -- useful for diagnosing credential issues even if the store failed to
+// initialise. caCert and allowUntrustedTLS are applied directly so the
+// connection test reflects the profile's TLS settings before the profile is
+// saved. backendType is the form's currently selected backend ("xray" or
+// "kiwi", not yet a saved profile) -- this is what routes a live-Kiwi URL's
+// Test Connection button through the kiwi backend instead of Xray/Jira before
+// any profile exists (P6.1b).
+func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bool, backendType string) (string, error) {
 	var opts []jira.Option
 	if caCert != "" {
 		opts = append(opts, jira.WithCACert(caCert))
@@ -662,7 +677,7 @@ func (a *App) TestConnection(jiraURL, token, caCert string, allowUntrustedTLS bo
 	if allowUntrustedTLS {
 		opts = append(opts, jira.WithInsecureTLS(true))
 	}
-	user, err := newBackend("", jiraURL, token, opts...).TestConnection(a.ctx)
+	user, err := newBackend(backendType, jiraURL, token, opts...).TestConnection(a.ctx)
 	if err != nil {
 		return "", err
 	}

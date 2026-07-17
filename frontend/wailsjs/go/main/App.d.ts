@@ -77,9 +77,9 @@ export function CreatePrecondition(arg1:string,arg2:string):Promise<string>;
 
 export function CreatePreconditionDetailed(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
-export function CreateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:boolean):Promise<profile.Profile>;
+export function CreateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:boolean,arg11:string):Promise<profile.Profile>;
 
-export function CreateProfileReusingToken(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<profile.Profile>;
+export function CreateProfileReusingToken(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string):Promise<profile.Profile>;
 
 export function CreateRequirement(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<string>;
 
@@ -403,7 +403,7 @@ export function SyncTestCalls(arg1:string):Promise<void>;
 
 export function SyncTests(arg1:string):Promise<void>;
 
-export function TestConnection(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<string>;
+export function TestConnection(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5:string):Promise<string>;
 
 export function TestProfileConnection(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<string>;
 
@@ -415,7 +415,7 @@ export function UnlinkBugFromRun(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function UpdateChangeRequest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<void>;
 
-export function UpdateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:boolean):Promise<profile.Profile>;
+export function UpdateProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:boolean,arg12:string):Promise<profile.Profile>;
 
 export function UpdateProfileScope(arg1:string,arg2:string):Promise<void>;
 

@@ -138,12 +138,12 @@ export function CreatePreconditionDetailed(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CreatePreconditionDetailed'](arg1, arg2, arg3, arg4);
 }
 
-export function CreateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
-  return window['go']['main']['App']['CreateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
+export function CreateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+  return window['go']['main']['App']['CreateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
-export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
-  return window['go']['main']['App']['CreateProfileReusingToken'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
+  return window['go']['main']['App']['CreateProfileReusingToken'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
 
 export function CreateRequirement(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
@@ -790,8 +790,8 @@ export function SyncTests(arg1) {
   return window['go']['main']['App']['SyncTests'](arg1);
 }
 
-export function TestConnection(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4);
+export function TestConnection(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function TestProfileConnection(arg1, arg2, arg3, arg4) {
@@ -814,8 +814,8 @@ export function UpdateChangeRequest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, ar
   return window['go']['main']['App']['UpdateChangeRequest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
-export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
-  return window['go']['main']['App']['UpdateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12) {
+  return window['go']['main']['App']['UpdateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12);
 }
 
 export function UpdateProfileScope(arg1, arg2) {

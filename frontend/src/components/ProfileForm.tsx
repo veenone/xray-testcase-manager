@@ -77,6 +77,15 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
   const isEdit = !!profile;
   const others = (profiles ?? []).filter((p) => p.id !== profile?.id);
   const [name, setName] = useState(profile?.name ?? "");
+  // backend selects which system the profile connects to: "xray" (default,
+  // Jira Data Center + Xray Server/DC) or "kiwi" (Kiwi TCMS). Seeded from the
+  // saved profile on edit; new profiles default to Xray so existing behavior
+  // is unchanged unless the user explicitly picks Kiwi.
+  const [backend, setBackend] = useState(profile?.backend === "kiwi" ? "kiwi" : "xray");
+  const backendIsKiwi = backend === "kiwi";
+  // Only offer to reuse a credential from a profile on the same backend --
+  // an Xray PAT and a Kiwi "username:password" string aren't interchangeable.
+  const reusable = others.filter((p) => (p.backend === "kiwi") === backendIsKiwi);
   const [jiraUrl, setJiraUrl] = useState(profile?.jiraUrl ?? "");
   const [projectKey, setProjectKey] = useState(profile?.projectKey ?? "");
   const [scopeJql, setScopeJql] = useState(profile?.scopeJql ?? "");
@@ -88,9 +97,15 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
     profile?.bugProjectKey ?? "",
   );
   const [token, setToken] = useState("");
+  // Kiwi's credential is a session-login username + password, combined into a
+  // single "username:password" string and passed as the existing token
+  // parameter (internal/backend/kiwi splits on the first ":"). Two separate
+  // fields so the user isn't asked to hand-craft the combined string.
+  const [kiwiUsername, setKiwiUsername] = useState("");
+  const [kiwiPassword, setKiwiPassword] = useState("");
   const [showToken, setShowToken] = useState(false);
-  // Reuse a stored PAT from an existing profile (create only). "" = enter a new
-  // token below.
+  // Reuse a stored credential from an existing profile (create only). "" =
+  // enter new credentials below.
   const [reuseFrom, setReuseFrom] = useState("");
   const [caCert, setCaCert] = useState(profile?.caCert ?? "");
   const [allowUntrustedTLS, setAllowUntrustedTLS] = useState(profile?.allowUntrustedTls ?? false);
@@ -101,20 +116,45 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const keyError = projectKeyError(projectKey);
+  // Kiwi has no Jira-style project key -- "Product" is a free-form name, not
+  // validated against the strict key format.
+  const keyError = backendIsKiwi ? "" : projectKeyError(projectKey);
   const urlError = jiraUrlError(jiraUrl);
-  // A token is needed for create unless reusing one from another profile; on
-  // edit a blank token keeps the stored PAT.
-  const tokenSatisfied = isEdit || reuseFrom !== "" || token.trim() !== "";
+
+  const kiwiUser = kiwiUsername.trim();
+  const kiwiPass = kiwiPassword.trim();
+  const kiwiCredComplete = kiwiUser !== "" && kiwiPass !== "";
+  // Exactly one of username/password filled is never a valid credential --
+  // catches a partial edit before it's combined into "username:password".
+  const kiwiCredInvalid = (kiwiUser !== "" || kiwiPass !== "") && !kiwiCredComplete;
+
+  // currentToken is the value sent as the App methods' token/credential
+  // parameter: the raw PAT for Xray, or the combined "username:password" for
+  // Kiwi. "" means "leave the stored credential unchanged" on edit.
+  function currentToken(): string {
+    if (backendIsKiwi) {
+      return kiwiCredComplete ? `${kiwiUser}:${kiwiPass}` : "";
+    }
+    return token.trim();
+  }
+
+  const credEnteredForCreate = backendIsKiwi ? kiwiCredComplete : token.trim() !== "";
+  // A credential is needed for create unless reusing one from another
+  // profile; on edit a blank credential keeps the stored one.
+  const tokenSatisfied = isEdit || reuseFrom !== "" || credEnteredForCreate;
   const canTest =
-    jiraUrl.trim() !== "" && urlError === "" && (token.trim() !== "" || isEdit);
+    jiraUrl.trim() !== "" &&
+    urlError === "" &&
+    !kiwiCredInvalid &&
+    (credEnteredForCreate || isEdit);
   const canSave =
     name.trim() !== "" &&
     jiraUrl.trim() !== "" &&
     urlError === "" &&
     projectKey.trim() !== "" &&
     keyError === "" &&
-    tokenSatisfied;
+    tokenSatisfied &&
+    !kiwiCredInvalid;
 
   // Warn when an edit changes the project/URL — the cached data will be cleared.
   const willClearCache =
@@ -128,11 +168,16 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
     setTestOk(false);
     try {
       let user: string;
-      if (isEdit && token.trim() === "") {
-        // Editing with no new token typed: test against the stored PAT.
+      if (isEdit && currentToken() === "") {
+        // Editing with no new credential typed: test against the stored one.
+        // TestProfileConnection reads the backend type from the saved
+        // profile, so it doesn't need it passed in here.
         user = await TestProfileConnection(profile!.id, normalizeJiraUrl(jiraUrl), caCert.trim(), allowUntrustedTLS);
       } else {
-        user = await TestConnection(normalizeJiraUrl(jiraUrl), token.trim(), caCert.trim(), allowUntrustedTLS);
+        // No saved profile yet (or a new credential was typed) -- route
+        // through the selected backend so testing a live-Kiwi URL hits the
+        // Kiwi backend, not Xray.
+        user = await TestConnection(normalizeJiraUrl(jiraUrl), currentToken(), caCert.trim(), allowUntrustedTLS, backend);
       }
       setTestResult(`Connected as ${user}`);
       setTestOk(true);
@@ -147,7 +192,9 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
     setSaving(true);
     setError("");
     try {
-      const key = projectKey.trim().toUpperCase();
+      // Kiwi's "Product" is a free-form name, not a Jira-style project key --
+      // don't force it upper-case.
+      const key = backendIsKiwi ? projectKey.trim() : projectKey.trim().toUpperCase();
       const bugProjKey =
         bugProjectMode === "dedicated"
           ? bugProjectKey.trim().toUpperCase()
@@ -163,9 +210,10 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
           bugIssueType.trim(),
           bugProjectMode,
           bugProjKey,
-          token.trim(),
+          currentToken(),
           caCert.trim(),
           allowUntrustedTLS,
+          backend,
         );
       } else if (reuseFrom !== "") {
         p = await CreateProfileReusingToken(
@@ -177,6 +225,7 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
           bugProjectMode,
           bugProjKey,
           reuseFrom,
+          backend,
         );
       } else {
         p = await CreateProfile(
@@ -187,9 +236,10 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
           bugIssueType.trim(),
           bugProjectMode,
           bugProjKey,
-          token.trim(),
+          currentToken(),
           caCert.trim(),
           allowUntrustedTLS,
+          backend,
         );
       }
       onCreated(p);
@@ -212,55 +262,76 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
         />
       </label>
       <label>
-        Jira base URL
+        Backend
+        <select
+          value={backend}
+          onChange={(e) => {
+            setBackend(e.target.value);
+            setReuseFrom(""); // the reuse list is backend-filtered; drop a now-invalid selection
+          }}
+        >
+          <option value="xray">Xray / Jira</option>
+          <option value="kiwi">Kiwi TCMS</option>
+        </select>
+      </label>
+      <label>
+        {backendIsKiwi ? "Kiwi server URL" : "Jira base URL"}
         <input
           value={jiraUrl}
           onChange={(e) => setJiraUrl(e.target.value)}
           onBlur={() => setJiraUrl(normalizeJiraUrl(jiraUrl))}
-          placeholder="https://jira.example.com"
+          placeholder={backendIsKiwi ? "https://kiwi.example.com" : "https://jira.example.com"}
           spellCheck={false}
         />
         {urlError && <span className="field-error">{urlError}</span>}
       </label>
       <label>
-        Project key
+        {backendIsKiwi ? "Product" : "Project key"}
         <input
           value={projectKey}
-          onChange={(e) => setProjectKey(e.target.value.toUpperCase())}
-          placeholder="QA"
+          onChange={(e) =>
+            setProjectKey(backendIsKiwi ? e.target.value : e.target.value.toUpperCase())
+          }
+          placeholder={backendIsKiwi ? "e.g. MyProduct" : "QA"}
           spellCheck={false}
         />
         {keyError && <span className="field-error">{keyError}</span>}
       </label>
-      <label>
-        Scope JQL (optional)
-        <input
-          value={scopeJql}
-          onChange={(e) => setScopeJql(e.target.value)}
-          placeholder="e.g. labels = smoke — narrows which tests sync"
-        />
-      </label>
-      <label>
-        Bug issue type
-        <input
-          value={bugIssueType}
-          onChange={(e) => setBugIssueType(e.target.value)}
-          placeholder="Bug — Jira issuetype used when filing a defect"
-          spellCheck={false}
-        />
-      </label>
-      <label>
-        Bug project
-        <select
-          value={bugProjectMode}
-          onChange={(e) => setBugProjectMode(e.target.value)}
-        >
-          <option value="test">Same as test (the test's project)</option>
-          <option value="execution">Same as the Test Execution</option>
-          <option value="dedicated">Dedicated project…</option>
-        </select>
-      </label>
-      {bugProjectMode === "dedicated" && (
+      {!backendIsKiwi && (
+        <label>
+          Scope JQL (optional)
+          <input
+            value={scopeJql}
+            onChange={(e) => setScopeJql(e.target.value)}
+            placeholder="e.g. labels = smoke — narrows which tests sync"
+          />
+        </label>
+      )}
+      {!backendIsKiwi && (
+        <label>
+          Bug issue type
+          <input
+            value={bugIssueType}
+            onChange={(e) => setBugIssueType(e.target.value)}
+            placeholder="Bug — Jira issuetype used when filing a defect"
+            spellCheck={false}
+          />
+        </label>
+      )}
+      {!backendIsKiwi && (
+        <label>
+          Bug project
+          <select
+            value={bugProjectMode}
+            onChange={(e) => setBugProjectMode(e.target.value)}
+          >
+            <option value="test">Same as test (the test's project)</option>
+            <option value="execution">Same as the Test Execution</option>
+            <option value="dedicated">Dedicated project…</option>
+          </select>
+        </label>
+      )}
+      {!backendIsKiwi && bugProjectMode === "dedicated" && (
         <label>
           Dedicated bug project key
           <input
@@ -271,26 +342,76 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
           />
         </label>
       )}
-      {!isEdit && others.length > 0 && (
+      {!isEdit && reusable.length > 0 && (
         <label>
-          Personal Access Token
+          {backendIsKiwi ? "Credential" : "Personal Access Token"}
           <select
             value={reuseFrom}
             onChange={(e) => setReuseFrom(e.target.value)}
           >
-            <option value="">Enter a new token…</option>
-            {others.map((p) => (
+            <option value="">Enter new credentials…</option>
+            {reusable.map((p) => (
               <option key={p.id} value={p.id}>
-                Reuse token from: {p.name} ({p.projectKey})
+                Reuse credential from: {p.name} ({p.projectKey})
               </option>
             ))}
           </select>
         </label>
       )}
 
-      {(isEdit || reuseFrom === "") && (
+      {(isEdit || reuseFrom === "") && backendIsKiwi && (
+        <>
+          <label>
+            Kiwi username
+            <input
+              value={kiwiUsername}
+              onChange={(e) => setKiwiUsername(e.target.value)}
+              placeholder={
+                isEdit
+                  ? "Leave blank (with password) to keep the current credential"
+                  : "Kiwi TCMS username"
+              }
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label>
+            Kiwi password
+            <div className="pat-field">
+              <input
+                type={showToken ? "text" : "password"}
+                value={kiwiPassword}
+                onChange={(e) => setKiwiPassword(e.target.value)}
+                placeholder={
+                  isEdit
+                    ? "Leave blank (with username) to keep the current credential"
+                    : "Kiwi TCMS password"
+                }
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="btn btn-ghost pat-toggle"
+                onClick={() => setShowToken((v) => !v)}
+                title={showToken ? "Hide password" : "Show password"}
+                aria-label={showToken ? "Hide password" : "Show password"}
+              >
+                {showToken ? "🙈" : "👁"}
+              </button>
+            </div>
+            {kiwiCredInvalid && (
+              <span className="field-error">
+                Enter both username and password, or leave both blank to keep
+                the current credential.
+              </span>
+            )}
+          </label>
+        </>
+      )}
+
+      {(isEdit || reuseFrom === "") && !backendIsKiwi && (
         <label>
-          {others.length > 0 && !isEdit ? "New token" : "Personal Access Token"}
+          {reusable.length > 0 && !isEdit ? "New token" : "Personal Access Token"}
           <div className="pat-field">
             <input
               type={showToken ? "text" : "password"}
