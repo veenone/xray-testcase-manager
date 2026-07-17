@@ -4576,6 +4576,53 @@ func upsertPendingChange(tx *sql.Tx, profileID, entityType, entityKey, field, cu
 	return nil
 }
 
+// putPendingChange records (or coalesces) a pending field change
+// unconditionally — unlike upsertPendingChange, it never compares newValue
+// against the row's before_val to detect a "revert" and delete the row.
+// upsertPendingChange's revert check can only see the before_val captured
+// when the row was first created, which goes stale once a resync moves the
+// field's synced base out from under it; a coincidental match against that
+// stale before_val would make it misdetect a genuine staged edit as a revert
+// and silently drop the pending row while the staging column still holds the
+// edit (see stageRunDefects / SetTestRunComment, which already decide
+// revert-vs-edit against a freshly-read base and only reach here on the
+// "genuine edit" branch — the write path must not second-guess that).
+func putPendingChange(tx *sql.Tx, profileID, entityType, entityKey, field, currentVal, newValue, baseVersion string) error {
+	var existingBefore string
+	err := tx.QueryRow(
+		`SELECT before_val FROM pending_change
+		 WHERE profile_id = ? AND entity_type = ? AND entity_key = ? AND field = ?`,
+		profileID, entityType, entityKey, field,
+	).Scan(&existingBefore)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		_, ierr := tx.Exec(
+			`INSERT INTO pending_change
+			   (profile_id, entity_type, entity_key, field, before_val, after_val, base_version, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			profileID, entityType, entityKey, field, currentVal, newValue, baseVersion, now,
+		)
+		if ierr != nil {
+			return fmt.Errorf("insert pending change: %w", ierr)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read existing pending: %w", err)
+	}
+
+	if _, uerr := tx.Exec(
+		`UPDATE pending_change SET after_val = ?, created_at = ?
+		 WHERE profile_id = ? AND entity_type = ? AND entity_key = ? AND field = ?`,
+		newValue, now, profileID, entityType, entityKey, field,
+	); uerr != nil {
+		return fmt.Errorf("update pending: %w", uerr)
+	}
+	return nil
+}
+
 // dropPendingChange removes a pending_change row outright. Used when a caller
 // has already determined — by comparing its candidate new value against a
 // freshly-read base, not against pending_change.before_val — that a local

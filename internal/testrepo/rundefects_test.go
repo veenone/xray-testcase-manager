@@ -240,6 +240,125 @@ func TestSetTestRunCommentBackToSyncedDrops(t *testing.T) {
 	}
 }
 
+// Regression for the T3 desync bug: staging a defect, resyncing the base to
+// a DIFFERENT synced set, then staging a further edit that happens to match
+// the ORIGINAL (now-stale) pending_change.before_val must not be
+// misinterpreted as a revert. upsertPendingChange's own before_val
+// comparison is frozen from when the pending row was first created and
+// cannot see that the synced base has since moved — coincidentally landing
+// back on that stale value must still keep the row (this is a genuine edit
+// relative to the CURRENT synced base, which the resync changed), not
+// silently delete pending_change while the staging column keeps holding the
+// edit unpushed. See putPendingChange's doc comment.
+func TestAddTestRunDefectSurvivesResyncEvenWhenNewValueMatchesStaleBefore(t *testing.T) {
+	r := seedRunDefectsRepo(t)
+
+	// Synced base #1: {A}.
+	if err := r.ReplaceRunsForExec("p1", "QA-TE-1", []TestRunRow{
+		{ExecKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "PASS", Defects: `["BUG-A"]`},
+	}); err != nil {
+		t.Fatalf("seed synced run #1: %v", err)
+	}
+
+	// Stage {A, B}: pending row created with before_val = {A} (the current
+	// synced base at creation time).
+	if err := r.AddTestRunDefect("p1", "QA-TE-1", "QA-1", "BUG-B"); err != nil {
+		t.Fatalf("stage BUG-B: %v", err)
+	}
+	if got := rawRunDefects(t, r, "p1", "QA-TE-1", "QA-1"); got != `["BUG-A","BUG-B"]` {
+		t.Fatalf("run_defects column = %q, want [BUG-A, BUG-B] before resync", got)
+	}
+
+	// Resync moves the base to a DIFFERENT set: {C}. The pending row's
+	// before_val ({A}) is now stale — it no longer reflects Xray's actual
+	// current state.
+	if err := r.ReplaceRunsForExec("p1", "QA-TE-1", []TestRunRow{
+		{ExecKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "PASS", Defects: `["BUG-C"]`},
+	}); err != nil {
+		t.Fatalf("seed synced run #2 (resync): %v", err)
+	}
+
+	// Remove BUG-B, landing the staged set back on {A} — which coincidentally
+	// equals the STALE before_val, but does NOT equal the current synced base
+	// {C}. This must stay staged as a genuine edit, not revert.
+	if err := r.RemoveTestRunDefect("p1", "QA-TE-1", "QA-1", "BUG-B"); err != nil {
+		t.Fatalf("RemoveTestRunDefect: %v", err)
+	}
+
+	if n := pendingCount(t, r, "p1", entityTestRunDefect, "QA-TE-1:QA-1"); n != 1 {
+		t.Errorf("pending test_run_defect rows = %d, want 1 (must not be dropped)", n)
+	}
+	if got := rawRunDefects(t, r, "p1", "QA-TE-1", "QA-1"); got != `["BUG-A"]` {
+		t.Errorf("run_defects column = %q, want [\"BUG-A\"] (staged edit retained)", got)
+	}
+
+	rows, err := r.GetExecutionMembersWithRuns("p1", "QA-TE-1")
+	if err != nil {
+		t.Fatalf("GetExecutionMembersWithRuns: %v", err)
+	}
+	qa1 := findMember(rows, "QA-1")
+	if qa1 == nil {
+		t.Fatal("QA-1 not found in execution members")
+	}
+	if len(qa1.Defects) != 1 || qa1.Defects[0] != "BUG-A" {
+		t.Errorf("Defects = %v, want [BUG-A] (staged value, not synced [BUG-C])", qa1.Defects)
+	}
+}
+
+// Equivalent regression for SetTestRunComment: a resync that moves the
+// synced comment away from the pending row's frozen before_val must not
+// cause a later genuine edit that happens to match that stale before_val to
+// be treated as a revert and dropped.
+func TestSetTestRunCommentSurvivesResyncEvenWhenNewValueMatchesStaleBefore(t *testing.T) {
+	r := seedRunDefectsRepo(t)
+
+	// Synced base #1: "first note".
+	if err := r.ReplaceRunsForExec("p1", "QA-TE-1", []TestRunRow{
+		{ExecKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "PASS", Comment: "first note"},
+	}); err != nil {
+		t.Fatalf("seed synced run #1: %v", err)
+	}
+
+	// Stage "second note": pending row created with before_val = "first note".
+	if err := r.SetTestRunComment("p1", "QA-TE-1", "QA-1", "second note"); err != nil {
+		t.Fatalf("stage second note: %v", err)
+	}
+
+	// Resync moves the base to a DIFFERENT comment: "third note". The pending
+	// row's before_val ("first note") is now stale.
+	if err := r.ReplaceRunsForExec("p1", "QA-TE-1", []TestRunRow{
+		{ExecKey: "QA-TE-1", TestKey: "QA-1", RunStatus: "PASS", Comment: "third note"},
+	}); err != nil {
+		t.Fatalf("seed synced run #2 (resync): %v", err)
+	}
+
+	// Edit the comment back to "first note" — coincidentally equal to the
+	// STALE before_val, but not equal to the current synced base ("third
+	// note"). This must stay staged as a genuine edit, not revert.
+	if err := r.SetTestRunComment("p1", "QA-TE-1", "QA-1", "first note"); err != nil {
+		t.Fatalf("SetTestRunComment: %v", err)
+	}
+
+	if n := pendingCount(t, r, "p1", entityTestRunComment, "QA-TE-1:QA-1"); n != 1 {
+		t.Errorf("pending test_run_comment rows = %d, want 1 (must not be dropped)", n)
+	}
+	if got := rawRunComment(t, r, "p1", "QA-TE-1", "QA-1"); got != "first note" {
+		t.Errorf("run_comment column = %q, want %q (staged edit retained)", got, "first note")
+	}
+
+	rows, err := r.GetExecutionMembersWithRuns("p1", "QA-TE-1")
+	if err != nil {
+		t.Fatalf("GetExecutionMembersWithRuns: %v", err)
+	}
+	qa1 := findMember(rows, "QA-1")
+	if qa1 == nil {
+		t.Fatal("QA-1 not found in execution members")
+	}
+	if qa1.Comment != "first note" {
+		t.Errorf("Comment = %q, want %q (staged value, not synced %q)", qa1.Comment, "first note", "third note")
+	}
+}
+
 // A test key that isn't a member of the execution errors out for all three
 // mutations, mirroring SetTestRunStatus's membership check.
 func TestRunDefectAndCommentRejectNonMember(t *testing.T) {

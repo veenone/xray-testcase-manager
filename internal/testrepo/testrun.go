@@ -266,7 +266,11 @@ func (r *Repository) RemoveTestRunDefect(profileID, execKey, testKey, bugKey str
 //   - otherwise: run_defects is set to the new set's JSON, which is "[]" (not
 //     "") when the new set is empty, so removing the last staged defect while
 //     the synced set is non-empty stays staged rather than reading back as
-//     "no local edit". The pending change is upserted.
+//     "no local edit". The pending change is recorded via putPendingChange,
+//     not upsertPendingChange — upsertPendingChange's own before_val
+//     comparison is frozen from when the row was first created and can't see
+//     a synced base that moved since, so a genuine edit that coincidentally
+//     matches that stale before_val must not be second-guessed into a revert.
 func (r *Repository) stageRunDefects(profileID, execKey, testKey string, mutate func([]string) []string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -336,7 +340,7 @@ func (r *Repository) stageRunDefects(profileID, execKey, testKey string, mutate 
 		); err != nil {
 			return fmt.Errorf("update run defects: %w", err)
 		}
-		if err := upsertPendingChange(
+		if err := putPendingChange(
 			tx, profileID, entityTestRunDefect, ek, "run_defects", currentJSON, nextJSON, "",
 		); err != nil {
 			return err
@@ -365,9 +369,10 @@ func (r *Repository) stageRunDefects(profileID, execKey, testKey string, mutate 
 // Setting the comment to Xray's synced value (test_run.comment) reverts the
 // local edit: run_comment resets to "" and the pending row is dropped
 // outright (dropPendingChange). Otherwise run_comment is set to the given
-// text — including "" — and the pending change is upserted, so clearing a
-// comment that differs from a non-empty synced comment stays staged rather
-// than silently reverting.
+// text — including "" — and the pending change is recorded via
+// putPendingChange (not upsertPendingChange — see stageRunDefects' doc
+// comment for why), so clearing a comment that differs from a non-empty
+// synced comment stays staged rather than silently reverting.
 func (r *Repository) SetTestRunComment(profileID, execKey, testKey, comment string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -434,7 +439,7 @@ func (r *Repository) SetTestRunComment(profileID, execKey, testKey, comment stri
 		); err != nil {
 			return fmt.Errorf("update run comment: %w", err)
 		}
-		if err := upsertPendingChange(
+		if err := putPendingChange(
 			tx, profileID, entityTestRunComment, ek, "run_comment", current, comment, "",
 		); err != nil {
 			return err
