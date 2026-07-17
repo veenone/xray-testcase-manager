@@ -654,6 +654,25 @@ clear.
 *Figure 52 — A Test Execution's member table with the per-test **Fix Version**
 column and the run-status results highlighted in full colour.*
 
+**Defects and remarks on a run.** Each member of a Test Execution also has
+**Defects** and **Remarks** columns for recording notes on that specific run:
+
+- **Link a defect.** Click the **＋** in the Defects column to open a picker.
+  Search the cached bug list by key or summary, or type a bug key directly
+  (e.g. `PROJECT-123`) and confirm to link it even if it is not yet cached
+  locally. Linked defects show as removable chips; click a chip's **✕** to
+  unlink it from the run.
+- **Add or edit a remark.** Click into the Remarks cell and type; the remark
+  saves when you press **Enter** or move focus away (on blur).
+
+Both actions are staged as local pending changes, just like the run-status
+control, and are pushed to Jira/Xray when you **Commit** (a run-defect link
+and a run-comment update).
+
+![Figure 55: Test Execution run defects and remarks](images/55-exec-defects-remarks.png)
+*Figure 55 — A Test Execution's member table with the **Defects** column (linked
+bug chips and the ＋ picker) and the editable **Remarks** column.*
+
 ### Import JUnit XML results
 
 You can update run results in bulk by importing a **JUnit-compatible XML** report.
