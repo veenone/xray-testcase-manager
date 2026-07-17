@@ -169,6 +169,10 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 	commentRows := make([]testrepo.PendingChange, 0)
 	// Test-run result updates, keyed by "<execKey>:<testKey>".
 	runRows := make([]testrepo.PendingChange, 0)
+	// Test-run defect link changes, keyed by "<execKey>:<testKey>".
+	runDefectRows := make([]testrepo.PendingChange, 0)
+	// Test-run comment changes, keyed by "<execKey>:<testKey>".
+	runCommentRows := make([]testrepo.PendingChange, 0)
 	// Requirement coverage-link changes, keyed by test key.
 	requirementRows := make([]testrepo.PendingChange, 0)
 	// Requirement field edits, keyed by the requirement's own issue key.
@@ -237,6 +241,14 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		}
 		if c.EntityType == "test_run" {
 			runRows = append(runRows, c)
+			continue
+		}
+		if c.EntityType == "test_run_defect" {
+			runDefectRows = append(runDefectRows, c)
+			continue
+		}
+		if c.EntityType == "test_run_comment" {
+			runCommentRows = append(runCommentRows, c)
 			continue
 		}
 		testKey, ok := parentTestKey(c)
@@ -642,6 +654,8 @@ testLoop:
 	e.commitReviews(ctx, profileID, reviewRows, &result)
 	e.commitComments(ctx, profileID, commentRows, &result)
 	e.commitRuns(ctx, profileID, runRows, &result)
+	e.commitRunDefects(ctx, profileID, runDefectRows, &result)
+	e.commitRunComments(ctx, profileID, runCommentRows, &result)
 	e.commitRequirements(ctx, profileID, requirementRows, &result)
 	e.commitRequirementEdits(ctx, profileID, requirementEditRows, &result)
 	e.commitRequirementDeletes(ctx, profileID, requirementDeleteRows, &result)
@@ -667,6 +681,121 @@ func (e *Engine) commitRuns(ctx context.Context, profileID string, rows []testre
 		}
 		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "Xray accepted the result but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, testKey)
+	}
+}
+
+// commitRunDefects pushes Test-run defect-link changes to Xray. Each pending
+// row is keyed by "<execKey>:<testKey>"; BeforeVal/AfterVal are JSON arrays of
+// bug keys (the desired set). It diffs the two sets and issues one
+// RemoveTestRunDefect per key dropped and one AddTestRunDefect per key gained
+// — there is no single "replace defects" Xray endpoint. Removes are applied
+// before adds; if any op in either pass fails, the row is left pending (for
+// retry) and the Test is reported Failed without attempting the remaining
+// ops. A retry that re-adds an already-linked defect (e.g. because an earlier
+// remove in the same row succeeded but a later add failed) is tolerated:
+// Xray's link-defect endpoint dedups, so re-sending an add that's already in
+// effect is a no-op on the Xray side. Reported under the Test key.
+func (e *Engine) commitRunDefects(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	for _, c := range rows {
+		execKey, testKey, ok := splitRunEntityKey(c.EntityKey)
+		if !ok {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed run-defect key"})
+			continue
+		}
+		before, err := decodeDefectKeys(c.BeforeVal)
+		if err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "malformed run-defect snapshot: " + err.Error()})
+			continue
+		}
+		after, err := decodeDefectKeys(c.AfterVal)
+		if err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "malformed run-defect set: " + err.Error()})
+			continue
+		}
+
+		beforeSet := make(map[string]bool, len(before))
+		for _, k := range before {
+			beforeSet[k] = true
+		}
+		afterSet := make(map[string]bool, len(after))
+		for _, k := range after {
+			afterSet[k] = true
+		}
+		var removed, added []string
+		for _, k := range before {
+			if !afterSet[k] {
+				removed = append(removed, k)
+			}
+		}
+		for _, k := range after {
+			if !beforeSet[k] {
+				added = append(added, k)
+			}
+		}
+
+		opErr := ""
+		for _, k := range removed {
+			if err := e.client.RemoveTestRunDefect(ctx, execKey, testKey, k); err != nil {
+				opErr = "remove run defect: " + sanitizeError(err.Error())
+				break
+			}
+		}
+		if opErr == "" {
+			for _, k := range added {
+				if err := e.client.AddTestRunDefect(ctx, execKey, testKey, k); err != nil {
+					opErr = "add run defect: " + sanitizeError(err.Error())
+					break
+				}
+			}
+		}
+		if opErr != "" {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: opErr})
+			continue
+		}
+
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "Xray accepted the defect update but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, testKey)
+	}
+}
+
+// decodeDefectKeys parses a run-defect pending-change value (a JSON array of
+// bug keys) into a slice, tolerating "" as the empty set. testrepo always
+// writes "[]" for an intentionally-empty staged set, but this stays
+// defensive about a missing/empty BeforeVal (e.g. no synced base yet).
+func decodeDefectKeys(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	var keys []string
+	if err := json.Unmarshal([]byte(raw), &keys); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+// commitRunComments pushes Test-run comment changes to Xray. Each pending row
+// is keyed by "<execKey>:<testKey>"; mirrors commitRuns exactly — AfterVal is
+// the new comment text (including "", a legitimate cleared comment). Reported
+// under the Test key.
+func (e *Engine) commitRunComments(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	for _, c := range rows {
+		execKey, testKey, ok := splitRunEntityKey(c.EntityKey)
+		if !ok {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed run-comment key"})
+			continue
+		}
+		if err := e.client.SetTestRunComment(ctx, execKey, testKey, c.AfterVal); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "set run comment: " + sanitizeError(err.Error())})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: testKey, Error: "Xray accepted the comment but local cleanup failed: " + err.Error()})
 			continue
 		}
 		result.Succeeded = append(result.Succeeded, testKey)
