@@ -1545,9 +1545,11 @@ i.sankey-node-l2 {
   color: inherit;
   font: inherit;
   font-weight: inherit;
+}
+button.defect-chip-key {
   cursor: pointer;
 }
-.defect-chip-key:hover {
+button.defect-chip-key:hover {
   text-decoration: underline;
 }
 .defect-chip-remove {
