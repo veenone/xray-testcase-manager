@@ -73,6 +73,7 @@ func mapRunRows(runs []jira.TestRun, execKey string, envFallback []string) []tes
 			ExecutedBy:  tr.ExecutedBy,
 			Environment: env,
 			Defects:     defectsJSON,
+			Comment:     tr.Comment,
 			CreatedAt:   tr.CreatedAt,
 			UpdatedAt:   tr.UpdatedAt,
 		})

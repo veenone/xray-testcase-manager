@@ -402,8 +402,9 @@ func demoRunDate(execIdx, pos int) string {
 // demoTestRuns returns a deterministic slice of TestRun values for a demo
 // Test Execution, seeded from the demoContainersAndLinks membership for that
 // execution. Each run's status matches the demoRunStatuses cycle; FAIL runs
-// carry a defect key drawn from the demo bug pool so the cross-table story is
-// coherent (FAILed tests have defects).
+// carry a defect key drawn from the demo bug pool and a short remark
+// referencing it, so the cross-table story is coherent (FAILed tests have
+// both a defect and a comment).
 func demoTestRuns(execKey string) []TestRun {
 	execIdx := demoExecKeyIndex(execKey)
 	if execIdx < 0 {
@@ -441,6 +442,7 @@ func demoTestRuns(execKey string) []TestRun {
 		executor := demoExecExecutors[pos%len(demoExecExecutors)]
 
 		var defects []string
+		var comment string
 		if status == "FAIL" {
 			// Derive a demo bug key consistent with demoBugs: bugs live in
 			// the BUGS or SUP project, numbered from 100. Use the test index
@@ -449,7 +451,11 @@ func demoTestRuns(execKey string) []TestRun {
 			if testNum%2 == 0 {
 				bugProject = demoBugProject2
 			}
-			defects = []string{fmt.Sprintf("%s-%d", bugProject, 100+(testNum%12))}
+			defectKey := fmt.Sprintf("%s-%d", bugProject, 100+(testNum%12))
+			defects = []string{defectKey}
+			// A short deterministic remark so the demo shows both a defect and
+			// a comment on the same run (no time.Now(), no rand).
+			comment = fmt.Sprintf("Reproduced failure; logged %s for follow-up.", defectKey)
 		} else {
 			defects = []string{}
 		}
@@ -467,6 +473,7 @@ func demoTestRuns(execKey string) []TestRun {
 			ExecutedBy:  executor,
 			Environment: env,
 			Defects:     defects,
+			Comment:     comment,
 			CreatedAt:   createdAt,
 			UpdatedAt:   updatedAt,
 		})

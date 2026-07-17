@@ -96,6 +96,34 @@ func TestGetTestRunsDemoFailRunsHaveDefects(t *testing.T) {
 	}
 }
 
+// TestGetTestRunsDemoFailRunsHaveComment checks that FAIL runs in the demo
+// also carry a non-empty Comment referencing the fabricated defect, so a demo
+// Test Execution exercises both the defect and the remark UI.
+func TestGetTestRunsDemoFailRunsHaveComment(t *testing.T) {
+	c := NewClient("demo", "token")
+	found := false
+	for _, execKey := range []string{"DEMO-TE-1", "DEMO-TE-2", "DEMO-TE-3", "DEMO-TE-4",
+		"DEMO-TE-5", "DEMO-TE-6", "DEMO-TE-7", "DEMO-TE-8"} {
+		runs, err := c.GetTestRuns(context.Background(), execKey)
+		if err != nil {
+			t.Fatalf("%s: %v", execKey, err)
+		}
+		for _, r := range runs {
+			if r.Status == "FAIL" {
+				if r.Comment == "" {
+					t.Errorf("%s: FAIL run for %s has empty Comment", execKey, r.TestKey)
+				}
+				if len(r.Defects) > 0 {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("no FAIL run with a defect found across all demo executions")
+	}
+}
+
 // TestGetTestRunsDemoHasTimestamps verifies that demo runs carry non-empty
 // CreatedAt and UpdatedAt timestamps derived deterministically from the exec
 // key and run position.
