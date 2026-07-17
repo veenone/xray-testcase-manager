@@ -14,7 +14,7 @@ import {
 import { usePrompt } from "./usePrompt";
 import { useNotice } from "./useNotice";
 import { formatDate } from "../dates";
-import { REVIEW_ENABLED } from "../features";
+import { REVIEW_ENABLED, useCapabilities } from "../features";
 import type {
   TestPage,
   TestQuery,
@@ -223,6 +223,9 @@ export function TestTable({
   onSync,
   syncing,
 }: Props) {
+  // Gates the exec-type filter to what the active profile's backend actually
+  // supports (P6.2a).
+  const caps = useCapabilities(profileId);
   const [search, setSearch] = useViewState(profileId, "browse", "search", "");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useViewState(profileId, "browse", "status", "");
@@ -545,19 +548,21 @@ export function TestTable({
             <option key={s} value={s} />
           ))}
         </datalist>
-        <select
-          className="exectype-filter"
-          value={execType}
-          onChange={(e) => setExecType(e.target.value)}
-          title="Filter by execution type (Xray Test Type)"
-        >
-          <option value="">Any exec type</option>
-          {EXEC_TYPE_OPTIONS.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
+        {caps.supportsTestTypes && (
+          <select
+            className="exectype-filter"
+            value={execType}
+            onChange={(e) => setExecType(e.target.value)}
+            title="Filter by execution type (Xray Test Type)"
+          >
+            <option value="">Any exec type</option>
+            {EXEC_TYPE_OPTIONS.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        )}
         {REVIEW_ENABLED && (
           <select
             className="review-filter"

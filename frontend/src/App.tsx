@@ -57,7 +57,7 @@ import { ContainerList } from "./components/ContainerList";
 import { ComponentList } from "./components/ComponentList";
 import { PendingChangesModal } from "./components/PendingChangesModal";
 import { BulkReviewModal } from "./components/BulkReviewModal";
-import { REVIEW_ENABLED } from "./features";
+import { REVIEW_ENABLED, useCapabilities } from "./features";
 import { clearViewState } from "./lib/viewState";
 import { BulkEditModal } from "./components/BulkEditModal";
 import { BulkTransitionModal } from "./components/BulkTransitionModal";
@@ -924,6 +924,10 @@ function App() {
   const activeProfile = profiles.find((p) => p.id === activeId);
   const isDemo = isDemoUrl(activeProfile?.jiraUrl);
   const demoVar = demoVariant(activeProfile?.jiraUrl);
+  // Gates the Xray-shaped UI below to what the active profile's backend
+  // actually supports (Kiwi, etc.) — defaultCapabilities (all true) while
+  // loading, so an Xray profile is never affected (P6.2a).
+  const caps = useCapabilities(activeId);
 
   // A sync is in flight when the main Sync is running (syncing) OR any partial
   // per-view refresh is emitting progress. Both a full pull and a partial sync
@@ -1029,18 +1033,22 @@ function App() {
           >
             Browse
           </button>
-          <button
-            className={`view-tab${view === "preconditions" ? " view-tab-active" : ""}`}
-            onClick={() => setView("preconditions")}
-          >
-            Preconditions
-          </button>
-          <button
-            className={`view-tab${view === "requirements" ? " view-tab-active" : ""}`}
-            onClick={() => setView("requirements")}
-          >
-            Requirements
-          </button>
+          {caps.supportsPreconditionObjects && (
+            <button
+              className={`view-tab${view === "preconditions" ? " view-tab-active" : ""}`}
+              onClick={() => setView("preconditions")}
+            >
+              Preconditions
+            </button>
+          )}
+          {caps.supportsRequirementObjects && (
+            <button
+              className={`view-tab${view === "requirements" ? " view-tab-active" : ""}`}
+              onClick={() => setView("requirements")}
+            >
+              Requirements
+            </button>
+          )}
           <button
             className={`view-tab${view === "duplicates" ? " view-tab-active" : ""}`}
             onClick={() => setView("duplicates")}
@@ -1193,19 +1201,21 @@ function App() {
           >
             Bulk edit…
           </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowBulkTransition(true)}
-          >
-            Bulk transition…
-          </button>
+          {caps.supportsWorkflowTransitions && (
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowBulkTransition(true)}
+            >
+              Bulk transition…
+            </button>
+          )}
           <button
             className="btn btn-primary"
             onClick={() => setShowBulkAllocate(true)}
           >
             Allocate…
           </button>
-          {folders.length > 0 && (
+          {caps.supportsFolders && folders.length > 0 && (
             <button
               className="btn btn-primary"
               onClick={() => setShowBulkMove(true)}
@@ -1213,18 +1223,22 @@ function App() {
               Move to folder…
             </button>
           )}
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowBulkPreconditions(true)}
-          >
-            Preconditions…
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowBulkRequirements(true)}
-          >
-            Requirements…
-          </button>
+          {caps.supportsPreconditionObjects && (
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowBulkPreconditions(true)}
+            >
+              Preconditions…
+            </button>
+          )}
+          {caps.supportsRequirementObjects && (
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowBulkRequirements(true)}
+            >
+              Requirements…
+            </button>
+          )}
           {REVIEW_ENABLED && (
             <button
               className="btn btn-primary"
@@ -1239,7 +1253,7 @@ function App() {
         </div>
       )}
 
-      {view === "preconditions" ? (
+      {view === "preconditions" && caps.supportsPreconditionObjects ? (
         <main className="content content-preconditions">
           <PreconditionsView
             profileId={activeId}
@@ -1250,7 +1264,7 @@ function App() {
             }}
           />
         </main>
-      ) : view === "requirements" ? (
+      ) : view === "requirements" && caps.supportsRequirementObjects ? (
         <main className="content content-requirements">
           <RequirementsView
             profileId={activeId}
@@ -1355,7 +1369,9 @@ function App() {
                 setSelectedKey(null);
               }}
             >
-              <option value="folder">Group by: Folder</option>
+              {caps.supportsFolders && (
+                <option value="folder">Group by: Folder</option>
+              )}
               <option value="testset">Group by: Test Set</option>
               <option value="testplan">Group by: Test Plan</option>
               <option value="component">Group by: Component</option>
@@ -1371,7 +1387,13 @@ function App() {
                 }}
               />
             ) : groupBy === "folder" ? (
-              folders.length > 0 ? (
+              !caps.supportsFolders ? (
+                <div className="browse-sidebar-empty">
+                  <p className="muted">
+                    Folders are not supported by this backend.
+                  </p>
+                </div>
+              ) : folders.length > 0 ? (
                 <FolderTree
                   folders={folders}
                   selected={selectedFolder}

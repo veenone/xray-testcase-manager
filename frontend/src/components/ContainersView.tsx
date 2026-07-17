@@ -38,6 +38,7 @@ import { TestDetail } from "./TestDetail";
 import { usePrompt } from "./usePrompt";
 import { useConfirm } from "./useConfirm";
 import { useNotice } from "./useNotice";
+import { useCapabilities } from "../features";
 
 interface Props {
   profileId: string;
@@ -71,6 +72,9 @@ export function ContainersView({
   jiraUrl,
   onOpenTest,
 }: Props) {
+  // Gates the Test Execution environment controls to what the active
+  // profile's backend actually supports (P6.2a).
+  const caps = useCapabilities(profileId);
   const [kind, setKind] = useViewState(profileId, "containers", "kind", "testplan");
   const [cStatus, setCStatus] = useViewState(profileId, "containers", "cStatus", "");
   // Execution-type filter (Test Execution kind only): "" = all, "standalone", "subtask".
@@ -881,7 +885,7 @@ export function ContainersView({
             <option value="subtask">Sub-task</option>
           </select>
         )}
-        {kind === "testexec" && envOptions.length > 0 && (
+        {caps.supportsEnvironments && kind === "testexec" && envOptions.length > 0 && (
           <select
             className="container-status-filter app-select"
             value={cEnv}
@@ -896,7 +900,7 @@ export function ContainersView({
             ))}
           </select>
         )}
-        {kind === "testexec" && (
+        {caps.supportsEnvironments && kind === "testexec" && (
           <span
             className="container-env-batch"
             title="Apply an environment change to every execution currently shown"
@@ -1014,7 +1018,7 @@ export function ContainersView({
             </div>
           )}
 
-          {kind === "testexec" && (
+          {caps.supportsEnvironments && kind === "testexec" && (
             <div className="container-environments">
               <span className="container-env-label">Environments</span>
               <div className="container-env-chips">

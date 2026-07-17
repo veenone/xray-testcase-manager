@@ -61,7 +61,7 @@ import { MultiAddSelect } from "./MultiAddSelect";
 import { CloneStepsModal } from "./CloneStepsModal";
 import { PickTestModal } from "./PickTestModal";
 import { formatDateTime } from "../dates";
-import { REVIEW_ENABLED } from "../features";
+import { REVIEW_ENABLED, useCapabilities } from "../features";
 
 const REVIEWER_KEY = "xtm.reviewer";
 
@@ -110,6 +110,10 @@ export function TestDetail({
 }: Props) {
   const { prompt, promptUI } = usePrompt();
   const { confirm, confirmUI } = useConfirm();
+  // Gates the Xray-shaped sections below (preconditions, requirements, exec
+  // type, folder) to what the active profile's backend actually supports
+  // (P6.2a). Status/step editing is left un-gated here — that's P6.2b.
+  const caps = useCapabilities(profileId);
 
   // The test key links to its real Jira issue, opened in the system browser
   // (RND_P_4TFINT_05-211). Suppressed for demo profiles and for uncommitted
@@ -842,32 +846,36 @@ export function TestDetail({
               )}
             </dd>
 
-            <dt>
-              Execution type {isDirty("exec_type") && <DirtyDot />}
-            </dt>
-            <dd>
-              {readOnly ? (
-                <span>{execType || "—"}</span>
-              ) : (
-                <select
-                  className="detail-input detail-input-inline"
-                  value={execType}
-                  onChange={(e) => {
-                    setExecType(e.target.value);
-                    saveField("exec_type", e.target.value);
-                  }}
-                >
-                  <option value="">—</option>
-                  {EXEC_TYPE_OPTIONS.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </dd>
+            {caps.supportsTestTypes && (
+              <>
+                <dt>
+                  Execution type {isDirty("exec_type") && <DirtyDot />}
+                </dt>
+                <dd>
+                  {readOnly ? (
+                    <span>{execType || "—"}</span>
+                  ) : (
+                    <select
+                      className="detail-input detail-input-inline"
+                      value={execType}
+                      onChange={(e) => {
+                        setExecType(e.target.value);
+                        saveField("exec_type", e.target.value);
+                      }}
+                    >
+                      <option value="">—</option>
+                      {EXEC_TYPE_OPTIONS.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </dd>
+              </>
+            )}
 
-            {folders.length > 0 && (
+            {caps.supportsFolders && folders.length > 0 && (
               <>
                 <dt>
                   Folder {isDirty("folder") && <DirtyDot />}
@@ -999,55 +1007,59 @@ export function TestDetail({
             </>
           )}
 
-          <h4>
-            Preconditions {isDirty("preconditions") && <DirtyDot />}
-          </h4>
-          {preconditions.length === 0 ? (
-            <p className="muted">None linked</p>
-          ) : (
-            <ul className="pre-list">
-              {preconditions.map((p) => (
-                <PreconditionRow
-                  key={p.key}
-                  profileId={profileId}
-                  precondition={p}
-                  readOnly={readOnly}
-                  onRemove={removePrecondition}
-                  onEdited={onEdited}
-                />
-              ))}
-            </ul>
-          )}
-          {!readOnly && (
-            <div className="pre-add pre-add-row">
-              <MultiAddSelect
-                placeholder="+ Add precondition…"
-                onAdd={addPreconditions}
-                options={allPreconditions
-                  .filter((p) => !preconditions.some((lp) => lp.key === p.key))
-                  .map((p) => ({
-                    value: p.key,
-                    label: `${p.key} — ${p.summary}`,
-                  }))}
-              />
-              <button
-                type="button"
-                className="btn btn-ghost pre-add-new"
-                onClick={createAndAssociatePrecondition}
-                title="Create a brand-new precondition and link it"
-              >
-                ＋ New
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost pre-add-new"
-                onClick={() => setSwapKind("precondition")}
-                disabled={preconditions.length === 0 && allPreconditions.length === 0}
-                title="Swap preconditions: remove some and add others in one apply"
-              >
-                ⇄ Swap
-              </button>
-            </div>
+          {caps.supportsPreconditionObjects && (
+            <>
+              <h4>
+                Preconditions {isDirty("preconditions") && <DirtyDot />}
+              </h4>
+              {preconditions.length === 0 ? (
+                <p className="muted">None linked</p>
+              ) : (
+                <ul className="pre-list">
+                  {preconditions.map((p) => (
+                    <PreconditionRow
+                      key={p.key}
+                      profileId={profileId}
+                      precondition={p}
+                      readOnly={readOnly}
+                      onRemove={removePrecondition}
+                      onEdited={onEdited}
+                    />
+                  ))}
+                </ul>
+              )}
+              {!readOnly && (
+                <div className="pre-add pre-add-row">
+                  <MultiAddSelect
+                    placeholder="+ Add precondition…"
+                    onAdd={addPreconditions}
+                    options={allPreconditions
+                      .filter((p) => !preconditions.some((lp) => lp.key === p.key))
+                      .map((p) => ({
+                        value: p.key,
+                        label: `${p.key} — ${p.summary}`,
+                      }))}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost pre-add-new"
+                    onClick={createAndAssociatePrecondition}
+                    title="Create a brand-new precondition and link it"
+                  >
+                    ＋ New
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost pre-add-new"
+                    onClick={() => setSwapKind("precondition")}
+                    disabled={preconditions.length === 0 && allPreconditions.length === 0}
+                    title="Swap preconditions: remove some and add others in one apply"
+                  >
+                    ⇄ Swap
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           {(() => {
@@ -1093,58 +1105,62 @@ export function TestDetail({
             );
           })()}
 
-          <h4>
-            Requirements {isDirty("requirements") && <DirtyDot />}
-          </h4>
-          {requirements.length === 0 ? (
-            <p className="muted">Not linked to any requirement.</p>
-          ) : (
-            <ul className="pre-list req-link-list">
-              {requirements.map((rq) => (
-                <li key={rq.key}>
-                  <span className="mono">{rq.key}</span>
-                  <span className="muted req-link-project">{rq.projectKey}</span>
-                  <span className="req-link-summary">{rq.summary}</span>
-                  {rq.status && (
-                    <span className="status-pill req-link-status">
-                      {rq.status}
-                    </span>
-                  )}
-                  {!readOnly && (
-                    <button
-                      className="btn btn-ghost pre-remove"
-                      onClick={() => removeRequirement(rq.key)}
-                      title="Unlink this requirement"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {!readOnly && (
-            <div className="pre-add pre-add-row">
-              <MultiAddSelect
-                placeholder="+ Link requirement…"
-                onAdd={addRequirements}
-                options={allRequirements
-                  .filter((r) => !requirements.some((lr) => lr.key === r.key))
-                  .map((r) => ({
-                    value: r.key,
-                    label: `${r.key} — ${r.summary}`,
-                  }))}
-              />
-              <button
-                type="button"
-                className="btn btn-ghost pre-add-new"
-                onClick={() => setSwapKind("requirement")}
-                disabled={requirements.length === 0 && allRequirements.length === 0}
-                title="Swap requirements: unlink some and link others in one apply"
-              >
-                ⇄ Swap
-              </button>
-            </div>
+          {caps.supportsRequirementObjects && (
+            <>
+              <h4>
+                Requirements {isDirty("requirements") && <DirtyDot />}
+              </h4>
+              {requirements.length === 0 ? (
+                <p className="muted">Not linked to any requirement.</p>
+              ) : (
+                <ul className="pre-list req-link-list">
+                  {requirements.map((rq) => (
+                    <li key={rq.key}>
+                      <span className="mono">{rq.key}</span>
+                      <span className="muted req-link-project">{rq.projectKey}</span>
+                      <span className="req-link-summary">{rq.summary}</span>
+                      {rq.status && (
+                        <span className="status-pill req-link-status">
+                          {rq.status}
+                        </span>
+                      )}
+                      {!readOnly && (
+                        <button
+                          className="btn btn-ghost pre-remove"
+                          onClick={() => removeRequirement(rq.key)}
+                          title="Unlink this requirement"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!readOnly && (
+                <div className="pre-add pre-add-row">
+                  <MultiAddSelect
+                    placeholder="+ Link requirement…"
+                    onAdd={addRequirements}
+                    options={allRequirements
+                      .filter((r) => !requirements.some((lr) => lr.key === r.key))
+                      .map((r) => ({
+                        value: r.key,
+                        label: `${r.key} — ${r.summary}`,
+                      }))}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost pre-add-new"
+                    onClick={() => setSwapKind("requirement")}
+                    disabled={requirements.length === 0 && allRequirements.length === 0}
+                    title="Swap requirements: unlink some and link others in one apply"
+                  >
+                    ⇄ Swap
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           <h4>Bugs</h4>
