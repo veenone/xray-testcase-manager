@@ -11,6 +11,8 @@ package kiwi
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,6 +65,31 @@ func WithHTTPClient(hc *http.Client) Option {
 			hc.Jar = jar
 		}
 		c.http = hc
+	}
+}
+
+// WithTLS configures the client's TLS trust from a profile's settings: an
+// optional PEM-encoded CA certificate appended to the system pool, and/or
+// skipping certificate verification (for a self-signed server such as a
+// localhost Kiwi). A no-op when both are unset, so the default system trust is
+// used. Only the Transport is set, so the cookiejar installed by NewClient is
+// preserved.
+func WithTLS(caCertPEM string, insecure bool) Option {
+	return func(c *Client) {
+		if caCertPEM == "" && !insecure {
+			return
+		}
+		cfg := &tls.Config{InsecureSkipVerify: insecure}
+		if caCertPEM != "" {
+			pool, err := x509.SystemCertPool()
+			if err != nil || pool == nil {
+				pool = x509.NewCertPool()
+			}
+			if pool.AppendCertsFromPEM([]byte(caCertPEM)) {
+				cfg.RootCAs = pool
+			}
+		}
+		c.http.Transport = &http.Transport{TLSClientConfig: cfg}
 	}
 }
 
