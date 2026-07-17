@@ -332,7 +332,7 @@ func (a *App) UpdateProfile(id, name, jiraURL, projectKey, scopeJQL, bugIssueTyp
 			return profile.Profile{}, fmt.Errorf("save credentials: %w", err)
 		}
 	}
-	if old.ProjectKey != projectKey || old.JiraURL != jiraURL {
+	if old.ProjectKey != projectKey || old.JiraURL != jiraURL || old.Backend != backendType {
 		if err := a.repo.PurgeProfile(id); err != nil {
 			return profile.Profile{}, fmt.Errorf("clear cached data for the new project: %w", err)
 		}

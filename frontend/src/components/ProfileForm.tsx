@@ -126,7 +126,9 @@ export function ProfileForm({ onCreated, onCancel, profile, profiles, extraActio
   const kiwiCredComplete = kiwiUser !== "" && kiwiPass !== "";
   // Exactly one of username/password filled is never a valid credential --
   // catches a partial edit before it's combined into "username:password".
-  const kiwiCredInvalid = (kiwiUser !== "" || kiwiPass !== "") && !kiwiCredComplete;
+  // Gated on backendIsKiwi: leftover Kiwi username/password state from a
+  // backend-selector round-trip must not deadlock the (now hidden) Xray form.
+  const kiwiCredInvalid = backendIsKiwi && (kiwiUser !== "" || kiwiPass !== "") && !kiwiCredComplete;
 
   // currentToken is the value sent as the App methods' token/credential
   // parameter: the raw PAT for Xray, or the combined "username:password" for
