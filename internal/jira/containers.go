@@ -1,10 +1,12 @@
 package jira
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -706,6 +708,102 @@ func (c *Client) resolveTestRunID(ctx context.Context, execKey, testKey string) 
 	return "", fmt.Errorf(
 		"%s has no test run in execution %s yet — Xray may still be creating it; "+
 			"sync the execution and commit again", testKey, execKey)
+}
+
+// AddTestRunDefect links a Bug to a Test's run inside a Test Execution. Demo
+// URLs short-circuit to a no-op.
+//
+// Live endpoint (verified against a live Xray Server/DC instance): POST
+// /rest/raven/1.0/api/testrun/{id}/defect with a JSON array body of one or
+// more issue keys, e.g. ["BUG-123"].
+func (c *Client) AddTestRunDefect(ctx context.Context, execKey, testKey, bugKey string) error {
+	if isDemoURL(c.baseURL) {
+		return nil
+	}
+	bugKey = strings.TrimSpace(bugKey)
+	if bugKey == "" {
+		return fmt.Errorf("a defect key is required")
+	}
+
+	runID, err := c.resolveTestRunID(ctx, execKey, testKey)
+	if err != nil {
+		return err
+	}
+
+	return c.post(ctx, fmt.Sprintf("/rest/raven/1.0/api/testrun/%s/defect", runID), []string{bugKey})
+}
+
+// RemoveTestRunDefect unlinks a Bug from a Test's run inside a Test
+// Execution. Demo URLs short-circuit to a no-op.
+//
+// Live endpoint (verified against a live Xray Server/DC instance): DELETE
+// /rest/raven/1.0/api/testrun/{id}/defect/{key}, the defect key in the path.
+func (c *Client) RemoveTestRunDefect(ctx context.Context, execKey, testKey, bugKey string) error {
+	if isDemoURL(c.baseURL) {
+		return nil
+	}
+	bugKey = strings.TrimSpace(bugKey)
+	if bugKey == "" {
+		return fmt.Errorf("a defect key is required")
+	}
+
+	runID, err := c.resolveTestRunID(ctx, execKey, testKey)
+	if err != nil {
+		return err
+	}
+
+	return c.delete(ctx, fmt.Sprintf("/rest/raven/1.0/api/testrun/%s/defect/%s", runID, url.PathEscape(bugKey)))
+}
+
+// SetTestRunComment sets the free-text comment on a Test's run inside a Test
+// Execution. Demo URLs short-circuit to a no-op.
+//
+// Live endpoint (verified against a live Xray Server/DC instance): PUT
+// /rest/raven/1.0/api/testrun/{id}/comment. CRITICAL: the body is the RAW
+// comment text, NOT a JSON-encoded string — sending json.Marshal(comment)
+// stores the literal surrounding quotes in Xray. The Content-Type header must
+// still be application/json (text/plain is rejected with 415). An empty
+// comment clears it.
+func (c *Client) SetTestRunComment(ctx context.Context, execKey, testKey, comment string) error {
+	if isDemoURL(c.baseURL) {
+		return nil
+	}
+
+	runID, err := c.resolveTestRunID(ctx, execKey, testKey)
+	if err != nil {
+		return err
+	}
+
+	return c.putRaw(ctx, fmt.Sprintf("/rest/raven/1.0/api/testrun/%s/comment", runID), "application/json", []byte(comment))
+}
+
+// putRaw performs an authenticated PUT sending body's bytes verbatim (no JSON
+// marshaling), with the given Content-Type header. Used where the API expects
+// a raw string payload rather than a JSON-encoded value (see
+// SetTestRunComment).
+func (c *Client) putRaw(ctx context.Context, path, contentType string, body []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", contentType)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf(
+			"jira: PUT %s -> %s: %s",
+			path, resp.Status, strings.TrimSpace(string(respBody)),
+		)
+	}
+	return nil
 }
 
 // SetContainerEnvironments sets the Xray Test Environments field on a Test

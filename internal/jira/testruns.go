@@ -15,7 +15,8 @@ const maxTestExecPages = 100
 // TestRun is one test's run record within a Test Execution as returned by the
 // Xray Test Run REST endpoint. It carries the run status, timing, the executor
 // identity, the environment label (if set), any defect keys linked to the run,
-// and the run's creation / last-update timestamps (ISO-8601, empty if absent).
+// the run's free-text comment (if set), and the run's creation / last-update
+// timestamps (ISO-8601, empty if absent).
 type TestRun struct {
 	TestKey     string
 	Status      string
@@ -24,6 +25,7 @@ type TestRun struct {
 	ExecutedBy  string
 	Environment string
 	Defects     []string
+	Comment     string
 	CreatedAt   string
 	UpdatedAt   string
 }
@@ -158,10 +160,11 @@ func parsePlanKeys(raw json.RawMessage) []string {
 // execution. The parser is tolerant: unknown fields are ignored, missing
 // optional fields are left empty, and objects with an empty "key" are skipped.
 //
-// The key, status, executedBy, startedOn, finishedOn, and defects fields are
-// confirmed against a live Xray Server/DC instance. testEnvironments is assumed
-// (absent when no environment is set) and the defects element shape is tolerated
-// both as plain strings and as {"key":...} objects.
+// The key, status, executedBy, startedOn, finishedOn, defects, and comment
+// fields are confirmed against a live Xray Server/DC instance. testEnvironments
+// is assumed (absent when no environment is set) and the defects element shape
+// is tolerated both as plain strings and as {"key":...} objects. comment is
+// absent or null when the run has no comment, which parses to "".
 func parseTestExecTests(body []byte) ([]TestRun, error) {
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" || trimmed == "null" || trimmed == "[]" {
@@ -181,6 +184,7 @@ func parseTestExecTests(body []byte) ([]TestRun, error) {
 		ExecutedBy       string            `json:"executedBy"`
 		TestEnvironments []string          `json:"testEnvironments"`
 		Defects          []json.RawMessage `json:"defects"`
+		Comment          string            `json:"comment"`
 	}
 
 	var raw []rawTest
@@ -240,6 +244,7 @@ func parseTestExecTests(body []byte) ([]TestRun, error) {
 			ExecutedBy:  executor,
 			Environment: env,
 			Defects:     defects,
+			Comment:     r.Comment,
 			// CreatedAt and UpdatedAt are not present on the testexec/test endpoint.
 			// NOTE(xtm): verify whether Xray Server/DC 8.4.0 includes created/updated
 			// timestamps in the detailed testexec/test response.

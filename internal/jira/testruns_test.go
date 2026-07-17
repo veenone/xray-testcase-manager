@@ -272,6 +272,32 @@ func TestParseTestExecTestsDefectsObjectForm(t *testing.T) {
 	}
 }
 
+// TestParseTestExecTestsComment verifies the comment field is parsed when
+// present and left empty when absent or null.
+func TestParseTestExecTestsComment(t *testing.T) {
+	body := []byte(`[
+		{"id":7,"key":"QA-8","rank":1,"status":"PASS","comment":"some remark"},
+		{"id":8,"key":"QA-9","rank":2,"status":"PASS"},
+		{"id":9,"key":"QA-10","rank":3,"status":"PASS","comment":null}
+	]`)
+	runs, err := parseTestExecTests(body)
+	if err != nil {
+		t.Fatalf("parseTestExecTests: %v", err)
+	}
+	if len(runs) != 3 {
+		t.Fatalf("want 3 runs, got %d", len(runs))
+	}
+	if runs[0].Comment != "some remark" {
+		t.Errorf("runs[0].Comment = %q, want %q", runs[0].Comment, "some remark")
+	}
+	if runs[1].Comment != "" {
+		t.Errorf("runs[1].Comment = %q, want empty (field absent)", runs[1].Comment)
+	}
+	if runs[2].Comment != "" {
+		t.Errorf("runs[2].Comment = %q, want empty (field null)", runs[2].Comment)
+	}
+}
+
 // TestParseTestExecTestsEmpty verifies empty/null/[] bodies return empty slice.
 func TestParseTestExecTestsEmpty(t *testing.T) {
 	for _, body := range [][]byte{[]byte("null"), []byte("  "), []byte("[]"), nil} {
