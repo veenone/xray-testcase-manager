@@ -186,6 +186,7 @@ func toTestRun(r jira.TestRun) backend.TestRun {
 		ExecutedBy:  r.ExecutedBy,
 		Environment: r.Environment,
 		Defects:     r.Defects,
+		Comment:     r.Comment,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}

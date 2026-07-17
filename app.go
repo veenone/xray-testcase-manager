@@ -2336,6 +2336,36 @@ func (a *App) BulkSetTestRunStatus(profileID, execKey string, testKeys []string,
 	return a.repo.BulkSetTestRunStatus(profileID, execKey, testKeys, status), nil
 }
 
+// LinkExistingBugToRun associates an already-filed bug with a Test's run in a
+// Test Execution, queued for commit to Xray like other run edits.
+func (a *App) LinkExistingBugToRun(profileID, execKey, testKey, bugKey string) (err error) {
+	defer recoverToError("LinkExistingBugToRun", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.AddTestRunDefect(profileID, execKey, testKey, bugKey)
+}
+
+// UnlinkBugFromRun removes a bug's association with a Test's run in a Test
+// Execution, queued for commit to Xray like other run edits.
+func (a *App) UnlinkBugFromRun(profileID, execKey, testKey, bugKey string) (err error) {
+	defer recoverToError("UnlinkBugFromRun", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.RemoveTestRunDefect(profileID, execKey, testKey, bugKey)
+}
+
+// SetTestRunComment sets the run-level comment for a Test in a Test
+// Execution, queued for commit to Xray like other run edits.
+func (a *App) SetTestRunComment(profileID, execKey, testKey, comment string) (err error) {
+	defer recoverToError("SetTestRunComment", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.SetTestRunComment(profileID, execKey, testKey, comment)
+}
+
 // AnalyzeJUnitImport decodes a base64-encoded JUnit XML report and matches
 // its testcases to member tests of the given execution by summary, returning
 // a preview of what would be applied.

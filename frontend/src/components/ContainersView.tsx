@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
   ListContainers,
@@ -13,6 +13,8 @@ import {
   DeallocateTests,
   SetTestRunStatus,
   BulkSetTestRunStatus,
+  UnlinkBugFromRun,
+  SetTestRunComment,
   BulkEditContainers,
   ExportPytest,
   SyncContainers,
@@ -31,6 +33,7 @@ import { BugsPanel } from "./BugsPanel";
 import { JUnitImportModal } from "./JUnitImportModal";
 import { JUnitNewExecModal } from "./JUnitNewExecModal";
 import { CreateBugModal } from "./CreateBugModal";
+import { LinkBugPicker } from "./LinkBugPicker";
 import { TestDetail } from "./TestDetail";
 import { usePrompt } from "./usePrompt";
 import { useConfirm } from "./useConfirm";
@@ -91,6 +94,9 @@ export function ContainersView({
   const [containers, setContainers] = useState<Container[]>([]);
   const [selected, setSelected] = useViewState(profileId, "containers", "selected", "");
   const [bugFor, setBugFor] = useState<{ testKey: string; summary: string } | null>(null);
+  // Test key whose Defects cell has an open LinkBugPicker (Test Execution
+  // member table only).
+  const [linkBugFor, setLinkBugFor] = useState<string | null>(null);
   const [mode, setMode] = useViewState<"containers" | "bugs">(profileId, "containers", "mode", "containers");
   const [board, setBoard] = useState<TestPlanBoard | null>(null);
   // Related defects reached through the selected container's member Tests
@@ -157,6 +163,32 @@ export function ContainersView({
     setError("");
     try {
       await SetTestRunStatus(profileId, selected, testKey, status);
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
+  // unlinkBug removes one defect link from a Test's run result in the
+  // selected Test Execution, queued for commit to Xray.
+  async function unlinkBug(testKey: string, bugKey: string) {
+    if (!selected) return;
+    setError("");
+    try {
+      await UnlinkBugFromRun(profileId, selected, testKey, bugKey);
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
+  // setRunComment updates a Test's run remark in the selected Test Execution,
+  // queued for commit to Xray.
+  async function setRunComment(testKey: string, comment: string) {
+    if (!selected) return;
+    setError("");
+    try {
+      await SetTestRunComment(profileId, selected, testKey, comment);
       onChanged();
     } catch (e) {
       setError(errMsg(e));
@@ -488,6 +520,7 @@ export function ContainersView({
 
   useEffect(() => {
     setBugFor(null);
+    setLinkBugFor(null);
   }, [mode, selected, kind]);
 
   useEffect(() => {
@@ -1262,13 +1295,15 @@ export function ContainersView({
               {kind === "testexec" && <th title="Executed by">By</th>}
               {kind === "testexec" && <th title="Environment">Environment</th>}
               {kind === "testexec" && <th title="Member test's own Fix Version(s)">Fix Version</th>}
+              {kind === "testexec" && <th title="Defects linked to this run">Defects</th>}
+              {kind === "testexec" && <th title="Remark / comment on this run">Remarks</th>}
               <th aria-label="Remove" />
             </tr>
           </thead>
           <tbody>
             {allRows.length === 0 ? (
               <tr>
-                <td colSpan={kind === "testexec" ? 10 : 5} className="muted">
+                <td colSpan={kind === "testexec" ? 12 : 5} className="muted">
                   This {kindLabel.toLowerCase()} has no tests yet — use "+ Add
                   tests".
                 </td>
@@ -1343,6 +1378,23 @@ export function ContainersView({
                     <ExecRunCells
                       run={memberRuns.get(r.testKey)}
                       activeFixVersion={memberFvFilter}
+                    />
+                  )}
+                  {kind === "testexec" && (
+                    <DefectsCell
+                      testKey={r.testKey}
+                      defects={memberRuns.get(r.testKey)?.defects ?? []}
+                      isDemo={isDemo}
+                      onOpenBug={openBug}
+                      onUnlink={unlinkBug}
+                      onLinkClick={() => setLinkBugFor(r.testKey)}
+                    />
+                  )}
+                  {kind === "testexec" && (
+                    <RemarksCell
+                      testKey={r.testKey}
+                      comment={memberRuns.get(r.testKey)?.comment ?? ""}
+                      onSave={setRunComment}
                     />
                   )}
                   <td className="board-remove-cell">
@@ -1451,6 +1503,17 @@ export function ContainersView({
         />
       )}
 
+      {linkBugFor && selected && (
+        <LinkBugPicker
+          profileId={profileId}
+          execKey={selected}
+          testKey={linkBugFor}
+          existingKeys={memberRuns.get(linkBugFor)?.defects ?? []}
+          onClose={() => setLinkBugFor(null)}
+          onLinked={onChanged}
+        />
+      )}
+
       {showJUnitImport && selected && kind === "testexec" && (
         <JUnitImportModal
           profileId={profileId}
@@ -1544,6 +1607,126 @@ function ExecRunCells({
         {fvLabel}
       </td>
     </>
+  );
+}
+
+// DefectsCell renders one member row's linked defects as removable chips plus
+// a "＋" control that opens the LinkBugPicker for that row (RND_P_4TFINT_05-296).
+// Each chip links to Jira when a real profile URL exists (mirrors
+// ContainersView.openBug's isDemo / NEW- key gating).
+function DefectsCell({
+  testKey,
+  defects,
+  isDemo,
+  onOpenBug,
+  onUnlink,
+  onLinkClick,
+}: {
+  testKey: string;
+  defects: string[];
+  isDemo: boolean;
+  onOpenBug: (bugKey: string) => void;
+  onUnlink: (testKey: string, bugKey: string) => void;
+  onLinkClick: () => void;
+}) {
+  return (
+    <td className="board-defects-cell">
+      <div className="defect-chip-row">
+        {defects.map((d) => (
+          <span key={d} className="defect-chip">
+            {!isDemo && !d.startsWith("NEW-") ? (
+              <button
+                type="button"
+                className="defect-chip-key"
+                onClick={() => onOpenBug(d)}
+                title={`Open ${d} in Jira`}
+              >
+                {d}
+              </button>
+            ) : (
+              <span className="defect-chip-key">{d}</span>
+            )}
+            <button
+              type="button"
+              className="defect-chip-remove"
+              onClick={() => onUnlink(testKey, d)}
+              title={`Unlink ${d} from this run`}
+              aria-label={`Unlink ${d} from this run`}
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          className="btn btn-ghost defect-chip-add"
+          onClick={onLinkClick}
+          title="Link an existing bug to this run"
+          aria-label="Link an existing bug to this run"
+        >
+          ＋
+        </button>
+      </div>
+    </td>
+  );
+}
+
+// RemarksCell is an inline-editable text control for one member row's run
+// comment, seeded from the loaded/staged value and saved on blur or Enter
+// (RND_P_4TFINT_05-296). The draft resyncs to the incoming comment whenever
+// the field is not actively focused, so a refresh (after save, sync, or
+// another edit) shows up immediately without clobbering in-progress typing.
+function RemarksCell({
+  testKey,
+  comment,
+  onSave,
+}: {
+  testKey: string;
+  comment: string;
+  onSave: (testKey: string, comment: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(comment);
+  // Set on Escape so the immediately-following blur discards the edit instead
+  // of saving it. A ref (not state) so the blur handler sees it even if it
+  // fires before React re-renders with the reset draft.
+  const cancelled = useRef(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(comment);
+  }, [comment, editing]);
+
+  function handleBlur() {
+    setEditing(false);
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
+    const value = draft.trim();
+    if (value !== comment) onSave(testKey, value);
+  }
+
+  return (
+    <td className="board-remarks-cell">
+      <input
+        className="remarks-input"
+        value={draft}
+        placeholder="Add remark…"
+        title={comment || undefined}
+        onFocus={() => setEditing(true)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            (e.target as HTMLInputElement).blur();
+          } else if (e.key === "Escape") {
+            cancelled.current = true;
+            setDraft(comment);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+    </td>
   );
 }
 

@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 40
+const schemaVersion = 41
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS test_container_test (
 	container_key TEXT NOT NULL,
 	test_key      TEXT NOT NULL,
 	run_status    TEXT NOT NULL DEFAULT '',
+	run_defects   TEXT NOT NULL DEFAULT '',
+	run_comment   TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, container_key, test_key)
 );
 
@@ -322,6 +324,7 @@ CREATE TABLE IF NOT EXISTS test_run (
 	defects     TEXT DEFAULT '',
 	created_at  TEXT DEFAULT '',
 	updated_at  TEXT DEFAULT '',
+	comment     TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, exec_key, test_key)
 );
 
@@ -895,6 +898,23 @@ func applyMigrations(db *sql.DB) error {
 			return fmt.Errorf("add requirement/precondition columns: %w", err)
 		}
 	}
+	// run-defects/remarks columns (schema v40): test_container_test.run_defects
+	// (a JSON array of linked bug keys, staged locally until committed) and
+	// run_comment (a locally-staged run remark), plus test_run.comment (the
+	// Xray-synced run comment mirror). Applied UNCONDITIONALLY for the same
+	// reason as the requirement/precondition block above: this branch and the
+	// backend-agnostic branch both bump schemaVersion to 40 for unrelated
+	// migrations, so a DB that already sits at v40 via the other branch must
+	// still pick up these columns rather than skip a version-gated ALTER.
+	for _, stmt := range []string{
+		`ALTER TABLE test_container_test ADD COLUMN run_defects TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE test_container_test ADD COLUMN run_comment TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE test_run ADD COLUMN comment TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add run defects/comment columns: %w", err)
+		}
+	}
 	// v37: requirement_link stores Requirement -> Requirement issue links (e.g.
 	// "requires"), separate from the Test <-> Requirement coverage table. Additive
 	// new table; CREATE TABLE IF NOT EXISTS makes the migration idempotent.
@@ -1052,7 +1072,7 @@ func applyMigrations(db *sql.DB) error {
 			return err
 		}
 	}
-	// v40: backfill the neutral-identity table external_ref 1:1 from the existing
+	// v41: backfill the neutral-identity table external_ref 1:1 from the existing
 	// entity tables. Each entity row gets exactly one 'xray' row with
 	// local_id == external_key == jira_key and version_token from the entity's
 	// "updated" column ('' for precondition, which has none). INSERT OR IGNORE
@@ -1060,7 +1080,9 @@ func applyMigrations(db *sql.DB) error {
 	// the backfill idempotent and O(rows), so re-running (or running on the large
 	// real DB) is a safe no-op. The table itself is created by baseSchema before
 	// this runs; nothing consumes external_ref yet, so this is behaviour-preserving.
-	if current < 40 {
+	// Gated < 41 (not < 40): main reached v40 via the run-defects/remarks feature,
+	// so a DB already at 40 must still run this backfill.
+	if current < 41 {
 		for _, q := range []string{
 			`INSERT OR IGNORE INTO external_ref
 			   (profile_id, entity_type, local_id, connection, external_key, version_token, base_version, last_pulled_at)

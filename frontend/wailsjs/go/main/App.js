@@ -474,6 +474,10 @@ export function ImportTests(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['ImportTests'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function LinkExistingBugToRun(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['LinkExistingBugToRun'](arg1, arg2, arg3, arg4);
+}
+
 export function ListAllPreconditions(arg1) {
   return window['go']['main']['App']['ListAllPreconditions'](arg1);
 }
@@ -738,6 +742,10 @@ export function SetTestReview(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SetTestReview'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function SetTestRunComment(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetTestRunComment'](arg1, arg2, arg3, arg4);
+}
+
 export function SetTestRunStatus(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetTestRunStatus'](arg1, arg2, arg3, arg4);
 }
@@ -796,6 +804,10 @@ export function TransitionTest(arg1, arg2, arg3) {
 
 export function UnexcludeFromDuplicates(arg1, arg2) {
   return window['go']['main']['App']['UnexcludeFromDuplicates'](arg1, arg2);
+}
+
+export function UnlinkBugFromRun(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UnlinkBugFromRun'](arg1, arg2, arg3, arg4);
 }
 
 export function UpdateChangeRequest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {

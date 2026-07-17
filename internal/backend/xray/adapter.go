@@ -189,6 +189,18 @@ func (a *Adapter) SetTestRunStatus(ctx context.Context, execKey, testKey, status
 	return a.c.SetTestRunStatus(ctx, execKey, testKey, status)
 }
 
+func (a *Adapter) AddTestRunDefect(ctx context.Context, execKey, testKey, bugKey string) error {
+	return a.c.AddTestRunDefect(ctx, execKey, testKey, bugKey)
+}
+
+func (a *Adapter) RemoveTestRunDefect(ctx context.Context, execKey, testKey, bugKey string) error {
+	return a.c.RemoveTestRunDefect(ctx, execKey, testKey, bugKey)
+}
+
+func (a *Adapter) SetTestRunComment(ctx context.Context, execKey, testKey, comment string) error {
+	return a.c.SetTestRunComment(ctx, execKey, testKey, comment)
+}
+
 func (a *Adapter) SetContainerEnvironments(ctx context.Context, execKey string, envs []string) error {
 	return a.c.SetContainerEnvironments(ctx, execKey, envs)
 }

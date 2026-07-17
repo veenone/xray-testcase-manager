@@ -70,6 +70,9 @@ export {
   DeallocateTests,
   SetTestRunStatus,
   BulkSetTestRunStatus,
+  LinkExistingBugToRun,
+  UnlinkBugFromRun,
+  SetTestRunComment,
   CreateContainerAndAllocate,
   EditContainer,
   DeleteContainer,
@@ -1192,6 +1195,10 @@ export interface ExecMemberRun {
   environment: string;
   /** Jira Fix Version(s) of this member Test issue (from test_case), not the execution's. */
   fixVersions: string[];
+  /** Bug/defect keys linked to this run result. */
+  defects: string[];
+  /** Free-text remark/comment on this run result. */
+  comment: string;
 }
 
 // JUnitMatch mirrors testrepo.JUnitMatch -- a testcase matched to an execution member.

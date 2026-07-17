@@ -483,6 +483,22 @@ func (a *Adapter) RemoveTestsFromContainer(ctx context.Context, kind, containerK
 // this method's neutral signature has no "who" to attribute the result to;
 // Kiwi defaults tested_by from the caller on write, same as TestCase.create's
 // author).
+// AddTestRunDefect/RemoveTestRunDefect/SetTestRunComment are Xray-raven
+// run-level operations with no Kiwi analog (RND_P_4TFINT_05-296). The commit
+// engine gates them off via issueBackedWrites, so these are never reached
+// against Kiwi; they return ErrUnsupported to satisfy the interface.
+func (a *Adapter) AddTestRunDefect(ctx context.Context, execKey, testKey, bugKey string) error {
+	return backend.ErrUnsupported
+}
+
+func (a *Adapter) RemoveTestRunDefect(ctx context.Context, execKey, testKey, bugKey string) error {
+	return backend.ErrUnsupported
+}
+
+func (a *Adapter) SetTestRunComment(ctx context.Context, execKey, testKey, comment string) error {
+	return backend.ErrUnsupported
+}
+
 func (a *Adapter) SetTestRunStatus(ctx context.Context, execKey, testKey, status string) error {
 	runID, err := parseKiwiID(execKey)
 	if err != nil {

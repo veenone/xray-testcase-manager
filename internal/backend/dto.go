@@ -121,6 +121,7 @@ type TestRun struct {
 	ExecutedBy  string
 	Environment string
 	Defects     []string
+	Comment     string
 	CreatedAt   string
 	UpdatedAt   string
 }

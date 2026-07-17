@@ -245,6 +245,8 @@ export function ImportRequirements(arg1:string,arg2:string,arg3:string,arg4:stri
 
 export function ImportTests(arg1:string,arg2:string,arg3:boolean,arg4:testrepo.ImportMapping,arg5:boolean):Promise<testrepo.ImportResult>;
 
+export function LinkExistingBugToRun(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function ListAllPreconditions(arg1:string):Promise<Array<testrepo.Precondition>>;
 
 export function ListAuditEntries(arg1:string,arg2:number):Promise<Array<testrepo.AuditEntry>>;
@@ -377,6 +379,8 @@ export function SetTestRequirements(arg1:string,arg2:string,arg3:Array<string>):
 
 export function SetTestReview(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
 
+export function SetTestRunComment(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function SetTestRunStatus(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
@@ -406,6 +410,8 @@ export function TestProfileConnection(arg1:string,arg2:string,arg3:string,arg4:b
 export function TransitionTest(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function UnexcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
+
+export function UnlinkBugFromRun(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function UpdateChangeRequest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<void>;
 

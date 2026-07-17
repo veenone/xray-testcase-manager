@@ -1,0 +1,35 @@
+---
+# General document metadata (user-defined)
+title: "Xray Test Manager"
+title-prefix: "A fast, local‑first desktop tool for managing Xray testcases at scale"
+subtitle: "User Guide"
+author: 
+- name : Achmad Fienan Rahardianto
+  affiliation: IST R&D
+  email: achmad-fienan.rahardianto@idemia.com
+subject: "Markdown"
+keywords: [Markdown, Xray, Jira]
+version: "1.8.0"
+
+# Document numbering (optional)
+fqr: 
+ed: 
+
+# Output file naming
+doc_name: XrayTestManager_User_Guide
+
+header-includes:
+  - \setlength{\footheight}{33pt}
+  # Pandoc emits \def\LTcaptype{none} for caption-less longtables; the caption
+  # package then calls \refstepcounter{none}. Define a dummy counter so xelatex
+  # does not abort with "No counter 'none' defined".
+  - \newcounter{none}
+  # Substitute glyphs missing from the body font (Source Sans Pro) so xelatex
+  # does not drop them silently. fontawesome5 is already loaded by the template.
+  - \usepackage{newunicodechar}
+  - \newunicodechar{＋}{+}
+  - \newunicodechar{⮡}{$\hookrightarrow$}
+  - \newunicodechar{↳}{$\hookrightarrow$}
+  - \newunicodechar{🐞}{{\faBug}}
+
+...

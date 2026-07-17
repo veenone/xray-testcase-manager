@@ -73,6 +73,7 @@ func mapRunRows(runs []backend.TestRun, execKey string, envFallback []string) []
 			ExecutedBy:  tr.ExecutedBy,
 			Environment: env,
 			Defects:     defectsJSON,
+			Comment:     tr.Comment,
 			CreatedAt:   tr.CreatedAt,
 			UpdatedAt:   tr.UpdatedAt,
 		})

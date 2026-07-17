@@ -986,6 +986,22 @@ export namespace settings {
 
 export namespace syncer {
 	
+	export class SkippedCommit {
+	    entityKey: string;
+	    entityType: string;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SkippedCommit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entityKey = source["entityKey"];
+	        this.entityType = source["entityType"];
+	        this.reason = source["reason"];
+	    }
+	}
 	export class CreatedTest {
 	    tempKey: string;
 	    key: string;
@@ -1085,6 +1101,7 @@ export namespace syncer {
 	    conflicted: Conflict[];
 	    failed: FailedCommit[];
 	    created: CreatedTest[];
+	    skipped: SkippedCommit[];
 	
 	    static createFrom(source: any = {}) {
 	        return new CommitResult(source);
@@ -1096,6 +1113,7 @@ export namespace syncer {
 	        this.conflicted = this.convertValues(source["conflicted"], Conflict);
 	        this.failed = this.convertValues(source["failed"], FailedCommit);
 	        this.created = this.convertValues(source["created"], CreatedTest);
+	        this.skipped = this.convertValues(source["skipped"], SkippedCommit);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1116,6 +1134,7 @@ export namespace syncer {
 		    return a;
 		}
 	}
+	
 	
 	
 	
@@ -1550,6 +1569,8 @@ export namespace testrepo {
 	    executedBy: string;
 	    environment: string;
 	    fixVersions: string[];
+	    defects: string[];
+	    comment: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ExecMemberRun(source);
@@ -1566,6 +1587,8 @@ export namespace testrepo {
 	        this.executedBy = source["executedBy"];
 	        this.environment = source["environment"];
 	        this.fixVersions = source["fixVersions"];
+	        this.defects = source["defects"];
+	        this.comment = source["comment"];
 	    }
 	}
 	export class Folder {

@@ -118,6 +118,14 @@ type Backend interface {
 	AddTestsToContainer(ctx context.Context, kind, containerKey string, testKeys []string) error
 	RemoveTestsFromContainer(ctx context.Context, kind, containerKey string, testKeys []string) error
 	SetTestRunStatus(ctx context.Context, execKey, testKey, status string) error
+	// AddTestRunDefect/RemoveTestRunDefect link/unlink an existing bug as a
+	// defect on a specific test-run; SetTestRunComment sets a run remark
+	// (RND_P_4TFINT_05-296). Xray-raven-specific; a backend without run-level
+	// defect/comment support returns ErrUnsupported (the commit engine gates
+	// these off via issueBackedWrites).
+	AddTestRunDefect(ctx context.Context, execKey, testKey, bugKey string) error
+	RemoveTestRunDefect(ctx context.Context, execKey, testKey, bugKey string) error
+	SetTestRunComment(ctx context.Context, execKey, testKey, comment string) error
 	SetContainerEnvironments(ctx context.Context, execKey string, envs []string) error
 	DeleteContainer(ctx context.Context, kind, containerKey string) error
 	GetTestRuns(ctx context.Context, execKey string) ([]TestRun, error)
