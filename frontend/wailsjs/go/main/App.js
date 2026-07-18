@@ -82,6 +82,10 @@ export function BulkTransitionTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkTransitionTests'](arg1, arg2, arg3);
 }
 
+export function ChangeTestType(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ChangeTestType'](arg1, arg2, arg3);
+}
+
 export function CheckJiraTestSteps(arg1, arg2) {
   return window['go']['main']['App']['CheckJiraTestSteps'](arg1, arg2);
 }

@@ -609,6 +609,24 @@ export namespace coverage {
 	        this.memberCount = source["memberCount"];
 	    }
 	}
+	export class TypeConversion {
+	    oldType: string;
+	    newType: string;
+	    prefilled: boolean;
+	    canPrefill: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypeConversion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.oldType = source["oldType"];
+	        this.newType = source["newType"];
+	        this.prefilled = source["prefilled"];
+	        this.canPrefill = source["canPrefill"];
+	    }
+	}
 
 }
 
@@ -721,6 +739,24 @@ export namespace jira {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.to = source["to"];
+	    }
+	}
+	export class TypeConversion {
+	    oldType: string;
+	    newType: string;
+	    prefilled: boolean;
+	    canPrefill: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypeConversion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.oldType = source["oldType"];
+	        this.newType = source["newType"];
+	        this.prefilled = source["prefilled"];
+	        this.canPrefill = source["canPrefill"];
 	    }
 	}
 
@@ -851,6 +887,24 @@ export namespace main {
 	        this.allBlank = source["allBlank"];
 	    }
 	}
+	export class TypeConversion {
+	    oldType: string;
+	    newType: string;
+	    prefilled: boolean;
+	    canPrefill: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypeConversion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.oldType = source["oldType"];
+	        this.newType = source["newType"];
+	        this.prefilled = source["prefilled"];
+	        this.canPrefill = source["canPrefill"];
+	    }
+	}
 
 }
 
@@ -907,6 +961,24 @@ export namespace profile {
 		    return a;
 		}
 	}
+	export class TypeConversion {
+	    oldType: string;
+	    newType: string;
+	    prefilled: boolean;
+	    canPrefill: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypeConversion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.oldType = source["oldType"];
+	        this.newType = source["newType"];
+	        this.prefilled = source["prefilled"];
+	        this.canPrefill = source["canPrefill"];
+	    }
+	}
 
 }
 
@@ -928,6 +1000,24 @@ export namespace settings {
 	        this.theme = source["theme"];
 	        this.requirementLinkType = source["requirementLinkType"];
 	        this.showCoverage = source["showCoverage"];
+	    }
+	}
+	export class TypeConversion {
+	    oldType: string;
+	    newType: string;
+	    prefilled: boolean;
+	    canPrefill: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypeConversion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.oldType = source["oldType"];
+	        this.newType = source["newType"];
+	        this.prefilled = source["prefilled"];
+	        this.canPrefill = source["canPrefill"];
 	    }
 	}
 
@@ -2738,6 +2828,24 @@ export namespace testrepo {
 	        this.execCreated = source["execCreated"];
 	        this.execUpdated = source["execUpdated"];
 	        this.execResolved = source["execResolved"];
+	    }
+	}
+	export class TypeConversion {
+	    oldType: string;
+	    newType: string;
+	    prefilled: boolean;
+	    canPrefill: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypeConversion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.oldType = source["oldType"];
+	        this.newType = source["newType"];
+	        this.prefilled = source["prefilled"];
+	        this.canPrefill = source["canPrefill"];
 	    }
 	}
 

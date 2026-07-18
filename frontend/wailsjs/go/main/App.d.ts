@@ -48,6 +48,8 @@ export function BulkSetTestRunStatus(arg1:string,arg2:string,arg3:Array<string>,
 
 export function BulkTransitionTests(arg1:string,arg2:Array<string>,arg3:string):Promise<main.BulkTransitionResult>;
 
+export function ChangeTestType(arg1:string,arg2:string,arg3:string):Promise<testrepo.TypeConversion>;
+
 export function CheckJiraTestSteps(arg1:string,arg2:string):Promise<main.JiraStepInfo>;
 
 export function CleanSampleData(arg1:string):Promise<number>;
