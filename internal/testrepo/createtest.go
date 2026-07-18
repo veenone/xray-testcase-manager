@@ -16,14 +16,18 @@ type StepDraft struct {
 // space-separated and Components comma-separated, matching CSV import. FolderID
 // and PrecondKeys are optional.
 type TestDraft struct {
-	Summary     string      `json:"summary"`
-	Description string      `json:"description"`
-	Priority    string      `json:"priority"`
-	Labels      string      `json:"labels"`
-	Components  string      `json:"components"`
-	FolderID    string      `json:"folderId"`
-	Steps       []StepDraft `json:"steps"`
-	PrecondKeys []string    `json:"precondKeys"`
+	Summary           string      `json:"summary"`
+	Description       string      `json:"description"`
+	Priority          string      `json:"priority"`
+	Labels            string      `json:"labels"`
+	Components        string      `json:"components"`
+	ExecType          string      `json:"execType"`
+	CucumberScenario  string      `json:"cucumberScenario"`
+	CucumberType      string      `json:"cucumberType"`
+	GenericDefinition string      `json:"genericDefinition"`
+	FolderID          string      `json:"folderId"`
+	Steps             []StepDraft `json:"steps"`
+	PrecondKeys       []string    `json:"precondKeys"`
 }
 
 // CreateTest queues a brand-new local Test (temp "NEW-N" key) with its steps,
@@ -34,11 +38,15 @@ type TestDraft struct {
 // (the create POST itself does not set the Test Repository folder).
 func (r *Repository) CreateTest(profileID string, d TestDraft) (string, error) {
 	p := testCreatePayload{
-		Summary:     d.Summary,
-		Description: d.Description,
-		Priority:    d.Priority,
-		Labels:      d.Labels,
-		Components:  d.Components,
+		Summary:           d.Summary,
+		Description:       d.Description,
+		Priority:          d.Priority,
+		Labels:            d.Labels,
+		Components:        d.Components,
+		ExecType:          d.ExecType,
+		CucumberScenario:  d.CucumberScenario,
+		CucumberType:      d.CucumberType,
+		GenericDefinition: d.GenericDefinition,
 	}
 	for _, s := range d.Steps {
 		if s.Action == "" && s.Data == "" && s.Expected == "" {
@@ -94,11 +102,15 @@ func (r *Repository) CloneTest(profileID, sourceKey string) (string, error) {
 	// Create the test shell first (no steps in the draft), then append each step
 	// so call-test steps survive — TestDraft only carries manual step content.
 	tempKey, err := r.CreateTest(profileID, TestDraft{
-		Summary:     strings.TrimSpace(src.Summary) + " (copy)",
-		Description: src.Description,
-		Priority:    src.Priority,
-		Labels:      strings.Join(src.Labels, " "),
-		Components:  strings.Join(src.Components, ","),
+		Summary:           strings.TrimSpace(src.Summary) + " (copy)",
+		Description:       src.Description,
+		Priority:          src.Priority,
+		Labels:            strings.Join(src.Labels, " "),
+		Components:        strings.Join(src.Components, ","),
+		ExecType:          src.ExecType,
+		CucumberScenario:  src.CucumberScenario,
+		CucumberType:      src.CucumberType,
+		GenericDefinition: src.GenericDefinition,
 	})
 	if err != nil {
 		return "", err

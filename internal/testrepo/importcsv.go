@@ -57,13 +57,17 @@ type ImportResult struct {
 
 // testCreatePayload is the JSON stored in a test_create pending row.
 type testCreatePayload struct {
-	Summary     string       `json:"summary"`
-	Description string       `json:"description"`
-	Priority    string       `json:"priority"`
-	Labels      string       `json:"labels"`
-	Components  string       `json:"components"` // comma-separated names
-	Folder      string       `json:"folder"`
-	Steps       []importStep `json:"steps,omitempty"`
+	Summary           string       `json:"summary"`
+	Description       string       `json:"description"`
+	Priority          string       `json:"priority"`
+	Labels            string       `json:"labels"`
+	Components        string       `json:"components"` // comma-separated names
+	ExecType          string       `json:"execType"`
+	CucumberScenario  string       `json:"cucumberScenario"`
+	CucumberType      string       `json:"cucumberType"`
+	GenericDefinition string       `json:"genericDefinition"`
+	Folder            string       `json:"folder"`
+	Steps             []importStep `json:"steps,omitempty"`
 }
 
 // ParseImportPreview reads the header row and counts data rows (FR-10.2 / 10.5).
@@ -208,10 +212,11 @@ func insertLocalTest(tx *sql.Tx, profileID string, p testCreatePayload, auditAct
 	}
 	if _, err := tx.Exec(
 		`INSERT INTO test_case
-		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id)
-		 VALUES (?, ?, '', ?, ?, '', ?, ?, ?, '', ?)`,
+		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, cucumber_scenario, cucumber_type, generic_definition)
+		 VALUES (?, ?, '', ?, ?, '', ?, ?, ?, '', ?, ?, ?, ?, ?)`,
 		profileID, tempKey, p.Summary, p.Description, p.Priority, p.Labels,
 		encodeComponents(strings.Split(p.Components, ",")), p.Folder,
+		p.ExecType, p.CucumberScenario, p.CucumberType, p.GenericDefinition,
 	); err != nil {
 		return "", fmt.Errorf("insert local test: %w", err)
 	}
