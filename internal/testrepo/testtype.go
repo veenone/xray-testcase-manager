@@ -95,3 +95,90 @@ func DefinitionToGherkin(summary, definition string) string {
 	return fmt.Sprintf("Scenario: %s\n  Given %s\n",
 		strings.TrimSpace(summary), strings.TrimSpace(definition))
 }
+
+// bodyState reports whether the newType body is currently empty and whether the
+// oldType body has content. For Manual tests, "has body" means steps exist in
+// the local cache (no Jira client needed). For Cucumber/Generic, the respective
+// text field being non-empty signals a body.
+func (r *Repository) bodyState(profileID string, tc TestCase, newType, oldType string) (targetEmpty, sourceHasBody bool) {
+	targetEmpty = isBodyEmpty(r, profileID, tc, newType)
+	sourceHasBody = !isBodyEmpty(r, profileID, tc, oldType)
+	return targetEmpty, sourceHasBody
+}
+
+// isBodyEmpty returns true when the given testType has no body for the test.
+// Manual body = steps in the local DB; Cucumber body = CucumberScenario field;
+// Generic body = GenericDefinition field. Unknown types are treated as empty.
+func isBodyEmpty(r *Repository, profileID string, tc TestCase, testType string) bool {
+	switch strings.ToLower(testType) {
+	case "manual":
+		steps, err := r.ListTestSteps(profileID, tc.Key)
+		if err != nil {
+			return true
+		}
+		return len(steps) == 0
+	case "cucumber":
+		return strings.TrimSpace(tc.CucumberScenario) == ""
+	case "generic":
+		return strings.TrimSpace(tc.GenericDefinition) == ""
+	default:
+		return true
+	}
+}
+
+// prefillBody converts the source body (oldType) to the destination format
+// (newType) and persists it. Text targets are written via EditTestField; a
+// Manual target is built by looping the generated steps through AddTestStep.
+// The source body is never touched.
+func (r *Repository) prefillBody(profileID, testKey string, tc TestCase, oldType, newType string) error {
+	old := strings.ToLower(oldType)
+	new_ := strings.ToLower(newType)
+
+	switch {
+	case old == "manual" && new_ == "cucumber":
+		steps, err := r.ListTestSteps(profileID, testKey)
+		if err != nil {
+			return err
+		}
+		scenario := StepsToGherkin(tc.Summary, steps, "Scenario")
+		return r.EditTestField(profileID, testKey, "cucumber_scenario", scenario)
+
+	case old == "manual" && new_ == "generic":
+		steps, err := r.ListTestSteps(profileID, testKey)
+		if err != nil {
+			return err
+		}
+		def := StepsToDefinition(steps)
+		return r.EditTestField(profileID, testKey, "generic_definition", def)
+
+	case old == "cucumber" && new_ == "manual":
+		steps := GherkinToSteps(tc.CucumberScenario)
+		for _, s := range steps {
+			if _, err := r.AddTestStep(profileID, testKey, s.Action, s.Data, s.Expected); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case old == "cucumber" && new_ == "generic":
+		def := GherkinToDefinition(tc.CucumberScenario)
+		return r.EditTestField(profileID, testKey, "generic_definition", def)
+
+	case old == "generic" && new_ == "manual":
+		steps := DefinitionToSteps(tc.GenericDefinition)
+		for _, s := range steps {
+			if _, err := r.AddTestStep(profileID, testKey, s.Action, s.Data, s.Expected); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case old == "generic" && new_ == "cucumber":
+		scenario := DefinitionToGherkin(tc.Summary, tc.GenericDefinition)
+		return r.EditTestField(profileID, testKey, "cucumber_scenario", scenario)
+
+	default:
+		// No known conversion path — nothing to pre-fill.
+		return nil
+	}
+}

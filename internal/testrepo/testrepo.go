@@ -4766,3 +4766,42 @@ func decodeComponents(stored string) []string {
 func componentFilterPattern(name string) string {
 	return "%" + componentSep + name + componentSep + "%"
 }
+
+// TypeConversion reports the outcome of a ChangeTestType call.
+type TypeConversion struct {
+	OldType    string `json:"oldType"`
+	NewType    string `json:"newType"`
+	Prefilled  bool   `json:"prefilled"`  // target body was empty and got pre-filled
+	CanPrefill bool   `json:"canPrefill"` // a source body exists to pre-fill from (offer opt-in)
+}
+
+// ChangeTestType sets a test's Xray Test Type and, when the destination body is
+// empty, pre-fills it with a best-effort conversion of the source body. The
+// source body is never modified, so switching back is lossless. When the
+// destination already has content it is left untouched and CanPrefill signals
+// that the caller may offer an explicit pre-fill.
+func (r *Repository) ChangeTestType(profileID, testKey, newType string) (TypeConversion, error) {
+	tc, err := r.GetTest(profileID, testKey)
+	if err != nil {
+		return TypeConversion{}, err
+	}
+	oldType := tc.ExecType
+	res := TypeConversion{OldType: oldType, NewType: newType}
+	if err := r.EditTestField(profileID, testKey, "exec_type", newType); err != nil {
+		return res, err
+	}
+	if strings.EqualFold(oldType, newType) {
+		return res, nil
+	}
+
+	targetEmpty, sourceHasBody := r.bodyState(profileID, tc, newType, oldType)
+	res.CanPrefill = sourceHasBody
+	if !targetEmpty || !sourceHasBody {
+		return res, nil
+	}
+	if err := r.prefillBody(profileID, testKey, tc, oldType, newType); err != nil {
+		return res, err
+	}
+	res.Prefilled = true
+	return res, nil
+}
