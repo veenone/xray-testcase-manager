@@ -214,7 +214,20 @@ export {
   GetCRAdoption,
   GetCRImpact,
 } from "../wailsjs/go/main/App";
+export { ChangeTestType } from "../wailsjs/go/main/App";
 export { EventsOn, BrowserOpenURL } from "../wailsjs/runtime/runtime";
+
+// TypeConversion is a plain-shape mirror of testrepo.TypeConversion returned
+// by ChangeTestType. We define it here as an interface (consistent with how
+// TestCase, Step etc. are defined) rather than re-exporting the generated
+// class, which carries a constructor/convertValues that doesn't type-check
+// cleanly against plain object literals.
+export interface TypeConversion {
+  oldType: string;
+  newType: string;
+  prefilled: boolean;
+  canPrefill: boolean;
+}
 
 // Coverage module data shapes (mirror internal/coverage/*.go JSON tags).
 export interface CanonicalRequirement {
@@ -454,6 +467,9 @@ export interface TestCase {
   updated: string;
   folderId: string;
   execType: string;
+  cucumberScenario?: string;
+  cucumberType?: string;
+  genericDefinition?: string;
   /** Jira Fix Version(s) assigned to this Test issue. Empty when none are set. */
   fixVersions: string[];
 }

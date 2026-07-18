@@ -6074,3 +6074,46 @@ tr.row-checked:hover {
   padding: 4px 0 4px 24px;
   user-select: none;
 }
+
+/* Cucumber + Generic type-aware editors */
+.cuke-editor,
+.generic-editor {
+  margin-top: 8px;
+}
+.cuke-type-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.cuke-scenario,
+.generic-def {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: "Consolas", "SF Mono", "Menlo", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+.cuke-scenario:focus,
+.generic-def:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+/* Pre-fill informational notice */
+.prefill-notice {
+  margin: 6px 0 10px;
+  padding: 6px 10px;
+  background: var(--bg-hover, #f5f5f5);
+  border-left: 3px solid var(--accent, #4a90e2);
+  border-radius: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
