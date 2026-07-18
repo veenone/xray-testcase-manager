@@ -36,6 +36,15 @@ type Test struct {
 	// issue. Populated by the live pull (fields=...,fixVersions) and the demo
 	// generator. Read-only display values; never edited locally.
 	FixVersions []string
+	// CucumberScenario holds the Gherkin scenario text for Cucumber tests
+	// (Xray "Cucumber Scenario" custom field). Empty for other types.
+	CucumberScenario string
+	// CucumberType is the Cucumber scenario kind ("Scenario" / "Scenario Outline")
+	// from the Xray "Cucumber Test Type" / "Scenario Type" custom field.
+	CucumberType string
+	// GenericDefinition holds the plain-text definition for Generic tests
+	// (Xray "Generic Test Definition" custom field). Empty for other types.
+	GenericDefinition string
 }
 
 // testFields are the issue fields requested from Jira's search API.
@@ -86,9 +95,11 @@ type searchResponse struct {
 
 // parseIssueTest maps one search/issue payload (raw `fields` plus key/id) into a
 // Test, decoding the typed fields and reading the Xray Test Type option value at
-// execTypeID (when non-empty) onto ExecType. Pure: no network, so it is unit
-// tested via the SearchTestsPage / GetTestFields httptest paths.
-func parseIssueTest(id, key string, rawFields json.RawMessage, execTypeID string) Test {
+// execTypeID (when non-empty) onto ExecType, and the three Xray test-body custom
+// fields from ids onto CucumberScenario/CucumberType/GenericDefinition.
+// Pure: no network, so it is unit tested via the SearchTestsPage / GetTestFields
+// httptest paths.
+func parseIssueTest(id, key string, rawFields json.RawMessage, execTypeID string, ids testFieldIDs) Test {
 	var f testIssueFields
 	_ = json.Unmarshal(rawFields, &f)
 	t := Test{
@@ -116,6 +127,9 @@ func parseIssueTest(id, key string, rawFields json.RawMessage, execTypeID string
 		}
 	}
 	t.ExecType = execTypeFromRawFields(rawFields, execTypeID)
+	t.CucumberScenario = textFromRawFields(rawFields, ids.Scenario)
+	t.CucumberType = execTypeFromRawFields(rawFields, ids.ScenarioType) // reuses parseOptionValue
+	t.GenericDefinition = textFromRawFields(rawFields, ids.GenericDef)
 	return t
 }
 
@@ -183,6 +197,26 @@ func parseOptionValues(raw json.RawMessage) []string {
 	return nil
 }
 
+// testFieldIDs groups the three Xray test-body custom field ids resolved
+// per-instance. Any id may be "" when the instance does not have that field.
+type testFieldIDs struct{ Scenario, ScenarioType, GenericDef string }
+
+// textFromRawFields extracts a plain string value from an issue's raw `fields`
+// object at fieldID. Returns "" when fieldID is empty, the fields object is
+// absent/malformed, or the field value is not a string.
+func textFromRawFields(rawFields json.RawMessage, fieldID string) string {
+	if fieldID == "" || len(rawFields) == 0 {
+		return ""
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(rawFields, &fields); err != nil {
+		return ""
+	}
+	var s string
+	_ = json.Unmarshal(fields[fieldID], &s)
+	return s
+}
+
 // execTypeFromRawFields pulls the Test Type option value out of an issue's raw
 // `fields` object given the resolved custom field id. Returns "" when fieldID is
 // empty, the fields object is absent/malformed, or the field has no option value.
@@ -238,6 +272,30 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 		fields = testFields + "," + execTypeID
 	}
 
+	// Resolve the three Xray test-body custom field ids. Best-effort: log on
+	// error and continue without the field — mirror execTypeID handling above.
+	var bodyIDs testFieldIDs
+	if id, e := c.cucumberScenarioFieldID(ctx); e != nil {
+		log.Printf("xtm: resolve Cucumber Scenario custom field failed, syncing without cucumber_scenario: %v", e)
+	} else {
+		bodyIDs.Scenario = id
+	}
+	if id, e := c.cucumberTypeFieldID(ctx); e != nil {
+		log.Printf("xtm: resolve Cucumber Test Type custom field failed, syncing without cucumber_type: %v", e)
+	} else {
+		bodyIDs.ScenarioType = id
+	}
+	if id, e := c.genericDefinitionFieldID(ctx); e != nil {
+		log.Printf("xtm: resolve Generic Test Definition custom field failed, syncing without generic_definition: %v", e)
+	} else {
+		bodyIDs.GenericDef = id
+	}
+	for _, id := range []string{bodyIDs.Scenario, bodyIDs.ScenarioType, bodyIDs.GenericDef} {
+		if id != "" {
+			fields += "," + id
+		}
+	}
+
 	q := url.Values{}
 	q.Set("jql", jql)
 	q.Set("startAt", strconv.Itoa(startAt))
@@ -251,7 +309,7 @@ func (c *Client) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sinc
 
 	tests := make([]Test, 0, len(resp.Issues))
 	for _, iss := range resp.Issues {
-		tests = append(tests, parseIssueTest(iss.ID, iss.Key, iss.Fields, execTypeID))
+		tests = append(tests, parseIssueTest(iss.ID, iss.Key, iss.Fields, execTypeID, bodyIDs))
 	}
 	return tests, resp.Total, nil
 }
@@ -504,6 +562,29 @@ func (c *Client) GetTestFields(ctx context.Context, key string) (Test, error) {
 		fields = testFields + "," + execTypeID
 	}
 
+	// Resolve the three Xray test-body custom field ids. Best-effort.
+	var bodyIDs testFieldIDs
+	if id, e := c.cucumberScenarioFieldID(ctx); e != nil {
+		log.Printf("xtm: resolve Cucumber Scenario custom field failed, re-fetching without cucumber_scenario: %v", e)
+	} else {
+		bodyIDs.Scenario = id
+	}
+	if id, e := c.cucumberTypeFieldID(ctx); e != nil {
+		log.Printf("xtm: resolve Cucumber Test Type custom field failed, re-fetching without cucumber_type: %v", e)
+	} else {
+		bodyIDs.ScenarioType = id
+	}
+	if id, e := c.genericDefinitionFieldID(ctx); e != nil {
+		log.Printf("xtm: resolve Generic Test Definition custom field failed, re-fetching without generic_definition: %v", e)
+	} else {
+		bodyIDs.GenericDef = id
+	}
+	for _, id := range []string{bodyIDs.Scenario, bodyIDs.ScenarioType, bodyIDs.GenericDef} {
+		if id != "" {
+			fields += "," + id
+		}
+	}
+
 	var resp struct {
 		ID     string          `json:"id"`
 		Key    string          `json:"key"`
@@ -512,7 +593,7 @@ func (c *Client) GetTestFields(ctx context.Context, key string) (Test, error) {
 	if err := c.get(ctx, "/rest/api/2/issue/"+key+"?fields="+fields, &resp); err != nil {
 		return Test{}, err
 	}
-	t := parseIssueTest(resp.ID, orFallback(resp.Key, key), resp.Fields, execTypeID)
+	t := parseIssueTest(resp.ID, orFallback(resp.Key, key), resp.Fields, execTypeID, bodyIDs)
 	return t, nil
 }
 

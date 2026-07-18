@@ -251,7 +251,7 @@ func TestParseIssueTestFixVersions(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseIssueTest("101", "QA-101", []byte(tc.rawJSON), "")
+			got := parseIssueTest("101", "QA-101", []byte(tc.rawJSON), "", testFieldIDs{})
 			if len(got.FixVersions) != len(tc.wantFVs) {
 				t.Fatalf("FixVersions = %v, want %v", got.FixVersions, tc.wantFVs)
 			}

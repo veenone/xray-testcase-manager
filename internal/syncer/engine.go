@@ -953,18 +953,21 @@ func toRepoTests(in []jira.Test) []testrepo.TestCase {
 	out := make([]testrepo.TestCase, len(in))
 	for i, t := range in {
 		out[i] = testrepo.TestCase{
-			Key:         t.Key,
-			ID:          t.ID,
-			Summary:     t.Summary,
-			Description: t.Description,
-			Status:      t.Status,
-			Priority:    t.Priority,
-			Labels:      t.Labels,
-			Components:  t.Components,
-			Updated:     t.Updated,
-			FolderID:    t.FolderID,
-			ExecType:    t.ExecType,
-			FixVersions: t.FixVersions,
+			Key:               t.Key,
+			ID:                t.ID,
+			Summary:           t.Summary,
+			Description:       t.Description,
+			Status:            t.Status,
+			Priority:          t.Priority,
+			Labels:            t.Labels,
+			Components:        t.Components,
+			Updated:           t.Updated,
+			FolderID:          t.FolderID,
+			ExecType:          t.ExecType,
+			FixVersions:       t.FixVersions,
+			CucumberScenario:  t.CucumberScenario,
+			CucumberType:      t.CucumberType,
+			GenericDefinition: t.GenericDefinition,
 		}
 	}
 	return out
