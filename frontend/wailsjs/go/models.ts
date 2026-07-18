@@ -609,6 +609,7 @@ export namespace coverage {
 	        this.memberCount = source["memberCount"];
 	    }
 	}
+
 }
 
 export namespace jira {
@@ -1653,6 +1654,10 @@ export namespace testrepo {
 	    action: string;
 	    data: string;
 	    expected: string;
+	    testType: string;
+	    cucumberScenario: string;
+	    cucumberType: string;
+	    genericDefinition: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ImportMapping(source);
@@ -1669,6 +1674,10 @@ export namespace testrepo {
 	        this.action = source["action"];
 	        this.data = source["data"];
 	        this.expected = source["expected"];
+	        this.testType = source["testType"];
+	        this.cucumberScenario = source["cucumberScenario"];
+	        this.cucumberType = source["cucumberType"];
+	        this.genericDefinition = source["genericDefinition"];
 	    }
 	}
 	export class ImportPreview {
@@ -2602,6 +2611,10 @@ export namespace testrepo {
 	    priority: string;
 	    labels: string;
 	    components: string;
+	    execType: string;
+	    cucumberScenario: string;
+	    cucumberType: string;
+	    genericDefinition: string;
 	    folderId: string;
 	    steps: StepDraft[];
 	    precondKeys: string[];
@@ -2617,6 +2630,10 @@ export namespace testrepo {
 	        this.priority = source["priority"];
 	        this.labels = source["labels"];
 	        this.components = source["components"];
+	        this.execType = source["execType"];
+	        this.cucumberScenario = source["cucumberScenario"];
+	        this.cucumberType = source["cucumberType"];
+	        this.genericDefinition = source["genericDefinition"];
 	        this.folderId = source["folderId"];
 	        this.steps = this.convertValues(source["steps"], StepDraft);
 	        this.precondKeys = source["precondKeys"];
@@ -2745,7 +2762,6 @@ export namespace testrepo {
 	        this.execResolved = source["execResolved"];
 	    }
 	}
-
 	export class TypeConversion {
 	    oldType: string;
 	    newType: string;
@@ -2766,5 +2782,4 @@ export namespace testrepo {
 	}
 
 }
-
 
