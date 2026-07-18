@@ -195,12 +195,17 @@ func AnalyzeGap(reference, target, project []GapTest, opts GapOptions) GapResult
 
 // gapAutoMapping builds an ImportMapping from a header row by matching each
 // canonical field name case-insensitively — the import-template contract, so
-// no manual mapping UI is needed.
+// no manual mapping UI is needed. Some fields accept a couple of header-name
+// aliases (e.g. Cucumber test type columns are commonly labeled "Scenario
+// Type"); the first alias found wins.
 func gapAutoMapping(header []string) ImportMapping {
-	find := func(name string) string {
+	find := func(names ...string) string {
 		for _, h := range header {
-			if strings.EqualFold(strings.TrimSpace(h), name) {
-				return strings.TrimSpace(h)
+			trimmed := strings.TrimSpace(h)
+			for _, name := range names {
+				if strings.EqualFold(trimmed, name) {
+					return trimmed
+				}
 			}
 		}
 		return ""
@@ -215,6 +220,11 @@ func gapAutoMapping(header []string) ImportMapping {
 		Action:      find("Action"),
 		Data:        find("Data"),
 		Expected:    find("Expected"),
+
+		TestType:          find("Test Type"),
+		CucumberScenario:  find("Cucumber Scenario"),
+		CucumberType:      find("Cucumber Test Type", "Scenario Type"),
+		GenericDefinition: find("Generic Test Definition", "Generic Definition"),
 	}
 }
 
