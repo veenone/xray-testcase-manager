@@ -93,7 +93,6 @@ type EditableField =
   | "description"
   | "priority"
   | "labels"
-  | "exec_type"
   | "cucumber_scenario"
   | "cucumber_type"
   | "generic_definition";
@@ -274,6 +273,19 @@ export function TestDetail({
     ])
       .then(([t, pre, cons, allPre, rev, reqs, allReqs, testBugs]) => {
         if (cancelled) return;
+        // Fix 1: default cucumberType to "Scenario" for Cucumber tests with no
+        // stored type. We persist the default once so a commit won't omit it.
+        if (t.execType === "Cucumber" && (t.cucumberType ?? "") === "") {
+          setCucumberType("Scenario");
+          t = { ...t, cucumberType: "Scenario" };
+          if (!readOnly) {
+            EditTestField(profileId, testKey, "cucumber_type", "Scenario").catch(
+              (e) => console.error("default cucumberType:", errMsg(e)),
+            );
+          }
+        } else {
+          setCucumberType(t.cucumberType ?? "");
+        }
         setTest(t);
         setSummary(t.summary);
         setDescription(t.description);
@@ -281,7 +293,6 @@ export function TestDetail({
         setLabels((t.labels ?? []).join(" "));
         setExecType(t.execType ?? "");
         setCucumberScenario(t.cucumberScenario ?? "");
-        setCucumberType(t.cucumberType ?? "");
         setGenericDefinition(t.genericDefinition ?? "");
         setPrefillNotice(null);
         setPreconditions(pre);
@@ -392,9 +403,6 @@ export function TestDetail({
       case "labels":
         backendValue = (test.labels ?? []).join(" ");
         break;
-      case "exec_type":
-        backendValue = test.execType ?? "";
-        break;
       case "cucumber_scenario":
         backendValue = test.cucumberScenario ?? "";
         break;
@@ -424,9 +432,6 @@ export function TestDetail({
           break;
         case "labels":
           updated.labels = value.split(/\s+/).filter(Boolean);
-          break;
-        case "exec_type":
-          updated.execType = value;
           break;
         case "cucumber_scenario":
           updated.cucumberScenario = value;

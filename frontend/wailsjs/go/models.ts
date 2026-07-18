@@ -1,4 +1,4 @@
-﻿export namespace coverage {
+export namespace coverage {
 	
 	export class CRDecision {
 	    requirementKey: string;
