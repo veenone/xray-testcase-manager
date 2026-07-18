@@ -959,6 +959,10 @@ export interface ImportMapping {
   action: string;
   data: string;
   expected: string;
+  testType: string;
+  cucumberScenario: string;
+  cucumberType: string;
+  genericDefinition: string;
 }
 
 export interface ImportError {

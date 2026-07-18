@@ -24,6 +24,10 @@ const FIELDS: Array<{ key: keyof ImportMapping; label: string; required?: boolea
   { key: "action", label: "Step action" },
   { key: "data", label: "Step data" },
   { key: "expected", label: "Step expected" },
+  { key: "testType", label: "Test Type" },
+  { key: "cucumberScenario", label: "Cucumber Scenario" },
+  { key: "cucumberType", label: "Scenario Type" },
+  { key: "genericDefinition", label: "Generic Test Definition" },
 ];
 
 const EMPTY_MAPPING: ImportMapping = {
@@ -36,6 +40,10 @@ const EMPTY_MAPPING: ImportMapping = {
   action: "",
   data: "",
   expected: "",
+  testType: "",
+  cucumberScenario: "",
+  cucumberType: "",
+  genericDefinition: "",
 };
 
 // ImportTestsModal imports Tests from a CSV file (FR-10): pick a file, map
@@ -239,8 +247,8 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
 
 // guessMapping pre-selects columns whose header matches a field name.
 function guessMapping(headers: string[]): ImportMapping {
-  const find = (name: string) =>
-    headers.find((h) => h.trim().toLowerCase() === name) ?? "";
+  const find = (...names: string[]) =>
+    headers.find((h) => names.includes(h.trim().toLowerCase())) ?? "";
   return {
     summary: find("summary"),
     description: find("description"),
@@ -251,5 +259,9 @@ function guessMapping(headers: string[]): ImportMapping {
     action: find("action"),
     data: find("data"),
     expected: find("expected"),
+    testType: find("test type"),
+    cucumberScenario: find("cucumber scenario"),
+    cucumberType: find("cucumber test type", "scenario type"),
+    genericDefinition: find("generic test definition", "generic definition"),
   };
 }
