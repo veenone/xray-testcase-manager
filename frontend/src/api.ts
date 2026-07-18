@@ -1018,6 +1018,10 @@ export interface TestDraft {
   priority: string;
   labels: string;
   components: string;
+  execType: string;
+  cucumberScenario: string;
+  cucumberType: string;
+  genericDefinition: string;
   folderId: string;
   steps: StepDraft[];
   precondKeys: string[];
