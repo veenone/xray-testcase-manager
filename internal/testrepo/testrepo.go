@@ -40,6 +40,13 @@ type TestCase struct {
 	// issue. Populated on sync from test_case.fix_versions (JSON array). Empty
 	// when none are set or the Test has not yet been synced.
 	FixVersions []string `json:"fixVersions"`
+	// Non-Manual test bodies. CucumberScenario holds the Gherkin text and
+	// CucumberType its scenario kind ("Scenario"/"Scenario Outline") for
+	// Cucumber tests; GenericDefinition holds the plain-text definition for
+	// Generic tests. Empty for other types.
+	CucumberScenario  string `json:"cucumberScenario"`
+	CucumberType      string `json:"cucumberType"`
+	GenericDefinition string `json:"genericDefinition"`
 }
 
 // Folder is one node in the Xray Test Repository tree (FR-13.1). The ID is
@@ -281,11 +288,14 @@ func keyNumericOrderExpr(col string) string {
 // Status transitions need workflow logic and are handled separately in a
 // later slice (FR-4.2).
 var editableFields = map[string]string{
-	"summary":     "summary",
-	"description": "description",
-	"priority":    "priority",
-	"labels":      "labels",
-	"exec_type":   "exec_type",
+	"summary":            "summary",
+	"description":        "description",
+	"priority":           "priority",
+	"labels":             "labels",
+	"exec_type":          "exec_type",
+	"cucumber_scenario":  "cucumber_scenario",
+	"cucumber_type":      "cucumber_type",
+	"generic_definition": "generic_definition",
 }
 
 // columnForField returns the test_case column corresponding to a field
@@ -338,8 +348,8 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 	// local value instead of overwriting from the incoming sync.
 	stmt, err := tx.Prepare(
 		`INSERT INTO test_case
-		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id, components, exec_type, fix_versions)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, updated_at, folder_id, components, exec_type, fix_versions, cucumber_scenario, cucumber_type, generic_definition)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
 		   jira_id      = excluded.jira_id,
 		   components   = excluded.components,
@@ -393,7 +403,28 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 		         AND pending_change.entity_type = 'test_case'
 		         AND pending_change.entity_key  = excluded.jira_key
 		         AND pending_change.field       = 'folder'
-		     ) THEN test_case.folder_id ELSE excluded.folder_id END`)
+		     ) THEN test_case.folder_id ELSE excluded.folder_id END,
+		   cucumber_scenario  = CASE WHEN EXISTS (
+		       SELECT 1 FROM pending_change
+		       WHERE pending_change.profile_id  = excluded.profile_id
+		         AND pending_change.entity_type = 'test_case'
+		         AND pending_change.entity_key  = excluded.jira_key
+		         AND pending_change.field       = 'cucumber_scenario'
+		     ) THEN test_case.cucumber_scenario ELSE excluded.cucumber_scenario END,
+		   cucumber_type      = CASE WHEN EXISTS (
+		       SELECT 1 FROM pending_change
+		       WHERE pending_change.profile_id  = excluded.profile_id
+		         AND pending_change.entity_type = 'test_case'
+		         AND pending_change.entity_key  = excluded.jira_key
+		         AND pending_change.field       = 'cucumber_type'
+		     ) THEN test_case.cucumber_type ELSE excluded.cucumber_type END,
+		   generic_definition = CASE WHEN EXISTS (
+		       SELECT 1 FROM pending_change
+		       WHERE pending_change.profile_id  = excluded.profile_id
+		         AND pending_change.entity_type = 'test_case'
+		         AND pending_change.entity_key  = excluded.jira_key
+		         AND pending_change.field       = 'generic_definition'
+		     ) THEN test_case.generic_definition ELSE excluded.generic_definition END`)
 	if err != nil {
 		return fmt.Errorf("prepare upsert: %w", err)
 	}
@@ -405,6 +436,7 @@ func (r *Repository) UpsertTests(profileID string, tests []TestCase) error {
 			t.Status, t.Priority, strings.Join(t.Labels, " "),
 			t.Updated, t.FolderID, encodeComponents(t.Components), t.ExecType,
 			encodeFixVersions(t.FixVersions),
+			t.CucumberScenario, t.CucumberType, t.GenericDefinition,
 		); err != nil {
 			return fmt.Errorf("upsert %s: %w", t.Key, err)
 		}
@@ -2301,7 +2333,7 @@ func (r *Repository) ListTests(profileID string, q Query) (Page, error) {
 	}
 
 	listSQL := fmt.Sprintf(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, fix_versions
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, fix_versions, cucumber_scenario, cucumber_type, generic_definition
 		 FROM test_case %s ORDER BY %s LIMIT ? OFFSET ?`,
 		whereSQL, orderSQL)
 
@@ -2449,7 +2481,7 @@ func (r *Repository) ListTestStatuses(profileID string) ([]string, error) {
 // GetTest returns one Test by its Jira key, or ErrNotFound.
 func (r *Repository) GetTest(profileID, key string) (TestCase, error) {
 	row := r.db.QueryRow(
-		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, fix_versions
+		`SELECT jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, fix_versions, cucumber_scenario, cucumber_type, generic_definition
 		 FROM test_case WHERE profile_id = ? AND jira_key = ?`, profileID, key)
 	t, err := scanTest(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -4684,7 +4716,7 @@ func scanTest(s scanner) (TestCase, error) {
 	if err := s.Scan(
 		&t.Key, &t.ID, &t.Summary, &t.Description,
 		&t.Status, &t.Priority, &labels, &components, &t.Updated, &t.FolderID, &t.ExecType,
-		&fixVersions,
+		&fixVersions, &t.CucumberScenario, &t.CucumberType, &t.GenericDefinition,
 	); err != nil {
 		return TestCase{}, err
 	}
