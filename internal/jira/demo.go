@@ -921,6 +921,23 @@ func demoTestForKey(theme demoTheme, key string) Test {
 	return makeDemoTest(theme, projectKey, idx)
 }
 
+// sanitizeIdent strips non-alphanumeric characters from s and replaces spaces
+// with underscores, producing a simple Java-style identifier fragment suitable
+// for use in a Generic test definition path (e.g. "User registration" →
+// "User_registration").
+func sanitizeIdent(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
 func makeDemoTest(theme demoTheme, projectKey string, i int) Test {
 	feature := theme.Features[i%len(theme.Features)]
 	condition := theme.Conditions[(i/len(theme.Features))%len(theme.Conditions)]
@@ -965,19 +982,41 @@ func makeDemoTest(theme demoTheme, projectKey string, i int) Test {
 			"(Demo data — generated for UI testing.)",
 		strings.ToLower(feature), condition)
 
+	execType := demoExecTypeForIndex(i)
+	var cukeScenario, cukeType, genericDef string
+	switch execType {
+	case "Cucumber":
+		if i%8 == 0 {
+			cukeType = "Scenario Outline"
+			cukeScenario = fmt.Sprintf(
+				"Scenario Outline: %s\n  Given the %s screen\n  When I <action>\n  Then I see <result>\n\n  Examples:\n    | action | result |\n    | submit | success |\n    | cancel | aborted |\n",
+				summary, strings.ToLower(feature))
+		} else {
+			cukeType = "Scenario"
+			cukeScenario = fmt.Sprintf(
+				"Scenario: %s\n  Given the %s screen\n  When I %s\n  Then the system responds correctly\n",
+				summary, strings.ToLower(feature), strings.ToLower(condition))
+		}
+	case "Generic":
+		genericDef = fmt.Sprintf("com.acme.tests.%sIT#%s", sanitizeIdent(feature), sanitizeIdent(condition))
+	}
+
 	return Test{
-		Key:         fmt.Sprintf("%s-%d", projectKey, i+1),
-		ID:          fmt.Sprintf("%d", 10000+i),
-		Summary:     summary,
-		Description: description,
-		Status:      status,
-		Priority:    priority,
-		Labels:      labels,
-		Components:  demoComponentsForIndex(i),
-		Updated:     updated,
-		FolderID:    demoFolderForFeature(theme, feature),
-		ExecType:    demoExecTypeForIndex(i),
-		FixVersions: demoTestFixVersionsForIndex(i),
+		Key:               fmt.Sprintf("%s-%d", projectKey, i+1),
+		ID:                fmt.Sprintf("%d", 10000+i),
+		Summary:           summary,
+		Description:       description,
+		Status:            status,
+		Priority:          priority,
+		Labels:            labels,
+		Components:        demoComponentsForIndex(i),
+		Updated:           updated,
+		FolderID:          demoFolderForFeature(theme, feature),
+		ExecType:          execType,
+		FixVersions:       demoTestFixVersionsForIndex(i),
+		CucumberScenario:  cukeScenario,
+		CucumberType:      cukeType,
+		GenericDefinition: genericDef,
 	}
 }
 
