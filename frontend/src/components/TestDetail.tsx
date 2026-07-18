@@ -280,13 +280,9 @@ export function TestDetail({
         setPriority(t.priority);
         setLabels((t.labels ?? []).join(" "));
         setExecType(t.execType ?? "");
-        // The generated testrepo.TestCase lacks these fields in its type
-        // definition (auto-generated from the pre-Task-9 schema), but the
-        // backend populates them at runtime. Cast through unknown to access.
-        const tc = t as unknown as TestCase;
-        setCucumberScenario(tc.cucumberScenario ?? "");
-        setCucumberType(tc.cucumberType ?? "");
-        setGenericDefinition(tc.genericDefinition ?? "");
+        setCucumberScenario(t.cucumberScenario ?? "");
+        setCucumberType(t.cucumberType ?? "");
+        setGenericDefinition(t.genericDefinition ?? "");
         setPrefillNotice(null);
         setPreconditions(pre);
         setContainers(cons ?? []);

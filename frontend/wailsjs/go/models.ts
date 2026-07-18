@@ -1879,6 +1879,9 @@ export namespace testrepo {
 	    folderId: string;
 	    execType: string;
 	    fixVersions: string[];
+	    cucumberScenario: string;
+	    cucumberType: string;
+	    genericDefinition: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TestCase(source);
@@ -1898,6 +1901,9 @@ export namespace testrepo {
 	        this.folderId = source["folderId"];
 	        this.execType = source["execType"];
 	        this.fixVersions = source["fixVersions"];
+	        this.cucumberScenario = source["cucumberScenario"];
+	        this.cucumberType = source["cucumberType"];
+	        this.genericDefinition = source["genericDefinition"];
 	    }
 	}
 	export class Page {
