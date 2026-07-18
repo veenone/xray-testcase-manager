@@ -719,6 +719,37 @@ func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []
 		}
 	}
 
+	// Curated showcase links: guarantee that at least one demo Test Execution
+	// visibly contains both a Cucumber and a Generic test with a run status,
+	// rather than leaving it to incidental overlap. The member loop above
+	// never mixes types within a single execution: exec assignment cycles
+	// mod execCount (8) while test type cycles mod 4 (demoExecTypeForIndex),
+	// and since 4 divides 8, every test the loop links to a given execution
+	// shares the same ExecType. Reuse execKeys[0] (DEMO-TE-1) and known
+	// Cucumber (index%4==3: DEMO-4, DEMO-8) and Generic (index%4==2: DEMO-3,
+	// DEMO-7) tests — the loop above places those in execKeys[3]/[7] and
+	// execKeys[2]/[6] respectively, so this can't collide with an existing
+	// (container, test) pair from it. Dedupe against existing links anyway,
+	// so this stays safe if the surrounding assignment logic ever changes.
+	curated := []ContainerLink{
+		{ContainerKey: execKeys[0], TestKey: fmt.Sprintf("%s-4", projectKey), RunStatus: "PASS"}, // Cucumber
+		{ContainerKey: execKeys[0], TestKey: fmt.Sprintf("%s-8", projectKey), RunStatus: "FAIL"}, // Cucumber
+		{ContainerKey: execKeys[0], TestKey: fmt.Sprintf("%s-3", projectKey), RunStatus: "TODO"}, // Generic
+		{ContainerKey: execKeys[0], TestKey: fmt.Sprintf("%s-7", projectKey), RunStatus: "PASS"}, // Generic
+	}
+	existingLinks := make(map[[2]string]bool, len(links))
+	for _, l := range links {
+		existingLinks[[2]string{l.ContainerKey, l.TestKey}] = true
+	}
+	for _, l := range curated {
+		key := [2]string{l.ContainerKey, l.TestKey}
+		if existingLinks[key] {
+			continue
+		}
+		links = append(links, l)
+		existingLinks[key] = true
+	}
+
 	return containers, links, nil
 }
 
