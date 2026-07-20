@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 42
+const schemaVersion = 43
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -524,6 +524,31 @@ CREATE TABLE IF NOT EXISTS external_ref (
 	last_pulled_at TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, entity_type, local_id, connection)
 );
+
+-- ── Connection table (schema v43, Phase 6 bridge task B1) ───────────────────
+-- The first step toward multi-connection workspaces: a workspace (today, a
+-- profiles row) will eventually hold more than one backend connection. For
+-- now every workspace has exactly one connection, backfilled 1:1 from its
+-- profile (id == workspace_id == the profile's id) and kept in sync by
+-- profile.Manager's Create/Update/Delete. profiles remains the read source of
+-- truth — nothing reads from this table yet (a later phase rewires reads onto
+-- it), so adding it is purely additive and behaviour-preserving.
+CREATE TABLE IF NOT EXISTS connection (
+	id                  TEXT PRIMARY KEY,
+	workspace_id        TEXT NOT NULL,
+	name                TEXT NOT NULL,
+	backend             TEXT NOT NULL DEFAULT 'xray',
+	url                 TEXT NOT NULL DEFAULT '',
+	project_key         TEXT NOT NULL DEFAULT '',
+	scope_jql           TEXT NOT NULL DEFAULT '',
+	bug_issue_type      TEXT NOT NULL DEFAULT 'Bug',
+	bug_project_mode    TEXT NOT NULL DEFAULT 'test',
+	bug_project_key     TEXT NOT NULL DEFAULT '',
+	ca_cert             TEXT NOT NULL DEFAULT '',
+	allow_untrusted_tls INTEGER NOT NULL DEFAULT 0,
+	role                TEXT NOT NULL DEFAULT 'both',
+	created_at          TEXT NOT NULL DEFAULT ''
+);
 `
 
 // indexSchema is applied *after* applyMigrations so every column referenced
@@ -562,6 +587,7 @@ CREATE INDEX IF NOT EXISTS idx_cr_decision_req       ON cr_member_decision(profi
 CREATE INDEX IF NOT EXISTS idx_cov_group_version     ON coverage_param_group(profile_id, version_id);
 CREATE INDEX IF NOT EXISTS idx_coverage_project ON coverage_project(profile_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_ref_extkey ON external_ref(profile_id, connection, entity_type, external_key);
+CREATE INDEX IF NOT EXISTS idx_connection_workspace ON connection(workspace_id);
 `
 
 // Store wraps the SQLite connection for one local database file.
@@ -1115,6 +1141,47 @@ func applyMigrations(db *sql.DB) error {
 			`ALTER TABLE profiles ADD COLUMN backend TEXT NOT NULL DEFAULT 'xray'`,
 		); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("v42 add profiles.backend: %w", err)
+		}
+	}
+	// v43: the connection table (Phase 6 bridge task B1) — one row per backend a
+	// workspace talks to. Fresh installs get the table from baseSchema; this
+	// CREATE catches pre-v43 databases. The backfill then gives every existing
+	// profile exactly one 'both'-role connection with id == the profile's id
+	// (deterministic 1:1, so later profile.Manager writes address it directly)
+	// and every backend field copied across. INSERT OR IGNORE on the primary key
+	// makes the backfill idempotent and O(rows), so re-running it (including
+	// against the large real DB) is a safe no-op. profiles remains the read
+	// source of truth — nothing consumes the connection table yet.
+	if current < 43 {
+		if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS connection (
+			id                  TEXT PRIMARY KEY,
+			workspace_id        TEXT NOT NULL,
+			name                TEXT NOT NULL,
+			backend             TEXT NOT NULL DEFAULT 'xray',
+			url                 TEXT NOT NULL DEFAULT '',
+			project_key         TEXT NOT NULL DEFAULT '',
+			scope_jql           TEXT NOT NULL DEFAULT '',
+			bug_issue_type      TEXT NOT NULL DEFAULT 'Bug',
+			bug_project_mode    TEXT NOT NULL DEFAULT 'test',
+			bug_project_key     TEXT NOT NULL DEFAULT '',
+			ca_cert             TEXT NOT NULL DEFAULT '',
+			allow_untrusted_tls INTEGER NOT NULL DEFAULT 0,
+			role                TEXT NOT NULL DEFAULT 'both',
+			created_at          TEXT NOT NULL DEFAULT ''
+		)`); err != nil && !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("v43 create connection: %w", err)
+		}
+		if _, err := db.Exec(
+			`INSERT OR IGNORE INTO connection
+			   (id, workspace_id, name, backend, url, project_key, scope_jql,
+			    bug_issue_type, bug_project_mode, bug_project_key, ca_cert,
+			    allow_untrusted_tls, role, created_at)
+			 SELECT id, id, name, backend, jira_url, project_key, scope_jql,
+			        bug_issue_type, bug_project_mode, bug_project_key, ca_cert,
+			        allow_untrusted_tls, 'both', created_at
+			 FROM profiles`,
+		); err != nil {
+			return fmt.Errorf("v43 backfill connection: %w", err)
 		}
 	}
 	return nil

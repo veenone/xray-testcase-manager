@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"xray-test-manager/internal/connection"
 	"xray-test-manager/internal/store"
 )
 
@@ -55,13 +56,35 @@ type Profile struct {
 }
 
 // Manager is the profile CRUD service backed by the local store (FR-5.1).
+//
+// Manager also keeps each profile's primary connection row in sync (Phase 6
+// bridge task B1's shim seam): the connection table exists so a workspace can
+// eventually hold multiple backend connections, but today there is exactly
+// one per profile, with id == the profile's id. profiles remains the read
+// source of truth for every existing flow — the connection row is a mirror,
+// not (yet) consulted by anything, so keeping it in sync here is purely
+// additive and behaviour-preserving.
 type Manager struct {
-	db *sql.DB
+	db    *sql.DB
+	conns *connection.Manager
 }
 
 // NewManager returns a profile manager backed by the given store.
 func NewManager(s *store.Store) *Manager {
-	return &Manager{db: s.DB()}
+	return &Manager{db: s.DB(), conns: connection.NewManager(s)}
+}
+
+// syncConnection upserts the profile's primary connection row (id == p.ID) so
+// it mirrors the profile's current backend fields with role "both". Errors
+// are logged-shaped (returned) but callers treat a sync failure as
+// non-fatal to the profile write it accompanies, since profiles remains the
+// read source of truth.
+func (m *Manager) syncConnection(p Profile) error {
+	_, err := m.conns.Put(
+		p.ID, p.ID, p.Name, p.Backend, p.JiraURL, p.ProjectKey, p.ScopeJQL,
+		p.BugIssueType, p.BugProjectMode, p.BugProjectKey, p.CACert, p.AllowUntrustedTLS,
+		"both", p.CreatedAt)
+	return err
 }
 
 // List returns all profiles, ordered by name.
@@ -125,6 +148,9 @@ func (m *Manager) Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugP
 	if err != nil {
 		return Profile{}, fmt.Errorf("create profile: %w", err)
 	}
+	if err := m.syncConnection(p); err != nil {
+		return Profile{}, fmt.Errorf("sync connection for new profile: %w", err)
+	}
 	return p, nil
 }
 
@@ -177,6 +203,13 @@ func (m *Manager) Update(id, name, jiraURL, projectKey, scopeJQL, bugIssueType, 
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
+	p, err := m.Get(id)
+	if err != nil {
+		return fmt.Errorf("reread profile after update: %w", err)
+	}
+	if err := m.syncConnection(p); err != nil {
+		return fmt.Errorf("sync connection after update: %w", err)
+	}
 	return nil
 }
 
@@ -190,10 +223,20 @@ func (m *Manager) UpdateScope(id, scopeJQL string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
+	p, err := m.Get(id)
+	if err != nil {
+		return fmt.Errorf("reread profile after scope update: %w", err)
+	}
+	if err := m.syncConnection(p); err != nil {
+		return fmt.Errorf("sync connection after scope update: %w", err)
+	}
 	return nil
 }
 
-// Delete removes a profile, or returns ErrNotFound.
+// Delete removes a profile, or returns ErrNotFound. Its primary connection
+// row is removed alongside it; an already-missing connection (e.g. a profile
+// created before the connection table existed on a database that has not
+// yet reopened to run the v43 backfill) is tolerated, not an error.
 func (m *Manager) Delete(id string) error {
 	res, err := m.db.Exec(`DELETE FROM profiles WHERE id = ?`, id)
 	if err != nil {
@@ -201,6 +244,9 @@ func (m *Manager) Delete(id string) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
+	}
+	if err := m.conns.Delete(id); err != nil && !errors.Is(err, connection.ErrNotFound) {
+		return fmt.Errorf("delete connection for profile: %w", err)
 	}
 	// TODO(xtm): cascade-delete this profile's test_case / sync_state rows (FR-5.3).
 	return nil
@@ -213,9 +259,9 @@ type scanner interface {
 
 func scanProfile(s scanner) (Profile, error) {
 	var (
-		p                Profile
+		p                 Profile
 		allowUntrustedInt int
-		created          string
+		created           string
 	)
 	if err := s.Scan(&p.ID, &p.Name, &p.JiraURL, &p.ProjectKey, &p.ScopeJQL, &p.BugIssueType, &p.BugProjectMode, &p.BugProjectKey, &p.CACert, &allowUntrustedInt, &p.Backend, &created); err != nil {
 		return Profile{}, err
