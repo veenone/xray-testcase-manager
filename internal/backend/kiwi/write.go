@@ -68,10 +68,24 @@ func (a *Adapter) resolvePriorityID(ctx context.Context, value string) (int, err
 	if err := a.c.call(ctx, "Priority.filter", []any{map[string]any{"value": value}}, &rows); err != nil {
 		return 0, err
 	}
-	if len(rows) == 0 {
-		return 0, fmt.Errorf("kiwi: priority %q not found", value)
+	if len(rows) > 0 {
+		return rows[0].ID, nil
 	}
-	return rows[0].ID, nil
+	// The requested priority name is not one of Kiwi's (e.g. an Xray "High"
+	// published across the bridge into Kiwi, whose priorities are P1..P5).
+	// Rather than hard-fail the create/update, fall back to Kiwi's first
+	// available priority so a cross-backend publish degrades gracefully (the
+	// bridge gap report already flags that priority may not map). A
+	// Kiwi-native edit always passes a real Kiwi priority, so this fallback
+	// only triggers on a genuine name mismatch.
+	var all []kiwiPriorityRow
+	if err := a.c.call(ctx, "Priority.filter", []any{map[string]any{}}, &all); err != nil {
+		return 0, err
+	}
+	if len(all) == 0 {
+		return 0, fmt.Errorf("kiwi: no priorities available to resolve %q", value)
+	}
+	return all[0].ID, nil
 }
 
 // resolveStatusID resolves a TestCaseStatus NAME (e.g. "CONFIRMED") to its
