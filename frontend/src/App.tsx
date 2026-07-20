@@ -50,6 +50,7 @@ import type {
 import { ProfileForm } from "./components/ProfileForm";
 import { ProfilesModal } from "./components/ProfilesModal";
 import { ConnectionsModal } from "./components/ConnectionsModal";
+import { BridgeWizard } from "./components/BridgeWizard";
 import { TestTable } from "./components/TestTable";
 import { TestDetail } from "./components/TestDetail";
 import { NewTestPanel } from "./components/NewTestPanel";
@@ -113,6 +114,7 @@ function App() {
   // the connections (e.g. a Kiwi target) a workspace talks to, beyond its
   // primary one. The prerequisite UI for the bridge wizard (B6b).
   const [showConnections, setShowConnections] = useState(false);
+  const [showBridge, setShowBridge] = useState(false);
   // When set, the profile modal opens in edit mode for this profile (FR-5).
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
 
@@ -1040,6 +1042,13 @@ function App() {
                   "Manage this workspace's connections — add a target " +
                   "(e.g. Kiwi) beside its primary connection",
               },
+              {
+                key: "bridge",
+                label: "Bridge…",
+                onClick: () => setShowBridge(true),
+                title:
+                  "Publish/migrate this workspace's tests from one connection to another",
+              },
             ]}
           />
         </div>
@@ -1542,6 +1551,17 @@ function App() {
         <ConnectionsModal
           activeId={activeId}
           onClose={() => setShowConnections(false)}
+        />
+      )}
+
+      {showBridge && activeId && (
+        <BridgeWizard
+          activeId={activeId}
+          onClose={() => setShowBridge(false)}
+          onOpenConnections={() => {
+            setShowBridge(false);
+            setShowConnections(true);
+          }}
         />
       )}
 

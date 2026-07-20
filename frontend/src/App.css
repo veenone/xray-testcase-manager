@@ -5996,6 +5996,77 @@ tr.row-checked:hover {
   line-height: 1.6;
   color: var(--text);
 }
+
+/* ── Bridge wizard (P6.3 B6b) ──────────────────────────────────────────── */
+.modal.bridge-modal {
+  width: min(720px, 92vw);
+}
+.bridge-steps {
+  display: flex;
+  gap: 14px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.bridge-step-active {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+.bridge-body {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.bridge-gap-group {
+  margin-bottom: 10px;
+}
+.bridge-gap-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+.bridge-gap-blocking .commit-fail-list {
+  color: var(--danger-text);
+}
+.bridge-ack-row span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+}
+.bridge-status-map {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bridge-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bridge-status-row .mono {
+  min-width: 120px;
+}
+.bridge-status-row .detail-input-inline {
+  flex: 1;
+  margin: 0;
+}
+.bridge-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+.bridge-radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bridge-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .cov-guide-code {
   background: var(--surface-sunken);
   border: 1px solid var(--border-subtle);
