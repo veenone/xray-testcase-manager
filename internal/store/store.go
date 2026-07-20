@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -1241,3 +1242,53 @@ func (s *Store) DB() *sql.DB { return s.db }
 
 // Close releases the database connection.
 func (s *Store) Close() error { return s.db.Close() }
+
+// ExternalRef returns the external key recorded in the neutral identity table
+// (external_ref, schema v40/v41) for a local entity in one backend
+// connection: (workspaceID, entityType, localID, connection). ok is false
+// when no such row exists — e.g. a hub test that has not been published to
+// that connection yet. Phase 6 bridge task B5: the publish engine calls this
+// first for every hub test so a re-run skips anything already published
+// (resumable, and the same mechanism that lets one local_id carry an
+// external_ref for more than one connection at once — dual-publish).
+func (s *Store) ExternalRef(workspaceID, entityType, localID, connection string) (externalKey string, ok bool, err error) {
+	err = s.db.QueryRow(
+		`SELECT external_key FROM external_ref
+		 WHERE profile_id = ? AND entity_type = ? AND local_id = ? AND connection = ?`,
+		workspaceID, entityType, localID, connection,
+	).Scan(&externalKey)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("get external ref: %w", err)
+	}
+	return externalKey, true, nil
+}
+
+// PutExternalRef upserts the external_ref row identifying a local entity in
+// one backend connection, on the table's (profile_id, entity_type, local_id,
+// connection) primary key. Phase 6 bridge task B5: the publish engine calls
+// this right after successfully creating an entity in a target connection, so
+// the new external key (and the target's version token for it, when known —
+// "" is fine, mirroring the precondition backfill's empty version_token) is
+// recorded and the entity is no longer eligible to be republished by a later
+// run. It is also the general accessor a future pull/commit rewiring
+// (deferred bridge task B2/B3) can reuse for the source connection.
+func (s *Store) PutExternalRef(workspaceID, entityType, localID, connection, externalKey, versionToken string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO external_ref
+		   (profile_id, entity_type, local_id, connection, external_key, version_token, base_version, last_pulled_at)
+		 VALUES (?, ?, ?, ?, ?, ?, '', ?)
+		 ON CONFLICT(profile_id, entity_type, local_id, connection) DO UPDATE SET
+		   external_key = excluded.external_key,
+		   version_token = excluded.version_token,
+		   last_pulled_at = excluded.last_pulled_at`,
+		workspaceID, entityType, localID, connection, externalKey, versionToken,
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("put external ref: %w", err)
+	}
+	return nil
+}

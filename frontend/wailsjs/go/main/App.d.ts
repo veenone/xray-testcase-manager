@@ -329,6 +329,8 @@ export function MoveTestToFolder(arg1:string,arg2:string,arg3:string):Promise<vo
 
 export function PreviewImport(arg1:string,arg2:boolean):Promise<testrepo.ImportPreview>;
 
+export function PublishToTarget(arg1:string,arg2:string,arg3:string):Promise<bridge.PublishResult>;
+
 export function ReadLog(arg1:number):Promise<string>;
 
 export function RecreateDeletedTest(arg1:string,arg2:string):Promise<string>;

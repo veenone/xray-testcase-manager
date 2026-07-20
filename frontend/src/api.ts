@@ -35,6 +35,7 @@ export {
   ComputeBridgeGap,
   GetBridgeMapping,
   SaveBridgeMapping,
+  PublishToTarget,
   SyncProfile,
   SyncRequirements,
   SyncContainers,
@@ -510,6 +511,27 @@ export interface BridgeMapping {
   stepMode: string; // "flatten" | "passthrough"
   fieldMap: Record<string, string>;
   unmappedPolicy: string; // "drop" | "keepInHub"
+}
+
+// BridgePublishResult mirrors bridge.PublishResult — the outcome of
+// PublishToTarget (Phase 6 bridge task B5): every hub test newly created in
+// the target this run, every one skipped because it was already published
+// (resumability), and every one whose publish attempt failed. Containers/
+// preconditions/requirements/links are not published by this call (B5b).
+export interface BridgePublishResult {
+  created: BridgePublishedTest[];
+  alreadyPublished: string[];
+  failed: BridgePublishFailure[];
+}
+
+export interface BridgePublishedTest {
+  localKey: string;
+  targetKey: string;
+}
+
+export interface BridgePublishFailure {
+  localKey: string;
+  error: string;
 }
 
 // Diagnostics mirrors app.Diagnostics — the environment + state summary shown
