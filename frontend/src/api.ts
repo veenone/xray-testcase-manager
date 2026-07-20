@@ -532,6 +532,13 @@ export interface BridgePublishedTest {
 export interface BridgePublishFailure {
   localKey: string;
   error: string;
+  // targetKey is set when CreateTest succeeded but a downstream step/status
+  // write failed: the target test WAS created (with this key) and its
+  // external_ref IS recorded, so a future PublishTests run will SKIP it
+  // (resumability) rather than retry the failed steps/status. Empty means
+  // CreateTest itself failed — nothing was created, and a retry will
+  // correctly re-attempt CreateTest for this test.
+  targetKey?: string;
 }
 
 // Diagnostics mirrors app.Diagnostics — the environment + state summary shown

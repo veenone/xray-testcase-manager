@@ -85,11 +85,18 @@ type PublishedTest struct {
 }
 
 // PublishFailure is one hub test whose publish failed for a non-skip reason.
-// The row is NOT recorded in external_ref, so it remains eligible for a
-// future PublishTests run to retry.
+// If TargetKey is empty, CreateTest itself failed: no external_ref was
+// recorded, so the row remains eligible for a future PublishTests run to
+// retry (CreateTest will be attempted again). If TargetKey is set, CreateTest
+// DID succeed and the target test with that key exists, but a subsequent
+// step or status write failed; external_ref IS recorded for this test, so a
+// future PublishTests run will SKIP it (report it in AlreadyPublished) rather
+// than retry the failed steps/status — the target test is left incomplete
+// and needs manual follow-up, not a plain retry.
 type PublishFailure struct {
-	LocalKey string `json:"localKey"`
-	Error    string `json:"error"`
+	LocalKey  string `json:"localKey"`
+	Error     string `json:"error"`
+	TargetKey string `json:"targetKey,omitempty"`
 }
 
 // PublishResult reports the outcome of a PublishTests run, mirroring the
@@ -154,19 +161,27 @@ func NewPublisher(target backend.Backend, targetProjectKey string, hub HubReader
 // For each hub test:
 //  1. Skip (record AlreadyPublished) if external_ref(workspace, "test",
 //     key, targetConnection) already exists.
-//  2. Otherwise CreateTest with the mapped priority/labels/components, then
-//     CreateTestStep per p.Mapping.StepMode (one joined step for "flatten",
+//  2. Otherwise CreateTest with the mapped priority/labels/components.
+//  3. Immediately record external_ref(workspace, "test", key,
+//     targetConnection, targetKey) — before steps/status are attempted — so
+//     the target test's identity is never left unreferenced. This is what
+//     makes a partial failure below resumable rather than duplicate-prone:
+//     a retry's skip check (step 1) will see this ref and skip the test
+//     instead of re-running CreateTest against an already-created target
+//     issue.
+//  4. CreateTestStep per p.Mapping.StepMode (one joined step for "flatten",
 //     one call per source step for "passthrough").
-//  3. If the mapped status differs and the target is settable (not
+//  5. If the mapped status differs and the target is settable (not
 //     workflow-driven), write it via FieldsForJira + UpdateIssue — the same
 //     settable-status pattern syncer/commit.go uses (~545).
-//  4. Record external_ref(workspace, "test", key, targetConnection,
-//     targetKey).
 //
 // A failure at any step for one test is recorded in Failed and the loop
-// continues — one bad test never aborts the run. onProgress (nilable) is
-// called once per test, after it is fully handled (skipped, created, or
-// failed).
+// continues — one bad test never aborts the run. Only a CreateTest failure
+// (step 2) is safely retryable by a future PublishTests run; a failure at
+// step 4 or 5 leaves the target test created-but-incomplete (PublishFailure.
+// TargetKey is set) and a retry will SKIP it rather than fix it up — see
+// PublishFailure's doc comment. onProgress (nilable) is called once per
+// test, after it is fully handled (skipped, created, or failed).
 func (p *Publisher) PublishTests(ctx context.Context, workspaceID, sourceConnection, targetConnection string, onProgress func(done, total int)) (PublishResult, error) {
 	_ = sourceConnection // see doc comment: informational only, source is never touched.
 
@@ -213,13 +228,33 @@ func (p *Publisher) publishOne(ctx context.Context, workspaceID, targetConnectio
 		return
 	}
 
+	// Record identity as soon as the target resource exists — BEFORE
+	// attempting steps/status — so "target test exists" and "external_ref
+	// exists" never diverge. Without this, a step/status failure below would
+	// leave an unreferenced target test that a retry's skip check (top of
+	// this function) can't see, re-creating it as a duplicate on every retry.
+	// See PublishFailure's doc comment for what a TargetKey-bearing failure
+	// means for a subsequent run.
+	if err := p.Refs.PutExternalRef(workspaceID, entityTypeTest, t.Key, targetConnection, targetKey, ""); err != nil {
+		result.Failed = append(result.Failed, PublishFailure{LocalKey: t.Key, Error: fmt.Sprintf("record external ref: %v", err), TargetKey: targetKey})
+		return
+	}
+
 	steps, err := p.Hub.ListHubSteps(workspaceID, t.Key)
 	if err != nil {
-		result.Failed = append(result.Failed, PublishFailure{LocalKey: t.Key, Error: fmt.Sprintf("read hub steps: %v", err)})
+		result.Failed = append(result.Failed, PublishFailure{
+			LocalKey:  t.Key,
+			Error:     fmt.Sprintf("test %s was created in the target but reading hub steps failed, so steps were not written: %v (a retry will skip this test, not retry the steps)", targetKey, err),
+			TargetKey: targetKey,
+		})
 		return
 	}
 	if err := p.publishSteps(ctx, targetKey, steps); err != nil {
-		result.Failed = append(result.Failed, PublishFailure{LocalKey: t.Key, Error: fmt.Sprintf("create step: %v", err)})
+		result.Failed = append(result.Failed, PublishFailure{
+			LocalKey:  t.Key,
+			Error:     fmt.Sprintf("test %s was created in the target but a step failed to write: %v (a retry will skip this test, not retry the step)", targetKey, err),
+			TargetKey: targetKey,
+		})
 		return
 	}
 
@@ -233,15 +268,14 @@ func (p *Publisher) publishOne(ctx context.Context, workspaceID, targetConnectio
 		} else {
 			fields := p.Target.FieldsForJira(map[string]string{"status": mappedStatus})
 			if err := p.Target.UpdateIssue(ctx, targetKey, fields); err != nil {
-				result.Failed = append(result.Failed, PublishFailure{LocalKey: t.Key, Error: fmt.Sprintf("set status: %v", err)})
+				result.Failed = append(result.Failed, PublishFailure{
+					LocalKey:  t.Key,
+					Error:     fmt.Sprintf("test %s was created in the target (with steps written) but the status update failed: %v (a retry will skip this test, not retry the status write)", targetKey, err),
+					TargetKey: targetKey,
+				})
 				return
 			}
 		}
-	}
-
-	if err := p.Refs.PutExternalRef(workspaceID, entityTypeTest, t.Key, targetConnection, targetKey, ""); err != nil {
-		result.Failed = append(result.Failed, PublishFailure{LocalKey: t.Key, Error: fmt.Sprintf("record external ref: %v", err)})
-		return
 	}
 
 	result.Created = append(result.Created, PublishedTest{LocalKey: t.Key, TargetKey: targetKey})

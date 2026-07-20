@@ -88,15 +88,17 @@ export namespace bridge {
 	export class PublishFailure {
 	    localKey: string;
 	    error: string;
-	
+	    targetKey?: string;
+
 	    static createFrom(source: any = {}) {
 	        return new PublishFailure(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.localKey = source["localKey"];
 	        this.error = source["error"];
+	        this.targetKey = source["targetKey"];
 	    }
 	}
 	export class PublishedTest {

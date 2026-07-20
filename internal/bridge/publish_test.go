@@ -93,12 +93,13 @@ type fakeTarget struct {
 	stepCalls   []stepCall
 	updateCalls []updateCall
 
-	nextID  int
-	failFor map[string]error // summary -> error CreateTest returns instead of succeeding
+	nextID      int
+	failFor     map[string]error // summary -> error CreateTest returns instead of succeeding
+	failStepFor map[string]error // target key -> error CreateTestStep returns instead of succeeding
 }
 
 func newFakeTarget(caps backend.Capabilities) *fakeTarget {
-	return &fakeTarget{caps: caps, failFor: map[string]error{}}
+	return &fakeTarget{caps: caps, failFor: map[string]error{}, failStepFor: map[string]error{}}
 }
 
 func (f *fakeTarget) Capabilities() backend.Capabilities { return f.caps }
@@ -121,6 +122,9 @@ func (f *fakeTarget) CreateTest(ctx context.Context, projectKey, summary, descri
 func (f *fakeTarget) CreateTestStep(ctx context.Context, key, action, data, expected string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err, ok := f.failStepFor[key]; ok {
+		return "", err
+	}
 	f.stepCalls = append(f.stepCalls, stepCall{key: key, action: action, data: data, expected: expected})
 	return fmt.Sprintf("step-%d", len(f.stepCalls)), nil
 }
@@ -268,6 +272,86 @@ func TestPublishTestsIsolatesCreateTestFailure(t *testing.T) {
 	}
 	if _, ok, _ := refs.ExternalRef("ws1", "test", "QA-2", "tgt"); ok {
 		t.Errorf("QA-2 must not have an external_ref after a failed publish")
+	}
+}
+
+// TestPublishTestsRecordsRefBeforeStepsSoPartialFailureIsResumable proves the
+// fix for the resumability gap: when CreateTest succeeds but a downstream
+// step write fails (the deterministic case for a real Kiwi target, whose
+// CreateTestStep returns ErrUnsupported), the external_ref for the test MUST
+// already be recorded — target test exists ⇔ external_ref exists — so the
+// failure is reported with its TargetKey (created-but-incomplete, not
+// "nothing happened"), and a second PublishTests run against the same refs
+// store skips the test (AlreadyPublished, not Created or Failed again) and
+// makes zero additional CreateTest or CreateTestStep calls: no orphaned
+// duplicate accumulates on retry.
+func TestPublishTestsRecordsRefBeforeStepsSoPartialFailureIsResumable(t *testing.T) {
+	hub := newFakeHub()
+	hub.tests["ws1"] = []bridge.HubTest{{Key: "QA-1", Summary: "Partial"}}
+	hub.steps["ws1/QA-1"] = []bridge.HubStep{{Action: "Open login", Expected: "Form shown"}}
+	refs := newFakeRefStore()
+	target := newFakeTarget(settableCaps())
+	target.failStepFor["T-1"] = errors.New("step create: unsupported by this backend")
+	mapping := bridge.Mapping{StatusMap: map[string]string{}, StepMode: bridge.StepModePassthrough}
+	pub := bridge.NewPublisher(target, "PROJ", hub, refs, mapping)
+
+	result, err := pub.PublishTests(context.Background(), "ws1", "src", "tgt", nil)
+	if err != nil {
+		t.Fatalf("PublishTests: %v", err)
+	}
+	if len(result.Created) != 0 {
+		t.Fatalf("Created = %+v, want none (steps failed, so publish is incomplete)", result.Created)
+	}
+	if len(result.Failed) != 1 {
+		t.Fatalf("Failed = %+v, want exactly 1 failure", result.Failed)
+	}
+	failure := result.Failed[0]
+	if failure.LocalKey != "QA-1" {
+		t.Errorf("failure.LocalKey = %q, want QA-1", failure.LocalKey)
+	}
+	if failure.TargetKey != "T-1" {
+		t.Errorf("failure.TargetKey = %q, want T-1 (proves the failure message can say the target test WAS created)", failure.TargetKey)
+	}
+	if !strings.Contains(failure.Error, "T-1") {
+		t.Errorf("failure.Error = %q, want it to mention the target key T-1", failure.Error)
+	}
+
+	// The critical assertion: external_ref IS recorded even though publish
+	// failed, because CreateTest succeeded before the step write blew up.
+	extKey, ok, err := refs.ExternalRef("ws1", "test", "QA-1", "tgt")
+	if err != nil || !ok || extKey != "T-1" {
+		t.Fatalf("external_ref for QA-1 = (%q, %v, %v), want (\"T-1\", true, nil)", extKey, ok, err)
+	}
+
+	createCalls, stepCalls, _ := target.callCounts()
+	if createCalls != 1 {
+		t.Fatalf("CreateTest calls after first run = %d, want 1", createCalls)
+	}
+	if stepCalls != 0 {
+		t.Fatalf("CreateTestStep calls recorded after first run = %d, want 0 (the only attempt failed)", stepCalls)
+	}
+
+	// Second run: must skip QA-1 entirely — no duplicate CreateTest, no retry
+	// of the failed step.
+	result2, err := pub.PublishTests(context.Background(), "ws1", "src", "tgt", nil)
+	if err != nil {
+		t.Fatalf("PublishTests (rerun): %v", err)
+	}
+	if len(result2.AlreadyPublished) != 1 || result2.AlreadyPublished[0] != "QA-1" {
+		t.Fatalf("rerun AlreadyPublished = %+v, want [QA-1]", result2.AlreadyPublished)
+	}
+	if len(result2.Created) != 0 {
+		t.Errorf("rerun Created = %+v, want none", result2.Created)
+	}
+	if len(result2.Failed) != 0 {
+		t.Errorf("rerun Failed = %+v, want none (already-published tests are skipped, not retried)", result2.Failed)
+	}
+	createCallsAfter, stepCallsAfter, _ := target.callCounts()
+	if createCallsAfter != 1 {
+		t.Fatalf("CreateTest calls after rerun = %d, want still 1 (0 new — no duplicate)", createCallsAfter)
+	}
+	if stepCallsAfter != 0 {
+		t.Fatalf("CreateTestStep calls after rerun = %d, want still 0 (the failed step is not retried)", stepCallsAfter)
 	}
 }
 
