@@ -21,6 +21,7 @@ import (
 	"xray-test-manager/internal/backend"
 	"xray-test-manager/internal/backend/kiwi"
 	"xray-test-manager/internal/backend/xray"
+	"xray-test-manager/internal/connection"
 	"xray-test-manager/internal/coverage"
 	"xray-test-manager/internal/jira"
 	"xray-test-manager/internal/profile"
@@ -48,16 +49,17 @@ func recoverToError(method string, errp *error) {
 // App is the Wails application backend. Exported methods on App are bound and
 // callable from the React frontend.
 type App struct {
-	ctx        context.Context
-	store      *store.Store
-	profiles   *profile.Manager
-	creds      profile.CredentialStore
-	settings   *settings.Manager
-	repo       *testrepo.Repository
-	cov        *coverage.Module
-	dbPath     string
-	logPath    string
-	startupErr string
+	ctx         context.Context
+	store       *store.Store
+	profiles    *profile.Manager
+	connections *connection.Manager
+	creds       profile.CredentialStore
+	settings    *settings.Manager
+	repo        *testrepo.Repository
+	cov         *coverage.Module
+	dbPath      string
+	logPath     string
+	startupErr  string
 
 	// statusCache holds the per-profile workflow status list fetched from Jira,
 	// for the session — workflow config rarely changes, so one fetch is enough.
@@ -116,6 +118,7 @@ func (a *App) initStore() error {
 	}
 	a.store = st
 	a.profiles = profile.NewManager(st)
+	a.connections = connection.NewManager(st)
 	a.creds = profile.NewCredentialStore()
 	a.settings = settings.NewManager(st)
 	a.repo = testrepo.NewRepository(st)
@@ -522,6 +525,26 @@ func (a *App) backendFor(profileID string) (backend.Backend, error) {
 	return newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS), nil
 }
 
+// backendForConnection is the connection-scoped twin of backendFor (P6.3): it
+// loads a connection row (rather than a profile) and its stored credential,
+// keyed by the connection's id, and returns a Backend bound to it. For a
+// single-connection workspace the connection id equals the workspace/profile
+// id, so this reads the same credential backendFor(profileID) does — no
+// re-keying. This is the seam the bridge publish engine (B5) uses to build a
+// Backend for the target connection while backendFor keeps serving the
+// existing single-connection sync/commit flow unchanged.
+func (a *App) backendForConnection(connectionID string) (backend.Backend, error) {
+	c, err := a.connections.Get(connectionID)
+	if err != nil {
+		return nil, err
+	}
+	token, err := a.creds.Load(connectionID)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
+	}
+	return newBackend(c.Backend, c.URL, token, c.CACert, c.AllowUntrustedTLS), nil
+}
+
 // --- Boundary conversions: backend.* -> jira.* -------------------------
 //
 // A handful of App methods are exported with jira.* return types that are
@@ -580,6 +603,86 @@ func (a *App) DeleteProfile(id string) error {
 		if err := a.settings.SetDefaultProfileID(""); err != nil {
 			log.Printf("xtm: clear default profile after delete: %v", err)
 		}
+	}
+	return nil
+}
+
+// --- Connections (P6.3 bridge) ---
+//
+// A workspace (today, a profiles row) can hold more than one backend
+// connection — a source and a target for the Phase 6 bridge. These methods
+// are thin CRUD wrappers around internal/connection.Manager, mirroring the
+// Profiles methods above; they are additive plumbing only (no bridge UI (B6)
+// or publish wiring (B5) yet). The workspace's primary connection (the one
+// created for it at B1, id == workspaceID) backs the existing single-
+// connection flow via backendFor(profileID) and must never be left without a
+// connection row, so DeleteConnection refuses to remove it.
+
+// ListConnections returns every connection configured for a workspace.
+func (a *App) ListConnections(workspaceID string) ([]connection.Connection, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.connections.List(workspaceID)
+}
+
+// AddConnection creates a new connection within a workspace and saves its
+// credential to the OS credential manager, keyed by the new connection's id.
+// token holds a PAT (xray) or the combined "username:password" session-login
+// credential (kiwi), matching CreateProfile.
+func (a *App) AddConnection(workspaceID, name, backendType, url, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token, caCert string, allowUntrustedTLS bool, role string) (connection.Connection, error) {
+	if err := a.requireStore(); err != nil {
+		return connection.Connection{}, err
+	}
+	id := connection.NewID()
+	c, err := a.connections.Create(id, workspaceID, name, backendType, url, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, role, time.Now().UTC())
+	if err != nil {
+		return connection.Connection{}, err
+	}
+	if err := a.creds.Save(id, token); err != nil {
+		_ = a.connections.Delete(id) // don't leave a credential-less connection behind
+		return connection.Connection{}, fmt.Errorf("save credentials: %w", err)
+	}
+	return c, nil
+}
+
+// UpdateConnection edits an existing connection's fields. A blank token
+// leaves the stored credential unchanged (mirroring UpdateProfile).
+func (a *App) UpdateConnection(id, name, backendType, url, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, token, caCert string, allowUntrustedTLS bool, role string) (connection.Connection, error) {
+	if err := a.requireStore(); err != nil {
+		return connection.Connection{}, err
+	}
+	if err := a.connections.Update(id, name, backendType, url, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, role); err != nil {
+		return connection.Connection{}, err
+	}
+	if strings.TrimSpace(token) != "" {
+		if err := a.creds.Save(id, token); err != nil {
+			return connection.Connection{}, fmt.Errorf("save credentials: %w", err)
+		}
+	}
+	return a.connections.Get(id)
+}
+
+// DeleteConnection removes a connection and best-effort deletes its stored
+// credential. It refuses to delete a workspace's primary connection (the one
+// with id == workspaceID) so the single-connection shim that backendFor
+// relies on never loses its backing row.
+func (a *App) DeleteConnection(id string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	c, err := a.connections.Get(id)
+	if err != nil {
+		return err
+	}
+	if c.ID == c.WorkspaceID {
+		return fmt.Errorf("cannot delete the workspace's primary connection")
+	}
+	if err := a.connections.Delete(id); err != nil {
+		return err
+	}
+	if err := a.creds.Delete(id); err != nil {
+		log.Printf("xtm: delete credentials for connection %s: %v", id, err)
 	}
 	return nil
 }

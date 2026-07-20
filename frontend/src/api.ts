@@ -28,6 +28,10 @@ export {
   DeleteProfile,
   TestConnection,
   TestProfileConnection,
+  ListConnections,
+  AddConnection,
+  UpdateConnection,
+  DeleteConnection,
   SyncProfile,
   SyncRequirements,
   SyncContainers,
@@ -458,6 +462,27 @@ export interface Profile {
   // Jira Data Center + Xray Server/DC) or "kiwi" (Kiwi TCMS). Settable from
   // the profile form's backend selector (P6.1b).
   backend: string;
+  createdAt: string;
+}
+
+// Connection mirrors connection.Connection — one backend a workspace talks
+// to (P6.3 bridge plumbing). A single-connection workspace's connection has
+// id == workspaceId and role "both"; the bridge (B5/B6, not yet built) adds
+// a second connection with role "source" or "target".
+export interface Connection {
+  id: string;
+  workspaceId: string;
+  name: string;
+  backend: string; // "xray" | "kiwi"
+  url: string;
+  projectKey: string;
+  scopeJql: string;
+  bugIssueType: string;
+  bugProjectMode: string; // "test" | "execution" | "dedicated"
+  bugProjectKey: string;
+  caCert: string;
+  allowUntrustedTls: boolean;
+  role: string; // "source" | "target" | "both"
   createdAt: string;
 }
 

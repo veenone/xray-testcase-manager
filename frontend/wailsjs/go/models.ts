@@ -49,6 +49,68 @@ export namespace backend {
 
 }
 
+export namespace connection {
+	
+	export class Connection {
+	    id: string;
+	    workspaceId: string;
+	    name: string;
+	    backend: string;
+	    url: string;
+	    projectKey: string;
+	    scopeJql: string;
+	    bugIssueType: string;
+	    bugProjectMode: string;
+	    bugProjectKey: string;
+	    caCert: string;
+	    allowUntrustedTls: boolean;
+	    role: string;
+	    // Go type: time
+	    createdAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Connection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.workspaceId = source["workspaceId"];
+	        this.name = source["name"];
+	        this.backend = source["backend"];
+	        this.url = source["url"];
+	        this.projectKey = source["projectKey"];
+	        this.scopeJql = source["scopeJql"];
+	        this.bugIssueType = source["bugIssueType"];
+	        this.bugProjectMode = source["bugProjectMode"];
+	        this.bugProjectKey = source["bugProjectKey"];
+	        this.caCert = source["caCert"];
+	        this.allowUntrustedTls = source["allowUntrustedTls"];
+	        this.role = source["role"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace coverage {
 	
 	export class CRDecision {

@@ -6,6 +6,10 @@ export function AddCalledTestStep(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddCalledTestStep'](arg1, arg2, arg3);
 }
 
+export function AddConnection(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13) {
+  return window['go']['main']['App']['AddConnection'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13);
+}
+
 export function AddTestComment(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddTestComment'](arg1, arg2, arg3);
 }
@@ -176,6 +180,10 @@ export function DeleteCanonicalRequirement(arg1, arg2) {
 
 export function DeleteChangeRequest(arg1, arg2) {
   return window['go']['main']['App']['DeleteChangeRequest'](arg1, arg2);
+}
+
+export function DeleteConnection(arg1) {
+  return window['go']['main']['App']['DeleteConnection'](arg1);
 }
 
 export function DeleteContainer(arg1, arg2) {
@@ -510,6 +518,10 @@ export function ListComponents(arg1) {
   return window['go']['main']['App']['ListComponents'](arg1);
 }
 
+export function ListConnections(arg1) {
+  return window['go']['main']['App']['ListConnections'](arg1);
+}
+
 export function ListContainers(arg1, arg2) {
   return window['go']['main']['App']['ListContainers'](arg1, arg2);
 }
@@ -812,6 +824,10 @@ export function UnlinkBugFromRun(arg1, arg2, arg3, arg4) {
 
 export function UpdateChangeRequest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['main']['App']['UpdateChangeRequest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
+export function UpdateConnection(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13) {
+  return window['go']['main']['App']['UpdateConnection'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13);
 }
 
 export function UpdateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12) {
