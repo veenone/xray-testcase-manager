@@ -4833,6 +4833,50 @@ tr.row-checked:hover {
   gap: 8px;
   padding-top: 10px;
 }
+/* Connections list rows (ConnectionsModal) carry more per-row info than a
+   profile row (backend chip, url, role), so they stack two lines instead of
+   the single-line profile row; the selection/hover styling is shared via
+   .profiles-list-row-selected. */
+.connections-list-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.connections-list-row:hover {
+  background: var(--hover-bg, rgba(127, 127, 127, 0.12));
+}
+.connections-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.connections-row-meta {
+  font-size: 12px;
+  padding-left: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.backend-chip {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+.backend-chip-xray {
+  background: #3884de;
+  color: #fff;
+}
+.backend-chip-kiwi {
+  background: #6ec177;
+  color: #0d2b12;
+}
 .profiles-detail {
   flex: 1;
   min-width: 0;

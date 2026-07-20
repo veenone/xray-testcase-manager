@@ -49,6 +49,7 @@ import type {
 } from "./api";
 import { ProfileForm } from "./components/ProfileForm";
 import { ProfilesModal } from "./components/ProfilesModal";
+import { ConnectionsModal } from "./components/ConnectionsModal";
 import { TestTable } from "./components/TestTable";
 import { TestDetail } from "./components/TestDetail";
 import { NewTestPanel } from "./components/NewTestPanel";
@@ -108,6 +109,10 @@ function App() {
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showProfiles, setShowProfiles] = useState(false);
+  // Connections manager for the active workspace (P6.3 B6a) — add/edit/delete
+  // the connections (e.g. a Kiwi target) a workspace talks to, beyond its
+  // primary one. The prerequisite UI for the bridge wizard (B6b).
+  const [showConnections, setShowConnections] = useState(false);
   // When set, the profile modal opens in edit mode for this profile (FR-5).
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
 
@@ -1017,13 +1022,26 @@ function App() {
               </option>
             ))}
           </select>
-          <button
-            className="topbar-btn"
-            onClick={() => setShowProfiles(true)}
-            title="Manage profiles — add, edit, set default, export, delete"
-          >
-            ⚙ Manage
-          </button>
+          <Menu
+            label="⚙ Manage"
+            title="Manage profiles and connections"
+            items={[
+              {
+                key: "profiles",
+                label: "Manage Profiles…",
+                onClick: () => setShowProfiles(true),
+                title: "Manage profiles — add, edit, set default, export, delete",
+              },
+              {
+                key: "connections",
+                label: "Connections…",
+                onClick: () => setShowConnections(true),
+                title:
+                  "Manage this workspace's connections — add a target " +
+                  "(e.g. Kiwi) beside its primary connection",
+              },
+            ]}
+          />
         </div>
 
         <nav className="view-tabs topbar-zone topbar-center">
@@ -1517,6 +1535,13 @@ function App() {
           onImport={importProfile}
           onSaved={handleCreated}
           onDelete={deleteProfile}
+        />
+      )}
+
+      {showConnections && activeId && (
+        <ConnectionsModal
+          activeId={activeId}
+          onClose={() => setShowConnections(false)}
         />
       )}
 
