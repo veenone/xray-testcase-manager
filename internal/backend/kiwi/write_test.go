@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -314,5 +315,107 @@ func TestCreateTestEmptyProjectKeyErrors(t *testing.T) {
 	}
 	if callCount(mock, "TestCase.create") != 0 {
 		t.Error("TestCase.create must not be called when projectKey is empty")
+	}
+}
+
+// --- CreateTestStep (P6 — inline-text step write) ---
+
+// TestCreateTestStepSetsTextWhenEmpty covers the empty-text case: the
+// assembled step content becomes the whole `text` value, and the returned
+// step id round-trips through flattenSteps' fixed "1" id.
+func TestCreateTestStepSetsTextWhenEmpty(t *testing.T) {
+	mock := newMockRPCServer(t)
+	mock.handleResult("TestCase.filter", []map[string]any{{"id": 42, "text": ""}})
+	mock.handleResult("TestCase.update", nil)
+	a, closeFn := newTestAdapter(t, mock)
+	defer closeFn()
+
+	stepID, err := a.CreateTestStep(context.Background(), "42", "Click login", "user=alice", "Login succeeds")
+	if err != nil {
+		t.Fatalf("CreateTestStep: %v", err)
+	}
+	if stepID == "" {
+		t.Fatal("expected a non-empty step id")
+	}
+
+	var id int
+	requestParams(t, mock, "TestCase.update", 0, &id)
+	if id != 42 {
+		t.Fatalf("TestCase.update id = %d, want 42", id)
+	}
+	var values map[string]any
+	requestParams(t, mock, "TestCase.update", 1, &values)
+	text, _ := values["text"].(string)
+	if text == "" {
+		t.Fatal("expected TestCase.update text to be non-empty")
+	}
+	for _, want := range []string{"Click login", "Data: user=alice", "Expected: Login succeeds"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text %q missing %q", text, want)
+		}
+	}
+
+	// Round-trip through the read-side transform: the written text maps
+	// back to exactly one neutral Step carrying the content just written.
+	steps := flattenSteps(text)
+	if len(steps) != 1 {
+		t.Fatalf("flattenSteps(%q) = %d steps, want 1", text, len(steps))
+	}
+	if steps[0].ID != stepID {
+		t.Errorf("flattenSteps step id = %q, want %q (CreateTestStep's returned id)", steps[0].ID, stepID)
+	}
+	if !strings.Contains(steps[0].Action, "Click login") {
+		t.Errorf("flattenSteps step action = %q, missing written content", steps[0].Action)
+	}
+}
+
+// TestCreateTestStepAppendsToExistingText covers the non-empty case: prior
+// text must survive, and the new content must be present alongside it
+// (append, not overwrite) — repeat calls accumulate.
+func TestCreateTestStepAppendsToExistingText(t *testing.T) {
+	mock := newMockRPCServer(t)
+	mock.handleResult("TestCase.filter", []map[string]any{{"id": 7, "text": "Step 1: Open the app"}})
+	mock.handleResult("TestCase.update", nil)
+	a, closeFn := newTestAdapter(t, mock)
+	defer closeFn()
+
+	if _, err := a.CreateTestStep(context.Background(), "7", "Step 2: Log out", "", ""); err != nil {
+		t.Fatalf("CreateTestStep: %v", err)
+	}
+
+	var values map[string]any
+	requestParams(t, mock, "TestCase.update", 1, &values)
+	text, _ := values["text"].(string)
+	if !strings.Contains(text, "Step 1: Open the app") {
+		t.Errorf("text %q lost the existing content", text)
+	}
+	if !strings.Contains(text, "Step 2: Log out") {
+		t.Errorf("text %q missing the newly appended content", text)
+	}
+
+	steps := flattenSteps(text)
+	if len(steps) != 1 {
+		t.Fatalf("flattenSteps(%q) = %d steps, want 1", text, len(steps))
+	}
+	if !strings.Contains(steps[0].Action, "Step 1: Open the app") || !strings.Contains(steps[0].Action, "Step 2: Log out") {
+		t.Errorf("round-tripped step action = %q, missing prior or new content", steps[0].Action)
+	}
+}
+
+// TestCreateTestStepInvalidKeyErrors asserts a non-numeric (non-TestCase)
+// key fails before any RPC is attempted, matching UpdateIssue/parseKiwiID.
+func TestCreateTestStepInvalidKeyErrors(t *testing.T) {
+	mock := newMockRPCServer(t)
+	a, closeFn := newTestAdapter(t, mock)
+	defer closeFn()
+
+	if _, err := a.CreateTestStep(context.Background(), "not-a-kiwi-id", "action", "", ""); err == nil {
+		t.Fatal("expected an error for a non-numeric key")
+	}
+	if callCount(mock, "TestCase.filter") != 0 {
+		t.Error("TestCase.filter must not be called for an invalid key")
+	}
+	if callCount(mock, "TestCase.update") != 0 {
+		t.Error("TestCase.update must not be called for an invalid key")
 	}
 }

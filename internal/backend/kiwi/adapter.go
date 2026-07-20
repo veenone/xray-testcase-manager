@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"xray-test-manager/internal/backend"
@@ -440,8 +441,61 @@ func (a *Adapter) GetTestSteps(ctx context.Context, key string) ([]backend.Step,
 	return flattenSteps(tc.Text), nil
 }
 
+// CreateTestStep is P5's write counterpart to GetTestSteps/flattenSteps:
+// Kiwi has no step objects, only the single `text` field a TestCase carries
+// (spec §3.3, §7), so "create a step" means APPENDING the new step's content
+// onto that field rather than inserting a row anywhere. The B5 publish
+// engine's StepMode=="flatten" path already joins a whole test's steps into
+// one `action` string before calling this, but this stays robust to a caller
+// that populates data/expected too: the appended block is assembled from
+// whichever of action/data/expected are non-empty (data prefixed "Data: ",
+// expected prefixed "Expected: "), newline-joined. That block is appended to
+// the TestCase's existing text — separated by a blank line when the existing
+// text is non-empty, otherwise used as the whole text — so repeat calls
+// accumulate instead of clobbering prior content. The write reuses
+// UpdateIssue's exact TestCase.update({"text": ...}) call shape (write.go)
+// rather than re-implementing the RPC.
+//
+// Kiwi steps have no independent identity (there is no per-step id to
+// return), so this always returns the fixed id "1" — the same id
+// flattenSteps assigns the single neutral Step it produces when reading the
+// text back, so a caller that immediately re-reads sees the step it just
+// wrote.
 func (a *Adapter) CreateTestStep(ctx context.Context, key, action, data, expected string) (string, error) {
-	return "", backend.ErrUnsupported // P4.2 (write)
+	id, err := parseKiwiID(key)
+	if err != nil {
+		return "", err
+	}
+	tc, err := a.fetchTestCaseByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+
+	var b strings.Builder
+	b.WriteString(action)
+	if data != "" {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("Data: " + data)
+	}
+	if expected != "" {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("Expected: " + expected)
+	}
+	block := b.String()
+
+	newText := block
+	if tc.Text != "" {
+		newText = tc.Text + "\n\n" + block
+	}
+
+	if err := a.c.call(ctx, "TestCase.update", []any{id, map[string]any{"text": newText}}, nil); err != nil {
+		return "", err
+	}
+	return "1", nil
 }
 
 func (a *Adapter) UpdateTestStep(ctx context.Context, key, stepID string, fields map[string]string) error {
