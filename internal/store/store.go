@@ -17,7 +17,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 43
+const schemaVersion = 44
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -548,6 +548,21 @@ CREATE TABLE IF NOT EXISTS connection (
 	allow_untrusted_tls INTEGER NOT NULL DEFAULT 0,
 	role                TEXT NOT NULL DEFAULT 'both',
 	created_at          TEXT NOT NULL DEFAULT ''
+);
+
+-- ── Bridge mapping table (schema v44, Phase 6 bridge task B4) ───────────────
+-- One row per (workspace, source connection, target connection) holding the
+-- user's reversible status/step/field mapping for publishing a dataset from
+-- source to target (the bridge publish engine, B5, is a later task). Nothing
+-- reads from this table yet outside internal/bridge; additive and
+-- behaviour-preserving for the existing single-connection flow.
+CREATE TABLE IF NOT EXISTS bridge_mapping (
+	workspace_id          TEXT NOT NULL,
+	source_connection_id  TEXT NOT NULL,
+	target_connection_id  TEXT NOT NULL,
+	mapping_json          TEXT NOT NULL DEFAULT '',
+	updated_at            TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (workspace_id, source_connection_id, target_connection_id)
 );
 `
 
@@ -1182,6 +1197,23 @@ func applyMigrations(db *sql.DB) error {
 			 FROM profiles`,
 		); err != nil {
 			return fmt.Errorf("v43 backfill connection: %w", err)
+		}
+	}
+	// v44: the bridge_mapping table (Phase 6 bridge task B4) — one row per
+	// (workspace, source connection, target connection) holding the reversible
+	// status/step/field mapping used by the publish engine (B5). Fresh installs
+	// get the table from baseSchema; this CREATE catches pre-v44 databases. No
+	// backfill: this is a brand new feature with nothing to migrate from.
+	if current < 44 {
+		if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS bridge_mapping (
+			workspace_id          TEXT NOT NULL,
+			source_connection_id  TEXT NOT NULL,
+			target_connection_id  TEXT NOT NULL,
+			mapping_json          TEXT NOT NULL DEFAULT '',
+			updated_at            TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (workspace_id, source_connection_id, target_connection_id)
+		)`); err != nil && !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("v44 create bridge_mapping: %w", err)
 		}
 	}
 	return nil

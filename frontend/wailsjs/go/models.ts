@@ -49,6 +49,45 @@ export namespace backend {
 
 }
 
+export namespace bridge {
+	
+	export class Gap {
+	    feature: string;
+	    severity: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Gap(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.feature = source["feature"];
+	        this.severity = source["severity"];
+	        this.message = source["message"];
+	    }
+	}
+	export class Mapping {
+	    statusMap: Record<string, string>;
+	    stepMode: string;
+	    fieldMap: Record<string, string>;
+	    unmappedPolicy: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Mapping(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.statusMap = source["statusMap"];
+	        this.stepMode = source["stepMode"];
+	        this.fieldMap = source["fieldMap"];
+	        this.unmappedPolicy = source["unmappedPolicy"];
+	    }
+	}
+
+}
+
 export namespace connection {
 	
 	export class Connection {

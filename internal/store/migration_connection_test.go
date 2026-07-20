@@ -145,7 +145,7 @@ func TestConnectionBackfillV43(t *testing.T) {
 		t.Fatalf("profiles row count = %d, want 2", profileCount)
 	}
 
-	if SchemaVersion() != 43 {
-		t.Fatalf("SchemaVersion() = %d, want 43", SchemaVersion())
+	if SchemaVersion() < 43 {
+		t.Fatalf("SchemaVersion() = %d, want >= 43", SchemaVersion())
 	}
 }

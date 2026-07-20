@@ -32,6 +32,9 @@ export {
   AddConnection,
   UpdateConnection,
   DeleteConnection,
+  ComputeBridgeGap,
+  GetBridgeMapping,
+  SaveBridgeMapping,
   SyncProfile,
   SyncRequirements,
   SyncContainers,
@@ -484,6 +487,29 @@ export interface Connection {
   allowUntrustedTls: boolean;
   role: string; // "source" | "target" | "both"
   createdAt: string;
+}
+
+// BridgeGap mirrors bridge.Gap — one way the target connection's backend
+// can't fully represent something the source connection's backend supports,
+// returned by ComputeBridgeGap (Phase 6 bridge task B4). Feature is a stable
+// machine key; Severity is "blocking" | "lossy" | "info".
+export interface BridgeGap {
+  feature: string;
+  severity: string;
+  message: string;
+}
+
+// BridgeMapping mirrors bridge.Mapping — the reversible status/step/field
+// mapping used when publishing from a source connection to a target
+// connection. Returned by GetBridgeMapping (the saved mapping, or a
+// bridge.DefaultMapping when none is saved) and persisted by
+// SaveBridgeMapping. The publish engine that applies it (B5) and the mapping
+// editor UI (B6) are later tasks — B4 only computes/persists this shape.
+export interface BridgeMapping {
+  statusMap: Record<string, string>;
+  stepMode: string; // "flatten" | "passthrough"
+  fieldMap: Record<string, string>;
+  unmappedPolicy: string; // "drop" | "keepInHub"
 }
 
 // Diagnostics mirrors app.Diagnostics — the environment + state summary shown

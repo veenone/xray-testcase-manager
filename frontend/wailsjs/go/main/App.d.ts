@@ -4,6 +4,7 @@ import {testrepo} from '../models';
 import {connection} from '../models';
 import {main} from '../models';
 import {syncer} from '../models';
+import {bridge} from '../models';
 import {profile} from '../models';
 import {coverage} from '../models';
 import {jira} from '../models';
@@ -65,6 +66,8 @@ export function CloneVersion(arg1:string,arg2:string,arg3:string,arg4:string):Pr
 export function CommitPendingChanges(arg1:string):Promise<syncer.CommitResult>;
 
 export function CommitPendingChangesByIDs(arg1:string,arg2:Array<number>):Promise<syncer.CommitResult>;
+
+export function ComputeBridgeGap(arg1:string,arg2:string):Promise<Array<bridge.Gap>>;
 
 export function CreateBugForTest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Array<string>,arg8:Record<string, any>):Promise<string>;
 
@@ -169,6 +172,8 @@ export function ExportSummaryTemplate():Promise<string>;
 export function ExportTests(arg1:string,arg2:testrepo.Query):Promise<string>;
 
 export function ExportTraceability(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<string>,arg5:boolean,arg6:Array<string>,arg7:Array<string>):Promise<string>;
+
+export function GetBridgeMapping(arg1:string,arg2:string,arg3:string):Promise<bridge.Mapping>;
 
 export function GetBugCreateFields(arg1:string):Promise<Array<jira.BugCreateField>>;
 
@@ -345,6 +350,8 @@ export function ResolveConflictMerge(arg1:string,arg2:string,arg3:string,arg4:Ar
 export function ResolveConflictOverride(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function RunStatuses():Promise<Array<string>>;
+
+export function SaveBridgeMapping(arg1:string,arg2:string,arg3:string,arg4:bridge.Mapping):Promise<void>;
 
 export function ScanAllDuplicateSteps(arg1:string):Promise<number>;
 

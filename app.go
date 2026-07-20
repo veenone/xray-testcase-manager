@@ -21,6 +21,7 @@ import (
 	"xray-test-manager/internal/backend"
 	"xray-test-manager/internal/backend/kiwi"
 	"xray-test-manager/internal/backend/xray"
+	"xray-test-manager/internal/bridge"
 	"xray-test-manager/internal/connection"
 	"xray-test-manager/internal/coverage"
 	"xray-test-manager/internal/jira"
@@ -49,17 +50,18 @@ func recoverToError(method string, errp *error) {
 // App is the Wails application backend. Exported methods on App are bound and
 // callable from the React frontend.
 type App struct {
-	ctx         context.Context
-	store       *store.Store
-	profiles    *profile.Manager
-	connections *connection.Manager
-	creds       profile.CredentialStore
-	settings    *settings.Manager
-	repo        *testrepo.Repository
-	cov         *coverage.Module
-	dbPath      string
-	logPath     string
-	startupErr  string
+	ctx            context.Context
+	store          *store.Store
+	profiles       *profile.Manager
+	connections    *connection.Manager
+	bridgeMappings *bridge.MappingStore
+	creds          profile.CredentialStore
+	settings       *settings.Manager
+	repo           *testrepo.Repository
+	cov            *coverage.Module
+	dbPath         string
+	logPath        string
+	startupErr     string
 
 	// statusCache holds the per-profile workflow status list fetched from Jira,
 	// for the session — workflow config rarely changes, so one fetch is enough.
@@ -119,6 +121,7 @@ func (a *App) initStore() error {
 	a.store = st
 	a.profiles = profile.NewManager(st)
 	a.connections = connection.NewManager(st)
+	a.bridgeMappings = bridge.NewMappingStore(st)
 	a.creds = profile.NewCredentialStore()
 	a.settings = settings.NewManager(st)
 	a.repo = testrepo.NewRepository(st)
@@ -685,6 +688,91 @@ func (a *App) DeleteConnection(id string) error {
 		log.Printf("xtm: delete credentials for connection %s: %v", id, err)
 	}
 	return nil
+}
+
+// --- Bridge (Phase 6 task B4: gap report + mapping model) ------------------
+//
+// These three methods expose internal/bridge's pure gap-computation and
+// default-mapping logic to the frontend. They do not publish anything — the
+// publish engine that consumes a saved Mapping is a later task (B5); there is
+// no UI yet either (B6). All three are additive: they touch no existing
+// sync/commit/connection code path.
+
+// ComputeBridgeGap returns the pre-flight capability-gap report for
+// publishing from sourceConnectionID to targetConnectionID: everything the
+// target backend can't fully represent that the source supports (folders,
+// object-level steps flattened to text, workflow status vs. settable status,
+// preconditions/requirements as first-class objects, etc.). It only compares
+// each backend's static Capabilities() — no sync, no network call, so it's
+// safe to call as often as the bridge wizard needs (e.g. every time the user
+// changes the source/target pick).
+func (a *App) ComputeBridgeGap(sourceConnectionID, targetConnectionID string) ([]bridge.Gap, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	source, err := a.backendForConnection(sourceConnectionID)
+	if err != nil {
+		return nil, fmt.Errorf("load source connection: %w", err)
+	}
+	target, err := a.backendForConnection(targetConnectionID)
+	if err != nil {
+		return nil, fmt.Errorf("load target connection: %w", err)
+	}
+	return bridge.ComputeGaps(source.Capabilities(), target.Capabilities()), nil
+}
+
+// GetBridgeMapping returns the saved status/step/field mapping for
+// (workspaceID, sourceConnectionID, targetConnectionID), or — when none has
+// been saved yet — a fresh bridge.DefaultMapping built from both connections'
+// live status lists (ListStatuses; this is the one bridge call that does hit
+// the network, since a default status map needs the target's actual status
+// names). The default is NOT persisted by this call; the caller saves it
+// explicitly (via SaveBridgeMapping) once the user accepts or edits it.
+func (a *App) GetBridgeMapping(workspaceID, sourceConnectionID, targetConnectionID string) (bridge.Mapping, error) {
+	if err := a.requireStore(); err != nil {
+		return bridge.Mapping{}, err
+	}
+	if saved, ok, err := a.bridgeMappings.Get(workspaceID, sourceConnectionID, targetConnectionID); err != nil {
+		return bridge.Mapping{}, err
+	} else if ok {
+		return saved, nil
+	}
+
+	source, err := a.backendForConnection(sourceConnectionID)
+	if err != nil {
+		return bridge.Mapping{}, fmt.Errorf("load source connection: %w", err)
+	}
+	target, err := a.backendForConnection(targetConnectionID)
+	if err != nil {
+		return bridge.Mapping{}, fmt.Errorf("load target connection: %w", err)
+	}
+	sourceConn, err := a.connections.Get(sourceConnectionID)
+	if err != nil {
+		return bridge.Mapping{}, fmt.Errorf("load source connection: %w", err)
+	}
+	targetConn, err := a.connections.Get(targetConnectionID)
+	if err != nil {
+		return bridge.Mapping{}, fmt.Errorf("load target connection: %w", err)
+	}
+	sourceStatuses, err := source.ListStatuses(a.ctx, sourceConn.ProjectKey)
+	if err != nil {
+		return bridge.Mapping{}, fmt.Errorf("list source statuses: %w", err)
+	}
+	targetStatuses, err := target.ListStatuses(a.ctx, targetConn.ProjectKey)
+	if err != nil {
+		return bridge.Mapping{}, fmt.Errorf("list target statuses: %w", err)
+	}
+	return bridge.DefaultMapping(source.Capabilities(), target.Capabilities(), sourceStatuses, targetStatuses), nil
+}
+
+// SaveBridgeMapping persists the user's (possibly edited) mapping for
+// (workspaceID, sourceConnectionID, targetConnectionID), overwriting any
+// previously saved mapping for that triple.
+func (a *App) SaveBridgeMapping(workspaceID, sourceConnectionID, targetConnectionID string, m bridge.Mapping) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.bridgeMappings.Save(workspaceID, sourceConnectionID, targetConnectionID, m)
 }
 
 // --- Global settings (FR-12.2) ---
