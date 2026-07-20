@@ -719,23 +719,42 @@ func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []
 		}
 	}
 
-	// Curated showcase links: guarantee that at least one demo Test Execution
-	// visibly contains both a Cucumber and a Generic test with a run status,
-	// rather than leaving it to incidental overlap. The member loop above
-	// never mixes types within a single execution: exec assignment cycles
-	// mod execCount (8) while test type cycles mod 4 (demoExecTypeForIndex),
-	// and since 4 divides 8, every test the loop links to a given execution
-	// shares the same ExecType. Reuse execKeys[0] (DEMO-TE-1) and known
-	// Cucumber (index%4==3: DEMO-4, DEMO-8) and Generic (index%4==2: DEMO-3,
-	// DEMO-7) tests — the loop above places those in execKeys[3]/[7] and
-	// execKeys[2]/[6] respectively, so this can't collide with an existing
-	// (container, test) pair from it. Dedupe against existing links anyway,
-	// so this stays safe if the surrounding assignment logic ever changes.
-	curated := []ContainerLink{
-		{ContainerKey: execKeys[0], TestKey: fmt.Sprintf("%s-4", projectKey), RunStatus: "PASS"}, // Cucumber
-		{ContainerKey: execKeys[0], TestKey: fmt.Sprintf("%s-8", projectKey), RunStatus: "FAIL"}, // Cucumber
-		{ContainerKey: execKeys[0], TestKey: fmt.Sprintf("%s-3", projectKey), RunStatus: "TODO"}, // Generic
-		{ContainerKey: execKeys[0], TestKey: fmt.Sprintf("%s-7", projectKey), RunStatus: "PASS"}, // Generic
+	// Curated all-Cucumber execution (DEMO-TE-9). It sits past the generated
+	// range (0..execCount-1) so the member loop above never adds a non-Cucumber
+	// test to it, which is what keeps it type-homogeneous.
+	cukeExecKey := demoCucumberExecKey(projectKey)
+	cukeCreated, cukeUpdated, cukeResolved := demoExecTimestamps(demoCucumberExecIndex)
+	containers = append(containers, Container{
+		Key:          cukeExecKey,
+		Kind:         KindTestExec,
+		Summary:      "Cucumber regression cycle",
+		Status:       demoExecStatuses[demoCucumberExecIndex%len(demoExecStatuses)],
+		Environments: demoEnvironments(demoCucumberExecIndex),
+		FixVersions:  demoFixVersions(demoCucumberExecIndex),
+		Created:      cukeCreated,
+		Updated:      cukeUpdated,
+		Resolved:     cukeResolved,
+		Description:  demoExecDescription(cukeExecKey),
+	})
+
+	// Curated showcase links, read from the single shared source in
+	// democurated.go so this and demoTestRuns cannot disagree about who belongs
+	// to an execution. Dedupe against the generated links: the curated indices
+	// do not collide with the member loop's assignment today, but this keeps it
+	// correct if that assignment ever changes.
+	curated := make([]ContainerLink, 0, 8)
+	for _, ce := range demoCuratedExecLinks() {
+		execKey := cukeExecKey
+		if ce.execIndex < len(execKeys) {
+			execKey = execKeys[ce.execIndex]
+		}
+		for _, m := range ce.members {
+			curated = append(curated, ContainerLink{
+				ContainerKey: execKey,
+				TestKey:      fmt.Sprintf("%s-%d", projectKey, m.testIndex+1),
+				RunStatus:    m.runStatus,
+			})
+		}
 	}
 	existingLinks := make(map[[2]string]bool, len(links))
 	for _, l := range links {
@@ -1017,7 +1036,12 @@ func makeDemoTest(theme demoTheme, projectKey string, i int) Test {
 	var cukeScenario, cukeType, genericDef string
 	switch execType {
 	case "Cucumber":
-		if i%8 == 0 {
+		// Cucumber tests are exactly the indices where i%4==3, so i%8 is only
+		// ever 3 or 7 here. Gating on i%8==3 splits them evenly between the two
+		// body shapes; the previous i%8==0 gate implied i%4==0 (Manual) and so
+		// could never be reached, leaving every demo Cucumber test a plain
+		// Scenario and the Examples-table path untested.
+		if i%8 == 3 {
 			cukeType = "Scenario Outline"
 			cukeScenario = fmt.Sprintf(
 				"Scenario Outline: %s\n  Given the %s screen\n  When I <action>\n  Then I see <result>\n\n  Examples:\n    | action | result |\n    | submit | success |\n    | cancel | aborted |\n",
