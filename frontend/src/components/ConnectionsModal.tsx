@@ -3,6 +3,7 @@ import { DeleteConnection, ListConnections, errMsg } from "../api";
 import type { Connection } from "../api";
 import { ProfileForm } from "./ProfileForm";
 import { useConfirm } from "./useConfirm";
+import { invalidateCapabilities } from "../features";
 
 interface Props {
   // The active workspace (today, the active profile's id) whose connections
@@ -162,18 +163,26 @@ export function ConnectionsModal({ activeId, onClose }: Props) {
                 <ProfileForm
                   mode="connection"
                   workspaceId={activeId}
-                  onSaved={(c) => refresh(c.id)}
+                  onSaved={(c) => {
+                    invalidateCapabilities(c.id);
+                    refresh(c.id);
+                  }}
                   onCancel={() => setCreating(false)}
                 />
               ) : selected ? (
-                <ProfileForm
-                  key={selected.id}
-                  mode="connection"
-                  connection={selected}
-                  workspaceId={activeId}
-                  onSaved={(c) => refresh(c.id)}
-                  extraActions={
-                    selected.id !== activeId ? (
+                selected.id === activeId ? (
+                  <PrimaryConnectionSummary connection={selected} />
+                ) : (
+                  <ProfileForm
+                    key={selected.id}
+                    mode="connection"
+                    connection={selected}
+                    workspaceId={activeId}
+                    onSaved={(c) => {
+                      invalidateCapabilities(c.id);
+                      refresh(c.id);
+                    }}
+                    extraActions={
                       <button
                         className="btn btn-danger"
                         onClick={() => handleDelete(selected)}
@@ -181,9 +190,9 @@ export function ConnectionsModal({ activeId, onClose }: Props) {
                       >
                         Delete
                       </button>
-                    ) : undefined
-                  }
-                />
+                    }
+                  />
+                )
               ) : (
                 <p className="muted">
                   {loading
@@ -197,5 +206,42 @@ export function ConnectionsModal({ activeId, onClose }: Props) {
       </div>
       {confirmUI}
     </>
+  );
+}
+
+// PrimaryConnectionSummary shows the workspace's primary connection (id ===
+// activeId) as a read-only summary instead of an editable ProfileForm.
+// Sync/commit build their backend via backendFor(profileId), which reads the
+// `profiles` table -- not `connection` -- so saving edits to the primary
+// connection here would appear to work but have no effect on the real flow.
+// The primary connection's URL/project/backend/credential are edited via
+// Manage Profiles… (ProfilesModal), which does go through UpdateProfile.
+function PrimaryConnectionSummary({ connection }: { connection: Connection }) {
+  return (
+    <div className="profile-form">
+      <h2>{connection.name}</h2>
+      <p className="muted">
+        This is the workspace's primary connection — it's backed by the
+        profile record, not a separate connection. Edit its URL, project,
+        backend, or credential via <strong>Manage Profiles…</strong> instead;
+        changes made here wouldn't affect sync or commit.
+      </p>
+      <label>
+        Backend
+        <input value={BACKEND_LABEL[connection.backend] ?? connection.backend} disabled />
+      </label>
+      <label>
+        {connection.backend === "kiwi" ? "Kiwi server URL" : "Jira base URL"}
+        <input value={connection.url} disabled />
+      </label>
+      <label>
+        {connection.backend === "kiwi" ? "Product" : "Project key"}
+        <input value={connection.projectKey} disabled />
+      </label>
+      <label>
+        Role
+        <input value={ROLE_LABEL[connection.role] ?? connection.role} disabled />
+      </label>
+    </div>
   );
 }

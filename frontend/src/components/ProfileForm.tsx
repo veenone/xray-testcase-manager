@@ -200,14 +200,17 @@ export function ProfileForm({
     tokenSatisfied &&
     !kiwiCredInvalid;
 
-  // Warn when an edit changes the project/URL — the cached data will be cleared.
-  // Profile-only: connection edits don't carry the same profile-switch cache
-  // implications, and profile!/connection! below stay correctly narrowed.
+  // Warn when an edit changes the project/URL/backend — the cached data will
+  // be cleared (app.go's UpdateProfile purges the store cache on any of the
+  // three). Profile-only: connection edits don't carry the same
+  // profile-switch cache implications, and profile!/connection! below stay
+  // correctly narrowed.
   const willClearCache =
     !isConnection &&
     isEdit &&
     (projectKey.trim() !== profile!.projectKey ||
-      normalizeJiraUrl(jiraUrl) !== profile!.jiraUrl);
+      normalizeJiraUrl(jiraUrl) !== profile!.jiraUrl ||
+      backend !== profile!.backend);
 
   async function test() {
     setTesting(true);

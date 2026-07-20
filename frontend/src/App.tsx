@@ -59,7 +59,7 @@ import { ContainerList } from "./components/ContainerList";
 import { ComponentList } from "./components/ComponentList";
 import { PendingChangesModal } from "./components/PendingChangesModal";
 import { BulkReviewModal } from "./components/BulkReviewModal";
-import { REVIEW_ENABLED, useCapabilities } from "./features";
+import { REVIEW_ENABLED, invalidateCapabilities, useCapabilities } from "./features";
 import { clearViewState } from "./lib/viewState";
 import { BulkEditModal } from "./components/BulkEditModal";
 import { BulkTransitionModal } from "./components/BulkTransitionModal";
@@ -689,8 +689,13 @@ function App() {
   // handleCreated handles both a newly-created profile and an edited one: it
   // replaces the existing entry when the id is already known, otherwise appends.
   // After an edit, the cached data may have been cleared (project/URL change),
-  // so the views are refreshed.
+  // so the views are refreshed. Also drops any cached capabilities for this
+  // id -- an edit may have flipped the profile's Backend (Xray<->Kiwi), and
+  // without this the UI would keep gating on the old backend's capabilities
+  // until an app restart (useCapabilities is keyed on profileId, which is
+  // unchanged across an edit).
   function handleCreated(p: Profile) {
+    invalidateCapabilities(p.id);
     setProfiles((prev) =>
       prev.some((x) => x.id === p.id)
         ? prev.map((x) => (x.id === p.id ? p : x))
