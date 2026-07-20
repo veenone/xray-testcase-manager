@@ -44,6 +44,7 @@ const (
 	skipReasonRequirements  = "backend does not support requirement writes"
 	skipReasonReviews       = "backend does not support test reviews"
 	skipReasonContainerEdit = "backend does not support container rename"
+	skipReasonContainerEnv  = "backend does not support test-execution environments"
 	skipReasonBugCreate     = "backend does not support bug creation"
 	skipReasonComments      = "backend does not support issue comments"
 	skipReasonExecType      = "backend does not support the Test Type (exec_type) field"
@@ -1660,6 +1661,22 @@ func (e *Engine) commitMemberships(ctx context.Context, profileID string, rows [
 				EntityKey:  c.EntityKey,
 				EntityType: c.EntityType,
 				Reason:     skipReasonContainerEdit,
+			})
+			continue
+		}
+		// container_env writes the Test Environments set on a Test Execution as
+		// a custom-field update on the execution ISSUE (SetContainerEnvironments).
+		// That is only meaningful where executions are Jira issues (Xray); Kiwi's
+		// SetContainerEnvironments returns backend.ErrUnsupported, which would
+		// hard-Fail the row. Gate it on issueBackedWrites (same gate as
+		// run-defects/run-comments) so an unsupported backend Skips and keeps the
+		// row pending instead of failing. Xray (issueBackedWrites=true) is
+		// unaffected and still calls SetContainerEnvironments below.
+		if c.EntityType == "container_env" && !issueBackedWrites(caps) {
+			result.Skipped = append(result.Skipped, SkippedCommit{
+				EntityKey:  c.EntityKey,
+				EntityType: c.EntityType,
+				Reason:     skipReasonContainerEnv,
 			})
 			continue
 		}

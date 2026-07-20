@@ -226,6 +226,7 @@ func TestKiwiCommitSkipsUnsupportedBuckets(t *testing.T) {
 	}
 	if err := repo.UpsertContainers(profileID, []testrepo.Container{
 		{Key: "TP-1", Kind: jira.KindTestPlan, Summary: "plan", Status: "Open"},
+		{Key: "EX-1", Kind: jira.KindTestExec, Summary: "exec", Status: "Open"},
 	}); err != nil {
 		t.Fatalf("seed container: %v", err)
 	}
@@ -245,6 +246,9 @@ func TestKiwiCommitSkipsUnsupportedBuckets(t *testing.T) {
 	}
 	if err := repo.EditContainer(profileID, "TP-1", "renamed plan"); err != nil {
 		t.Fatalf("rename container: %v", err)
+	}
+	if err := repo.SetContainerEnvironments(profileID, "EX-1", []string{"Staging"}); err != nil {
+		t.Fatalf("set container environments: %v", err)
 	}
 	if _, err := repo.CreateBugForTest(profileID, "42", "", testrepo.BugDraft{
 		ProjectKey: "PROD", IssueType: "Bug", Summary: "boom",
@@ -277,6 +281,7 @@ func TestKiwiCommitSkipsUnsupportedBuckets(t *testing.T) {
 		"test_review":      false,
 		"requirement_set":  false,
 		"container_edit":   false,
+		"container_env":    false,
 		"bug_create":       false,
 	}
 	for _, s := range result.Skipped {

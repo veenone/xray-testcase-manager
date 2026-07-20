@@ -140,7 +140,8 @@ func TestUpdateIssueUnresolvablePriorityErrors(t *testing.T) {
 // an Xray "High" published across the bridge), resolvePriorityID falls back to
 // Kiwi's first available priority instead of hard-failing the write. The mock
 // distinguishes the two Priority.filter calls by params: the value lookup
-// (`{"value":...}`) returns no match, the all lookup (`{}`) returns the list.
+// (`{"value":...}`) returns no match, the active-priorities fallback lookup
+// (`{"is_active":true}`) returns the list.
 func TestResolvePriorityFallsBackWhenNameUnknown(t *testing.T) {
 	mock := newMockRPCServer(t)
 	mock.handle("Priority.filter", func(params []json.RawMessage) (any, *rpcErrorObj) {

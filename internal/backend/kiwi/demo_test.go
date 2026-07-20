@@ -262,9 +262,9 @@ func TestDemoRemoteVersionIsStable(t *testing.T) {
 		t.Fatalf("RemoteVersion(2): %v, %q", err, tok2)
 	}
 	if tok1 == tok2 {
-		t.Fatal("RemoteVersion(1) and RemoteVersion(2) collided, want distinct content hashes for distinct tests")
+		t.Fatal("RemoteVersion(1) and RemoteVersion(2) collided, want distinct history_date tokens for distinct tests")
 	}
 	if !a.RemoteAhead(tok1, tok2) {
-		t.Fatal("RemoteAhead should report true for two distinct content-hash tokens")
+		t.Fatal("RemoteAhead should report true for two distinct history_date tokens")
 	}
 }

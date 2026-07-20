@@ -77,9 +77,12 @@ func (a *Adapter) resolvePriorityID(ctx context.Context, value string) (int, err
 	// available priority so a cross-backend publish degrades gracefully (the
 	// bridge gap report already flags that priority may not map). A
 	// Kiwi-native edit always passes a real Kiwi priority, so this fallback
-	// only triggers on a genuine name mismatch.
+	// only triggers on a genuine name mismatch. Filter on {"is_active":true}
+	// (mirroring ListPriorities) so the fallback can only land on an ACTIVE
+	// priority — never an archived/inactive one — which also keeps the pick
+	// deterministic against the same set ListPriorities surfaces.
 	var all []kiwiPriorityRow
-	if err := a.c.call(ctx, "Priority.filter", []any{map[string]any{}}, &all); err != nil {
+	if err := a.c.call(ctx, "Priority.filter", []any{map[string]any{"is_active": true}}, &all); err != nil {
 		return 0, err
 	}
 	if len(all) == 0 {

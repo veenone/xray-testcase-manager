@@ -85,14 +85,28 @@ type PublishedTest struct {
 }
 
 // PublishFailure is one hub test whose publish failed for a non-skip reason.
-// If TargetKey is empty, CreateTest itself failed: no external_ref was
-// recorded, so the row remains eligible for a future PublishTests run to
-// retry (CreateTest will be attempted again). If TargetKey is set, CreateTest
-// DID succeed and the target test with that key exists, but a subsequent
-// step or status write failed; external_ref IS recorded for this test, so a
-// future PublishTests run will SKIP it (report it in AlreadyPublished) rather
-// than retry the failed steps/status — the target test is left incomplete
-// and needs manual follow-up, not a plain retry.
+// TargetKey set means the target test WAS created (CreateTest succeeded and a
+// test with that key exists); TargetKey empty means CreateTest itself failed
+// and nothing was created.
+//
+// There is no atomic remote-create + local-ref write, so a TargetKey-bearing
+// failure has TWO sub-cases with OPPOSITE retry outcomes:
+//
+//   - Normal case (steps/status write failed AFTER the external_ref was
+//     recorded): external_ref IS recorded, so a future PublishTests run SKIPs
+//     this test (reports it in AlreadyPublished) rather than re-creating it.
+//     The target test is left incomplete and needs manual follow-up, not a
+//     plain retry.
+//   - Ref-write-failure case (CreateTest succeeded but the PutExternalRef that
+//     records identity then failed): external_ref is NOT recorded even though
+//     the target test exists. A future run's skip check can't see it, so a
+//     retry WILL re-create the test as a DUPLICATE. This window cannot be
+//     closed without an atomic remote+local write; the honest contract is that
+//     the caller may need to reconcile/clean up the duplicate manually. The
+//     failure Error for this case says so explicitly.
+//
+// If TargetKey is empty, no external_ref was recorded and the row remains
+// eligible for a future run to retry CreateTest cleanly.
 type PublishFailure struct {
 	LocalKey  string `json:"localKey"`
 	Error     string `json:"error"`
@@ -179,9 +193,12 @@ func NewPublisher(target backend.Backend, targetProjectKey string, hub HubReader
 // continues — one bad test never aborts the run. Only a CreateTest failure
 // (step 2) is safely retryable by a future PublishTests run; a failure at
 // step 4 or 5 leaves the target test created-but-incomplete (PublishFailure.
-// TargetKey is set) and a retry will SKIP it rather than fix it up — see
-// PublishFailure's doc comment. onProgress (nilable) is called once per
-// test, after it is fully handled (skipped, created, or failed).
+// TargetKey is set) with its external_ref already recorded, so a retry will
+// SKIP it rather than fix it up. The one exception is a failure of the step-3
+// external_ref write itself: the target test exists but its ref is NOT
+// recorded, so a retry re-creates it as a duplicate — see PublishFailure's doc
+// comment. onProgress (nilable) is called once per test, after it is fully
+// handled (skipped, created, or failed).
 func (p *Publisher) PublishTests(ctx context.Context, workspaceID, sourceConnection, targetConnection string, onProgress func(done, total int)) (PublishResult, error) {
 	_ = sourceConnection // see doc comment: informational only, source is never touched.
 
@@ -236,7 +253,11 @@ func (p *Publisher) publishOne(ctx context.Context, workspaceID, targetConnectio
 	// See PublishFailure's doc comment for what a TargetKey-bearing failure
 	// means for a subsequent run.
 	if err := p.Refs.PutExternalRef(workspaceID, entityTypeTest, t.Key, targetConnection, targetKey, ""); err != nil {
-		result.Failed = append(result.Failed, PublishFailure{LocalKey: t.Key, Error: fmt.Sprintf("record external ref: %v", err), TargetKey: targetKey})
+		result.Failed = append(result.Failed, PublishFailure{
+			LocalKey:  t.Key,
+			Error:     fmt.Sprintf("test %s was created in the target but recording its external_ref failed: %v (the ref is NOT recorded, so a retry will re-create this test as a DUPLICATE — the target test may need manual cleanup)", targetKey, err),
+			TargetKey: targetKey,
+		})
 		return
 	}
 

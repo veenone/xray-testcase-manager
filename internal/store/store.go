@@ -1144,7 +1144,7 @@ func applyMigrations(db *sql.DB) error {
 			 SELECT profile_id, 'requirement', jira_key, 'xray', jira_key, updated_at, '', '' FROM requirement`,
 		} {
 			if _, err := db.Exec(q); err != nil {
-				return fmt.Errorf("v40 backfill external_ref: %w", err)
+				return fmt.Errorf("v41 backfill external_ref: %w", err)
 			}
 		}
 	}

@@ -18,7 +18,7 @@ import (
 // mapping: the test pull (SearchTestsPage/GetTestFields/GetTestSteps/
 // ListTestsBasic/GetTestMeta), containers + runs (ListContainers/
 // TestExecutionsForTest/GetTestRuns/ExecPlans), metadata (ListStatuses/
-// ListPriorities/ProjectComponents/ProjectVersions), and the content-hash
+// ListPriorities/ProjectComponents/ProjectVersions), and the history_date
 // RemoteVersion. P4.3 wired the plugin-detection probe into
 // TestConnection/Capabilities (hasRequirementsPlugin/hasReviewPlugin) and
 // implemented the requirements-plugin read path (ListRequirements, via
@@ -389,12 +389,24 @@ func (a *Adapter) GetTestMeta(ctx context.Context, key string) (backend.TestMeta
 
 // --- concurrency ---
 
-// RemoteVersion computes the content-hash token (spec §5 option 2) for the
-// TestCase identified by externalKey. entityType is accepted but unused:
-// every caller in this codebase passes "test" (internal/syncer/commit.go),
-// and Kiwi has no other entity kind with pending-change concurrency
-// tracking in P4.2 (preconditions/containers are read-only here). See
-// version.go for the exact hashed field set.
+// RemoteVersion returns the TestCase's history_date as its version token —
+// the SAME token the pull path stores as base_version (toTest maps
+// history_date to Test.Updated, which testrepo persists as updated_at and
+// captures into each pending change's base_version). Keeping RemoteVersion in
+// that identical token space is what makes conflict detection correct: an
+// UNCHANGED remote yields base == remote (RemoteAhead false, no spurious
+// conflict), and any save advances history_date (django-simple-history's
+// per-object last-modified stamp, live-verified P4.6) so a genuinely changed
+// remote yields base != remote (RemoteAhead true). This mirrors Xray, where
+// the pull `updated` and RemoteVersion are the identical Jira `updated`
+// timestamp. An earlier implementation hashed the row's content instead,
+// which lived in a DIFFERENT token space than base_version (a hash vs a
+// timestamp) and so tripped conflict detection on every commit.
+//
+// entityType is accepted but unused: every caller in this codebase passes
+// "test" (internal/syncer/commit.go), and Kiwi has no other entity kind with
+// pending-change concurrency tracking in P4.2 (preconditions/containers are
+// read-only here).
 func (a *Adapter) RemoteVersion(ctx context.Context, entityType, externalKey string) (backend.VersionToken, error) {
 	id, err := parseKiwiID(externalKey)
 	if err != nil {
@@ -404,19 +416,20 @@ func (a *Adapter) RemoteVersion(ctx context.Context, entityType, externalKey str
 	if err != nil {
 		return "", err
 	}
-	return backend.VersionToken(contentHash(tc)), nil
+	return backend.VersionToken(tc.HistoryDate), nil
 }
 
-// RemoteAhead implements the content-hash ordering rule from spec §5: two
-// tokens can only be compared for inequality, not ordered, so "ahead" means
-// "different". Both an empty base AND an empty remote are treated
-// conservatively as "not ahead": an empty token means "no version info yet"
-// (RemoteVersion not wired, or the entity was never read), and neither side
-// should manufacture a spurious ahead/conflict signal from a missing value.
-// (Spec's literal formula `base != "" && base != remote` would also report
-// "ahead" when remote=="" and base!="" ; we additionally guard remote==""
-// for the same reason we guard base=="" — documented deviation, not an
-// invented rule.)
+// RemoteAhead treats the history_date tokens as opaque and compares them for
+// inequality, not order ("ahead" means "different"): history_date is a
+// monotonically-advancing save stamp, so any string difference means the
+// remote moved since base was pulled. Both an empty base AND an empty remote
+// are treated conservatively as "not ahead": an empty token means "no version
+// info yet" (RemoteVersion not wired, or the entity was never read), and
+// neither side should manufacture a spurious ahead/conflict signal from a
+// missing value. (Spec's literal formula `base != "" && base != remote` would
+// also report "ahead" when remote=="" and base!="" ; we additionally guard
+// remote=="" for the same reason we guard base=="" — documented deviation,
+// not an invented rule.)
 func (a *Adapter) RemoteAhead(base, remote backend.VersionToken) bool {
 	if base == "" || remote == "" {
 		return false

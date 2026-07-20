@@ -521,54 +521,80 @@ func TestMetadataLists(t *testing.T) {
 	}
 }
 
-// --- RemoteVersion content hash (spec §5) ---
+// --- RemoteVersion / base_version token space (Finding #4, spec §5) ---
 
-func TestRemoteVersionContentHashDeterministicAndChanges(t *testing.T) {
+// TestRemoteVersionIsHistoryDateAndSharesBaseVersionSpace is the non-stubbed
+// covering test for Finding #4: it drives the REAL kiwi Adapter against a mock
+// RPC (not the syncer's stub whose RemoteAhead always returns false) to prove
+// RemoteVersion and the pulled base_version live in ONE token space —
+// history_date — so conflict detection is correct.
+//
+//   - RemoteVersion returns the TestCase's history_date verbatim (the same
+//     value toTest maps to Test.Updated, which testrepo persists as the
+//     base_version of a pending change).
+//   - RemoteAhead(pulledBase, RemoteVersion) is FALSE when history_date is
+//     unchanged (no spurious conflict on every commit), and TRUE when
+//     history_date advances (a genuine remote edit is detected).
+func TestRemoteVersionIsHistoryDateAndSharesBaseVersionSpace(t *testing.T) {
+	const histDate = "2026-02-14T09:00:00"
 	baseRow := map[string]any{
 		"id": 42, "summary": "Login with valid creds", "text": "steps",
 		"case_status__name": "CONFIRMED", "priority__value": "P1",
-		"tag": []string{"b", "a"}, "component": []string{"z", "y"},
+		"history_date": histDate,
 	}
 	mock := newMockRPCServer(t)
 	mock.handleResult("TestCase.filter", []map[string]any{baseRow})
+	mock.handleResult("Tag.filter", []map[string]any{})
+	mock.handleResult("Component.filter", []map[string]any{})
 	a, closeFn := newTestAdapter(t, mock)
 	defer closeFn()
 
 	ctx := context.Background()
+
+	// The pull path stores history_date as Test.Updated -> base_version.
+	tests, _, err := a.SearchTestsPage(ctx, "", "", "", 0, 0)
+	if err != nil || len(tests) != 1 {
+		t.Fatalf("SearchTestsPage: %v, %#v", err, tests)
+	}
+	pulledBase := backend.VersionToken(tests[0].Updated)
+	if pulledBase != histDate {
+		t.Fatalf("pulled base_version = %q, want history_date %q", pulledBase, histDate)
+	}
+
+	// RemoteVersion returns the SAME history_date token, deterministically.
 	tok1, err := a.RemoteVersion(ctx, "test", "42")
 	if err != nil {
 		t.Fatalf("RemoteVersion: %v", err)
 	}
+	if string(tok1) != histDate {
+		t.Fatalf("RemoteVersion = %q, want history_date %q", tok1, histDate)
+	}
 	tok2, err := a.RemoteVersion(ctx, "test", "42")
-	if err != nil {
-		t.Fatalf("RemoteVersion (2nd call): %v", err)
-	}
-	if tok1 != tok2 {
-		t.Fatalf("same input produced different tokens: %q vs %q", tok1, tok2)
-	}
-	if tok1 == "" {
-		t.Fatal("expected a non-empty token")
+	if err != nil || tok1 != tok2 {
+		t.Fatalf("RemoteVersion not stable: %q vs %q (err %v)", tok1, tok2, err)
 	}
 
-	// Change one salient field (summary) -> different token.
-	mock2 := newMockRPCServer(t)
+	// Unchanged remote: base == remote -> NOT ahead (no spurious conflict).
+	if a.RemoteAhead(pulledBase, tok1) {
+		t.Fatalf("RemoteAhead(%q, %q) = true, want false for an unchanged history_date", pulledBase, tok1)
+	}
+
+	// Remote advanced (a save bumped history_date) -> base != remote -> ahead.
 	changedRow := map[string]any{}
 	for k, v := range baseRow {
 		changedRow[k] = v
 	}
-	changedRow["summary"] = "Login with INVALID creds"
+	changedRow["history_date"] = "2026-02-15T10:30:00"
+	mock2 := newMockRPCServer(t)
 	mock2.handleResult("TestCase.filter", []map[string]any{changedRow})
 	a2, closeFn2 := newTestAdapter(t, mock2)
 	defer closeFn2()
 
 	tok3, err := a2.RemoteVersion(ctx, "test", "42")
 	if err != nil {
-		t.Fatalf("RemoteVersion (changed): %v", err)
+		t.Fatalf("RemoteVersion (advanced): %v", err)
 	}
-	if tok3 == tok1 {
-		t.Fatalf("expected a different token after a summary change, both = %q", tok1)
-	}
-	if a.RemoteAhead(tok1, tok3) != true {
-		t.Fatal("RemoteAhead should report true for two different content-hash tokens")
+	if !a.RemoteAhead(pulledBase, tok3) {
+		t.Fatalf("RemoteAhead(%q, %q) = false, want true after history_date advanced", pulledBase, tok3)
 	}
 }

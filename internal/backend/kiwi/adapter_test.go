@@ -130,7 +130,7 @@ func TestIsDemoAndSetRequirementLinkType(t *testing.T) {
 	a.SetRequirementLinkType("verifies")
 }
 
-// TestRemoteAhead table-drives the content-hash ordering rule (spec §5)
+// TestRemoteAhead table-drives the history_date inequality rule (spec §5)
 // including the conservative empty-token handling documented on the method.
 func TestRemoteAhead(t *testing.T) {
 	a := New("http://example.invalid", "alice:secret")
