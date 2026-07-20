@@ -135,6 +135,33 @@ func TestUpdateIssueUnresolvablePriorityErrors(t *testing.T) {
 	}
 }
 
+// TestResolvePriorityFallsBackWhenNameUnknown covers the cross-backend
+// tolerance (B7): when the requested priority name is not one of Kiwi's (e.g.
+// an Xray "High" published across the bridge), resolvePriorityID falls back to
+// Kiwi's first available priority instead of hard-failing the write. The mock
+// distinguishes the two Priority.filter calls by params: the value lookup
+// (`{"value":...}`) returns no match, the all lookup (`{}`) returns the list.
+func TestResolvePriorityFallsBackWhenNameUnknown(t *testing.T) {
+	mock := newMockRPCServer(t)
+	mock.handle("Priority.filter", func(params []json.RawMessage) (any, *rpcErrorObj) {
+		if len(params) > 0 && strings.Contains(string(params[0]), `"value"`) {
+			return []map[string]any{}, nil // no exact match for the name
+		}
+		return []map[string]any{{"id": 7, "value": "P1"}}, nil // fall back to the first
+	})
+	mock.handleResult("TestCase.update", nil)
+	a, closeFn := newTestAdapter(t, mock)
+	defer closeFn()
+
+	fields := a.FieldsForJira(map[string]string{"priority": "High"})
+	if err := a.UpdateIssue(context.Background(), "42", fields); err != nil {
+		t.Fatalf("expected fallback to the first priority, got error: %v", err)
+	}
+	if callCount(mock, "TestCase.update") != 1 {
+		t.Error("TestCase.update should be called with the fallback priority id")
+	}
+}
+
 // --- UpdateIssue: tag diff (spec item 3) ---
 
 func TestUpdateIssueTagDiffAddsOnly(t *testing.T) {
