@@ -93,14 +93,29 @@ func TestImportTestsCreatesPendingTests(t *testing.T) {
 		t.Fatalf("expected 2 created tests, got %d", page.Total)
 	}
 
+	// Each of the two valid rows is a test_create; both also carry Folder=/Auth,
+	// so each queues a folder-placement change too (so the commit moves it into
+	// its Test Repository folder rather than leaving it at the root).
 	changes, _ := repo.ListPendingChanges("p1")
-	if len(changes) != 2 {
-		t.Errorf("want 2 test_create pending rows, got %d", len(changes))
-	}
+	var creates, folders int
 	for _, c := range changes {
-		if c.EntityType != "test_create" || !strings.HasPrefix(c.EntityKey, "NEW-") {
-			t.Errorf("change = %+v, want test_create with NEW-* key", c)
+		if !strings.HasPrefix(c.EntityKey, "NEW-") {
+			t.Errorf("change = %+v, want a NEW-* key", c)
 		}
+		switch {
+		case c.EntityType == "test_create":
+			creates++
+		case c.Field == "folder":
+			folders++
+		default:
+			t.Errorf("unexpected pending change = %+v", c)
+		}
+	}
+	if creates != 2 {
+		t.Errorf("want 2 test_create pending rows, got %d", creates)
+	}
+	if folders != 2 {
+		t.Errorf("want 2 folder-placement rows (both /Auth rows), got %d", folders)
 	}
 }
 
@@ -182,5 +197,56 @@ func TestDiscardImportedTestRemovesIt(t *testing.T) {
 	page, _ := repo.ListTests("p1", testrepo.Query{})
 	if page.Total != 0 {
 		t.Errorf("discarding the import should remove the test; got %d", page.Total)
+	}
+}
+
+// TestImportQueuesFolderPlacement is the regression guard for the import
+// folder-placement bug: a mapped Folder must queue a "folder" pending change so
+// the committed Test is moved into its Test Repository folder, exactly like
+// CreateTest. Previously import stamped folder_id locally but queued no
+// placement, so committed imports landed at the Xray repository root.
+func TestImportQueuesFolderPlacement(t *testing.T) {
+	repo := newRepo(t)
+	path := "/[ITS_0001477] TM_MW_INT_002 - Proxy Functional Test/HSM Resilience and Routing/Role-Aware Routing"
+	csv := "Summary,Folder\n\"Imported\",\"" + path + "\"\n"
+	if _, err := repo.ImportTests("p1", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	pcs, err := repo.ListPendingChanges("p1")
+	if err != nil {
+		t.Fatalf("list pending: %v", err)
+	}
+	var folder *testrepo.PendingChange
+	for i := range pcs {
+		if pcs[i].Field == "folder" {
+			folder = &pcs[i]
+		}
+	}
+	if folder == nil {
+		t.Fatal("import queued no folder placement — a committed import would land at the Xray root")
+	}
+	if folder.AfterVal != path {
+		t.Errorf("folder AfterVal = %q, want %q (spaces preserved verbatim)", folder.AfterVal, path)
+	}
+	if folder.BeforeVal != "" {
+		t.Errorf("folder BeforeVal = %q, want empty (a brand-new imported Test)", folder.BeforeVal)
+	}
+}
+
+// TestImportWithoutFolderQueuesNoPlacement: a row with no mapped/blank Folder must
+// not queue a spurious folder change.
+func TestImportWithoutFolderQueuesNoPlacement(t *testing.T) {
+	repo := newRepo(t)
+	csv := "Summary,Folder\nNo folder here,\n"
+	if _, err := repo.ImportTests("p1", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	pcs, _ := repo.ListPendingChanges("p1")
+	for _, pc := range pcs {
+		if pc.Field == "folder" {
+			t.Errorf("unexpected folder pending change for a folderless import: %+v", pc)
+		}
 	}
 }

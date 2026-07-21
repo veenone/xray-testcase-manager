@@ -212,8 +212,23 @@ func (r *Repository) ImportTests(profileID string, records [][]string, mapping I
 
 // insertImportedTest creates one pending Test from an import row.
 func insertImportedTest(tx *sql.Tx, profileID string, p testCreatePayload) error {
-	_, err := insertLocalTest(tx, profileID, p, "import-test-local")
-	return err
+	tempKey, err := insertLocalTest(tx, profileID, p, "import-test-local")
+	if err != nil {
+		return err
+	}
+	// A mapped Folder must ride the same folder-placement rail CreateTest uses
+	// (MoveTestToFolder): otherwise the imported Test is created in Xray at the
+	// repository root and never moved into its target folder on commit.
+	// insertLocalTest already stamped folder_id locally; queue the pending
+	// "folder" change so the commit places it — before is "" because a brand-new
+	// Test has no committed folder yet. Rewritten from the temp key to the real
+	// key by the commit's temp-key choreography, exactly like CreateTest's.
+	if strings.TrimSpace(p.Folder) != "" {
+		if err := upsertPendingChange(tx, profileID, entityTestCase, tempKey, "folder", "", p.Folder, ""); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // insertLocalTest writes a brand-new local Test (temp "NEW-N" key) plus its
