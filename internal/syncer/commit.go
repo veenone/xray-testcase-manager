@@ -300,6 +300,20 @@ func (e *Engine) commitChanges(ctx context.Context, profileID, projectKey string
 		byTest[testKey] = append(byTest[testKey], c)
 	}
 
+	// Create Test Repository folders BEFORE the per-test loop (RND_P_4TFINT_05-305).
+	// The per-test folder-move resolves its target via FolderXrayID, which needs
+	// the folder's native Xray id; a folder created later (commitFolders runs after
+	// this loop) would have no id yet, failing the move. So push folder_create rows
+	// here first — PARENT-FIRST — capture their ids, and let the loop's move find
+	// them. Gated on SupportsFolders: a backend without folders (Kiwi) does nothing
+	// here, so its creates stay in folderRows and the existing commitFolders
+	// else-branch reports them skipped, unchanged. When there are NO folder_create
+	// rows this call is a no-op (no FolderTree call, no reordering), so any commit
+	// without folder creates is byte-for-behavior identical to before.
+	if caps.SupportsFolders {
+		folderRows = e.commitFolderCreates(ctx, profileID, projectKey, folderRows, &result)
+	}
+
 testLoop:
 	for _, testKey := range order {
 		testChanges := byTest[testKey]
@@ -1478,6 +1492,102 @@ func (e *Engine) stepPendingRowIDs(profileID, testKey string) []int64 {
 		}
 	}
 	return ids
+}
+
+// commitFolderCreates pushes queued folder_create rows to the backend BEFORE the
+// per-test loop, so a test moved into a brand-new folder resolves its target id in
+// ONE commit (RND_P_4TFINT_05-305): importing into a fresh tree, or the standalone
+// "create a folder in the UI then move a test into it" case.
+//
+// Creates run PARENT-FIRST (shallowest path first, by "/"-count in the folder path
+// EntityKey) so a child is never created before its parent — the backend resolves
+// ParentPath against the live Xray tree each call, so a parent created moments
+// earlier resolves. Each folder_create row is fully handled here: on success it is
+// committed and reported under its folder path; on failure it is reported and left
+// pending (mirroring commitFolders' own per-row handling). All folder_create rows
+// are then dropped from the returned slice, so the later commitFolders sees only
+// renames and deletes (a delete still correctly runs AFTER the moves that empty a
+// folder). When ≥1 folder was created, the local folder ids are refreshed once
+// (FolderTree -> UpsertFolders, mirroring engine.syncFolders) so the per-test
+// loop's FolderXrayID finds the new folders' native ids.
+//
+// With NO folder_create rows this returns the input rows unchanged and makes no
+// FolderTree call — the whole pass is inert — so a commit without folder creates
+// is byte-for-behavior identical to before this pass existed.
+func (e *Engine) commitFolderCreates(ctx context.Context, profileID, projectKey string, rows []testrepo.PendingChange, result *CommitResult) []testrepo.PendingChange {
+	creates := make([]testrepo.PendingChange, 0)
+	for _, c := range rows {
+		if c.EntityType == "folder_create" {
+			creates = append(creates, c)
+		}
+	}
+	if len(creates) == 0 {
+		// No-op: no reordering, no FolderTree call, rows returned untouched.
+		return rows
+	}
+
+	// Parent-first: a folder path has one more "/" than its parent, so ordering by
+	// "/"-count ascending guarantees each parent is created before its children.
+	sort.SliceStable(creates, func(i, j int) bool {
+		return strings.Count(creates[i].EntityKey, "/") < strings.Count(creates[j].EntityKey, "/")
+	})
+
+	createdCount := 0
+	for _, c := range creates {
+		var p struct {
+			Name       string `json:"name"`
+			ParentPath string `json:"parentPath"`
+		}
+		if jErr := json.Unmarshal([]byte(c.AfterVal), &p); jErr != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed folder payload: " + jErr.Error()})
+			continue
+		}
+		if err := e.backend.CreateFolder(ctx, projectKey, p.ParentPath, p.Name); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "folder: " + sanitizeError(err.Error())})
+			continue
+		}
+		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {
+			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "Jira accepted folder change but local cleanup failed: " + err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, c.EntityKey)
+		createdCount++
+	}
+
+	// Refresh local folder ids once so the per-test move's FolderXrayID resolves
+	// the folders just created. Best-effort like syncFolders: a refresh failure is
+	// logged, not fatal — an unresolved move is then reported Failed, never panics.
+	if createdCount > 0 {
+		if res, ferr := e.backend.FolderTree(ctx, projectKey); ferr != nil {
+			log.Printf("xtm: refresh folder ids after create: %v", ferr)
+		} else {
+			repoFolders := make([]testrepo.Folder, len(res.Folders))
+			for i, f := range res.Folders {
+				repoFolders[i] = testrepo.Folder{
+					ID:             f.ID,
+					ParentID:       f.ParentID,
+					Name:           f.Name,
+					XrayID:         f.XrayID,
+					TestCount:      f.TestCount,
+					TotalTestCount: f.TotalTestCount,
+				}
+			}
+			if uerr := e.repo.UpsertFolders(profileID, repoFolders); uerr != nil {
+				log.Printf("xtm: upsert folders after create: %v", uerr)
+			}
+		}
+	}
+
+	// Every folder_create row was handled above; hand commitFolders only the
+	// remaining rename/delete rows so it never re-creates a folder.
+	out := make([]testrepo.PendingChange, 0, len(rows))
+	for _, c := range rows {
+		if c.EntityType == "folder_create" {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // commitFolders pushes Test Repository folder operations (FR-13.3), reported
