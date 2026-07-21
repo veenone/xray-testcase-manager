@@ -110,6 +110,12 @@ type Backend interface {
 	GetTestCustomFields(ctx context.Context, testKey string) (map[string]string, error)
 	CustomFieldValue(ctx context.Context, fieldID, value string) (string, any, error)
 	ExecTypeFieldValue(ctx context.Context, execType string) (fieldID string, value any, ok bool, err error)
+	// Cucumber/Generic body-field resolvers (#54): resolve a body-field value
+	// to its backend field id + typed value. ok=false means the backend has no
+	// such field (e.g. Kiwi), so the commit engine skips it.
+	CucumberScenarioFieldValue(ctx context.Context, v string) (fieldID string, value any, ok bool, err error)
+	CucumberTypeFieldValue(ctx context.Context, v string) (fieldID string, value any, ok bool, err error)
+	GenericDefinitionFieldValue(ctx context.Context, v string) (fieldID string, value any, ok bool, err error)
 
 	// --- containers (Test Sets / Plans / Executions) ---
 	ListContainers(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Container, []ContainerLink, error)

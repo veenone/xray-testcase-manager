@@ -24,6 +24,9 @@ type StepRow = StepDraft & { _key: string };
 let stepCounter = 0;
 const blankStep = (): StepRow => ({ _key: `s${stepCounter++}`, action: "", data: "", expected: "" });
 
+// EXEC_TYPE_OPTIONS mirrors TestDetail's fixed Xray Test Type vocabulary.
+const EXEC_TYPE_OPTIONS = ["Manual", "Automated", "Generic", "Cucumber"];
+
 // NewTestPanel is the interactive "New Test" form (FR-1). It collects fields
 // locally and submits one CreateTest call; the new Test then opens in the
 // normal detail panel for further editing.
@@ -40,6 +43,10 @@ export function NewTestPanel({
   const [labels, setLabels] = useState("");
   const [components, setComponents] = useState("");
   const [folderId, setFolderId] = useState(initialFolderId ?? "");
+  const [execType, setExecType] = useState("Manual");
+  const [cucumberScenario, setCucumberScenario] = useState("");
+  const [cucumberType, setCucumberType] = useState("Scenario");
+  const [genericDefinition, setGenericDefinition] = useState("");
   const [steps, setSteps] = useState<StepRow[]>([]);
   const [precondKeys, setPrecondKeys] = useState<string[]>([]);
 
@@ -108,14 +115,21 @@ export function NewTestPanel({
     }
     setSaving(true);
     setError("");
+    const isBodyType = execType === "Cucumber" || execType === "Generic";
     const draft: TestDraft = {
       summary: summary.trim(),
       description,
       priority,
       labels: labels.trim(),
       components: components.trim(),
+      execType,
+      cucumberScenario: execType === "Cucumber" ? cucumberScenario : "",
+      cucumberType: execType === "Cucumber" ? cucumberType : "",
+      genericDefinition: execType === "Generic" ? genericDefinition : "",
       folderId,
-      steps: steps.map(({ action, data, expected }) => ({ action, data, expected })),
+      steps: isBodyType
+        ? []
+        : steps.map(({ action, data, expected }) => ({ action, data, expected })),
       precondKeys,
     };
     try {
@@ -196,6 +210,20 @@ export function NewTestPanel({
               ))}
             </select>
           </div>
+          <div className="ntp-col">
+            <div className="field-label">Execution type</div>
+            <select
+              className="detail-input"
+              value={execType}
+              onChange={(e) => setExecType(e.target.value)}
+            >
+              {EXEC_TYPE_OPTIONS.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="ntp-row">
@@ -225,7 +253,41 @@ export function NewTestPanel({
           </div>
         </div>
 
-        {/* Steps */}
+        {/* Type-aware body */}
+        {execType === "Cucumber" ? (
+          <section className="cuke-editor">
+            <h4 className="steps-head">Cucumber scenario</h4>
+            <label className="cuke-type-label">
+              Scenario type{" "}
+              <select
+                className="detail-input detail-input-inline"
+                value={cucumberType}
+                onChange={(e) => setCucumberType(e.target.value)}
+              >
+                <option value="Scenario">Scenario</option>
+                <option value="Scenario Outline">Scenario Outline</option>
+              </select>
+            </label>
+            <textarea
+              className="cuke-scenario mono"
+              value={cucumberScenario}
+              onChange={(e) => setCucumberScenario(e.target.value)}
+              rows={14}
+              placeholder="Given ...\nWhen ...\nThen ..."
+            />
+          </section>
+        ) : execType === "Generic" ? (
+          <section className="generic-editor">
+            <h4 className="steps-head">Generic definition</h4>
+            <textarea
+              className="generic-def mono"
+              value={genericDefinition}
+              onChange={(e) => setGenericDefinition(e.target.value)}
+              rows={14}
+              placeholder="Enter test definition…"
+            />
+          </section>
+        ) : (
         <div className="ntp-section">
           <button
             className="ntp-section-head"
@@ -296,6 +358,7 @@ export function NewTestPanel({
             </div>
           )}
         </div>
+        )}
 
         {/* Preconditions */}
         <div className="ntp-section">

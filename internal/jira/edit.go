@@ -84,3 +84,44 @@ func (c *Client) ExecTypeFieldValue(ctx context.Context, execType string) (field
 	}
 	return id, map[string]string{"value": execType}, true, nil
 }
+
+// CucumberScenarioFieldValue resolves this instance's Xray "Cucumber Scenario"
+// custom field id and returns it with the plain-string value Jira expects for a
+// text field PUT. Returns ok=false (no error) when the field id cannot be
+// resolved on this instance so the commit skips this field rather than fail.
+func (c *Client) CucumberScenarioFieldValue(ctx context.Context, v string) (string, any, bool, error) {
+	return c.textCustomFieldValue(ctx, c.cucumberScenarioFieldID, v)
+}
+
+// GenericDefinitionFieldValue resolves this instance's Xray "Generic Test
+// Definition" custom field id and returns it with the plain-string value Jira
+// expects for a text field PUT. Returns ok=false (no error) when the field id
+// cannot be resolved on this instance so the commit skips this field rather
+// than fail.
+func (c *Client) GenericDefinitionFieldValue(ctx context.Context, v string) (string, any, bool, error) {
+	return c.textCustomFieldValue(ctx, c.genericDefinitionFieldID, v)
+}
+
+// CucumberTypeFieldValue resolves this instance's Xray "Cucumber Test Type"
+// custom field id and returns it with the option-shaped value Jira expects
+// ({"value": v}) for a select/option field PUT. Returns ok=false (no error)
+// when the field id cannot be resolved on this instance so the commit skips
+// this field rather than fail.
+func (c *Client) CucumberTypeFieldValue(ctx context.Context, v string) (string, any, bool, error) {
+	id, err := c.cucumberTypeFieldID(ctx)
+	if err != nil || id == "" {
+		return "", nil, false, err
+	}
+	return id, map[string]string{"value": v}, true, nil
+}
+
+// textCustomFieldValue is a shared helper for text (plain-string) custom field
+// helpers. It calls resolve to obtain the field id, returning ok=false (no
+// error) when the id is empty so the caller can degrade gracefully.
+func (c *Client) textCustomFieldValue(ctx context.Context, resolve func(context.Context) (string, error), v string) (string, any, bool, error) {
+	id, err := resolve(ctx)
+	if err != nil || id == "" {
+		return "", nil, false, err
+	}
+	return id, v, true, nil
+}

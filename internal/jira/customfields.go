@@ -69,6 +69,31 @@ func (c *Client) testTypeFieldID(ctx context.Context) (string, error) {
 	return c.resolveCustomFieldID(ctx, "Test Type")
 }
 
+// cucumberScenarioFieldID resolves the custom field id for the Xray "Cucumber
+// Scenario" field (the Gherkin text on Cucumber tests), returning "" (no error)
+// when the instance does not have the field.
+func (c *Client) cucumberScenarioFieldID(ctx context.Context) (string, error) {
+	return c.resolveCustomFieldID(ctx, "Cucumber Scenario")
+}
+
+// cucumberTypeFieldID resolves the custom field id for the Xray "Cucumber Test
+// Type" (a.k.a. "Scenario Type") field, trying the canonical name first and
+// falling back to the version alias, returning "" (no error) when neither is
+// found on the instance.
+func (c *Client) cucumberTypeFieldID(ctx context.Context) (string, error) {
+	if id, _ := c.resolveCustomFieldID(ctx, "Cucumber Test Type"); id != "" {
+		return id, nil
+	}
+	return c.resolveCustomFieldID(ctx, "Scenario Type") // version alias
+}
+
+// genericDefinitionFieldID resolves the custom field id for the Xray "Generic
+// Test Definition" field (the plain-text definition on Generic tests), returning
+// "" (no error) when the instance does not have the field.
+func (c *Client) genericDefinitionFieldID(ctx context.Context) (string, error) {
+	return c.resolveCustomFieldID(ctx, "Generic Test Definition")
+}
+
 // testEnvironmentsFieldID resolves and caches the custom field id of the Xray
 // "Test Environments" field (a multi-select on Test Executions) for this
 // instance, returning "" (no error) when the instance has no such field so the
@@ -420,6 +445,9 @@ func demoCustomFieldDefs() []CustomFieldDef {
 		{ID: "customfield_10101", Name: "Automation Status", Type: "option"},
 		{ID: "customfield_10102", Name: "Component", Type: "string"},
 		{ID: "customfield_10103", Name: "Estimated Duration (min)", Type: "number"},
+		{ID: "customfield_20001", Name: "Cucumber Scenario", Type: "string"},
+		{ID: "customfield_20002", Name: "Cucumber Test Type", Type: "option"},
+		{ID: "customfield_20003", Name: "Generic Test Definition", Type: "string"},
 	}
 }
 

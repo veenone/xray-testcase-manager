@@ -33,6 +33,13 @@ type ImportMapping struct {
 	Action      string `json:"action"`
 	Data        string `json:"data"`
 	Expected    string `json:"expected"`
+
+	// Test Type + non-Manual body columns (all optional; empty means
+	// unmapped, so a CSV without them imports exactly as before).
+	TestType          string `json:"testType"`
+	CucumberScenario  string `json:"cucumberScenario"`
+	CucumberType      string `json:"cucumberType"`
+	GenericDefinition string `json:"genericDefinition"`
 }
 
 // importStep is one step parsed from an import row (FR-10.7).
@@ -57,13 +64,17 @@ type ImportResult struct {
 
 // testCreatePayload is the JSON stored in a test_create pending row.
 type testCreatePayload struct {
-	Summary     string       `json:"summary"`
-	Description string       `json:"description"`
-	Priority    string       `json:"priority"`
-	Labels      string       `json:"labels"`
-	Components  string       `json:"components"` // comma-separated names
-	Folder      string       `json:"folder"`
-	Steps       []importStep `json:"steps,omitempty"`
+	Summary           string       `json:"summary"`
+	Description       string       `json:"description"`
+	Priority          string       `json:"priority"`
+	Labels            string       `json:"labels"`
+	Components        string       `json:"components"` // comma-separated names
+	ExecType          string       `json:"execType"`
+	CucumberScenario  string       `json:"cucumberScenario"`
+	CucumberType      string       `json:"cucumberType"`
+	GenericDefinition string       `json:"genericDefinition"`
+	Folder            string       `json:"folder"`
+	Steps             []importStep `json:"steps,omitempty"`
 }
 
 // ParseImportPreview reads the header row and counts data rows (FR-10.2 / 10.5).
@@ -107,6 +118,10 @@ func groupImportRows(records [][]string, mapping ImportMapping) (tests []testCre
 	actionIdx := col(mapping.Action)
 	dataIdx := col(mapping.Data)
 	expectedIdx := col(mapping.Expected)
+	testTypeIdx := col(mapping.TestType)
+	cucumberScenarioIdx := col(mapping.CucumberScenario)
+	cucumberTypeIdx := col(mapping.CucumberType)
+	genericDefinitionIdx := col(mapping.GenericDefinition)
 
 	get := func(row []string, idx int) string {
 		if idx < 0 || idx >= len(row) {
@@ -130,12 +145,16 @@ func groupImportRows(records [][]string, mapping ImportMapping) (tests []testCre
 
 		if summary != "" {
 			tests = append(tests, testCreatePayload{
-				Summary:     summary,
-				Description: get(records[i], descIdx),
-				Priority:    get(records[i], prioIdx),
-				Labels:      get(records[i], labelsIdx),
-				Components:  get(records[i], componentsIdx),
-				Folder:      get(records[i], folderIdx),
+				Summary:           summary,
+				Description:       get(records[i], descIdx),
+				Priority:          get(records[i], prioIdx),
+				Labels:            get(records[i], labelsIdx),
+				Components:        get(records[i], componentsIdx),
+				Folder:            get(records[i], folderIdx),
+				ExecType:          get(records[i], testTypeIdx),
+				CucumberScenario:  get(records[i], cucumberScenarioIdx),
+				CucumberType:      get(records[i], cucumberTypeIdx),
+				GenericDefinition: get(records[i], genericDefinitionIdx),
 			})
 			curIdx = len(tests) - 1
 			if hasStep {
@@ -208,10 +227,11 @@ func insertLocalTest(tx *sql.Tx, profileID string, p testCreatePayload, auditAct
 	}
 	if _, err := tx.Exec(
 		`INSERT INTO test_case
-		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id)
-		 VALUES (?, ?, '', ?, ?, '', ?, ?, ?, '', ?)`,
+		   (profile_id, jira_key, jira_id, summary, description, status, priority, labels, components, updated_at, folder_id, exec_type, cucumber_scenario, cucumber_type, generic_definition)
+		 VALUES (?, ?, '', ?, ?, '', ?, ?, ?, '', ?, ?, ?, ?, ?)`,
 		profileID, tempKey, p.Summary, p.Description, p.Priority, p.Labels,
 		encodeComponents(strings.Split(p.Components, ",")), p.Folder,
+		p.ExecType, p.CucumberScenario, p.CucumberType, p.GenericDefinition,
 	); err != nil {
 		return "", fmt.Errorf("insert local test: %w", err)
 	}
@@ -367,10 +387,10 @@ func parseXLSX(data []byte) ([][]string, error) {
 // second test shows the multi-row step format (FR-10.7): a row with a Summary
 // starts a test; following rows with an empty Summary add steps.
 func ImportTemplateCSV() string {
-	return "Summary,Description,Priority,Labels,Components,Folder,Action,Data,Expected\n" +
-		"Login with valid credentials,Verify a user can log in,High,smoke api,\"Authentication, Frontend\",/Authentication/Login,,,\n" +
-		"Login flow with steps,Multi-step example,Medium,smoke,Frontend,/Authentication/Login,Open the login page,,Login form is shown\n" +
-		",,,,,,Enter credentials and submit,user / pass,User is logged in\n"
+	return "Summary,Description,Priority,Labels,Components,Folder,Action,Data,Expected,Test Type,Cucumber Scenario,Scenario Type,Generic Test Definition\n" +
+		"Login with valid credentials,Verify a user can log in,High,smoke api,\"Authentication, Frontend\",/Authentication/Login,,,,,,,\n" +
+		"Login flow with steps,Multi-step example,Medium,smoke,Frontend,/Authentication/Login,Open the login page,,Login form is shown,,,,\n" +
+		",,,,,,Enter credentials and submit,user / pass,User is logged in,,,,\n"
 }
 
 // SummaryTemplateCSV returns a minimal template with only the Summary column —

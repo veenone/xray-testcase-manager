@@ -719,6 +719,56 @@ func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []
 		}
 	}
 
+	// Curated all-Cucumber execution (DEMO-TE-9). It sits past the generated
+	// range (0..execCount-1) so the member loop above never adds a non-Cucumber
+	// test to it, which is what keeps it type-homogeneous.
+	cukeExecKey := demoCucumberExecKey(projectKey)
+	cukeCreated, cukeUpdated, cukeResolved := demoExecTimestamps(demoCucumberExecIndex)
+	containers = append(containers, Container{
+		Key:          cukeExecKey,
+		Kind:         KindTestExec,
+		Summary:      "Cucumber regression cycle",
+		Status:       demoExecStatuses[demoCucumberExecIndex%len(demoExecStatuses)],
+		Environments: demoEnvironments(demoCucumberExecIndex),
+		FixVersions:  demoFixVersions(demoCucumberExecIndex),
+		Created:      cukeCreated,
+		Updated:      cukeUpdated,
+		Resolved:     cukeResolved,
+		Description:  demoExecDescription(cukeExecKey),
+	})
+
+	// Curated showcase links, read from the single shared source in
+	// democurated.go so this and demoTestRuns cannot disagree about who belongs
+	// to an execution. Dedupe against the generated links: the curated indices
+	// do not collide with the member loop's assignment today, but this keeps it
+	// correct if that assignment ever changes.
+	curated := make([]ContainerLink, 0, 8)
+	for _, ce := range demoCuratedExecLinks() {
+		execKey := cukeExecKey
+		if ce.execIndex < len(execKeys) {
+			execKey = execKeys[ce.execIndex]
+		}
+		for _, m := range ce.members {
+			curated = append(curated, ContainerLink{
+				ContainerKey: execKey,
+				TestKey:      fmt.Sprintf("%s-%d", projectKey, m.testIndex+1),
+				RunStatus:    m.runStatus,
+			})
+		}
+	}
+	existingLinks := make(map[[2]string]bool, len(links))
+	for _, l := range links {
+		existingLinks[[2]string{l.ContainerKey, l.TestKey}] = true
+	}
+	for _, l := range curated {
+		key := [2]string{l.ContainerKey, l.TestKey}
+		if existingLinks[key] {
+			continue
+		}
+		links = append(links, l)
+		existingLinks[key] = true
+	}
+
 	return containers, links, nil
 }
 
@@ -921,6 +971,23 @@ func demoTestForKey(theme demoTheme, key string) Test {
 	return makeDemoTest(theme, projectKey, idx)
 }
 
+// sanitizeIdent strips non-alphanumeric characters from s and replaces spaces
+// with underscores, producing a simple Java-style identifier fragment suitable
+// for use in a Generic test definition path (e.g. "User registration" →
+// "User_registration").
+func sanitizeIdent(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
 func makeDemoTest(theme demoTheme, projectKey string, i int) Test {
 	feature := theme.Features[i%len(theme.Features)]
 	condition := theme.Conditions[(i/len(theme.Features))%len(theme.Conditions)]
@@ -965,19 +1032,46 @@ func makeDemoTest(theme demoTheme, projectKey string, i int) Test {
 			"(Demo data — generated for UI testing.)",
 		strings.ToLower(feature), condition)
 
+	execType := demoExecTypeForIndex(i)
+	var cukeScenario, cukeType, genericDef string
+	switch execType {
+	case "Cucumber":
+		// Cucumber tests are exactly the indices where i%4==3, so i%8 is only
+		// ever 3 or 7 here. Gating on i%8==3 splits them evenly between the two
+		// body shapes; the previous i%8==0 gate implied i%4==0 (Manual) and so
+		// could never be reached, leaving every demo Cucumber test a plain
+		// Scenario and the Examples-table path untested.
+		if i%8 == 3 {
+			cukeType = "Scenario Outline"
+			cukeScenario = fmt.Sprintf(
+				"Scenario Outline: %s\n  Given the %s screen\n  When I <action>\n  Then I see <result>\n\n  Examples:\n    | action | result |\n    | submit | success |\n    | cancel | aborted |\n",
+				summary, strings.ToLower(feature))
+		} else {
+			cukeType = "Scenario"
+			cukeScenario = fmt.Sprintf(
+				"Scenario: %s\n  Given the %s screen\n  When I %s\n  Then the system responds correctly\n",
+				summary, strings.ToLower(feature), strings.ToLower(condition))
+		}
+	case "Generic":
+		genericDef = fmt.Sprintf("com.acme.tests.%sIT#%s", sanitizeIdent(feature), sanitizeIdent(condition))
+	}
+
 	return Test{
-		Key:         fmt.Sprintf("%s-%d", projectKey, i+1),
-		ID:          fmt.Sprintf("%d", 10000+i),
-		Summary:     summary,
-		Description: description,
-		Status:      status,
-		Priority:    priority,
-		Labels:      labels,
-		Components:  demoComponentsForIndex(i),
-		Updated:     updated,
-		FolderID:    demoFolderForFeature(theme, feature),
-		ExecType:    demoExecTypeForIndex(i),
-		FixVersions: demoTestFixVersionsForIndex(i),
+		Key:               fmt.Sprintf("%s-%d", projectKey, i+1),
+		ID:                fmt.Sprintf("%d", 10000+i),
+		Summary:           summary,
+		Description:       description,
+		Status:            status,
+		Priority:          priority,
+		Labels:            labels,
+		Components:        demoComponentsForIndex(i),
+		Updated:           updated,
+		FolderID:          demoFolderForFeature(theme, feature),
+		ExecType:          execType,
+		FixVersions:       demoTestFixVersionsForIndex(i),
+		CucumberScenario:  cukeScenario,
+		CucumberType:      cukeType,
+		GenericDefinition: genericDef,
 	}
 }
 

@@ -21,18 +21,21 @@ func toUser(u *jira.User) *backend.User {
 
 func toTest(t jira.Test) backend.Test {
 	return backend.Test{
-		Key:         t.Key,
-		ID:          t.ID,
-		Summary:     t.Summary,
-		Description: t.Description,
-		Status:      t.Status,
-		Priority:    t.Priority,
-		Labels:      t.Labels,
-		Components:  t.Components,
-		Updated:     t.Updated,
-		FolderID:    t.FolderID,
-		ExecType:    t.ExecType,
-		FixVersions: t.FixVersions,
+		Key:               t.Key,
+		ID:                t.ID,
+		Summary:           t.Summary,
+		Description:       t.Description,
+		Status:            t.Status,
+		Priority:          t.Priority,
+		Labels:            t.Labels,
+		Components:        t.Components,
+		Updated:           t.Updated,
+		FolderID:          t.FolderID,
+		ExecType:          t.ExecType,
+		FixVersions:       t.FixVersions,
+		CucumberScenario:  t.CucumberScenario,
+		CucumberType:      t.CucumberType,
+		GenericDefinition: t.GenericDefinition,
 	}
 }
 

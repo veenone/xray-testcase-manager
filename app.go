@@ -1729,6 +1729,18 @@ func (a *App) EditTestField(profileID, testKey, field, newValue string) (err err
 	return a.repo.EditTestField(profileID, testKey, field, newValue)
 }
 
+// ChangeTestType sets a Test's Xray Test Type and, when the destination body is
+// empty, pre-fills it with a best-effort conversion of the previous type's body
+// (non-destructive — the source body is preserved). Returns what happened so the
+// UI can offer an explicit pre-fill when the destination already had content.
+func (a *App) ChangeTestType(profileID, testKey, newType string) (tc testrepo.TypeConversion, err error) {
+	defer recoverToError("ChangeTestType", &err)
+	if err := a.requireStore(); err != nil {
+		return testrepo.TypeConversion{}, err
+	}
+	return a.repo.ChangeTestType(profileID, testKey, newType)
+}
+
 // DiscardPendingChange reverts a queued change and removes it from the
 // pending list.
 func (a *App) DiscardPendingChange(profileID string, changeID int64) error {

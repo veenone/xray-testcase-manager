@@ -33,6 +33,12 @@ type Test struct {
 	// FixVersions are the fix version names assigned to this test. Read-only
 	// display values; never edited locally.
 	FixVersions []string
+	// CucumberScenario / CucumberType / GenericDefinition are the Xray body
+	// fields for the Cucumber and Generic test types (#54). Empty for backends
+	// without a Cucumber/Generic model (e.g. Kiwi).
+	CucumberScenario  string
+	CucumberType      string
+	GenericDefinition string
 }
 
 // BugLinkRef is a linked issue reached from a Test (key + issue type), used to

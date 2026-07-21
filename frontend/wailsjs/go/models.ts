@@ -1891,6 +1891,10 @@ export namespace testrepo {
 	    action: string;
 	    data: string;
 	    expected: string;
+	    testType: string;
+	    cucumberScenario: string;
+	    cucumberType: string;
+	    genericDefinition: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ImportMapping(source);
@@ -1907,6 +1911,10 @@ export namespace testrepo {
 	        this.action = source["action"];
 	        this.data = source["data"];
 	        this.expected = source["expected"];
+	        this.testType = source["testType"];
+	        this.cucumberScenario = source["cucumberScenario"];
+	        this.cucumberType = source["cucumberType"];
+	        this.genericDefinition = source["genericDefinition"];
 	    }
 	}
 	export class ImportPreview {
@@ -2117,6 +2125,9 @@ export namespace testrepo {
 	    folderId: string;
 	    execType: string;
 	    fixVersions: string[];
+	    cucumberScenario: string;
+	    cucumberType: string;
+	    genericDefinition: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TestCase(source);
@@ -2136,6 +2147,9 @@ export namespace testrepo {
 	        this.folderId = source["folderId"];
 	        this.execType = source["execType"];
 	        this.fixVersions = source["fixVersions"];
+	        this.cucumberScenario = source["cucumberScenario"];
+	        this.cucumberType = source["cucumberType"];
+	        this.genericDefinition = source["genericDefinition"];
 	    }
 	}
 	export class Page {
@@ -2834,6 +2848,10 @@ export namespace testrepo {
 	    priority: string;
 	    labels: string;
 	    components: string;
+	    execType: string;
+	    cucumberScenario: string;
+	    cucumberType: string;
+	    genericDefinition: string;
 	    folderId: string;
 	    steps: StepDraft[];
 	    precondKeys: string[];
@@ -2849,6 +2867,10 @@ export namespace testrepo {
 	        this.priority = source["priority"];
 	        this.labels = source["labels"];
 	        this.components = source["components"];
+	        this.execType = source["execType"];
+	        this.cucumberScenario = source["cucumberScenario"];
+	        this.cucumberType = source["cucumberType"];
+	        this.genericDefinition = source["genericDefinition"];
 	        this.folderId = source["folderId"];
 	        this.steps = this.convertValues(source["steps"], StepDraft);
 	        this.precondKeys = source["precondKeys"];
@@ -2975,6 +2997,24 @@ export namespace testrepo {
 	        this.execCreated = source["execCreated"];
 	        this.execUpdated = source["execUpdated"];
 	        this.execResolved = source["execResolved"];
+	    }
+	}
+	export class TypeConversion {
+	    oldType: string;
+	    newType: string;
+	    prefilled: boolean;
+	    canPrefill: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypeConversion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.oldType = source["oldType"];
+	        this.newType = source["newType"];
+	        this.prefilled = source["prefilled"];
+	        this.canPrefill = source["canPrefill"];
 	    }
 	}
 

@@ -34,11 +34,13 @@ import {
   BrowserOpenURL,
   GetTestBugs,
   GetTestRunHistory,
+  ChangeTestType,
   errMsg,
   isDemoUrl,
 } from "../api";
 import type {
   TestCase,
+  TypeConversion,
   Precondition,
   Requirement,
   RequirementCoverage,
@@ -92,7 +94,9 @@ type EditableField =
   | "description"
   | "priority"
   | "labels"
-  | "exec_type";
+  | "cucumber_scenario"
+  | "cucumber_type"
+  | "generic_definition";
 
 // EXEC_TYPE_OPTIONS is the fixed Xray Test Type (execution type) vocabulary.
 const EXEC_TYPE_OPTIONS = ["Manual", "Automated", "Generic", "Cucumber"];
@@ -242,6 +246,15 @@ export function TestDetail({
   const [priority, setPriority] = useState("");
   const [labels, setLabels] = useState("");
   const [execType, setExecType] = useState("");
+  const [cucumberScenario, setCucumberScenario] = useState("");
+  const [cucumberType, setCucumberType] = useState("");
+  const [genericDefinition, setGenericDefinition] = useState("");
+  // Set when ChangeTestType reports canPrefill && !prefilled (destination body
+  // already had content, so nothing was auto-filled). Cleared on dismiss.
+  const [prefillNotice, setPrefillNotice] = useState<TypeConversion | null>(null);
+  // Internal counter that forces the main load effect to re-run after a type
+  // change so any pre-filled body is hydrated from the backend.
+  const [localReloadKey, setLocalReloadKey] = useState(0);
 
   // Tracks the previously-shown key so we can detect a just-committed new Test
   // (its key flips from a "NEW-N" placeholder to the real Jira key) and force a
@@ -269,12 +282,28 @@ export function TestDetail({
     ])
       .then(([t, pre, cons, allPre, rev, reqs, allReqs, testBugs]) => {
         if (cancelled) return;
+        // Fix 1: default cucumberType to "Scenario" for Cucumber tests with no
+        // stored type. We persist the default once so a commit won't omit it.
+        if (t.execType === "Cucumber" && (t.cucumberType ?? "") === "") {
+          setCucumberType("Scenario");
+          t = { ...t, cucumberType: "Scenario" };
+          if (!readOnly) {
+            EditTestField(profileId, testKey, "cucumber_type", "Scenario").catch(
+              (e) => console.error("default cucumberType:", errMsg(e)),
+            );
+          }
+        } else {
+          setCucumberType(t.cucumberType ?? "");
+        }
         setTest(t);
         setSummary(t.summary);
         setDescription(t.description);
         setPriority(t.priority);
         setLabels((t.labels ?? []).join(" "));
         setExecType(t.execType ?? "");
+        setCucumberScenario(t.cucumberScenario ?? "");
+        setGenericDefinition(t.genericDefinition ?? "");
+        setPrefillNotice(null);
         setPreconditions(pre);
         setContainers(cons ?? []);
         setAllPreconditions(allPre ?? []);
@@ -356,7 +385,7 @@ export function TestDetail({
     return () => {
       cancelled = true;
     };
-  }, [profileId, testKey, version]);
+  }, [profileId, testKey, version, localReloadKey]);
 
   // Status source (P6.2b): Xray (workflow) loads the transitions available
   // from the current status; Kiwi (settable) loads every valid status once
@@ -408,8 +437,14 @@ export function TestDetail({
       case "labels":
         backendValue = (test.labels ?? []).join(" ");
         break;
-      case "exec_type":
-        backendValue = test.execType ?? "";
+      case "cucumber_scenario":
+        backendValue = test.cucumberScenario ?? "";
+        break;
+      case "cucumber_type":
+        backendValue = test.cucumberType ?? "";
+        break;
+      case "generic_definition":
+        backendValue = test.genericDefinition ?? "";
         break;
     }
     if (value === backendValue) return;
@@ -432,8 +467,14 @@ export function TestDetail({
         case "labels":
           updated.labels = value.split(/\s+/).filter(Boolean);
           break;
-        case "exec_type":
-          updated.execType = value;
+        case "cucumber_scenario":
+          updated.cucumberScenario = value;
+          break;
+        case "cucumber_type":
+          updated.cucumberType = value;
+          break;
+        case "generic_definition":
+          updated.genericDefinition = value;
           break;
       }
       setTest(updated);
@@ -919,9 +960,19 @@ export function TestDetail({
                     <select
                       className="detail-input detail-input-inline"
                       value={execType}
-                      onChange={(e) => {
-                        setExecType(e.target.value);
-                        saveField("exec_type", e.target.value);
+                      onChange={async (e) => {
+                        const next = e.target.value;
+                        setExecType(next);
+                        try {
+                          const res = await ChangeTestType(profileId, testKey, next);
+                          // Re-fetch the test so any pre-filled body appears.
+                          setLocalReloadKey((k) => k + 1);
+                          if (res.canPrefill && !res.prefilled) {
+                            setPrefillNotice(res);
+                          }
+                        } catch (err) {
+                          setSaveError(`Type change failed: ${errMsg(err)}`);
+                        }
                       }}
                     >
                       <option value="">—</option>
@@ -1376,6 +1427,65 @@ export function TestDetail({
             />
           )}
 
+          {prefillNotice && (
+            <div className="prefill-notice">
+              The previous type had content; it was left unchanged.{" "}
+              <button
+                className="link-btn"
+                onClick={() => setPrefillNotice(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {execType === "Cucumber" ? (
+            <section className="cuke-editor">
+              <h4 className="steps-head">Cucumber scenario</h4>
+              <label className="cuke-type-label">
+                Scenario type{" "}
+                <select
+                  className="detail-input detail-input-inline"
+                  value={cucumberType}
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    setCucumberType(e.target.value);
+                    if (!readOnly) saveField("cucumber_type", e.target.value);
+                  }}
+                >
+                  <option value="Scenario">Scenario</option>
+                  <option value="Scenario Outline">Scenario Outline</option>
+                </select>
+              </label>
+              <textarea
+                className="cuke-scenario mono"
+                value={cucumberScenario}
+                readOnly={readOnly}
+                onChange={(e) => setCucumberScenario(e.target.value)}
+                onBlur={() => {
+                  if (!readOnly) saveField("cucumber_scenario", cucumberScenario);
+                }}
+                rows={14}
+                placeholder="Given ...\nWhen ...\nThen ..."
+              />
+            </section>
+          ) : execType === "Generic" ? (
+            <section className="generic-editor">
+              <h4 className="steps-head">Generic definition</h4>
+              <textarea
+                className="generic-def mono"
+                value={genericDefinition}
+                readOnly={readOnly}
+                onChange={(e) => setGenericDefinition(e.target.value)}
+                onBlur={() => {
+                  if (!readOnly) saveField("generic_definition", genericDefinition);
+                }}
+                rows={14}
+                placeholder="Enter test definition…"
+              />
+            </section>
+          ) : (
+            <>
           <h4 className="steps-head">
             Steps
             {caps.stepModel === "objects" &&
@@ -1506,6 +1616,8 @@ export function TestDetail({
               Edits are saved locally and queued in <b>Pending</b> until you
               commit them to Jira. Reordering steps lands in a later update.
             </p>
+          )}
+            </>
           )}
         </div>
       )}

@@ -88,13 +88,15 @@ func TestFullSyncStoreSnapshot(t *testing.T) {
 	// cross-project-member exec (DEMO-TE-XPROJ) + 2 sub-task execs
 	// (DEMO-STE-1/2) = 25, plus XRAYINT-STE-1 discovered by
 	// discoverCrossProjectExecs during the full Sync (it walks all test keys) = 26.
-	if got := count("test_container"); got != 26 {
-		t.Errorf("test_container count = %d, want 26 (see demoContainersAndLinks + cross-project discovery)", got)
+	// +1 for the curated all-Cucumber execution (DEMO-TE-9) added by #54.
+	if got := count("test_container"); got != 27 {
+		t.Errorf("test_container count = %d, want 27 (see demoContainersAndLinks + cross-project discovery + #54 Cucumber exec)", got)
 	}
 	// test_container_test: container memberships written by the container sync
-	// plus cross-project discovery (captured).
-	if got := count("test_container_test"); got != 1128 {
-		t.Errorf("test_container_test count = %d, want 1128 (container memberships)", got)
+	// plus cross-project discovery (captured). +8 for the #54 Cucumber exec's
+	// curated memberships.
+	if got := count("test_container_test"); got != 1136 {
+		t.Errorf("test_container_test count = %d, want 1136 (container memberships)", got)
 	}
 	// test_precondition: one row per (test, precondition) association across the
 	// 5000 tests via featurePreconditions (captured).
@@ -116,12 +118,14 @@ func TestFullSyncStoreSnapshot(t *testing.T) {
 	}
 	// test_run: per-execution run rows fetched for every Test Execution during
 	// the container sync (captured).
-	if got := count("test_run"); got != 309 {
-		t.Errorf("test_run count = %d, want 309 (execution run rows)", got)
+	// +12 for the #54 Cucumber exec's run rows.
+	if got := count("test_run"); got != 321 {
+		t.Errorf("test_run count = %d, want 321 (execution run rows)", got)
 	}
-	// exec_plan: Test Execution -> Test Plan associations (captured).
-	if got := count("exec_plan"); got != 20 {
-		t.Errorf("exec_plan count = %d, want 20 (exec-plan links)", got)
+	// exec_plan: Test Execution -> Test Plan associations (captured). +2 for the
+	// #54 Cucumber exec's exec-plan links.
+	if got := count("exec_plan"); got != 22 {
+		t.Errorf("exec_plan count = %d, want 22 (exec-plan links)", got)
 	}
 
 	// --- Representative field values on known demo entities ---

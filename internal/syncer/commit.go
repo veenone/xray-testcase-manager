@@ -504,6 +504,33 @@ testLoop:
 					}
 				}
 			}
+			// Body fields (cucumber_scenario, cucumber_type, generic_definition) are
+			// instance-specific custom fields like exec_type: resolve each to its
+			// field id and inject. Best-effort — unresolved ids are logged and
+			// skipped; the rest of the commit continues.
+			for field, val := range updates {
+				var (
+					fid      string
+					fv       any
+					resolved bool
+					ferr     error
+				)
+				switch field {
+				case "cucumber_scenario":
+					fid, fv, resolved, ferr = e.backend.CucumberScenarioFieldValue(ctx, val)
+				case "cucumber_type":
+					fid, fv, resolved, ferr = e.backend.CucumberTypeFieldValue(ctx, val)
+				case "generic_definition":
+					fid, fv, resolved, ferr = e.backend.GenericDefinitionFieldValue(ctx, val)
+				default:
+					continue
+				}
+				if ferr != nil {
+					log.Printf("xtm: resolve %s field for %s failed, committing without it: %v", field, testKey, ferr)
+				} else if resolved {
+					fields[fid] = fv
+				}
+			}
 			// Generic custom field edits (FR-2.6) share this PUT. The journaled
 			// edit carries only the field id and a string value (no type hint), so
 			// resolve the field's schema type here and shape the value the same way

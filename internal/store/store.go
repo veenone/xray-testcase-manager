@@ -81,6 +81,9 @@ CREATE TABLE IF NOT EXISTS test_case (
 	components   TEXT NOT NULL DEFAULT '',
 	exec_type    TEXT NOT NULL DEFAULT '',
 	fix_versions TEXT NOT NULL DEFAULT '',
+	cucumber_scenario  TEXT NOT NULL DEFAULT '',
+	cucumber_type      TEXT NOT NULL DEFAULT '',
+	generic_definition TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (profile_id, jira_key)
 );
 
@@ -956,6 +959,19 @@ func applyMigrations(db *sql.DB) error {
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("add run defects/comment columns: %w", err)
+		}
+	}
+	// Cucumber/Generic test-type bodies (schema v41): the Gherkin scenario +
+	// its scenario type, and the generic test definition. Applied
+	// UNCONDITIONALLY with duplicate-column tolerance for the same shared-version
+	// reason as the blocks above.
+	for _, stmt := range []string{
+		`ALTER TABLE test_case ADD COLUMN cucumber_scenario TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE test_case ADD COLUMN cucumber_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE test_case ADD COLUMN generic_definition TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add test-type body columns: %w", err)
 		}
 	}
 	// v37: requirement_link stores Requirement -> Requirement issue links (e.g.

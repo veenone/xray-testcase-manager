@@ -155,6 +155,18 @@ func (a *Adapter) ExecTypeFieldValue(ctx context.Context, execType string) (fiel
 	return a.c.ExecTypeFieldValue(ctx, execType)
 }
 
+func (a *Adapter) CucumberScenarioFieldValue(ctx context.Context, v string) (string, any, bool, error) {
+	return a.c.CucumberScenarioFieldValue(ctx, v)
+}
+
+func (a *Adapter) CucumberTypeFieldValue(ctx context.Context, v string) (string, any, bool, error) {
+	return a.c.CucumberTypeFieldValue(ctx, v)
+}
+
+func (a *Adapter) GenericDefinitionFieldValue(ctx context.Context, v string) (string, any, bool, error) {
+	return a.c.GenericDefinitionFieldValue(ctx, v)
+}
+
 // --- containers ---
 
 func (a *Adapter) ListContainers(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]backend.Container, []backend.ContainerLink, error) {

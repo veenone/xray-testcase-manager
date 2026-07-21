@@ -351,7 +351,9 @@ func demoExecKeyIndex(execKey string) int {
 		}
 		n = n*10 + int(ch-'0')
 	}
-	if n < 1 || n > demoExecCount {
+	// Accept the generated executions (1..demoExecCount) plus the curated
+	// all-Cucumber execution that sits immediately after them.
+	if n < 1 || n > demoCucumberExecIndex+1 {
 		return -1
 	}
 	return n - 1 // convert to 0-based index
@@ -430,56 +432,83 @@ func demoTestRuns(execKey string) []TestRun {
 
 	// Collect the test indices that belong to this exec (mirrors the
 	// demoContainersAndLinks loop: test i belongs to exec i%execCount).
-	var runs []TestRun
+	// Executions past the generated range (the curated all-Cucumber one) have
+	// no loop-assigned members at all — their membership is curated only.
+	runs := make([]TestRun, 0, 32)
+	seen := make(map[string]bool)
 	pos := 0
-	for i := execIdx; i < demoLinkedTests && i < demoTestCount; i += demoExecCount {
-		testNum := i + 1 // 1-based key suffix
-		testKey := fmt.Sprintf("%s-%d", projectKey, testNum)
-		status := demoRunStatuses[i%len(demoRunStatuses)]
-
-		started := demoRunDate(execIdx, pos)
-		finished := demoRunDate(execIdx, pos+1)
-		executor := demoExecExecutors[pos%len(demoExecExecutors)]
-
-		var defects []string
-		var comment string
-		if status == "FAIL" {
-			// Derive a demo bug key consistent with demoBugs: bugs live in
-			// the BUGS or SUP project, numbered from 100. Use the test index
-			// modulo the total demo-bug count (12 summaries seeded).
-			bugProject := demoBugProject
-			if testNum%2 == 0 {
-				bugProject = demoBugProject2
-			}
-			defectKey := fmt.Sprintf("%s-%d", bugProject, 100+(testNum%12))
-			defects = []string{defectKey}
-			// A short deterministic remark so the demo shows both a defect and
-			// a comment on the same run (no time.Now(), no rand).
-			comment = fmt.Sprintf("Reproduced failure; logged %s for follow-up.", defectKey)
-		} else {
-			defects = []string{}
+	if execIdx < demoExecCount {
+		for i := execIdx; i < demoLinkedTests && i < demoTestCount; i += demoExecCount {
+			status := demoRunStatuses[i%len(demoRunStatuses)]
+			run := demoRunFor(projectKey, execIdx, pos, i, status, env)
+			runs = append(runs, run)
+			seen[run.TestKey] = true
+			pos++
 		}
+	}
 
-		// created_at is one hour before started_at; updated_at equals finished_at.
-		// Both are deterministic (no time.Now(), no rand) so demo data is stable.
-		createdAt := demoRunDate(execIdx, pos-1)
-		updatedAt := finished
-
-		runs = append(runs, TestRun{
-			TestKey:     testKey,
-			Status:      status,
-			StartedAt:   started,
-			FinishedAt:  finished,
-			ExecutedBy:  executor,
-			Environment: env,
-			Defects:     defects,
-			Comment:     comment,
-			CreatedAt:   createdAt,
-			UpdatedAt:   updatedAt,
-		})
-		pos++
+	// Curated members (democurated.go) get real run rows too, so board
+	// membership and per-test run history agree. Without this they render with
+	// a run status but no executor, dates, defects or comment.
+	for _, ce := range demoCuratedExecLinks() {
+		if ce.execIndex != execIdx {
+			continue
+		}
+		for _, m := range ce.members {
+			run := demoRunFor(projectKey, execIdx, pos, m.testIndex, m.runStatus, env)
+			if seen[run.TestKey] {
+				continue
+			}
+			runs = append(runs, run)
+			seen[run.TestKey] = true
+			pos++
+		}
 	}
 	return runs
+}
+
+// demoRunFor synthesises one deterministic demo TestRun. testIndex is 0-based
+// (so 3 is DEMO-4); pos is the run's ordinal within the execution and drives
+// the date and executor rotation. FAIL runs carry a derived defect key and a
+// matching remark so the demo exercises both the defect and the comment UI.
+func demoRunFor(projectKey string, execIdx, pos, testIndex int, status, env string) TestRun {
+	testNum := testIndex + 1 // 1-based key suffix
+
+	started := demoRunDate(execIdx, pos)
+	finished := demoRunDate(execIdx, pos+1)
+
+	defects := []string{}
+	comment := ""
+	if status == "FAIL" {
+		// Derive a demo bug key consistent with demoBugs: bugs live in
+		// the BUGS or SUP project, numbered from 100. Use the test index
+		// modulo the total demo-bug count (12 summaries seeded).
+		bugProject := demoBugProject
+		if testNum%2 == 0 {
+			bugProject = demoBugProject2
+		}
+		defectKey := fmt.Sprintf("%s-%d", bugProject, 100+(testNum%12))
+		defects = []string{defectKey}
+		// A short deterministic remark so the demo shows both a defect and
+		// a comment on the same run (no time.Now(), no rand).
+		comment = fmt.Sprintf("Reproduced failure; logged %s for follow-up.", defectKey)
+	}
+
+	return TestRun{
+		TestKey:    fmt.Sprintf("%s-%d", projectKey, testNum),
+		Status:     status,
+		StartedAt:  started,
+		FinishedAt: finished,
+		ExecutedBy: demoExecExecutors[pos%len(demoExecExecutors)],
+		// created_at is one hour before started_at; updated_at equals
+		// finished_at. Both are deterministic (no time.Now(), no rand) so
+		// demo data is stable.
+		Environment: env,
+		Defects:     defects,
+		Comment:     comment,
+		CreatedAt:   demoRunDate(execIdx, pos-1),
+		UpdatedAt:   finished,
+	}
 }
 
 // demoSubExecCount mirrors subExecCount in demoContainersAndLinks: the number of
