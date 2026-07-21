@@ -6009,6 +6009,9 @@ tr.row-checked:hover {
   font-size: 12px;
   color: var(--text-muted);
 }
+.bridge-step {
+  white-space: nowrap;
+}
 .bridge-step-active {
   color: var(--text-strong);
   font-weight: 600;

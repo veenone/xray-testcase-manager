@@ -219,7 +219,14 @@ export function BridgeWizard({ activeId, onClose, onOpenConnections }: Props) {
   function handleBack() {
     if (step === "gap") setStep("select");
     else if (step === "map") setStep("gap");
-    else if (step === "publish") setStep("map");
+    else if (step === "publish") {
+      // Drop the prior run's result/error so re-entering the publish step
+      // shows a fresh "Publish tests to target" button, not a stale summary.
+      setResult(null);
+      setPublishError("");
+      setShowFailures(false);
+      setStep("map");
+    }
   }
 
   return (
