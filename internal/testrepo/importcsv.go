@@ -199,6 +199,15 @@ func (r *Repository) ImportTests(profileID string, records [][]string, mapping I
 		return result, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// A mapped Folder may point to a hierarchy that doesn't exist locally yet;
+	// create the missing parts (parent-first, deduped) before placing any Test
+	// into it, so the per-test "folder" placement below always resolves to a
+	// folder that exists locally and has a queued folder_create for commit.
+	folderErrs, err := ensureImportFolders(tx, profileID, tests)
+	if err != nil {
+		return result, err
+	}
+	result.Errors = append(result.Errors, folderErrs...)
 	for _, p := range tests {
 		if err := insertImportedTest(tx, profileID, p); err != nil {
 			return result, err
@@ -208,6 +217,76 @@ func (r *Repository) ImportTests(profileID string, records [][]string, mapping I
 		return result, fmt.Errorf("commit import: %w", err)
 	}
 	return result, nil
+}
+
+// ensureImportFolders creates the local Test Repository folder hierarchy
+// referenced by an import's mapped Folder column, parent-first and deduped
+// within this import, reusing CreateFolder's local-insert + folder_create
+// pending-change mechanism (FR-13.3) rather than a parallel scheme. Every
+// newly-created folder gets exactly one folder_create pending row, ready for
+// the commit engine to create in Xray (parent-first) before the per-test
+// folder placements queued by insertImportedTest. Folders already present —
+// synced earlier or created earlier in this same import — are left alone.
+// An invalid segment name is recorded as an import error and only that
+// path's remaining segments are skipped; the rest of the import proceeds.
+func ensureImportFolders(tx *sql.Tx, profileID string, tests []testCreatePayload) ([]ImportError, error) {
+	var paths []string
+	seenPath := map[string]bool{}
+	for _, p := range tests {
+		folder := strings.TrimSpace(p.Folder)
+		if folder == "" || seenPath[folder] {
+			continue
+		}
+		seenPath[folder] = true
+		paths = append(paths, folder)
+	}
+
+	created := map[string]bool{} // prefix paths created (or found existing) this import
+	var errs []ImportError
+	for _, folder := range paths {
+		segments := strings.Split(strings.Trim(folder, "/"), "/")
+		parent := ""
+		for _, seg := range segments {
+			path := parent + "/" + seg
+			if created[path] {
+				parent = path
+				continue
+			}
+			exists, err := folderExists(tx, profileID, path)
+			if err != nil {
+				return errs, err
+			}
+			if exists {
+				created[path] = true
+				parent = path
+				continue
+			}
+			if err := validateFolderName(seg); err != nil {
+				errs = append(errs, ImportError{Message: fmt.Sprintf("folder %q: %v", folder, err)})
+				break
+			}
+			if _, err := tx.Exec(
+				`INSERT INTO test_folder (profile_id, id, parent_id, name) VALUES (?, ?, ?, ?)`,
+				profileID, path, parent, seg,
+			); err != nil {
+				return errs, fmt.Errorf("insert folder: %w", err)
+			}
+			payload, _ := json.Marshal(folderCreatePayload{Name: seg, ParentPath: parent})
+			if err := upsertPendingChange(
+				tx, profileID, entityFolderCreate, path, "folder", "", string(payload), "",
+			); err != nil {
+				return errs, err
+			}
+			if err := writeAudit(
+				tx, profileID, entityFolderCreate, path, "import-create-folder-local", "folder", "", seg, "",
+			); err != nil {
+				return errs, err
+			}
+			created[path] = true
+			parent = path
+		}
+	}
+	return errs, nil
 }
 
 // insertImportedTest creates one pending Test from an import row.

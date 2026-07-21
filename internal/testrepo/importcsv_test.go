@@ -95,18 +95,28 @@ func TestImportTestsCreatesPendingTests(t *testing.T) {
 
 	// Each of the two valid rows is a test_create; both also carry Folder=/Auth,
 	// so each queues a folder-placement change too (so the commit moves it into
-	// its Test Repository folder rather than leaving it at the root).
+	// its Test Repository folder rather than leaving it at the root). /Auth
+	// doesn't exist locally yet, so the import also creates it once (shared by
+	// both rows) with a single folder_create pending row.
 	changes, _ := repo.ListPendingChanges("p1")
-	var creates, folders int
+	var creates, placements, folderCreates int
 	for _, c := range changes {
-		if !strings.HasPrefix(c.EntityKey, "NEW-") {
-			t.Errorf("change = %+v, want a NEW-* key", c)
-		}
-		switch {
-		case c.EntityType == "test_create":
+		switch c.EntityType {
+		case "test_create":
+			if !strings.HasPrefix(c.EntityKey, "NEW-") {
+				t.Errorf("change = %+v, want a NEW-* key", c)
+			}
 			creates++
-		case c.Field == "folder":
-			folders++
+		case "test_case":
+			if c.Field != "folder" || !strings.HasPrefix(c.EntityKey, "NEW-") {
+				t.Errorf("unexpected pending change = %+v", c)
+			}
+			placements++
+		case "folder_create":
+			if c.EntityKey != "/Auth" {
+				t.Errorf("unexpected folder_create = %+v", c)
+			}
+			folderCreates++
 		default:
 			t.Errorf("unexpected pending change = %+v", c)
 		}
@@ -114,8 +124,11 @@ func TestImportTestsCreatesPendingTests(t *testing.T) {
 	if creates != 2 {
 		t.Errorf("want 2 test_create pending rows, got %d", creates)
 	}
-	if folders != 2 {
-		t.Errorf("want 2 folder-placement rows (both /Auth rows), got %d", folders)
+	if placements != 2 {
+		t.Errorf("want 2 folder-placement rows (both /Auth rows), got %d", placements)
+	}
+	if folderCreates != 1 {
+		t.Errorf("want 1 folder_create pending row for the shared /Auth folder, got %d", folderCreates)
 	}
 }
 
@@ -219,7 +232,7 @@ func TestImportQueuesFolderPlacement(t *testing.T) {
 	}
 	var folder *testrepo.PendingChange
 	for i := range pcs {
-		if pcs[i].Field == "folder" {
+		if pcs[i].EntityType == "test_case" && pcs[i].Field == "folder" {
 			folder = &pcs[i]
 		}
 	}
@@ -231,6 +244,166 @@ func TestImportQueuesFolderPlacement(t *testing.T) {
 	}
 	if folder.BeforeVal != "" {
 		t.Errorf("folder BeforeVal = %q, want empty (a brand-new imported Test)", folder.BeforeVal)
+	}
+}
+
+// TestImportCreatesMissingFolderHierarchy is the primary regression guard for
+// B-1: importing tests into folders that don't exist yet must create the
+// whole missing hierarchy parent-first and deduped, reusing CreateFolder's
+// mechanism — one folder_create pending row per NEW folder, none for a
+// folder shared by multiple rows.
+func TestImportCreatesMissingFolderHierarchy(t *testing.T) {
+	repo := newRepo(t)
+	csv := "Summary,Folder\n" +
+		"T1,/A/B/C\n" +
+		"T2,/A/B/D\n" +
+		"T3,/A/E\n"
+	res, err := repo.ImportTests("p1", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if res.Created != 3 {
+		t.Fatalf("Created = %d, want 3", res.Created)
+	}
+
+	folders, err := repo.ListFolders("p1")
+	if err != nil {
+		t.Fatalf("list folders: %v", err)
+	}
+	wantPaths := map[string]bool{"/A": true, "/A/B": true, "/A/B/C": true, "/A/B/D": true, "/A/E": true}
+	if len(folders) != len(wantPaths) {
+		t.Fatalf("folders = %+v, want exactly %v", folders, wantPaths)
+	}
+	for _, f := range folders {
+		if !wantPaths[f.ID] {
+			t.Errorf("unexpected folder %+v", f)
+		}
+	}
+
+	pcs, err := repo.ListPendingChanges("p1")
+	if err != nil {
+		t.Fatalf("list pending: %v", err)
+	}
+	folderCreates := map[string]int{}
+	for _, c := range pcs {
+		if c.EntityType == "folder_create" {
+			folderCreates[c.EntityKey]++
+		}
+	}
+	if len(folderCreates) != len(wantPaths) {
+		t.Fatalf("folder_create pending rows = %+v, want one each for %v", folderCreates, wantPaths)
+	}
+	for path, n := range folderCreates {
+		if n != 1 {
+			t.Errorf("folder_create for %q queued %d times, want exactly 1", path, n)
+		}
+	}
+}
+
+// TestImportSkipsPreExistingFolders: pre-seeding /A locally (as CreateFolder
+// would) must not get a duplicate folder_create when an import targets a path
+// under it — only the genuinely-missing segments are created.
+func TestImportSkipsPreExistingFolders(t *testing.T) {
+	repo := newRepo(t)
+	if _, err := repo.CreateFolder("p1", "", "A"); err != nil {
+		t.Fatalf("pre-seed /A: %v", err)
+	}
+	// The pre-seed's own folder_create pending row must not be recounted below.
+	preSeedChanges, _ := repo.ListPendingChanges("p1")
+	preSeedFolderCreates := len(preSeedChanges)
+
+	csv := "Summary,Folder\nT1,/A/B\n"
+	if _, err := repo.ImportTests("p1", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	folders, _ := repo.ListFolders("p1")
+	if len(folders) != 2 {
+		t.Fatalf("folders = %+v, want exactly /A and /A/B", folders)
+	}
+
+	pcs, _ := repo.ListPendingChanges("p1")
+	folderCreateCount := map[string]int{}
+	for _, c := range pcs {
+		if c.EntityType == "folder_create" {
+			folderCreateCount[c.EntityKey]++
+		}
+	}
+	if len(pcs) < preSeedFolderCreates {
+		t.Fatalf("pending changes shrank after import: %+v", pcs)
+	}
+	if folderCreateCount["/A"] != 1 {
+		t.Errorf("folder_create rows for pre-existing /A = %d, want exactly 1 (no duplicate)", folderCreateCount["/A"])
+	}
+	if folderCreateCount["/A/B"] != 1 {
+		t.Errorf("folder_create rows for new /A/B = %d, want exactly 1", folderCreateCount["/A/B"])
+	}
+	if len(folderCreateCount) != 2 {
+		t.Errorf("folder_create rows = %+v, want exactly /A and /A/B", folderCreateCount)
+	}
+}
+
+// TestImportCreatesDeepSpacedFolderVerbatim mirrors the real-world path from
+// the bug report: every segment (including ones containing spaces and
+// brackets) must be created exactly as written, and the leaf placement must
+// resolve to the full path.
+func TestImportCreatesDeepSpacedFolderVerbatim(t *testing.T) {
+	repo := newRepo(t)
+	path := "/[ITS_0001477] TM_MW_INT_002 - Proxy Functional Test/HSM Resilience and Routing/Role-Aware Routing"
+	csv := "Summary,Folder\n\"Imported\",\"" + path + "\"\n"
+	if _, err := repo.ImportTests("p1", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	folders, err := repo.ListFolders("p1")
+	if err != nil {
+		t.Fatalf("list folders: %v", err)
+	}
+	wantSegments := []string{
+		"[ITS_0001477] TM_MW_INT_002 - Proxy Functional Test",
+		"HSM Resilience and Routing",
+		"Role-Aware Routing",
+	}
+	wantPaths := []string{
+		"/" + wantSegments[0],
+		"/" + wantSegments[0] + "/" + wantSegments[1],
+		"/" + wantSegments[0] + "/" + wantSegments[1] + "/" + wantSegments[2],
+	}
+	if len(folders) != 3 {
+		t.Fatalf("folders = %+v, want exactly the 3 segments of %q", folders, path)
+	}
+	byID := map[string]testrepo.Folder{}
+	for _, f := range folders {
+		byID[f.ID] = f
+	}
+	for i, want := range wantPaths {
+		f, ok := byID[want]
+		if !ok {
+			t.Fatalf("missing folder for path %q; got %+v", want, folders)
+		}
+		if f.Name != wantSegments[i] {
+			t.Errorf("folder %q name = %q, want %q verbatim", want, f.Name, wantSegments[i])
+		}
+	}
+	if byID[wantPaths[2]].ID != wantPaths[2] {
+		t.Errorf("leaf folder id = %q, want %q", byID[wantPaths[2]].ID, wantPaths[2])
+	}
+
+	pcs, _ := repo.ListPendingChanges("p1")
+	var placement *testrepo.PendingChange
+	for i := range pcs {
+		if pcs[i].EntityType == "test_case" && pcs[i].Field == "folder" {
+			placement = &pcs[i]
+		}
+	}
+	if placement == nil {
+		t.Fatal("no folder placement queued for the imported test")
+	}
+	if placement.AfterVal != path {
+		t.Errorf("placement AfterVal = %q, want %q", placement.AfterVal, path)
 	}
 }
 
