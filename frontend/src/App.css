@@ -4957,8 +4957,8 @@ tr.row-checked:hover {
    ProfileForm so which mode is active is never ambiguous. */
 .profiles-mode-head {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 8px;
   margin-bottom: 4px;
 }
 .profiles-mode-kicker {
@@ -4974,13 +4974,18 @@ tr.row-checked:hover {
   color: var(--accent);
 }
 .profiles-mode-title {
-  font-size: 17px;
-  font-weight: 660;
+  font-size: 14px;
+  font-weight: 620;
   color: var(--text-strong);
   letter-spacing: -0.01em;
 }
+/* The profile name is human text, not a code key: match the header's own
+   sans face and size so it sits on the kicker's baseline instead of reading
+   as a mismatched monospace token. */
 .profiles-mode-title .mono {
-  font-size: 15px;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 620;
 }
 /* Amber caution shown only when the opened profile is the active one --
    saving here changes the live connection, not a new profile. */
