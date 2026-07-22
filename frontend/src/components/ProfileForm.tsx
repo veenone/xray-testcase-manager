@@ -23,6 +23,9 @@ interface Props {
   // Optional extra footer controls (e.g. Export / Delete) rendered left of
   // Cancel / Save. Used by the Manage Profiles modal.
   extraActions?: ReactNode;
+  // Suppress the form's own heading when the caller renders its own mode
+  // header above the form (the Manage Profiles modal), avoiding a double title.
+  hideHeading?: boolean;
 
   // mode selects which entity the form saves to. "profile" (default) keeps
   // the existing single-connection Manage Profiles behavior unchanged.
@@ -99,6 +102,7 @@ export function ProfileForm({
   profile,
   profiles,
   extraActions,
+  hideHeading = false,
   mode = "profile",
   workspaceId,
   connection,
@@ -338,15 +342,17 @@ export function ProfileForm({
 
   return (
     <div className="profile-form">
-      <h2>
-        {isConnection
-          ? isEdit
-            ? "Edit connection"
-            : "Add connection"
-          : isEdit
-            ? "Edit profile"
-            : "New profile"}
-      </h2>
+      {!hideHeading && (
+        <h2>
+          {isConnection
+            ? isEdit
+              ? "Edit connection"
+              : "Add connection"
+            : isEdit
+              ? "Edit profile"
+              : "New profile"}
+        </h2>
+      )}
       <label>
         {isConnection ? "Connection name" : "Profile name"}
         <input

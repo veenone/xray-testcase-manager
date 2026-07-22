@@ -175,6 +175,7 @@ export function ProfilesModal({
                 </div>
                 <div className="profiles-mode-title">Add a connection</div>
                 <ProfileForm
+                  hideHeading
                   profiles={profiles}
                   onCreated={(p) => {
                     onSaved(p);
@@ -216,6 +217,7 @@ export function ProfilesModal({
                 )}
                 <ProfileForm
                   key={selected.id}
+                  hideHeading
                   profile={selected}
                   profiles={profiles}
                   onCreated={(p) => {
