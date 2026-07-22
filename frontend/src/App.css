@@ -15,6 +15,12 @@
   --accent-hover: #2f49b3;
   --row-hover: #eef0f3;
   --danger-text: #c0392b;
+  /* semantic warn (separate from --accent/--danger) for non-destructive but
+     attention-worthy callouts, e.g. "you're editing your active profile". */
+  --warn-text: #925b0a;
+  --warn-border: #e4b761;
+  --warn-soft: rgba(202, 138, 4, 0.12);
+  --ok-text: #1f7a52;
 }
 
 :root[data-theme="dark"] {
@@ -32,6 +38,10 @@
   --accent-hover: #748df5;
   --row-hover: #222d3c;
   --danger-text: #f0a0a0;
+  --warn-text: #e0b062;
+  --warn-border: #6b5525;
+  --warn-soft: rgba(224, 176, 98, 0.13);
+  --ok-text: #5fd0a0;
 }
 
 /* Application shell */
@@ -274,6 +284,15 @@
 }
 .btn-danger:hover:not(:disabled) {
   background: #b91c1c;
+}
+.btn-block {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px;
+  font-size: 14px;
 }
 
 /* Bottom status bar — sync progress / state lives here so the header isn't
@@ -4774,6 +4793,20 @@ tr.row-checked:hover {
 .profiles-modal-head h2 {
   margin: 0;
 }
+/* Groups the title with the reassurance sub-line so both sit on the left,
+   with the close button pushed to the far right by the head's
+   space-between. ConnectionsModal reuses .profiles-modal-head with just an
+   <h2> (no wrapper) — that still lays out fine as the head's sole left item. */
+.profiles-modal-head-text {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.profiles-modal-sub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
 .profiles-modal-body {
   display: flex;
   gap: 16px;
@@ -4786,6 +4819,19 @@ tr.row-checked:hover {
   flex: 0 0 240px;
   border-right: 1px solid var(--card-border, #2a3a4f);
   padding-right: 12px;
+}
+/* Create is the primary action: a full-width accent button pinned above the
+   list, louder than the plain "+ New" it replaces. */
+.profiles-create-cta {
+  padding-bottom: 10px;
+}
+.profiles-list-label {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 650;
+  padding: 4px 4px 6px;
 }
 .profiles-list-items {
   list-style: none;
@@ -4827,6 +4873,22 @@ tr.row-checked:hover {
   line-height: 1;
   padding: 0 2px;
   color: var(--accent, #f5b301);
+}
+/* Green "Active" pill on the row of the profile that's actually connected
+   right now — separate from the default-on-launch star, which is just a
+   launch preference and can point at a different profile entirely. */
+.profiles-badge-active {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ok-text);
+  border: 1px solid var(--ok-text);
+  background: color-mix(in srgb, var(--ok-text) 12%, transparent);
+  padding: 2px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 .profiles-list-footer {
   display: flex;
@@ -4880,6 +4942,8 @@ tr.row-checked:hover {
 .profiles-detail {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 /* The detail pane reuses ProfileForm, which carries its own card padding /
    background for standalone use; inside the modal the modal already provides
@@ -4888,6 +4952,87 @@ tr.row-checked:hover {
   padding: 0;
   background: none;
   border-radius: 0;
+}
+/* Mode header — "Editing profile · <name>" vs "New profile" — sits above
+   ProfileForm so which mode is active is never ambiguous. */
+.profiles-mode-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.profiles-mode-kicker {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.profiles-mode-kicker-edit {
+  color: var(--text-muted);
+}
+.profiles-mode-kicker-new {
+  color: var(--accent);
+}
+.profiles-mode-title {
+  font-size: 17px;
+  font-weight: 660;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+.profiles-mode-title .mono {
+  font-size: 15px;
+}
+/* Amber caution shown only when the opened profile is the active one --
+   saving here changes the live connection, not a new profile. */
+.profiles-active-caution {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin: 12px 0 4px;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 12.5px;
+  color: var(--warn-text);
+  line-height: 1.45;
+}
+.profiles-active-caution svg {
+  flex: none;
+  margin-top: 1px;
+}
+.profiles-active-caution b {
+  font-weight: 700;
+}
+/* Start state shown on open: nothing editable until the user picks a
+   profile or chooses to create one. */
+.profiles-empty {
+  margin: auto;
+  text-align: center;
+  max-width: 300px;
+  padding: 32px 0;
+}
+.profiles-empty-mark {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 14px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.profiles-empty h3 {
+  margin: 0 0 6px;
+  font-size: 15.5px;
+  color: var(--text-strong);
+  font-weight: 600;
+}
+.profiles-empty p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--text-muted);
 }
 .profile-form-extra {
   margin-right: auto;
