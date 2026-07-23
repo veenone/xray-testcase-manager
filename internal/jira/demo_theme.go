@@ -52,6 +52,12 @@ func pkcsCode(feature string) string {
 		return "KG"
 	case "C_Verify":
 		return "VER"
+	case "C_WrapKey":
+		return "WRP"
+	case "C_UnwrapKey":
+		return "UNW"
+	case "C_DeriveKey":
+		return "DRV"
 	default:
 		return feature
 	}
@@ -173,12 +179,13 @@ var genericTheme = demoTheme{
 	TestCount:     demoTestCount,
 }
 
-// pkcsTheme is the PKCS#11 demo vocabulary: three signing-family functions,
-// PKCS-shaped conditions, a signing/key-management folder split, and HSM
-// preconditions.
+// pkcsTheme is the PKCS#11 demo vocabulary: six Cryptoki functions spanning the
+// signing family (C_Sign, C_GenerateKeyPair, C_Verify) and the key-management
+// family (C_WrapKey, C_UnwrapKey, C_DeriveKey), PKCS-shaped conditions, a
+// signing / key-management / key-transport folder split, and HSM preconditions.
 var pkcsTheme = demoTheme{
 	Variant:  "pkcs",
-	Features: []string{"C_Sign", "C_GenerateKeyPair", "C_Verify"},
+	Features: []string{"C_Sign", "C_GenerateKeyPair", "C_Verify", "C_WrapKey", "C_UnwrapKey", "C_DeriveKey"},
 	Conditions: []string{
 		"with RSA-2048", "with ECDSA P-256", "with SHA-256",
 		"on an invalid session", "on a closed session", "with a NULL buffer",
@@ -188,7 +195,8 @@ var pkcsTheme = demoTheme{
 	},
 	Categories: []folderCategory{
 		{"Signing", []string{"C_Sign", "C_Verify"}},
-		{"Key management", []string{"C_GenerateKeyPair"}},
+		{"Key management", []string{"C_GenerateKeyPair", "C_DeriveKey"}},
+		{"Key transport", []string{"C_WrapKey", "C_UnwrapKey"}},
 	},
 	Preconditions: []precondDef{
 		{"HSM is initialized", "Manual", ""},
@@ -197,11 +205,15 @@ var pkcsTheme = demoTheme{
 		{"An RSA-2048 key pair exists", "Manual", ""},
 		{"An EC P-256 key pair exists", "Manual", ""},
 		{"The signing operation was initialized (C_SignInit)", "Manual", ""},
+		{"An AES-256 key exists on the token (CKA_WRAP / CKA_UNWRAP / CKA_DERIVE)", "Manual", ""},
 	},
 	FeaturePre: map[string][]int{
 		"C_Sign":            {0, 1, 2, 3, 5},
 		"C_GenerateKeyPair": {0, 1, 2},
 		"C_Verify":          {0, 1, 3, 4},
+		"C_WrapKey":         {0, 1, 2, 6},
+		"C_UnwrapKey":       {0, 1, 2, 6},
+		"C_DeriveKey":       {0, 1, 2, 4, 6},
 	},
 	// Keep TestCount >= demoLinkedTests (200): the peripheral generic seeders
 	// (test runs, bug links, cross-project sub-execution members) index tests up

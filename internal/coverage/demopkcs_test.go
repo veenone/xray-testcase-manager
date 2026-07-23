@@ -34,6 +34,29 @@ var pkcsTestSummaries = map[string][]string{
 		"C_Verify tampered signature",
 		"C_Verify with invalid session",
 	},
+	"WRP": {
+		"C_WrapKey with CKM_AES_KEY_WRAP",
+		"C_WrapKey with CKM_AES_KEY_WRAP_PAD",
+		"C_WrapKey with CKM_RSA_PKCS_OAEP",
+		"C_WrapKey query-length output mode",
+		"C_WrapKey unextractable key",
+		"C_WrapKey invalid wrapping-key handle",
+	},
+	"UNW": {
+		"C_UnwrapKey with CKM_AES_KEY_WRAP",
+		"C_UnwrapKey with CKM_RSA_PKCS_OAEP",
+		"C_UnwrapKey into an AES secret key",
+		"C_UnwrapKey invalid wrapped blob",
+		"C_UnwrapKey inconsistent template",
+		"C_UnwrapKey invalid unwrapping-key handle",
+	},
+	"DRV": {
+		"C_DeriveKey with CKM_ECDH1_DERIVE",
+		"C_DeriveKey with CKM_DH_PKCS_DERIVE",
+		"C_DeriveKey with CKM_TLS12_KEY_AND_MAC_DERIVE",
+		"C_DeriveKey incomplete template",
+		"C_DeriveKey invalid base-key handle",
+	},
 }
 
 // seedPKCSSync inserts the rows that a demo-pkcs backend sync would produce so
@@ -106,22 +129,22 @@ func TestSeedPKCSReferenceIsConsistent(t *testing.T) {
 	}
 	t.Logf("summary: %+v", sum)
 
-	// Summary sanity: 3 features, 6 member reqs found (2 per feature),
-	// 19 tests found (8+6+5), 6 versions (2 per feature), 3 CRs.
-	if sum.Features != 3 {
-		t.Errorf("features = %d, want 3", sum.Features)
+	// Summary sanity: 6 features, 12 member reqs found (2 per feature),
+	// 36 tests found (8+6+5+6+6+5), 12 versions (2 per feature), 6 CRs.
+	if sum.Features != 6 {
+		t.Errorf("features = %d, want 6", sum.Features)
 	}
-	if sum.Requirements != 6 {
-		t.Errorf("requirements = %d, want 6 (2 CUST reqs per feature)", sum.Requirements)
+	if sum.Requirements != 12 {
+		t.Errorf("requirements = %d, want 12 (2 CUST reqs per feature)", sum.Requirements)
 	}
-	if sum.Tests != 19 {
-		t.Errorf("tests = %d, want 19 (8+6+5 synced tests)", sum.Tests)
+	if sum.Tests != 36 {
+		t.Errorf("tests = %d, want 36 (8+6+5+6+6+5 synced tests)", sum.Tests)
 	}
-	if sum.Versions != 6 {
-		t.Errorf("versions = %d, want 6", sum.Versions)
+	if sum.Versions != 12 {
+		t.Errorf("versions = %d, want 12", sum.Versions)
 	}
-	if sum.ChangeReqs != 3 {
-		t.Errorf("change requests = %d, want 3", sum.ChangeReqs)
+	if sum.ChangeReqs != 6 {
+		t.Errorf("change requests = %d, want 6", sum.ChangeReqs)
 	}
 
 	db := m.db
@@ -134,16 +157,16 @@ func TestSeedPKCSReferenceIsConsistent(t *testing.T) {
 	}
 
 	// Seeder must not add or remove synced rows — counts stay exactly as seeded.
-	if got := count(`SELECT COUNT(*) FROM test_case WHERE profile_id=?`); got != 19 {
-		t.Errorf("test_case rows = %d after seed, want 19 (seeder must not write test rows)", got)
+	if got := count(`SELECT COUNT(*) FROM test_case WHERE profile_id=?`); got != 36 {
+		t.Errorf("test_case rows = %d after seed, want 36 (seeder must not write test rows)", got)
 	}
-	// 3 FUNC + 6 CUST = 9 requirements total.
-	if got := count(`SELECT COUNT(*) FROM requirement WHERE profile_id=?`); got != 9 {
-		t.Errorf("requirement rows = %d after seed, want 9 (seeder must not write req rows)", got)
+	// 6 FUNC + 12 CUST = 18 requirements total.
+	if got := count(`SELECT COUNT(*) FROM requirement WHERE profile_id=?`); got != 18 {
+		t.Errorf("requirement rows = %d after seed, want 18 (seeder must not write req rows)", got)
 	}
-	// 19 tests × 2 customer reqs = 38 links.
-	if got := count(`SELECT COUNT(*) FROM test_requirement WHERE profile_id=?`); got != 38 {
-		t.Errorf("test_requirement rows = %d after seed, want 38", got)
+	// 36 tests × 2 customer reqs = 72 links.
+	if got := count(`SELECT COUNT(*) FROM test_requirement WHERE profile_id=?`); got != 72 {
+		t.Errorf("test_requirement rows = %d after seed, want 72", got)
 	}
 
 	// Referential integrity: every value→test mapping points at a seeded test.
@@ -155,10 +178,10 @@ func TestSeedPKCSReferenceIsConsistent(t *testing.T) {
 		t.Errorf("stale mappings = %d, want 0 (every mapped test must exist in test_case)\n%+v", len(stale), stale)
 	}
 
-	// Three canonicals, each with 2 versions, 2 members, a CR, and partial coverage.
+	// Six canonicals, each with 2 versions, 2 members, a CR, and partial coverage.
 	canons, _ := m.ListCanonical(p)
-	if len(canons) != 3 {
-		t.Fatalf("canonicals = %d, want 3", len(canons))
+	if len(canons) != 6 {
+		t.Fatalf("canonicals = %d, want 6", len(canons))
 	}
 	for _, c := range canons {
 		vers, _ := m.ListVersions(p, c.ID)
@@ -215,18 +238,18 @@ func TestSeedPKCSReferenceIsConsistent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-seed: %v", err)
 	}
-	if sum2.Features != 3 || sum2.Requirements != 6 || sum2.Tests != 19 || sum2.Versions != 6 {
+	if sum2.Features != 6 || sum2.Requirements != 12 || sum2.Tests != 36 || sum2.Versions != 12 {
 		t.Errorf("re-seed not idempotent: %+v", sum2)
 	}
-	if canons2, _ := m.ListCanonical(p); len(canons2) != 3 {
-		t.Errorf("after re-seed, canonicals = %d, want 3 (no duplicates)", len(canons2))
+	if canons2, _ := m.ListCanonical(p); len(canons2) != 6 {
+		t.Errorf("after re-seed, canonicals = %d, want 6 (no duplicates)", len(canons2))
 	}
 	// Synced rows must still be untouched after re-seed.
-	if got := count(`SELECT COUNT(*) FROM test_case WHERE profile_id=?`); got != 19 {
-		t.Errorf("after re-seed, test_case rows = %d, want 19", got)
+	if got := count(`SELECT COUNT(*) FROM test_case WHERE profile_id=?`); got != 36 {
+		t.Errorf("after re-seed, test_case rows = %d, want 36", got)
 	}
-	if got := count(`SELECT COUNT(*) FROM requirement WHERE profile_id=?`); got != 9 {
-		t.Errorf("after re-seed, requirement rows = %d, want 9", got)
+	if got := count(`SELECT COUNT(*) FROM requirement WHERE profile_id=?`); got != 18 {
+		t.Errorf("after re-seed, requirement rows = %d, want 18", got)
 	}
 	// No stale mappings after re-seed either.
 	stale2, _ := m.DetectStaleMappings(p, "")

@@ -5,9 +5,10 @@ import (
 	"strings"
 )
 
-// SeedPKCSReference builds the coverage layer for the three PKCS#11 reference
-// features (C_Sign, C_GenerateKeyPair, C_Verify), mapping onto synced data
-// that was already written to the store by a demo-pkcs backend sync:
+// SeedPKCSReference builds the coverage layer for the six PKCS#11 reference
+// features — the signing family (C_Sign, C_GenerateKeyPair, C_Verify) and the
+// key-management family (C_WrapKey, C_UnwrapKey, C_DeriveKey) — mapping onto
+// synced data that was already written to the store by a demo-pkcs backend sync:
 //
 //   - customer requirements in project_key CUST-HSM-BANK / CUST-HSM-SAMSU
 //     whose summary starts with the feature function name (e.g. "C_Sign …")
@@ -55,8 +56,13 @@ func ecg(code string) pkcsValue {
 	return pkcsValue{label: code, kind: "errorcode", errCode: code, gap: true}
 }
 
-// pkcsFeatures defines the three PKCS#11 functions seeded as the reference set:
-// C_Sign, C_GenerateKeyPair, C_Verify.
+// pkcsFeatures defines the six PKCS#11 functions seeded as the reference set:
+// the signing family (C_Sign, C_GenerateKeyPair, C_Verify) and the
+// key-management family (C_WrapKey, C_UnwrapKey, C_DeriveKey). Each feature's
+// parameter model follows the function's OASIS Cryptoki argument signature —
+// one group per argument, with values drawn from the mechanisms, attribute
+// templates, and CKR_* return codes that argument can produce. Values marked
+// via vg()/ecg() are intentional gaps (spec-permitted paths left untested).
 func pkcsFeatures() []pkcsFeature {
 	return []pkcsFeature{
 		{
@@ -92,6 +98,43 @@ func pkcsFeatures() []pkcsFeature {
 				{"Mechanism", []pkcsValue{v("CKM_RSA_PKCS"), v("CKM_SHA256_RSA_PKCS"), v("CKM_ECDSA"), vg("CKM_SHA256_ECDSA")}},
 				{"Signature", []pkcsValue{v("Valid signature"), v("Tampered signature"), vg("Wrong-length signature")}},
 				{"Error paths", []pkcsValue{ec("CKR_OK"), ec("CKR_SIGNATURE_INVALID"), ec("CKR_SIGNATURE_LEN_RANGE"), ecg("CKR_DATA_LEN_RANGE")}},
+			},
+		},
+		{
+			code: "WRP", fn: "C_WrapKey", summary: "PKCS#11 C_WrapKey — export a key encrypted under a wrapping key (6-argument signature)",
+			cr: "Add AES-GCM key wrapping (CKM_AES_GCM) to the wrap matrix",
+			groups: []pkcsGroup{
+				{"hSession (session handle)", []pkcsValue{v("Valid R/W session"), v("Invalid session"), ecg("CKR_SESSION_HANDLE_INVALID")}},
+				{"pMechanism (wrapping mechanism)", []pkcsValue{v("CKM_AES_KEY_WRAP"), v("CKM_AES_KEY_WRAP_PAD"), v("CKM_RSA_PKCS_OAEP"), vg("CKM_AES_GCM"), ec("CKR_MECHANISM_INVALID")}},
+				{"hWrappingKey (wrapping key handle)", []pkcsValue{v("AES key, CKA_WRAP=true"), v("RSA public key, CKA_WRAP=true"), ec("CKR_WRAPPING_KEY_HANDLE_INVALID"), ecg("CKR_WRAPPING_KEY_TYPE_INCONSISTENT")}},
+				{"hKey (key to wrap)", []pkcsValue{v("CKA_EXTRACTABLE=true"), ec("CKR_KEY_UNEXTRACTABLE"), ecg("CKR_KEY_NOT_WRAPPABLE")}},
+				{"pWrappedKey / pulWrappedKeyLen (output)", []pkcsValue{v("Query length (NULL_PTR buffer)"), v("Exact buffer"), ec("CKR_BUFFER_TOO_SMALL")}},
+				{"Error paths", []pkcsValue{ec("CKR_OK"), ec("CKR_WRAPPING_KEY_SIZE_RANGE"), ecg("CKR_ARGUMENTS_BAD")}},
+			},
+		},
+		{
+			code: "UNW", fn: "C_UnwrapKey", summary: "PKCS#11 C_UnwrapKey — import a wrapped key blob as a new key object (8-argument signature)",
+			cr: "Add AES-GCM unwrapping to the import matrix",
+			groups: []pkcsGroup{
+				{"hSession (session handle)", []pkcsValue{v("Valid R/W session"), vg("Read-only session"), ecg("CKR_SESSION_HANDLE_INVALID")}},
+				{"pMechanism (unwrapping mechanism)", []pkcsValue{v("CKM_AES_KEY_WRAP"), v("CKM_RSA_PKCS_OAEP"), vg("CKM_AES_GCM"), ec("CKR_MECHANISM_INVALID")}},
+				{"hUnwrappingKey (unwrapping key handle)", []pkcsValue{v("AES key, CKA_UNWRAP=true"), v("RSA private key, CKA_UNWRAP=true"), ec("CKR_UNWRAPPING_KEY_HANDLE_INVALID"), ecg("CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT")}},
+				{"pWrappedKey / ulWrappedKeyLen (wrapped blob)", []pkcsValue{v("Valid wrapped blob"), ec("CKR_WRAPPED_KEY_INVALID"), ecg("CKR_WRAPPED_KEY_LEN_RANGE")}},
+				{"pTemplate / ulAttributeCount (new-key template)", []pkcsValue{v("CKA_CLASS=CKO_SECRET_KEY"), v("CKA_KEY_TYPE=CKK_AES"), vg("CKA_TOKEN=true (persistent)"), ec("CKR_TEMPLATE_INCONSISTENT")}},
+				{"phKey (new key handle out)", []pkcsValue{v("Valid pointer receives handle"), ec("CKR_ARGUMENTS_BAD (NULL_PTR)")}},
+				{"Error paths", []pkcsValue{ec("CKR_OK"), ec("CKR_ATTRIBUTE_VALUE_INVALID"), ecg("CKR_USER_NOT_LOGGED_IN")}},
+			},
+		},
+		{
+			code: "DRV", fn: "C_DeriveKey", summary: "PKCS#11 C_DeriveKey — derive a new key from a base key (6-argument signature)",
+			cr: "Add SP800-108 KDF (CKM_SP800_108_COUNTER_KDF) to the derivation matrix",
+			groups: []pkcsGroup{
+				{"hSession (session handle)", []pkcsValue{v("Valid R/W session"), v("Invalid session"), ecg("CKR_SESSION_HANDLE_INVALID")}},
+				{"pMechanism (derivation mechanism)", []pkcsValue{v("CKM_ECDH1_DERIVE"), v("CKM_DH_PKCS_DERIVE"), v("CKM_TLS12_KEY_AND_MAC_DERIVE"), vg("CKM_SP800_108_COUNTER_KDF"), ec("CKR_MECHANISM_INVALID"), ecg("CKR_MECHANISM_PARAM_INVALID")}},
+				{"hBaseKey (base key handle)", []pkcsValue{v("EC private key, CKA_DERIVE=true"), v("DH private key"), ec("CKR_KEY_HANDLE_INVALID"), ecg("CKR_KEY_TYPE_INCONSISTENT")}},
+				{"pTemplate / ulAttributeCount (derived-key template)", []pkcsValue{v("CKA_CLASS=CKO_SECRET_KEY"), v("CKA_KEY_TYPE=CKK_AES"), v("CKA_VALUE_LEN=32"), vg("CKA_SENSITIVE=true"), ec("CKR_TEMPLATE_INCOMPLETE")}},
+				{"phKey (derived key handle out)", []pkcsValue{v("Valid pointer receives handle"), ec("CKR_ARGUMENTS_BAD (NULL_PTR)")}},
+				{"Error paths", []pkcsValue{ec("CKR_OK"), ecg("CKR_DOMAIN_PARAMS_INVALID")}},
 			},
 		},
 	}

@@ -72,8 +72,8 @@ func TestThemeForSelectsVariant(t *testing.T) {
 	if pk.Variant != "pkcs" {
 		t.Fatalf("demo-pkcs Variant = %q, want pkcs", pk.Variant)
 	}
-	if len(pk.Features) != 3 || pk.Features[0] != "C_Sign" {
-		t.Errorf("pkcs features = %v, want [C_Sign C_GenerateKeyPair C_Verify]", pk.Features)
+	if len(pk.Features) != 6 || pk.Features[0] != "C_Sign" {
+		t.Errorf("pkcs features = %v, want [C_Sign C_GenerateKeyPair C_Verify C_WrapKey C_UnwrapKey C_DeriveKey]", pk.Features)
 	}
 	// Generic theme still exposes the original 30 features.
 	if len(themeFor("demo").Features) < 20 {

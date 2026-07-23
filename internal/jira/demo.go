@@ -336,10 +336,13 @@ func demoStepsForKey(theme demoTheme, testKey string) []Step {
 			idx = 0
 		}
 		feature := theme.Features[idx%len(theme.Features)]
-		// The initialisation call follows the C_<Fn>Init naming convention for
-		// C_Sign and C_Verify; C_GenerateKeyPair has no separate init.
+		// The initialisation call follows the C_<Fn>Init naming convention only
+		// for the multi-part operations (C_Sign, C_Verify). The key-management
+		// functions are single-call and have no separate C_*Init in Cryptoki, so
+		// they name themselves as the operation step.
 		initFunc := feature + "Init"
-		if feature == "C_GenerateKeyPair" {
+		switch feature {
+		case "C_GenerateKeyPair", "C_WrapKey", "C_UnwrapKey", "C_DeriveKey":
 			initFunc = feature
 		}
 		return []Step{
