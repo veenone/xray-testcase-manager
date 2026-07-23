@@ -105,6 +105,19 @@ export function ProfilesModal({
                 </svg>
                 Create new profile
               </button>
+              <button
+                className="btn btn-block profiles-import-btn"
+                onClick={async () => {
+                  const p = await onImport();
+                  if (p) {
+                    setCreating(false);
+                    setSelectedId(p.id);
+                  }
+                }}
+                title="Import a profile from a file"
+              >
+                Import from file…
+              </button>
             </div>
             <div className="profiles-list-label">Your profiles</div>
             <ul className="profiles-list-items">
@@ -148,21 +161,6 @@ export function ProfilesModal({
                 </li>
               ))}
             </ul>
-            <div className="profiles-list-footer">
-              <button
-                className="btn"
-                onClick={async () => {
-                  const p = await onImport();
-                  if (p) {
-                    setCreating(false);
-                    setSelectedId(p.id);
-                  }
-                }}
-                title="Import a profile from a file"
-              >
-                Import…
-              </button>
-            </div>
           </div>
 
           <div className="profiles-detail">

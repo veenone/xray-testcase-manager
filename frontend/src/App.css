@@ -4821,9 +4821,19 @@ tr.row-checked:hover {
   padding-right: 12px;
 }
 /* Create is the primary action: a full-width accent button pinned above the
-   list, louder than the plain "+ New" it replaces. */
+   list, louder than the plain "+ New" it replaces. Import sits directly under
+   it because both are "bring a profile into existence" actions, so a user
+   looking to add one finds them together instead of hunting the footer. */
 .profiles-create-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding-bottom: 10px;
+}
+/* Quieter than the accent Create button: importing is the rarer path. */
+.profiles-import-btn {
+  font-size: 13px;
+  padding: 7px 9px;
 }
 .profiles-list-label {
   font-size: 11px;
@@ -4833,11 +4843,16 @@ tr.row-checked:hover {
   font-weight: 650;
   padding: 4px 4px 6px;
 }
+/* flex: 0 1 auto, NOT flex: 1 — the body stretches this column to the detail
+   pane's height, and a zero-basis `flex: 1` would make the list swallow all
+   that slack and shove the footer to the bottom, so the footer drifted as the
+   detail pane grew (e.g. the active-profile caution banner). Sizing to content
+   keeps everything below the list anchored to the list itself. */
 .profiles-list-items {
   list-style: none;
   margin: 0;
   padding: 0;
-  flex: 1;
+  flex: 0 1 auto;
   overflow-y: auto;
   max-height: 60vh;
 }
