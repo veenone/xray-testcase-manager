@@ -223,6 +223,13 @@ func TestPublishGroups_CreatesOneTestSetPerGroupWithMembers(t *testing.T) {
 	}
 }
 
+// TestPublishGroups_RunningTwiceCreatesNothingNew proves publish is
+// genuinely idempotent on its own: running PublishGroups twice back to back,
+// with no pull-sync (and so no mirrorMembership call) in between, must not
+// re-issue the add it already made. The engine has to keep its own
+// test_container_test mirror truthful after a successful backend write for
+// this to hold -- see TestPublishGroups_RunningAfterPullSyncStillNoOpsAdd
+// for the case where a real sync repopulates the mirror instead.
 func TestPublishGroups_RunningTwiceCreatesNothingNew(t *testing.T) {
 	const p = "profile-1"
 	be := newFakeBackend()
@@ -240,6 +247,53 @@ func TestPublishGroups_RunningTwiceCreatesNothingNew(t *testing.T) {
 	}
 	if first.Created != 1 {
 		t.Fatalf("first run created = %d, want 1", first.Created)
+	}
+	containerKey := first.Groups[0].ContainerKey
+	if len(be.addCalls) != 1 {
+		t.Fatalf("addCalls after first run = %+v, want exactly 1", be.addCalls)
+	}
+
+	second, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("second PublishGroups: %v", err)
+	}
+	if be.createCalls != 1 {
+		t.Fatalf("createCalls after second run = %d, want 1 (no duplicate Test Set)", be.createCalls)
+	}
+	if len(be.addCalls) != 1 || len(be.removeCalls) != 0 {
+		t.Fatalf("addCalls/removeCalls after second run = %+v / %+v, want no new calls", be.addCalls, be.removeCalls)
+	}
+	if second.Created != 0 || second.Updated != 1 {
+		t.Fatalf("second result = %+v, want 0 created, 1 updated", second)
+	}
+	if len(second.Groups[0].Added) != 0 || len(second.Groups[0].Removed) != 0 {
+		t.Fatalf("second run diff = added %v removed %v, want none", second.Groups[0].Added, second.Groups[0].Removed)
+	}
+	if second.Groups[0].ContainerKey != containerKey {
+		t.Fatalf("second run container = %s, want reused %s", second.Groups[0].ContainerKey, containerKey)
+	}
+}
+
+// TestPublishGroups_RunningAfterPullSyncStillNoOpsAdd covers the other path
+// to a no-op second run: a real pull-sync repopulates test_container_test
+// from Xray between the two publishes (mirrorMembership fakes that here).
+// This must stay a no-op too -- it's the case
+// TestPublishGroups_RunningTwiceCreatesNothingNew used to test by accident
+// before the engine mirrored its own writes.
+func TestPublishGroups_RunningAfterPullSyncStillNoOpsAdd(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("first PublishGroups: %v", err)
 	}
 	containerKey := first.Groups[0].ContainerKey
 

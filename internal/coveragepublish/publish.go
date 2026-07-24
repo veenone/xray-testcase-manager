@@ -45,13 +45,18 @@ var _ Backend = backend.Backend(nil)
 
 // GroupResult is the outcome of publishing one coverage group.
 type GroupResult struct {
-	GroupID      string `json:"groupId"`
-	GroupName    string `json:"groupName"`
+	// GroupID is the coverage_param_group id this result is for.
+	GroupID string `json:"groupId"`
+	// GroupName is the group's display name, as shown in the coverage tree.
+	GroupName string `json:"groupName"`
+	// ContainerKey is the Jira key of the Test Set this group publishes to.
 	ContainerKey string `json:"containerKey"`
 	// Created is true when this run created the Test Set for the first time;
 	// false means an existing publication was reused and refreshed.
-	Created bool     `json:"created"`
-	Added   []string `json:"added"`
+	Created bool `json:"created"`
+	// Added lists the test keys this run added to the Test Set.
+	Added []string `json:"added"`
+	// Removed lists the test keys this run removed from the Test Set.
 	Removed []string `json:"removed"`
 	// Error is set when this group's publish failed. A failure here never
 	// aborts the run -- every other group under the version still gets its
@@ -72,7 +77,9 @@ type Result struct {
 type Publisher struct {
 	db       *sql.DB
 	coverage *coverage.Module
-	Backend  Backend
+	// Backend is the write surface publishing goes through -- a real
+	// backend.Backend in production, a fake in tests.
+	Backend Backend
 }
 
 // NewPublisher constructs a Publisher from its dependencies. st supplies the
@@ -172,10 +179,22 @@ func (p *Publisher) publishOne(ctx context.Context, profileID, projectKey, canon
 			gr.Error = fmt.Sprintf("add tests to test set: %v", err)
 			return gr
 		}
+		// Mirror the confirmed add locally so a second PublishGroups run --
+		// with no pull-sync in between -- sees the up-to-date membership
+		// instead of re-issuing the same add (this is what makes publish
+		// genuinely idempotent, not just idempotent-after-a-sync).
+		if err := p.mirrorMembersAdded(profileID, containerKey, add); err != nil {
+			gr.Error = fmt.Sprintf("update local membership mirror after add: %v", err)
+			return gr
+		}
 	}
 	if len(remove) > 0 {
 		if err := p.Backend.RemoveTestsFromContainer(ctx, backend.KindTestSet, containerKey, remove); err != nil {
 			gr.Error = fmt.Sprintf("remove tests from test set: %v", err)
+			return gr
+		}
+		if err := p.mirrorMembersRemoved(profileID, containerKey, remove); err != nil {
+			gr.Error = fmt.Sprintf("update local membership mirror after remove: %v", err)
 			return gr
 		}
 	}
@@ -276,6 +295,63 @@ func (p *Publisher) currentMembers(profileID, containerKey string) ([]string, er
 		out = append(out, k)
 	}
 	return out, rows.Err()
+}
+
+// mirrorMembersAdded records, in the local test_container_test mirror, the
+// test keys just confirmed added to containerKey via a successful
+// AddTestsToContainer call. Only call this after that call has succeeded --
+// this keeps the local mirror truthful about what Xray actually has, which
+// is what lets a re-run of PublishGroups (with no pull-sync in between) see
+// the real membership instead of re-emitting the same add. Test Sets carry
+// no run status, so run_status/run_defects/run_comment stay at their column
+// defaults (empty string).
+func (p *Publisher) mirrorMembersAdded(profileID, containerKey string, testKeys []string) error {
+	tx, err := p.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin membership mirror tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(
+		`INSERT INTO test_container_test (profile_id, container_key, test_key)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(profile_id, container_key, test_key) DO NOTHING`)
+	if err != nil {
+		return fmt.Errorf("prepare membership mirror insert: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, k := range testKeys {
+		if _, err := stmt.Exec(profileID, containerKey, k); err != nil {
+			return fmt.Errorf("mirror added test %s: %w", k, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// mirrorMembersRemoved deletes, from the local test_container_test mirror,
+// the test keys just confirmed removed from containerKey via a successful
+// RemoveTestsFromContainer call. See mirrorMembersAdded for why this matters.
+func (p *Publisher) mirrorMembersRemoved(profileID, containerKey string, testKeys []string) error {
+	tx, err := p.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin membership mirror tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(
+		`DELETE FROM test_container_test WHERE profile_id = ? AND container_key = ? AND test_key = ?`)
+	if err != nil {
+		return fmt.Errorf("prepare membership mirror delete: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, k := range testKeys {
+		if _, err := stmt.Exec(profileID, containerKey, k); err != nil {
+			return fmt.Errorf("mirror removed test %s: %w", k, err)
+		}
+	}
+	return tx.Commit()
 }
 
 // diffMembership compares a container's current membership against the
