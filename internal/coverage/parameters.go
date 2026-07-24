@@ -313,6 +313,9 @@ func (m *Module) DeleteNode(profileID, kind, id string) error {
 		if _, err := tx.Exec(`DELETE FROM coverage_parameter WHERE profile_id = ? AND group_id = ?`, profileID, id); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(`DELETE FROM coverage_group_publication WHERE profile_id = ? AND group_id = ?`, profileID, id); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(`DELETE FROM coverage_param_group WHERE profile_id = ? AND id = ?`, profileID, id); err != nil {
 			return err
 		}

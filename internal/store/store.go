@@ -18,7 +18,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 44
+const schemaVersion = 45
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -568,6 +568,22 @@ CREATE TABLE IF NOT EXISTS bridge_mapping (
 	updated_at            TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (workspace_id, source_connection_id, target_connection_id)
 );
+
+-- ── Coverage group publication (schema v45) ─────────────────────────────────
+-- Records that a coverage_param_group was published to Xray as a Test Set, plus
+-- the snapshot of test keys sent at publish time so a later drift check can
+-- diff it against the group's current coverage_value_test mappings.
+-- external_ref is deliberately not reused: its primary key is (profile_id,
+-- entity_type, local_id, connection) and it has nowhere to hold the published
+-- test-key set.
+CREATE TABLE IF NOT EXISTS coverage_group_publication (
+	profile_id      TEXT NOT NULL,
+	group_id        TEXT NOT NULL,   -- coverage_param_group.id
+	container_key   TEXT NOT NULL,   -- the Xray Test Set issue key
+	published_tests TEXT NOT NULL DEFAULT '',  -- newline-joined snapshot
+	published_at    TEXT NOT NULL,
+	PRIMARY KEY (profile_id, group_id)
+);
 `
 
 // indexSchema is applied *after* applyMigrations so every column referenced
@@ -607,6 +623,7 @@ CREATE INDEX IF NOT EXISTS idx_cov_group_version     ON coverage_param_group(pro
 CREATE INDEX IF NOT EXISTS idx_coverage_project ON coverage_project(profile_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_ref_extkey ON external_ref(profile_id, connection, entity_type, external_key);
 CREATE INDEX IF NOT EXISTS idx_connection_workspace ON connection(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_cov_group_pub_container ON coverage_group_publication(profile_id, container_key);
 `
 
 // Store wraps the SQLite connection for one local database file.
@@ -1232,6 +1249,25 @@ func applyMigrations(db *sql.DB) error {
 		)`); err != nil && !strings.Contains(err.Error(), "already exists") {
 			return fmt.Errorf("v44 create bridge_mapping: %w", err)
 		}
+	}
+	// coverage_group_publication (schema v45): records a coverage_param_group's
+	// publication to Xray as a Test Set (the container key and the snapshot of
+	// test keys sent, for later drift detection). Applied UNCONDITIONALLY
+	// (not `if current < 45` gated) for the same shared-version reason as the
+	// requirement/precondition and run-defects blocks above: a parallel branch
+	// bumped schemaVersion to 45 for an unrelated migration, so a DB that
+	// reaches v45 via that branch must still gain this table rather than skip
+	// a version-gated CREATE. CREATE TABLE IF NOT EXISTS makes it idempotent;
+	// fresh installs already have it from baseSchema.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS coverage_group_publication (
+		profile_id      TEXT NOT NULL,
+		group_id        TEXT NOT NULL,
+		container_key   TEXT NOT NULL,
+		published_tests TEXT NOT NULL DEFAULT '',
+		published_at    TEXT NOT NULL,
+		PRIMARY KEY (profile_id, group_id)
+	)`); err != nil && !strings.Contains(err.Error(), "already exists") {
+		return fmt.Errorf("v45 create coverage_group_publication: %w", err)
 	}
 	return nil
 }

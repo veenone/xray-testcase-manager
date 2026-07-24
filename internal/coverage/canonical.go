@@ -139,6 +139,14 @@ func (m *Module) DeleteCanonical(profileID, id string) error {
 		return fmt.Errorf("delete version parameters: %w", err)
 	}
 	if _, err := tx.Exec(
+		`DELETE FROM coverage_group_publication WHERE profile_id=? AND group_id IN (
+		    SELECT g.id FROM coverage_param_group g
+		    JOIN canonical_version cv ON cv.profile_id=g.profile_id AND cv.id=g.version_id
+		    WHERE g.profile_id=? AND cv.canonical_id=?)`,
+		profileID, profileID, id); err != nil {
+		return fmt.Errorf("delete version publications: %w", err)
+	}
+	if _, err := tx.Exec(
 		`DELETE FROM coverage_param_group WHERE profile_id=? AND version_id IN (
 		    SELECT id FROM canonical_version WHERE profile_id=? AND canonical_id=?)`,
 		profileID, profileID, id); err != nil {
@@ -173,6 +181,12 @@ func (m *Module) DeleteCanonical(profileID, id string) error {
 		    SELECT id FROM coverage_param_group WHERE profile_id=? AND canonical_id=?)`,
 		profileID, profileID, id); err != nil {
 		return fmt.Errorf("delete parameters: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM coverage_group_publication WHERE profile_id=? AND group_id IN (
+		    SELECT id FROM coverage_param_group WHERE profile_id=? AND canonical_id=?)`,
+		profileID, profileID, id); err != nil {
+		return fmt.Errorf("delete legacy publications: %w", err)
 	}
 	// --- Change requests and their member decisions ---
 	if _, err := tx.Exec(
