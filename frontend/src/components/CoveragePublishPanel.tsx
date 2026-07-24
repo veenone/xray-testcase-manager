@@ -6,6 +6,7 @@ import type {
   CoveragePublishState,
 } from "../api";
 import { useCapabilities } from "../features";
+import { useConfirm } from "./useConfirm";
 
 interface Props {
   profileId: string;
@@ -46,7 +47,10 @@ const STATE_BADGE_CLASS: Record<CoveragePublishState, string> = {
 // or remove as a unit.
 export function CoveragePublishPanel({ profileId, versionId }: Props) {
   const caps = useCapabilities(profileId);
-  const supportsTestSets = caps.containerKinds?.includes("testset") ?? false;
+  // Mirrors the compound backend guard in app_coverage_publish.go exactly
+  // (SupportsContainers && KindTestSet in ContainerKinds) so this never
+  // drifts out of sync with what the backend actually gates on.
+  const supportsTestSets = caps.supportsContainers && (caps.containerKinds?.includes("testset") ?? false);
 
   const [statuses, setStatuses] = useState<CoveragePublishGroupStatus[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,6 +59,7 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
   const [result, setResult] = useState<CoveragePublishResult | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const { confirm, confirmUI } = useConfirm();
 
   const loadStatus = useCallback(async () => {
     if (!profileId || !versionId) {
@@ -80,16 +85,37 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
     void loadStatus();
   }, [loadStatus, supportsTestSets]);
 
-  // A publish result and an expanded drift row both belong to a specific
-  // version; carrying them over to a newly selected version would show stale
-  // information under the new one's chips.
+  // A publish result, an expanded drift row, and the status list itself all
+  // belong to a specific version; carrying any of them over to a newly
+  // selected version would show stale group names, container keys, or
+  // Drift/Conflict chips under the new version until the re-fetch resolves.
+  // Cleared synchronously (not left to loadStatus's own fetch) so the render
+  // right after a version switch never shows another version's data.
   useEffect(() => {
     setResult(null);
     setExpandedGroupId(null);
+    setStatuses([]);
   }, [versionId]);
 
   async function publish() {
     if (!profileId || !versionId || publishing) return;
+    // Drift/Conflict groups have Jira-side changes that publishing would
+    // silently overwrite. Ask first, but only then: when nothing is in
+    // Drift or Conflict this stays a single click, matching the common case.
+    const impacted = statuses.filter((s) => s.state === "Drift" || s.state === "Conflict").length;
+    if (impacted > 0) {
+      const ok = await confirm({
+        title: "Overwrite changes made in Jira?",
+        message: `${impacted} coverage group${impacted === 1 ? "" : "s"} changed in Jira since the last publish. Publishing now replaces ${
+          impacted === 1 ? "its" : "their"
+        } Test Set membership with the local coverage model, discarding ${
+          impacted === 1 ? "that" : "those"
+        } Jira-side change${impacted === 1 ? "" : "s"}.`,
+        confirmLabel: "Publish anyway",
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setPublishing(true);
     setError("");
     setResult(null);
@@ -115,11 +141,16 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
   if (counts.Drift) summaryParts.push(`${counts.Drift} drift`);
   if (counts.Conflict) summaryParts.push(`${counts.Conflict} conflict`);
   if (counts.NotPublished) summaryParts.push(`${counts.NotPublished} not published`);
+  // error takes priority over the "no groups" reading: with an empty status
+  // list AND a failed fetch, the empty list is a symptom of the failure, not
+  // a real "nothing to publish" state, so don't say both at once.
   const summary =
     statuses.length === 0
       ? loading
         ? "Loading publish status…"
-        : "No coverage groups to publish yet."
+        : error
+          ? "Publish status unavailable."
+          : "No coverage groups to publish yet."
       : summaryParts.join(" · ");
 
   return (
@@ -196,6 +227,7 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
           ))}
         </ul>
       )}
+      {confirmUI}
     </div>
   );
 }
