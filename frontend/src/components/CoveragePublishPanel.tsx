@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GetCoveragePublishStatus, PublishCoverageGroups, errMsg } from "../api";
 import type {
   CoveragePublishGroupStatus,
@@ -60,6 +60,19 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const { confirm, confirmUI } = useConfirm();
+
+  // versionIdRef tracks the version actually selected right now, independent
+  // of whatever versionId a given publish() call closed over at click time.
+  // publish() is a plain function re-created each render, so once it starts
+  // awaiting PublishCoverageGroups its own versionId is frozen at the click
+  // value; comparing that frozen value against this ref after the await is
+  // what lets publish() notice the user switched versions mid-publish,
+  // instead of applying a stale result/status refresh on top of the newly
+  // selected version's data.
+  const versionIdRef = useRef(versionId);
+  useEffect(() => {
+    versionIdRef.current = versionId;
+  }, [versionId]);
 
   // loadStatus takes a cancelled() check so a caller whose effect has since
   // been superseded (profile/version switched again before the response
@@ -129,15 +142,21 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
       });
       if (!ok) return;
     }
+    // Capture the version this click published, and treat any response as
+    // stale once the selected version has moved on from it -- the version
+    // selector stays enabled while publishing, so this can happen before the
+    // response lands.
+    const clickedVersionId = versionId;
+    const stale = () => versionIdRef.current !== clickedVersionId;
     setPublishing(true);
     setError("");
     setResult(null);
     try {
-      const r = await PublishCoverageGroups(profileId, versionId);
-      setResult(r);
-      await loadStatus();
+      const r = await PublishCoverageGroups(profileId, clickedVersionId);
+      if (!stale()) setResult(r);
+      await loadStatus(stale);
     } catch (e) {
-      setError(errMsg(e));
+      if (!stale()) setError(errMsg(e));
     } finally {
       setPublishing(false);
     }

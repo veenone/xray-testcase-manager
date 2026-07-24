@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"xray-test-manager/internal/coverage"
@@ -517,6 +518,53 @@ func TestPublishGroups_EmptyContainerKeyFromBackendFailsGroupCleanly(t *testing.
 	}
 }
 
+// TestPublishGroups_ExistingEmptyContainerKeyFailsGroupCleanly covers the
+// case TestPublishGroups_EmptyContainerKeyFromBackendFailsGroupCleanly does
+// not: a coverage_group_publication row written by an earlier, buggier build
+// that already holds container_key = "". Unlike the first-run case, existed
+// is true here, so the guard has to sit after the publication lookup, not
+// just inside the !existed branch, or execution falls through to
+// currentMembers(profileID, "") and reproduces the same cross-group
+// contamination the other guard removes.
+func TestPublishGroups_ExistingEmptyContainerKeyFailsGroupCleanly(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, groupID, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := pub.putPublication(p, groupID, "", nil); err != nil {
+		t.Fatalf("seed empty-container-key publication row: %v", err)
+	}
+
+	result, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	if result.Failed != 1 || result.Created != 0 {
+		t.Fatalf("result = %+v, want 1 failed, 0 created", result)
+	}
+	gr := result.Groups[0]
+	if gr.Error == "" {
+		t.Fatalf("expected the group to report an error for a stored empty container key")
+	}
+	if gr.ContainerKey != "" {
+		t.Fatalf("ContainerKey = %q, want empty (no key was ever usable)", gr.ContainerKey)
+	}
+	if n := countContainerTestRows(t, st, p); n != 0 {
+		t.Fatalf("test_container_test rows = %d, want 0 (no membership mirrored under key \"\")", n)
+	}
+	if be.createCalls != 0 {
+		t.Fatalf("createCalls = %d, want 0 (an existing row must not trigger a new CreateContainer)", be.createCalls)
+	}
+	if len(be.addCalls) != 0 {
+		t.Fatalf("addCalls = %+v, want none (must not proceed to mirror membership against an empty key)", be.addCalls)
+	}
+}
+
 // TestPublishGroups_DescriptionWriteFailureDoesNotCauseFalseConflict is the
 // DetectDrift half of TestPublishGroups_ResumesAfterDescriptionWriteFails:
 // that existing test proves a re-run recovers, but never checks what
@@ -581,8 +629,14 @@ func TestPublishGroups_FailedAddNotMirrored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PublishGroups: %v", err)
 	}
-	if result.Failed != 1 || result.Groups[0].Error == "" {
-		t.Fatalf("result = %+v, want a failed group (add failed)", result)
+	// Assert the failure is actually the add failure, not just that some
+	// failure occurred: the prefix comes from the "add tests to test set: %v"
+	// Sprintf in publishOne, so this stays tied to the real failure point and
+	// would catch a regression where an earlier step (e.g. create, or the
+	// publication-row write) started failing instead.
+	wantPrefix := "add tests to test set:"
+	if result.Failed != 1 || !strings.HasPrefix(result.Groups[0].Error, wantPrefix) {
+		t.Fatalf("result = %+v, want a failed group whose error starts with %q", result, wantPrefix)
 	}
 	if n := countContainerTestRows(t, st, p); n != 0 {
 		t.Fatalf("test_container_test rows = %d, want 0 (failed add must not be mirrored)", n)

@@ -142,6 +142,18 @@ func (p *Publisher) publishOne(ctx context.Context, profileID, projectKey, canon
 		return gr
 	}
 
+	if existed && containerKey == "" {
+		// A publication row from an earlier, buggier build can already hold
+		// container_key = "": the same empty-key shape the !existed guard
+		// above rejects, just persisted instead of caught in the moment.
+		// Falling through here would reach currentMembers(profileID, "")
+		// and reproduce the exact cross-group contamination that guard
+		// exists to prevent -- reading and then overwriting some other
+		// group's membership under the shared "" key.
+		gr.Error = "the stored Test Set reference for this group is empty; the group needs to be published again from a clean state"
+		return gr
+	}
+
 	if !existed {
 		title := fmt.Sprintf("%s %s - %s", canonicalName, versionName, group.Name)
 		key, err := p.Backend.CreateContainer(ctx, projectKey, backend.KindTestSet, title)
