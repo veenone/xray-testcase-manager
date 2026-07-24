@@ -201,6 +201,7 @@ export {
   SeedDemoCoverageExample,
   SeedPKCS11Reference,
   SeedEUICCReference,
+  SeedASPICEReference,
   // Coverage Map (project-level panel + relation Sankey + config)
   ListCoverageProjects,
   SetCoverageProjects,
@@ -1448,11 +1449,13 @@ export function isKiwiDemoUrl(url?: string): boolean {
 
 // demoVariant returns the named demo dataset variant embedded in a profile's
 // Jira URL. Returns "pkcs" for demo-pkcs (or demo-pkcs:...), "euicc" for
-// demo-euicc (or demo-euicc:...), or "" for plain demo / non-demo profiles.
+// demo-euicc (or demo-euicc:...), "aspice" for demo-aspice (or demo-aspice:...),
+// or "" for plain demo / non-demo profiles.
 // Mirrors demoVariant in the Go backend (internal/jira/demo_theme.go).
-export function demoVariant(url?: string): "pkcs" | "euicc" | "" {
+export function demoVariant(url?: string): "pkcs" | "euicc" | "aspice" | "" {
   const s = (url ?? "").trim().toLowerCase();
   if (s === "demo-pkcs" || s.startsWith("demo-pkcs:")) return "pkcs";
   if (s === "demo-euicc" || s.startsWith("demo-euicc:")) return "euicc";
+  if (s === "demo-aspice" || s.startsWith("demo-aspice:")) return "aspice";
   return "";
 }

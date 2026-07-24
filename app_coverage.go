@@ -291,6 +291,19 @@ func (a *App) SeedEUICCReference(profileID string) (summary coverage.EUICCSeedSu
 	return a.cov.SeedEUICCReference(profileID)
 }
 
+// SeedASPICEReference seeds the Automotive SPICE reference dataset (seven ASPICE
+// processes — SYS.2, SYS.5, SWE.1, SWE.4, SWE.6, SUP.9, SUP.10 — with their
+// coverage/versioning layer mapped onto the synced CUST-OEM-PLATFORM /
+// CUST-TIER1-ECU / CUST-SAFETY-DOMAIN requirements + tests) into the profile —
+// for use on a throwaway "demo-aspice" profile. Idempotent.
+func (a *App) SeedASPICEReference(profileID string) (summary coverage.ASPICESeedSummary, err error) {
+	defer recoverToError("SeedASPICEReference", &err)
+	if err := a.requireStore(); err != nil {
+		return coverage.ASPICESeedSummary{}, err
+	}
+	return a.cov.SeedASPICEReference(profileID)
+}
+
 // SeedDemoCoverageExample builds the built-in PKCS#11 C_Sign example for the
 // profile (intended for demo mode): a full parameter model mapped to the
 // profile's synced tests, landing at the PRD's 35/41 = 85.4%. Returns the new

@@ -28,8 +28,9 @@ type demoTheme struct {
 }
 
 // demoVariant returns the demo dataset variant selected by a profile URL:
-// "pkcs" for a demo-pkcs URL, "euicc" for a demo-euicc URL, "" (generic)
-// otherwise. isDemoURL still gates whether demo mode is on at all.
+// "pkcs" for a demo-pkcs URL, "euicc" for a demo-euicc URL, "aspice" for a
+// demo-aspice URL, "" (generic) otherwise. isDemoURL still gates whether demo
+// mode is on at all.
 func demoVariant(baseURL string) string {
 	u := strings.ToLower(strings.TrimSpace(baseURL))
 	if u == "demo-pkcs" || strings.HasPrefix(u, "demo-pkcs:") {
@@ -37,6 +38,9 @@ func demoVariant(baseURL string) string {
 	}
 	if u == "demo-euicc" || strings.HasPrefix(u, "demo-euicc:") {
 		return "euicc"
+	}
+	if u == "demo-aspice" || strings.HasPrefix(u, "demo-aspice:") {
+		return "aspice"
 	}
 	return ""
 }
@@ -87,6 +91,31 @@ func euiccCode(feature string) string {
 	}
 }
 
+// aspiceCode maps an Automotive SPICE process name to a short code used in
+// requirement keys (e.g. "SYS.2 System Requirements Analysis" -> "SRA").
+// Unknown processes fall back to the process name itself so the mapping is
+// always defined.
+func aspiceCode(feature string) string {
+	switch feature {
+	case "SYS.2 System Requirements Analysis":
+		return "SRA"
+	case "SYS.5 System Qualification Test":
+		return "SQT"
+	case "SWE.1 Software Requirements Analysis":
+		return "SWR"
+	case "SWE.4 Software Unit Verification":
+		return "SUV"
+	case "SWE.6 Software Qualification Test":
+		return "SWQ"
+	case "SUP.9 Problem Resolution Management":
+		return "PRM"
+	case "SUP.10 Change Request Management":
+		return "CRM"
+	default:
+		return feature
+	}
+}
+
 // themeFor returns the theme for a profile URL.
 func themeFor(baseURL string) demoTheme {
 	switch demoVariant(baseURL) {
@@ -94,6 +123,8 @@ func themeFor(baseURL string) demoTheme {
 		return pkcsTheme
 	case "euicc":
 		return euiccTheme
+	case "aspice":
+		return aspiceTheme
 	default:
 		return genericTheme
 	}
@@ -219,4 +250,74 @@ var pkcsTheme = demoTheme{
 	// (test runs, bug links, cross-project sub-execution members) index tests up
 	// to that cap and would otherwise reference nonexistent PKCS-<n> keys.
 	TestCount: 240, // smaller, fully PKCS-flavoured corpus
+}
+
+// aspiceTheme is the Automotive SPICE demo vocabulary: seven VDA-scope ASPICE
+// processes spanning the system tier (SYS.2, SYS.5), the software tier (SWE.1,
+// SWE.4, SWE.6), and supporting processes (SUP.9, SUP.10), assessment-flavoured
+// conditions, an SYS/SWE/SUP folder split, and process-entry preconditions.
+// Process names are used verbatim as the coverage summary-LIKE join key and are
+// mutually non-prefixing.
+var aspiceTheme = demoTheme{
+	Variant: "aspice",
+	Features: []string{
+		"SYS.2 System Requirements Analysis",
+		"SYS.5 System Qualification Test",
+		"SWE.1 Software Requirements Analysis",
+		"SWE.4 Software Unit Verification",
+		"SWE.6 Software Qualification Test",
+		"SUP.9 Problem Resolution Management",
+		"SUP.10 Change Request Management",
+	},
+	Conditions: []string{
+		"with complete bidirectional traceability",
+		"with a missing verification criterion",
+		"on a baselined requirement",
+		"with an open non-conformance",
+		"at Capability Level 2",
+		"targeting Capability Level 3",
+		"under ISO 26262 ASIL-D",
+		"with an unapproved change",
+		"after a regression cycle",
+		"with an unresolved review finding",
+		"on a supplier-developed component",
+		"during an assessment",
+	},
+	Categories: []folderCategory{
+		{"System engineering (SYS)", []string{
+			"SYS.2 System Requirements Analysis",
+			"SYS.5 System Qualification Test",
+		}},
+		{"Software engineering (SWE)", []string{
+			"SWE.1 Software Requirements Analysis",
+			"SWE.4 Software Unit Verification",
+			"SWE.6 Software Qualification Test",
+		}},
+		{"Supporting processes (SUP)", []string{
+			"SUP.9 Problem Resolution Management",
+			"SUP.10 Change Request Management",
+		}},
+	},
+	Preconditions: []precondDef{
+		{"A project plan and process definitions exist (MAN.3)", "Manual", ""},
+		{"Stakeholder requirements are baselined (SYS.1)", "Manual", ""},
+		{"A configuration-management system is in place (SUP.8)", "Manual", ""},
+		{"An assessment scope and target Capability Level are agreed", "Manual", ""},
+		{"A requirements-management tool is linked to tests", "Manual", ""},
+		{"A defect-tracking system is operational", "Manual", ""},
+		{"The software architecture is defined (SWE.2 / SWE.3)", "Manual", ""},
+	},
+	FeaturePre: map[string][]int{
+		"SYS.2 System Requirements Analysis":   {0, 1, 3, 4},
+		"SYS.5 System Qualification Test":      {0, 3, 4, 5},
+		"SWE.1 Software Requirements Analysis": {0, 2, 4, 6},
+		"SWE.4 Software Unit Verification":     {0, 2, 5, 6},
+		"SWE.6 Software Qualification Test":    {0, 4, 5, 6},
+		"SUP.9 Problem Resolution Management":  {0, 2, 5},
+		"SUP.10 Change Request Management":     {0, 2, 3},
+	},
+	// Keep TestCount >= demoLinkedTests (200): the peripheral generic seeders
+	// (test runs, bug links, cross-project sub-execution members) index tests up
+	// to that cap and would otherwise reference nonexistent ASPICE-<n> keys.
+	TestCount: 240, // smaller, fully ASPICE-flavoured corpus
 }

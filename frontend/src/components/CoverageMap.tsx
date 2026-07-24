@@ -6,6 +6,7 @@ import {
   SetCoverageProjects,
   SeedPKCS11Reference,
   SeedEUICCReference,
+  SeedASPICEReference,
   errMsg,
 } from "../api";
 import type { ProjectConfig, ProjectCoverageRow, Sankey } from "../api";
@@ -15,7 +16,7 @@ interface Props {
   profileId: string;
   refreshKey: number;
   isDemo?: boolean;
-  demoVariant?: "pkcs" | "euicc" | "";
+  demoVariant?: "pkcs" | "euicc" | "aspice" | "";
 }
 
 const EMPTY_SANKEY: Sankey = { nodes: [], links: [] };
@@ -99,6 +100,8 @@ export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Prop
     try {
       if (demoVariant === "euicc") {
         await SeedEUICCReference(profileId);
+      } else if (demoVariant === "aspice") {
+        await SeedASPICEReference(profileId);
       } else {
         await SeedPKCS11Reference(profileId);
       }
@@ -127,6 +130,8 @@ export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Prop
                 ? ", or load the eUICC demo coverage onto the synced demo-euicc tests:"
                 : isDemo && demoVariant === "pkcs"
                 ? ", or load the PKCS#11 demo coverage onto the synced demo-pkcs tests:"
+                : isDemo && demoVariant === "aspice"
+                ? ", or load the ASPICE demo coverage onto the synced demo-aspice tests:"
                 : "."}
             </p>
             {isDemo && demoVariant && (
@@ -135,7 +140,13 @@ export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Prop
                 disabled={seeding}
                 onClick={() => void loadReferenceCoverage()}
               >
-                {seeding ? "Loading…" : demoVariant === "euicc" ? "Load eUICC coverage" : "Load PKCS#11 coverage"}
+                {seeding
+                  ? "Loading…"
+                  : demoVariant === "euicc"
+                  ? "Load eUICC coverage"
+                  : demoVariant === "aspice"
+                  ? "Load ASPICE coverage"
+                  : "Load PKCS#11 coverage"}
               </button>
             )}
           </div>

@@ -512,6 +512,64 @@ func demoRequirements(theme demoTheme, testProjectKey string) ([]Requirement, []
 		return reqs, links
 	}
 
+	// ASPICE branch — a two-tier requirement trace per Automotive SPICE process.
+	// For each process: one FUNC-ASPICE-<code> requirement (the SYSTEM tier) and
+	// three customer/program requirements (the SOFTWARE/program tier) in
+	// CUST-OEM-PLATFORM/OEM, CUST-TIER1-ECU/TIER1, CUST-SAFETY-DOMAIN/SAFETY,
+	// each linked to the first up-to-6 tests of that process.
+	if theme.Variant == "aspice" {
+		nFeatures := len(theme.Features)
+		reqs := make([]Requirement, 0, nFeatures*4)
+		links := make([]RequirementLink, 0)
+		const maxLinksPerReq = 6
+		for fi, f := range theme.Features {
+			code := aspiceCode(f)
+
+			// Functional (system-tier) requirement.
+			funcKey := "FUNC-ASPICE-" + code
+			reqs = append(reqs, Requirement{
+				Key:        funcKey,
+				ProjectKey: "FUNC",
+				IssueType:  "Requirement",
+				Summary:    f,
+				Status:     "Approved",
+			})
+
+			// Program (software-tier) requirements + links to the process's tests.
+			customers := []struct {
+				projectKey string
+				label      string
+			}{
+				{"CUST-OEM-PLATFORM", "OEM"},
+				{"CUST-TIER1-ECU", "TIER1"},
+				{"CUST-SAFETY-DOMAIN", "SAFETY"},
+			}
+			for _, cust := range customers {
+				custKey := cust.projectKey + "-" + code
+				reqs = append(reqs, Requirement{
+					Key:        custKey,
+					ProjectKey: cust.projectKey,
+					IssueType:  "Story",
+					Summary:    f + " — " + cust.label + " program requirement",
+					Status:     "In Progress",
+				})
+				// Link to first up-to-6 tests for this process.
+				// Tests for feature fi are those where (n-1) % nFeatures == fi,
+				// i.e. n = fi+1, fi+1+nFeatures, fi+1+2*nFeatures, ...
+				linked := 0
+				for n := fi + 1; n <= theme.TestCount && linked < maxLinksPerReq; n += nFeatures {
+					links = append(links, RequirementLink{
+						TestKey:        fmt.Sprintf("%s-%d", testProjectKey, n),
+						RequirementKey: custKey,
+						LinkID:         fmt.Sprintf("L-%s-%d", code, n),
+					})
+					linked++
+				}
+			}
+		}
+		return reqs, links
+	}
+
 	// PKCS branch — functional + per-customer requirements.
 	if theme.Variant == "pkcs" {
 		nFeatures := len(theme.Features)

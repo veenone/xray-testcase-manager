@@ -22,6 +22,7 @@ import {
   SeedDemoCoverageExample,
   SeedPKCS11Reference,
   SeedEUICCReference,
+  SeedASPICEReference,
   ListRequirementsWithCoverage,
   errMsg,
 } from "../api";
@@ -49,7 +50,7 @@ interface Props {
   profileId: string;
   refreshKey: number;
   isDemo?: boolean;
-  demoVariant?: "pkcs" | "euicc" | "";
+  demoVariant?: "pkcs" | "euicc" | "aspice" | "";
   onChanged?: () => void;
 }
 
@@ -293,20 +294,23 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
     setNotice("");
     setError("");
     try {
-      const isEuicc = demoVariant === "euicc";
-      const s = isEuicc
-        ? await SeedEUICCReference(profileId)
-        : await SeedPKCS11Reference(profileId);
+      // Pick the reference seeder for the profile's demo variant. All three
+      // seed summaries share the same shape (features/versions/changeRequests/
+      // mappings), so the notice is built uniformly. Anything other than the
+      // two named variants falls back to PKCS#11.
+      const seeder =
+        demoVariant === "euicc"
+          ? { label: "eUICC", profile: "demo-euicc", run: SeedEUICCReference }
+          : demoVariant === "aspice"
+            ? { label: "ASPICE", profile: "demo-aspice", run: SeedASPICEReference }
+            : { label: "PKCS#11", profile: "demo-pkcs", run: SeedPKCS11Reference };
+      const s = await seeder.run(profileId);
       await loadList();
       onChanged?.();
       setNotice(
-        isEuicc
-          ? `Mapped eUICC coverage onto synced demo-euicc data — ${s.features} features, ${s.versions} versions, ` +
-              `${s.changeRequests} change requests, ${s.mappings} value→test mappings. ` +
-              `Sync the demo-euicc profile first if you haven't already.`
-          : `Mapped PKCS#11 coverage onto synced demo-pkcs data — ${s.features} features, ${s.versions} versions, ` +
-              `${s.changeRequests} change requests, ${s.mappings} value→test mappings. ` +
-              `Sync the demo-pkcs profile first if you haven't already.`,
+        `Mapped ${seeder.label} coverage onto synced ${seeder.profile} data — ${s.features} features, ${s.versions} versions, ` +
+          `${s.changeRequests} change requests, ${s.mappings} value→test mappings. ` +
+          `Sync the ${seeder.profile} profile first if you haven't already.`,
       );
     } catch (e) {
       setError(errMsg(e));
@@ -454,7 +458,11 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
                   )}
                   {isDemo && demoVariant && (
                     <button className="btn btn-primary" disabled={busy} onClick={() => void loadPkcsReference()}>
-                      {demoVariant === "euicc" ? "Load eUICC coverage" : "Load PKCS#11 coverage"}
+                      {demoVariant === "euicc"
+                        ? "Load eUICC coverage"
+                        : demoVariant === "aspice"
+                          ? "Load ASPICE coverage"
+                          : "Load PKCS#11 coverage"}
                     </button>
                   )}
                 </div>

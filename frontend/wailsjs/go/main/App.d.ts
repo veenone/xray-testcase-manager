@@ -363,6 +363,8 @@ export function ScanDuplicateGroupSteps(arg1:string,arg2:string):Promise<testrep
 
 export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;
 
+export function SeedASPICEReference(arg1:string):Promise<coverage.ASPICESeedSummary>;
+
 export function SeedDemoCoverageExample(arg1:string):Promise<string>;
 
 export function SeedEUICCReference(arg1:string):Promise<coverage.EUICCSeedSummary>;
