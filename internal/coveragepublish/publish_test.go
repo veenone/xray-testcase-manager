@@ -34,6 +34,11 @@ type fakeBackend struct {
 
 	failCreateOnCall int // 1-indexed; 0 means never fail
 
+	// createEmptyKey makes CreateContainer return ("", nil), mirroring what
+	// internal/jira.Client.CreateContainer returns for a demo profile URL:
+	// no error, but also no usable key.
+	createEmptyKey bool
+
 	lastDescription string
 }
 
@@ -48,6 +53,9 @@ func (f *fakeBackend) CreateContainer(ctx context.Context, projectKey, kind, sum
 	}
 	if f.createErr != nil {
 		return "", f.createErr
+	}
+	if f.createEmptyKey {
+		return "", nil
 	}
 	f.nextID++
 	return fmt.Sprintf("%s-TS%d", projectKey, f.nextID), nil
@@ -447,6 +455,185 @@ func TestPublishGroups_OneFailingGroupDoesNotAbortRun(t *testing.T) {
 	if result.Groups[1].Error != "" || result.Groups[1].ContainerKey == "" {
 		t.Fatalf("second group = %+v, want it published despite the first group's failure", result.Groups[1])
 	}
+}
+
+// countContainerTestRows returns how many test_container_test rows exist for
+// profileID across all container keys, so tests can assert nothing was
+// mirrored for a group that must not have published anything.
+func countContainerTestRows(t *testing.T, st *store.Store, profileID string) int {
+	t.Helper()
+	var n int
+	if err := st.DB().QueryRow(`SELECT COUNT(*) FROM test_container_test WHERE profile_id = ?`, profileID).Scan(&n); err != nil {
+		t.Fatalf("count test_container_test: %v", err)
+	}
+	return n
+}
+
+// TestPublishGroups_EmptyContainerKeyFromBackendFailsGroupCleanly covers the
+// demo-backend shape: CreateContainer returns ("", nil) -- no error, but no
+// usable key either. Proceeding as if that were a real key would make every
+// group under the profile collide on containerKey "" (see the comment in
+// publishOne). The group must be reported as failed, and neither a
+// publication row nor a test_container_test mirror row may be written.
+func TestPublishGroups_EmptyContainerKeyFromBackendFailsGroupCleanly(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	be.createEmptyKey = true
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, groupID, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	if result.Failed != 1 || result.Created != 0 {
+		t.Fatalf("result = %+v, want 1 failed, 0 created", result)
+	}
+	gr := result.Groups[0]
+	if gr.Error == "" {
+		t.Fatalf("expected the group to report an error for an empty backend key")
+	}
+	if gr.ContainerKey != "" {
+		t.Fatalf("ContainerKey = %q, want empty (no key was ever usable)", gr.ContainerKey)
+	}
+
+	_, _, existed, err := pub.publication(p, groupID)
+	if err != nil {
+		t.Fatalf("publication: %v", err)
+	}
+	if existed {
+		t.Fatalf("expected no publication row to be written when the backend returned no key")
+	}
+	if n := countContainerTestRows(t, st, p); n != 0 {
+		t.Fatalf("test_container_test rows = %d, want 0 (no membership mirrored under key \"\")", n)
+	}
+	if len(be.addCalls) != 0 {
+		t.Fatalf("addCalls = %+v, want none (must not proceed to mirror membership against an empty key)", be.addCalls)
+	}
+}
+
+// TestPublishGroups_DescriptionWriteFailureDoesNotCauseFalseConflict is the
+// DetectDrift half of TestPublishGroups_ResumesAfterDescriptionWriteFails:
+// that existing test proves a re-run recovers, but never checks what
+// DetectDrift reports in between. If the published snapshot were recorded
+// only after the (failing) description write, membership would already sit
+// at the desired set on both the local model and the test_container_test
+// mirror while the snapshot stayed old, and DetectDrift would misreport a
+// Conflict -- as if Jira had independently added a test the publish call
+// itself just added.
+func TestPublishGroups_DescriptionWriteFailureDoesNotCauseFalseConflict(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	be.updateIssueErr = errors.New("jira unavailable")
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	if result.Failed != 1 {
+		t.Fatalf("result = %+v, want 1 failed group (description write failed)", result)
+	}
+
+	statuses, err := pub.DetectDrift(p, versionID)
+	if err != nil {
+		t.Fatalf("DetectDrift: %v", err)
+	}
+	if len(statuses) != 1 {
+		t.Fatalf("statuses = %+v, want 1 entry", statuses)
+	}
+	gs := statuses[0]
+	if gs.State == Conflict || gs.State == Drift {
+		t.Fatalf("State = %q, want InSync or LocalChanges, not a false Drift/Conflict caused by the failed description write", gs.State)
+	}
+	if len(gs.RemoteAdded) != 0 || len(gs.RemoteRemoved) != 0 {
+		t.Fatalf("expected no remote-side diff, got RemoteAdded=%v RemoteRemoved=%v", gs.RemoteAdded, gs.RemoteRemoved)
+	}
+}
+
+// TestPublishGroups_FailedAddNotMirrored proves a failed AddTestsToContainer
+// call leaves test_container_test untouched: mirroring only happens after
+// the backend call it mirrors has actually succeeded.
+func TestPublishGroups_FailedAddNotMirrored(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	be.addErr = errors.New("add failed (injected)")
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	if result.Failed != 1 || result.Groups[0].Error == "" {
+		t.Fatalf("result = %+v, want a failed group (add failed)", result)
+	}
+	if n := countContainerTestRows(t, st, p); n != 0 {
+		t.Fatalf("test_container_test rows = %d, want 0 (failed add must not be mirrored)", n)
+	}
+}
+
+// TestPublishGroups_FailedRemoveNotMirrored proves a failed
+// RemoveTestsFromContainer call leaves the mirror row for the not-actually
+// -removed test in place.
+func TestPublishGroups_FailedRemoveNotMirrored(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS", "ED25519"})
+	seedTestCase(t, st, p, "QA-1")
+	seedTestCase(t, st, p, "QA-2")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cov.SetValueTests(p, valueIDs[1], []string{"QA-2"}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("first PublishGroups: %v", err)
+	}
+	containerKey := first.Groups[0].ContainerKey
+	mirrorMembership(t, st, p, containerKey, []string{"QA-1", "QA-2"})
+
+	// Unmap QA-2 locally so this group's desired set drops it, forcing a
+	// remove call; make that remove call fail.
+	if err := cov.SetValueTests(p, valueIDs[1], nil); err != nil {
+		t.Fatal(err)
+	}
+	be.removeErr = errors.New("remove failed (injected)")
+
+	second, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("second PublishGroups: %v", err)
+	}
+	if second.Failed != 1 || second.Groups[0].Error == "" {
+		t.Fatalf("second result = %+v, want a failed group (remove failed)", second)
+	}
+
+	current, err := pub.currentMembers(p, containerKey)
+	if err != nil {
+		t.Fatalf("currentMembers: %v", err)
+	}
+	assertKeys(t, "currentMembers after failed remove", current, []string{"QA-1", "QA-2"})
 }
 
 func TestPublishGroups_StaleTestExcludedFromDesiredSet(t *testing.T) {

@@ -61,7 +61,11 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const { confirm, confirmUI } = useConfirm();
 
-  const loadStatus = useCallback(async () => {
+  // loadStatus takes a cancelled() check so a caller whose effect has since
+  // been superseded (profile/version switched again before the response
+  // landed) can discard a late response instead of applying it. Follows the
+  // same cancelled-flag pattern as useCapabilities in features.ts.
+  const loadStatus = useCallback(async (cancelled: () => boolean = () => false) => {
     if (!profileId || !versionId) {
       setStatuses([]);
       return;
@@ -70,27 +74,36 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
     setError("");
     try {
       const s = await GetCoveragePublishStatus(profileId, versionId);
+      if (cancelled()) return;
       // The generated binding types `state` as a plain string; narrow it to
       // the closed ReconcileState union so callers get exhaustiveness.
       setStatuses((s ?? []).map((g) => ({ ...g, state: g.state as CoveragePublishState })));
     } catch (e) {
+      if (cancelled()) return;
       setError(errMsg(e));
     } finally {
-      setLoading(false);
+      if (!cancelled()) setLoading(false);
     }
   }, [profileId, versionId]);
 
   useEffect(() => {
     if (!supportsTestSets) return;
-    void loadStatus();
+    let cancelled = false;
+    void loadStatus(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [loadStatus, supportsTestSets]);
 
   // A publish result, an expanded drift row, and the status list itself all
   // belong to a specific version; carrying any of them over to a newly
   // selected version would show stale group names, container keys, or
   // Drift/Conflict chips under the new version until the re-fetch resolves.
-  // Cleared synchronously (not left to loadStatus's own fetch) so the render
-  // right after a version switch never shows another version's data.
+  // This effect clears them the moment versionId changes, but useEffect runs
+  // after paint, so one frame can still render the previous version's data
+  // before this clear commits; the loadStatus cancellation guard above is
+  // what actually stops a slower in-flight fetch for the old version from
+  // landing after a newer one and overwriting it.
   useEffect(() => {
     setResult(null);
     setExpandedGroupId(null);

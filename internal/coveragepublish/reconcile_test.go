@@ -200,6 +200,93 @@ func TestDetectDrift_ConflictWhenBothSidesDivergeFromSnapshot(t *testing.T) {
 	assertKeys(t, "RemoteRemoved", gs.RemoteRemoved, nil)
 }
 
+// TestDetectDrift_LocalRemovedWhenTestUnmappedAfterPublish covers the
+// removal direction on the local side: every other LocalChanges test only
+// ever adds a mapping, so LocalRemoved is never exercised at the reconcile
+// level. Here a previously-published, previously-mapped test is unmapped
+// locally with no republish, so it must show up as LocalRemoved and Jira's
+// mirrored Test Set (unchanged) must not.
+func TestDetectDrift_LocalRemovedWhenTestUnmappedAfterPublish(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID); err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+
+	// Unmap QA-1 locally, with no republish -- the local model now wants an
+	// empty set while both the snapshot and Jira's mirrored membership still
+	// say [QA-1].
+	if err := cov.SetValueTests(p, valueIDs[0], nil); err != nil {
+		t.Fatal(err)
+	}
+
+	statuses, err := pub.DetectDrift(p, versionID)
+	if err != nil {
+		t.Fatalf("DetectDrift: %v", err)
+	}
+	gs := statuses[0]
+	if gs.State != LocalChanges {
+		t.Fatalf("State = %q, want LocalChanges (got %+v)", gs.State, gs)
+	}
+	assertKeys(t, "LocalAdded", gs.LocalAdded, nil)
+	assertKeys(t, "LocalRemoved", gs.LocalRemoved, []string{"QA-1"})
+	assertKeys(t, "RemoteAdded", gs.RemoteAdded, nil)
+	assertKeys(t, "RemoteRemoved", gs.RemoteRemoved, nil)
+}
+
+// TestDetectDrift_RemoteRemovedWhenTestDroppedFromJiraTestSet covers the
+// removal direction on the remote side: a test present at publish time is
+// later removed from the Test Set issue directly in Jira (picked up by a
+// pull-sync), with the local model untouched. This is the destructive
+// direction DetectDrift exists to catch -- republishing would otherwise
+// silently re-add a test someone deliberately took off the Test Set.
+func TestDetectDrift_RemoteRemovedWhenTestDroppedFromJiraTestSet(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS", "ED25519"})
+	seedTestCase(t, st, p, "QA-1")
+	seedTestCase(t, st, p, "QA-2")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cov.SetValueTests(p, valueIDs[1], []string{"QA-2"}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	containerKey := first.Groups[0].ContainerKey
+
+	// Simulate a pull-sync picking up someone removing QA-2 from the Test
+	// Set issue directly in Jira. The local coverage model is untouched.
+	mirrorMembership(t, st, p, containerKey, []string{"QA-1"})
+
+	statuses, err := pub.DetectDrift(p, versionID)
+	if err != nil {
+		t.Fatalf("DetectDrift: %v", err)
+	}
+	gs := statuses[0]
+	if gs.State != Drift {
+		t.Fatalf("State = %q, want Drift (got %+v)", gs.State, gs)
+	}
+	assertKeys(t, "LocalAdded", gs.LocalAdded, nil)
+	assertKeys(t, "LocalRemoved", gs.LocalRemoved, nil)
+	assertKeys(t, "RemoteAdded", gs.RemoteAdded, nil)
+	assertKeys(t, "RemoteRemoved", gs.RemoteRemoved, []string{"QA-2"})
+}
+
 // TestDetectDrift_ReturnsEveryGroupIncludingUnpublishedOnes proves a version
 // with a mix of published and never-published groups gets a status for
 // each -- the caller can show every group, not just the ones with a

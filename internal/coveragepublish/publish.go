@@ -149,6 +149,18 @@ func (p *Publisher) publishOne(ctx context.Context, profileID, projectKey, canon
 			gr.Error = fmt.Sprintf("create test set: %v", err)
 			return gr
 		}
+		if key == "" {
+			// A demo/no-op backend can return a successful-looking ("", nil):
+			// no error, but also no usable key. Treat that the same as a
+			// failure instead of proceeding -- writing a publication row or
+			// mirroring membership under an empty container key would make
+			// every group under this profile collide on containerKey "",
+			// corrupting currentMembers/DetectDrift for all of them (see
+			// internal/syncer/commit.go's realKey != "" guard for the same
+			// lesson learned on the commit path).
+			gr.Error = "the backend returned no issue key for the new Test Set"
+			return gr
+		}
 		containerKey = key
 		gr.Created = true
 
@@ -201,14 +213,23 @@ func (p *Publisher) publishOne(ctx context.Context, profileID, projectKey, canon
 	gr.Added = add
 	gr.Removed = remove
 
-	description := renderDescription(canonicalName, versionName, group.Name, rows)
-	if err := p.Backend.UpdateIssue(ctx, containerKey, map[string]any{"description": description}); err != nil {
-		gr.Error = fmt.Sprintf("update test set description: %v", err)
+	// Record the published snapshot now, right after membership genuinely
+	// reached `desired` (both the backend calls above and their local
+	// mirroring succeeded), and BEFORE the description write below. The
+	// description is cosmetic; membership is what DetectDrift's three-way
+	// comparison (P vs local vs test_container_test) actually reasons about.
+	// Recording the snapshot after a failed UpdateIssue would leave P at its
+	// old value while local and the mirror already moved to `desired`,
+	// making DetectDrift compute matching LocalAdded/RemoteAdded deltas and
+	// report a false Conflict -- for a test this very publish call added.
+	if err := p.putPublication(profileID, group.ID, containerKey, desired); err != nil {
+		gr.Error = fmt.Sprintf("record publication snapshot: %v", err)
 		return gr
 	}
 
-	if err := p.putPublication(profileID, group.ID, containerKey, desired); err != nil {
-		gr.Error = fmt.Sprintf("record publication snapshot: %v", err)
+	description := renderDescription(canonicalName, versionName, group.Name, rows)
+	if err := p.Backend.UpdateIssue(ctx, containerKey, map[string]any{"description": description}); err != nil {
+		gr.Error = fmt.Sprintf("update test set description: %v", err)
 		return gr
 	}
 
