@@ -1253,12 +1253,13 @@ func applyMigrations(db *sql.DB) error {
 	// coverage_group_publication (schema v45): records a coverage_param_group's
 	// publication to Xray as a Test Set (the container key and the snapshot of
 	// test keys sent, for later drift detection). Applied UNCONDITIONALLY
-	// (not `if current < 45` gated) for the same shared-version reason as the
-	// requirement/precondition and run-defects blocks above: a parallel branch
-	// bumped schemaVersion to 45 for an unrelated migration, so a DB that
-	// reaches v45 via that branch must still gain this table rather than skip
-	// a version-gated CREATE. CREATE TABLE IF NOT EXISTS makes it idempotent;
-	// fresh installs already have it from baseSchema.
+	// (not `if current < 45` gated), following the same belt-and-braces
+	// pattern used for the requirement/precondition and run-defects blocks
+	// above. Unlike those, this table is brand new, so baseSchema's own
+	// `CREATE TABLE IF NOT EXISTS coverage_group_publication` already
+	// guarantees it exists on every Open() regardless of this block; running
+	// the CREATE again here is simply consistent with the file's convention
+	// and costs nothing since it is idempotent.
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS coverage_group_publication (
 		profile_id      TEXT NOT NULL,
 		group_id        TEXT NOT NULL,

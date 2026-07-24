@@ -45,25 +45,25 @@ func TestMigrationV45CreatesCoverageGroupPublication(t *testing.T) {
 	}
 }
 
-// TestMigrationV45CreatesCoverageGroupPublicationOnVersionCollision reproduces
-// the same cross-branch schema-version collision documented in
-// migration_rundefects_test.go and migration_reqcols_test.go: a shared DB
-// already stamped at the current schema version (as another in-flight branch
-// that also bumped to v45 for an unrelated migration leaves it) but which
-// never actually created coverage_group_publication. Because the CREATE runs
-// unconditionally (not `if current < 45` gated), the table must still appear.
-func TestMigrationV45CreatesCoverageGroupPublicationOnVersionCollision(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "collision.db")
+// TestMigrationV45CoverageGroupPublicationReopenIsIdempotent verifies that a
+// pre-existing database (one that predates v45 and so was created without
+// coverage_group_publication) gains the table on reopen through Open(), that
+// the table is usable, and that repeated Open()/Close() cycles against the
+// same file stay idempotent (no error, no duplicate-table failure, no lost
+// rows).
+func TestMigrationV45CoverageGroupPublicationReopenIsIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reopen.db")
 
-	// Seed a pre-existing DB: schema_version already at 45 (as the other
-	// branch would leave it) but with no coverage_group_publication table.
+	// Seed a pre-existing DB stamped at a schema version before v45, with no
+	// coverage_group_publication table, to simulate an older install being
+	// reopened after upgrading to a build that adds the table.
 	raw, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatalf("open raw: %v", err)
 	}
 	seed := []string{
 		`CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
-		`INSERT INTO meta (key, value) VALUES ('schema_version', '45')`,
+		`INSERT INTO meta (key, value) VALUES ('schema_version', '44')`,
 	}
 	for _, s := range seed {
 		if _, err := raw.Exec(s); err != nil {
@@ -72,8 +72,8 @@ func TestMigrationV45CreatesCoverageGroupPublicationOnVersionCollision(t *testin
 	}
 	raw.Close()
 
-	// Open through the store: applyMigrations must create the table even
-	// though schema_version already reads 45.
+	// Open through the store: this must create coverage_group_publication for
+	// the older DB and advance schema_version.
 	st, err := Open(path)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
