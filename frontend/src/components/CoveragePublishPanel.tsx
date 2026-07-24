@@ -32,16 +32,16 @@ const STATE_BADGE_CLASS: Record<CoveragePublishState, string> = {
 // the version currently selected in CoverageView: a per-group status chip
 // (Not published / Published / Local changes / Drift / Conflict), a "Publish
 // to Xray" action that surfaces partial failures explicitly (one group
-// failing never hides the others' results), and a drift panel — collapsed by
-// default, since InSync/NotPublished is the common case — listing exactly
-// what changed in Jira per group. A test added to a Test Set in Jira carries
-// no value-level information (Xray can't express which parameter value it
+// failing never hides the others' results), and a drift panel, collapsed by
+// default since InSync/NotPublished is the common case, listing exactly what
+// changed in Jira per group. A test added to a Test Set in Jira carries no
+// value-level information (Xray can't express which parameter value it
 // covers), so the drift panel only ever explains that and points at the
 // existing "Map…" test picker in the Coverage tab; it never offers an
 // "accept remote" action that would have to guess a value.
 //
 // A separate file rather than folding into CoverageView.tsx, which is
-// already large — this keeps the publish/drift concern (its own fetch, its
+// already large: this keeps the publish/drift concern (its own fetch, its
 // own busy-state, its own honest-limit copy) self-contained and easy to gate
 // or remove as a unit.
 export function CoveragePublishPanel({ profileId, versionId }: Props) {
@@ -148,7 +148,7 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
         <div className={result.failed > 0 ? "cov-error" : "cov-notice"}>
           <div className="cov-publish-result-head">
             <span>
-              Publish complete — {result.created} created, {result.updated} updated
+              Publish complete: {result.created} created, {result.updated} updated
               {result.failed > 0 ? `, ${result.failed} failed` : ""}.
             </span>
             <button className="btn btn-ghost" onClick={() => setResult(null)} title="Dismiss">
@@ -201,7 +201,7 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
 }
 
 // DriftDetail renders what changed on each side since the last publish for
-// one Drift or Conflict group. It only ever explains — it has no "accept
+// one Drift or Conflict group. It only ever explains: it has no "accept
 // remote" action, because a test added to the Test Set in Jira carries no
 // value-level information for this package to act on (see reconcile.go).
 function DriftDetail({ gs }: { gs: CoveragePublishGroupStatus }) {
@@ -215,14 +215,14 @@ function DriftDetail({ gs }: { gs: CoveragePublishGroupStatus }) {
       <p className="cov-muted">
         Jira's Test Set{gs.containerKey ? ` (${gs.containerKey})` : ""} no longer matches the last
         published snapshot
-        {gs.state === "Conflict" ? " — and the local coverage model changed too" : ""}.
+        {gs.state === "Conflict" ? ", and the local coverage model changed too" : ""}.
       </p>
       {remoteAdded.length > 0 && (
         <div className="cov-publish-drift-section">
           <strong>Added in Jira:</strong> <span className="cov-tests">{remoteAdded.join(", ")}</span>
           <p className="cov-muted">
             Xray has no way to record which parameter value {remoteAdded.length === 1 ? "this test" : "these tests"}{" "}
-            cover — a test added directly to a Test Set in Jira carries no value-level information.
+            cover: a test added directly to a Test Set in Jira carries no value-level information.
             Assign {remoteAdded.length === 1 ? "it" : "them"} yourself: on the Coverage tab, open the
             covering value's row and use "Map…" to attach the test.
           </p>
@@ -243,7 +243,7 @@ function DriftDetail({ gs }: { gs: CoveragePublishGroupStatus }) {
       )}
       <p className="cov-muted">
         Republishing this group overwrites the Test Set's membership with the local coverage
-        model — any test added directly in Jira and not yet mapped to a value above will be
+        model: any test added directly in Jira and not yet mapped to a value above will be
         removed from the Test Set.
       </p>
     </div>

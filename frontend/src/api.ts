@@ -363,7 +363,7 @@ export interface CoverageImportSummary {
   warnings: string[];
 }
 
-// Coverage publish to Xray — mirrors internal/coveragepublish's ReconcileState,
+// Coverage publish to Xray: mirrors internal/coveragepublish's ReconcileState,
 // GroupStatus (DetectDrift's per-group reconcile result) and Result/GroupResult
 // (PublishGroups' per-run outcome). See reconcile.go's doc comments for exactly
 // what each state means before touching how these render.
