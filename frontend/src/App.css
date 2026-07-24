@@ -5784,6 +5784,28 @@ tr.row-checked:hover {
 .cov-welcome-actions { display: flex; gap: 10px; margin: 16px 0 8px; flex-wrap: wrap; }
 .cov-addgroup { display: flex; gap: 6px; margin-top: 8px; max-width: 360px; }
 
+/* ─── Coverage publish to Xray (group -> Test Set) + drift panel ─────────── */
+.cov-publish { margin-bottom: 8px; }
+.cov-publish-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.cov-publish-head .cov-muted { flex: 1; min-width: 120px; }
+.cov-badge-pub-notpublished { background: #6b728022; color: var(--text-muted); }
+.cov-badge-pub-insync       { background: #1f7a3d22; color: #1f7a3d; }
+.cov-badge-pub-local        { background: #3b5bdb22; color: var(--accent); }
+.cov-badge-pub-drift        { background: #a9740022; color: #a97400; }
+.cov-badge-pub-conflict     { background: #b4242422; color: #b42424; }
+.cov-publish-result-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cov-publish-fail-list { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-muted); }
+.cov-publish-list { list-style: none; margin: 6px 0 0; padding: 0; border-top: 1px solid var(--border-subtle); }
+.cov-publish-item { padding: 6px 0; border-bottom: 1px solid var(--border-subtle); }
+.cov-publish-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cov-publish-drift {
+  margin: 6px 0 4px 4px; padding: 8px 10px; background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle); border-radius: 4px; font-size: 12px;
+}
+.cov-publish-drift p { margin: 0 0 6px; line-height: 1.5; }
+.cov-publish-drift p:last-child { margin-bottom: 0; }
+.cov-publish-drift-section { margin-bottom: 6px; }
+
 /* Coverage modal size modifiers (use standard pending-head / cov-body / pending-actions structure). */
 .map-tests-modal { width: min(92vw, 760px); display: flex; flex-direction: column; max-height: 85vh; }
 .members-modal { width: min(92vw, 560px); display: flex; flex-direction: column; max-height: 85vh; }

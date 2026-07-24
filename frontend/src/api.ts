@@ -363,6 +363,45 @@ export interface CoverageImportSummary {
   warnings: string[];
 }
 
+// Coverage publish to Xray — mirrors internal/coveragepublish's ReconcileState,
+// GroupStatus (DetectDrift's per-group reconcile result) and Result/GroupResult
+// (PublishGroups' per-run outcome). See reconcile.go's doc comments for exactly
+// what each state means before touching how these render.
+export type CoveragePublishState =
+  | "NotPublished"
+  | "InSync"
+  | "LocalChanges"
+  | "Drift"
+  | "Conflict";
+
+export interface CoveragePublishGroupStatus {
+  groupId: string;
+  groupName: string;
+  containerKey: string;
+  state: CoveragePublishState;
+  localAdded: string[];
+  localRemoved: string[];
+  remoteAdded: string[];
+  remoteRemoved: string[];
+}
+
+export interface CoveragePublishGroupResult {
+  groupId: string;
+  groupName: string;
+  containerKey: string;
+  created: boolean;
+  added: string[];
+  removed: string[];
+  error?: string;
+}
+
+export interface CoveragePublishResult {
+  created: number;
+  updated: number;
+  failed: number;
+  groups: CoveragePublishGroupResult[];
+}
+
 // ProjectConfig mirrors coverage.ProjectConfig — one in-scope project for the Coverage Map.
 export interface ProjectConfig {
   projectKey: string;

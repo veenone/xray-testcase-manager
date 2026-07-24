@@ -44,6 +44,7 @@ import { VersionDashboard } from "./VersionDashboard";
 import { CoverageMap } from "./CoverageMap";
 import { BrowseTestsPicker } from "./CoverageTestPicker";
 import { CoverageGuide } from "./CoverageGuide";
+import { CoveragePublishPanel } from "./CoveragePublishPanel";
 
 interface Props {
   profileId: string;
@@ -501,6 +502,8 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
                 ⚠ {stale.length} mapping{stale.length === 1 ? "" : "s"} reference tests no longer in the local cache (kept, not counted).
               </div>
             )}
+
+            <CoveragePublishPanel profileId={profileId} versionId={versionId} />
 
             <nav className="cov-tabs">
               <button
