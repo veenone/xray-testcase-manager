@@ -50,17 +50,19 @@ func containsContainerKind(kinds []string, kind string) bool {
 // than aborting the run (coveragepublish.PublishGroups). Returns
 // backend.ErrUnsupported when the profile's backend has no Test Set
 // container kind (e.g. a Kiwi connection).
-func (a *App) PublishCoverageGroups(profileID, versionID string) (coveragepublish.Result, error) {
+func (a *App) PublishCoverageGroups(profileID, versionID string) (result coveragepublish.Result, err error) {
+	defer recoverToError("PublishCoverageGroups", &err)
+	var empty coveragepublish.Result
 	if err := a.requireStore(); err != nil {
-		return coveragepublish.Result{}, err
+		return empty, err
 	}
 	b, err := a.requireContainerCapability(profileID)
 	if err != nil {
-		return coveragepublish.Result{}, err
+		return empty, err
 	}
 	p, err := a.profiles.Get(profileID)
 	if err != nil {
-		return coveragepublish.Result{}, err
+		return empty, err
 	}
 	pub := coveragepublish.NewPublisher(a.store, a.cov, b)
 	return pub.PublishGroups(a.ctx, profileID, p.ProjectKey, versionID)
