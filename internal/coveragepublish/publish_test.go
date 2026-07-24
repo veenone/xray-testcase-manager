@@ -1,0 +1,417 @@
+package coveragepublish
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"sort"
+	"testing"
+
+	"xray-test-manager/internal/coverage"
+	"xray-test-manager/internal/store"
+	"xray-test-manager/internal/testrepo"
+)
+
+// --- fake backend ------------------------------------------------------
+
+type addCall struct {
+	containerKey string
+	testKeys     []string
+}
+
+type fakeBackend struct {
+	createCalls int
+	nextID      int
+
+	addCalls    []addCall
+	removeCalls []addCall
+
+	createErr      error
+	addErr         error
+	removeErr      error
+	updateIssueErr error
+
+	failCreateOnCall int // 1-indexed; 0 means never fail
+
+	lastDescription string
+}
+
+func newFakeBackend() *fakeBackend {
+	return &fakeBackend{}
+}
+
+func (f *fakeBackend) CreateContainer(ctx context.Context, projectKey, kind, summary string) (string, error) {
+	f.createCalls++
+	if f.failCreateOnCall != 0 && f.createCalls == f.failCreateOnCall {
+		return "", errors.New("create failed (injected)")
+	}
+	if f.createErr != nil {
+		return "", f.createErr
+	}
+	f.nextID++
+	return fmt.Sprintf("%s-TS%d", projectKey, f.nextID), nil
+}
+
+func (f *fakeBackend) AddTestsToContainer(ctx context.Context, kind, containerKey string, testKeys []string) error {
+	if f.addErr != nil {
+		return f.addErr
+	}
+	f.addCalls = append(f.addCalls, addCall{containerKey, append([]string(nil), testKeys...)})
+	return nil
+}
+
+func (f *fakeBackend) RemoveTestsFromContainer(ctx context.Context, kind, containerKey string, testKeys []string) error {
+	if f.removeErr != nil {
+		return f.removeErr
+	}
+	f.removeCalls = append(f.removeCalls, addCall{containerKey, append([]string(nil), testKeys...)})
+	return nil
+}
+
+func (f *fakeBackend) UpdateIssue(ctx context.Context, key string, fields map[string]any) error {
+	if f.updateIssueErr != nil {
+		return f.updateIssueErr
+	}
+	if d, ok := fields["description"].(string); ok {
+		f.lastDescription = d
+	}
+	return nil
+}
+
+// --- test fixtures -------------------------------------------------------
+
+// newTestPublisher opens a fresh on-disk store, wires a coverage.Module over
+// it, and returns a Publisher wired to the given (fake) backend, plus the
+// store and module for seeding fixtures.
+func newTestPublisher(t *testing.T, be Backend) (*Publisher, *store.Store, *coverage.Module) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "pub.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	cov := coverage.New(st, testrepo.NewRepository(st))
+	return NewPublisher(st, cov, be), st, cov
+}
+
+func seedTestCase(t *testing.T, st *store.Store, profileID, testKey string) {
+	t.Helper()
+	if _, err := st.DB().Exec(
+		`INSERT INTO test_case (profile_id, jira_key, jira_id, summary) VALUES (?, ?, '1', ?)`,
+		profileID, testKey, "Test "+testKey); err != nil {
+		t.Fatalf("seed test_case %s: %v", testKey, err)
+	}
+}
+
+// mirrorMembership seeds test_container_test rows for containerKey, as if a
+// pull-sync had just run and pulled back the membership a prior publish call
+// wrote to the (fake) backend. The real engine only ever reads this table for
+// "current membership" (never a live backend call, per the coverage-publish
+// task brief), so tests that want a second PublishGroups call to see a
+// non-empty starting membership must seed it explicitly, the same way a real
+// sync would populate it between two user-triggered publishes.
+func mirrorMembership(t *testing.T, st *store.Store, profileID, containerKey string, testKeys []string) {
+	t.Helper()
+	if _, err := st.DB().Exec(`DELETE FROM test_container_test WHERE profile_id = ? AND container_key = ?`, profileID, containerKey); err != nil {
+		t.Fatalf("clear test_container_test: %v", err)
+	}
+	for _, k := range testKeys {
+		if _, err := st.DB().Exec(
+			`INSERT INTO test_container_test (profile_id, container_key, test_key) VALUES (?, ?, ?)`,
+			profileID, containerKey, k); err != nil {
+			t.Fatalf("seed test_container_test: %v", err)
+		}
+	}
+}
+
+// buildGroup creates a canonical requirement with one version and one group
+// holding a single parameter with one value per label. Returns the version
+// id, the group id, and the value ids in the same order as labels.
+func buildGroup(t *testing.T, cov *coverage.Module, profileID, canonicalName, versionName, groupName string, sortOrder int, labels []string) (versionID, groupID string, valueIDs []string) {
+	t.Helper()
+	cid, err := cov.CreateCanonical(profileID, canonicalName, "cat", "")
+	if err != nil {
+		t.Fatalf("create canonical: %v", err)
+	}
+	versionID, err = cov.CreateVersion(profileID, cid, versionName, "stable", "")
+	if err != nil {
+		t.Fatalf("create version: %v", err)
+	}
+	groupID, err = cov.UpsertNode(profileID, coverage.NodeEdit{Kind: "group", VersionID: versionID, Name: groupName, SortOrder: sortOrder})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	pid, err := cov.UpsertNode(profileID, coverage.NodeEdit{Kind: "parameter", GroupID: groupID, Name: "pParam"})
+	if err != nil {
+		t.Fatalf("create parameter: %v", err)
+	}
+	for i, label := range labels {
+		vid, err := cov.UpsertNode(profileID, coverage.NodeEdit{Kind: "value", ParameterID: pid, Name: label, IsRequired: true, SortOrder: i})
+		if err != nil {
+			t.Fatalf("create value %q: %v", label, err)
+		}
+		valueIDs = append(valueIDs, vid)
+	}
+	return versionID, groupID, valueIDs
+}
+
+// addGroupToVersion adds a second group (same shape as buildGroup) under an
+// already-created version, for multi-group tests.
+func addGroupToVersion(t *testing.T, cov *coverage.Module, profileID, versionID, groupName string, sortOrder int, labels []string) (groupID string, valueIDs []string) {
+	t.Helper()
+	groupID, err := cov.UpsertNode(profileID, coverage.NodeEdit{Kind: "group", VersionID: versionID, Name: groupName, SortOrder: sortOrder})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	pid, err := cov.UpsertNode(profileID, coverage.NodeEdit{Kind: "parameter", GroupID: groupID, Name: "pParam"})
+	if err != nil {
+		t.Fatalf("create parameter: %v", err)
+	}
+	for i, label := range labels {
+		vid, err := cov.UpsertNode(profileID, coverage.NodeEdit{Kind: "value", ParameterID: pid, Name: label, IsRequired: true, SortOrder: i})
+		if err != nil {
+			t.Fatalf("create value %q: %v", label, err)
+		}
+		valueIDs = append(valueIDs, vid)
+	}
+	return groupID, valueIDs
+}
+
+func sorted(ss []string) []string {
+	out := append([]string(nil), ss...)
+	sort.Strings(out)
+	return out
+}
+
+// --- tests -----------------------------------------------------------------
+
+func TestPublishGroups_CreatesOneTestSetPerGroupWithMembers(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, groupID, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS", "ED25519"})
+	seedTestCase(t, st, p, "QA-1")
+	seedTestCase(t, st, p, "QA-2")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cov.SetValueTests(p, valueIDs[1], []string{"QA-2"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	if result.Created != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v, want 1 created, 0 failed", result)
+	}
+	if be.createCalls != 1 {
+		t.Fatalf("createCalls = %d, want 1", be.createCalls)
+	}
+	gr := result.Groups[0]
+	if gr.GroupID != groupID || gr.ContainerKey == "" {
+		t.Fatalf("group result = %+v", gr)
+	}
+	if got := sorted(gr.Added); len(got) != 2 || got[0] != "QA-1" || got[1] != "QA-2" {
+		t.Fatalf("added = %v, want [QA-1 QA-2]", got)
+	}
+	if len(be.addCalls) != 1 || be.addCalls[0].containerKey != gr.ContainerKey {
+		t.Fatalf("addCalls = %+v", be.addCalls)
+	}
+}
+
+func TestPublishGroups_RunningTwiceCreatesNothingNew(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("first PublishGroups: %v", err)
+	}
+	if first.Created != 1 {
+		t.Fatalf("first run created = %d, want 1", first.Created)
+	}
+	containerKey := first.Groups[0].ContainerKey
+
+	// Simulate the next pull-sync mirroring what was just published.
+	mirrorMembership(t, st, p, containerKey, []string{"QA-1"})
+
+	second, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("second PublishGroups: %v", err)
+	}
+	if be.createCalls != 1 {
+		t.Fatalf("createCalls after second run = %d, want 1 (no duplicate Test Set)", be.createCalls)
+	}
+	if second.Created != 0 || second.Updated != 1 {
+		t.Fatalf("second result = %+v, want 0 created, 1 updated", second)
+	}
+	if len(second.Groups[0].Added) != 0 || len(second.Groups[0].Removed) != 0 {
+		t.Fatalf("second run diff = added %v removed %v, want none", second.Groups[0].Added, second.Groups[0].Removed)
+	}
+	if second.Groups[0].ContainerKey != containerKey {
+		t.Fatalf("second run container = %s, want reused %s", second.Groups[0].ContainerKey, containerKey)
+	}
+}
+
+func TestPublishGroups_ResumesAfterDescriptionWriteFails(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	be.updateIssueErr = errors.New("jira unavailable")
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("first PublishGroups: %v", err)
+	}
+	if first.Failed != 1 || first.Groups[0].Error == "" {
+		t.Fatalf("first result = %+v, want a failed group", first)
+	}
+	if be.createCalls != 1 {
+		t.Fatalf("createCalls after first (failed) run = %d, want 1", be.createCalls)
+	}
+	containerKey := first.Groups[0].ContainerKey
+	if containerKey == "" {
+		t.Fatalf("expected the Test Set key to be recorded even though the description write failed")
+	}
+
+	// The backend recovers; re-run.
+	be.updateIssueErr = nil
+	second, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("second PublishGroups: %v", err)
+	}
+	if second.Failed != 0 {
+		t.Fatalf("second result = %+v, want no failures", second)
+	}
+	if be.createCalls != 1 {
+		t.Fatalf("createCalls after re-run = %d, want 1 total (no duplicate Test Set)", be.createCalls)
+	}
+	if second.Groups[0].ContainerKey != containerKey {
+		t.Fatalf("second run container = %s, want reused %s", second.Groups[0].ContainerKey, containerKey)
+	}
+}
+
+func TestPublishGroups_MembershipDeltaAddsAndRemoves(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS", "ED25519"})
+	seedTestCase(t, st, p, "QA-1")
+	seedTestCase(t, st, p, "QA-2")
+	seedTestCase(t, st, p, "QA-3")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cov.SetValueTests(p, valueIDs[1], []string{"QA-2"}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("first PublishGroups: %v", err)
+	}
+	containerKey := first.Groups[0].ContainerKey
+	mirrorMembership(t, st, p, containerKey, []string{"QA-1", "QA-2"})
+
+	// Drift: drop QA-2's mapping, add QA-3 in its place.
+	if err := cov.SetValueTests(p, valueIDs[1], []string{"QA-3"}); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("second PublishGroups: %v", err)
+	}
+	gr := second.Groups[0]
+	if got := sorted(gr.Added); len(got) != 1 || got[0] != "QA-3" {
+		t.Fatalf("added = %v, want [QA-3]", got)
+	}
+	if got := sorted(gr.Removed); len(got) != 1 || got[0] != "QA-2" {
+		t.Fatalf("removed = %v, want [QA-2]", got)
+	}
+	if len(be.addCalls) != 2 || len(be.removeCalls) != 1 {
+		t.Fatalf("addCalls = %+v, removeCalls = %+v", be.addCalls, be.removeCalls)
+	}
+	lastAdd := be.addCalls[len(be.addCalls)-1]
+	if len(lastAdd.testKeys) != 1 || lastAdd.testKeys[0] != "QA-3" {
+		t.Fatalf("second addCall = %+v, want [QA-3]", lastAdd)
+	}
+	lastRemove := be.removeCalls[len(be.removeCalls)-1]
+	if len(lastRemove.testKeys) != 1 || lastRemove.testKeys[0] != "QA-2" {
+		t.Fatalf("removeCall = %+v, want [QA-2]", lastRemove)
+	}
+}
+
+func TestPublishGroups_OneFailingGroupDoesNotAbortRun(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	be.failCreateOnCall = 1 // the first group's CreateContainer fails; the second must still run
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDsA := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	_, valueIDsB := addGroupToVersion(t, cov, p, versionID, "Session", 1, []string{"Valid"})
+	seedTestCase(t, st, p, "QA-1")
+	seedTestCase(t, st, p, "QA-2")
+	if err := cov.SetValueTests(p, valueIDsA[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cov.SetValueTests(p, valueIDsB[0], []string{"QA-2"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	if len(result.Groups) != 2 {
+		t.Fatalf("groups = %d, want 2", len(result.Groups))
+	}
+	if result.Failed != 1 || result.Created != 1 {
+		t.Fatalf("result = %+v, want 1 failed, 1 created", result)
+	}
+	if result.Groups[0].Error == "" {
+		t.Fatalf("expected the first group (Mechanism, sort order 0) to have failed")
+	}
+	if result.Groups[1].Error != "" || result.Groups[1].ContainerKey == "" {
+		t.Fatalf("second group = %+v, want it published despite the first group's failure", result.Groups[1])
+	}
+}
+
+func TestPublishGroups_StaleTestExcludedFromDesiredSet(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1", "QA-DELETED"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	got := sorted(result.Groups[0].Added)
+	if len(got) != 1 || got[0] != "QA-1" {
+		t.Fatalf("added = %v, want only [QA-1] (QA-DELETED has no test_case row)", got)
+	}
+}
