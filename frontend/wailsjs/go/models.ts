@@ -89,11 +89,11 @@ export namespace bridge {
 	    localKey: string;
 	    error: string;
 	    targetKey?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new PublishFailure(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.localKey = source["localKey"];
@@ -824,6 +824,97 @@ export namespace coverage {
 	        this.status = source["status"];
 	        this.memberCount = source["memberCount"];
 	    }
+	}
+
+}
+
+export namespace coveragepublish {
+	
+	export class GroupResult {
+	    groupId: string;
+	    groupName: string;
+	    containerKey: string;
+	    created: boolean;
+	    added: string[];
+	    removed: string[];
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GroupResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groupId = source["groupId"];
+	        this.groupName = source["groupName"];
+	        this.containerKey = source["containerKey"];
+	        this.created = source["created"];
+	        this.added = source["added"];
+	        this.removed = source["removed"];
+	        this.error = source["error"];
+	    }
+	}
+	export class GroupStatus {
+	    groupId: string;
+	    groupName: string;
+	    containerKey: string;
+	    state: string;
+	    localAdded: string[];
+	    localRemoved: string[];
+	    remoteAdded: string[];
+	    remoteRemoved: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new GroupStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groupId = source["groupId"];
+	        this.groupName = source["groupName"];
+	        this.containerKey = source["containerKey"];
+	        this.state = source["state"];
+	        this.localAdded = source["localAdded"];
+	        this.localRemoved = source["localRemoved"];
+	        this.remoteAdded = source["remoteAdded"];
+	        this.remoteRemoved = source["remoteRemoved"];
+	    }
+	}
+	export class Result {
+	    created: number;
+	    updated: number;
+	    failed: number;
+	    groups: GroupResult[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.created = source["created"];
+	        this.updated = source["updated"];
+	        this.failed = source["failed"];
+	        this.groups = this.convertValues(source["groups"], GroupResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

@@ -9,6 +9,7 @@ import {profile} from '../models';
 import {coverage} from '../models';
 import {jira} from '../models';
 import {backend} from '../models';
+import {coveragepublish} from '../models';
 import {settings} from '../models';
 
 export function AddCalledTestStep(arg1:string,arg2:string,arg3:string):Promise<testrepo.Step>;
@@ -193,6 +194,8 @@ export function GetContainerBoard(arg1:string,arg2:string):Promise<testrepo.Test
 
 export function GetCoverageProjectStatus(arg1:string):Promise<Array<coverage.ProjectCoverageRow>>;
 
+export function GetCoveragePublishStatus(arg1:string,arg2:string):Promise<Array<coveragepublish.GroupStatus>>;
+
 export function GetCoverageRelationSankey(arg1:string):Promise<testrepo.Sankey>;
 
 export function GetCoverageReport(arg1:string,arg2:string):Promise<coverage.CoverageReport>;
@@ -330,6 +333,8 @@ export function ListVersions(arg1:string,arg2:string):Promise<Array<coverage.Ver
 export function MoveTestToFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function PreviewImport(arg1:string,arg2:boolean):Promise<testrepo.ImportPreview>;
+
+export function PublishCoverageGroups(arg1:string,arg2:string):Promise<coveragepublish.Result>;
 
 export function PublishToTarget(arg1:string,arg2:string,arg3:string):Promise<bridge.PublishResult>;
 

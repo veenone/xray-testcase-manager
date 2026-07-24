@@ -206,6 +206,9 @@ export {
   SetCoverageProjects,
   GetCoverageProjectStatus,
   GetCoverageRelationSankey,
+  // Coverage publish to Xray (coverage group -> Test Set) + drift detection
+  PublishCoverageGroups,
+  GetCoveragePublishStatus,
   // Versioning + Change Requests (Topic 2)
   ListVersions,
   CreateVersion,

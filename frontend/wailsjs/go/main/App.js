@@ -366,6 +366,10 @@ export function GetCoverageProjectStatus(arg1) {
   return window['go']['main']['App']['GetCoverageProjectStatus'](arg1);
 }
 
+export function GetCoveragePublishStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetCoveragePublishStatus'](arg1, arg2);
+}
+
 export function GetCoverageRelationSankey(arg1) {
   return window['go']['main']['App']['GetCoverageRelationSankey'](arg1);
 }
@@ -640,6 +644,10 @@ export function MoveTestToFolder(arg1, arg2, arg3) {
 
 export function PreviewImport(arg1, arg2) {
   return window['go']['main']['App']['PreviewImport'](arg1, arg2);
+}
+
+export function PublishCoverageGroups(arg1, arg2) {
+  return window['go']['main']['App']['PublishCoverageGroups'](arg1, arg2);
 }
 
 export function PublishToTarget(arg1, arg2, arg3) {
