@@ -22,6 +22,7 @@ import {
   SeedDemoCoverageExample,
   SeedPKCS11Reference,
   SeedEUICCReference,
+  SeedEUICCASPICEAssessment,
   SeedASPICEReference,
   ListRequirementsWithCoverage,
   errMsg,
@@ -319,6 +320,26 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
     }
   }
 
+  async function assessAspice() {
+    setBusy(true);
+    setNotice("");
+    setError("");
+    try {
+      const s = await SeedEUICCASPICEAssessment(profileId);
+      await loadList();
+      onChanged?.();
+      setNotice(
+        `Assessed the eUICC dataset against ASPICE — ${s.processes} processes, ` +
+          `${s.mappings} practices with evidence, ${s.gaps} gaps. ` +
+          `Sync the demo-euicc profile first if you haven't already.`,
+      );
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addGroup() {
     const name = newGroupName.trim();
     if (!name || !selected || !versionId) return;
@@ -463,6 +484,15 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
                         : demoVariant === "aspice"
                           ? "Load ASPICE coverage"
                           : "Load PKCS#11 coverage"}
+                    </button>
+                  )}
+                  {demoVariant === "euicc" && (
+                    <button
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => void assessAspice()}
+                    >
+                      Assess against ASPICE
                     </button>
                   )}
                 </div>

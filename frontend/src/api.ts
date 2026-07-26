@@ -201,6 +201,7 @@ export {
   SeedDemoCoverageExample,
   SeedPKCS11Reference,
   SeedEUICCReference,
+  SeedEUICCASPICEAssessment,
   SeedASPICEReference,
   // Coverage Map (project-level panel + relation Sankey + config)
   ListCoverageProjects,
