@@ -216,6 +216,26 @@ export namespace connection {
 
 export namespace coverage {
 	
+	export class ASPICEAssessmentSummary {
+	    processes: number;
+	    members: number;
+	    tests: number;
+	    mappings: number;
+	    gaps: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ASPICEAssessmentSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.processes = source["processes"];
+	        this.members = source["members"];
+	        this.tests = source["tests"];
+	        this.mappings = source["mappings"];
+	        this.gaps = source["gaps"];
+	    }
+	}
 	export class ASPICESeedSummary {
 	    features: number;
 	    requirements: number;

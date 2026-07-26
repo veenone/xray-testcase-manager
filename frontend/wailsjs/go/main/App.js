@@ -714,6 +714,10 @@ export function SeedDemoCoverageExample(arg1) {
   return window['go']['main']['App']['SeedDemoCoverageExample'](arg1);
 }
 
+export function SeedEUICCASPICEAssessment(arg1) {
+  return window['go']['main']['App']['SeedEUICCASPICEAssessment'](arg1);
+}
+
 export function SeedEUICCReference(arg1) {
   return window['go']['main']['App']['SeedEUICCReference'](arg1);
 }

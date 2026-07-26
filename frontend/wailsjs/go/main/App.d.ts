@@ -367,6 +367,8 @@ export function SeedASPICEReference(arg1:string):Promise<coverage.ASPICESeedSumm
 
 export function SeedDemoCoverageExample(arg1:string):Promise<string>;
 
+export function SeedEUICCASPICEAssessment(arg1:string):Promise<coverage.ASPICEAssessmentSummary>;
+
 export function SeedEUICCReference(arg1:string):Promise<coverage.EUICCSeedSummary>;
 
 export function SeedPKCS11Reference(arg1:string):Promise<coverage.PKCSSeedSummary>;
