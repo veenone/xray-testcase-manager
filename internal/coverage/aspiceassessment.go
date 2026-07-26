@@ -177,6 +177,9 @@ func (m *Module) assessOneProcess(profileID string, f pkcsFeature, satisfied map
 			}
 			// Curated verdict: satisfied Base Practices get eUICC test evidence;
 			// the rest are gaps. (The catalog's own val.gap marker is ignored.)
+			// If the eUICC test pool is empty (profile not synced), even a
+			// satisfied practice falls through to the gap branch — the whole
+			// assessment then reads 0%, the intended "sync first" degradation.
 			if satisfied[val.label] && len(testKeys) > 0 {
 				tk := testKeys[*ti%len(testKeys)]
 				*ti++

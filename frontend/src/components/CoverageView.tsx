@@ -486,7 +486,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
                           : "Load PKCS#11 coverage"}
                     </button>
                   )}
-                  {demoVariant === "euicc" && (
+                  {isDemo && demoVariant === "euicc" && (
                     <button
                       className="btn"
                       disabled={busy}
