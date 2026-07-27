@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -41,10 +42,16 @@ func TestCreateContainerDemoDistinctSummariesGetDistinctKeys(t *testing.T) {
 	}
 }
 
-// TestCreateContainerDemoSameSummaryIsDeterministic verifies that calling
-// CreateContainer twice with the same summary yields the same key, since the
-// demo client is stateless and must stay deterministic across calls.
-func TestCreateContainerDemoSameSummaryIsDeterministic(t *testing.T) {
+// TestCreateContainerDemoSameSummaryGetsDistinctKeys verifies that calling
+// CreateContainer twice with the SAME summary still yields two different
+// keys. The board Test Set create flow lets a user create two containers of
+// the same kind and project with an identical summary (CreateContainerAllocation
+// in internal/testrepo has no uniqueness validation), and commitContainerCreate
+// renames a local placeholder container to whatever key CreateContainer
+// returns. If two calls with the same summary ever returned the same key
+// again, the second rename would collide with the first on test_container's
+// (profile_id, jira_key) primary key.
+func TestCreateContainerDemoSameSummaryGetsDistinctKeys(t *testing.T) {
 	c := NewClient("demo", "token")
 	ctx := context.Background()
 
@@ -56,7 +63,27 @@ func TestCreateContainerDemoSameSummaryIsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateContainer (second): %v", err)
 	}
-	if first != second {
-		t.Fatalf("same summary produced different keys: %q vs %q", first, second)
+	if first == second {
+		t.Fatalf("same summary produced the same key twice: %q", first)
+	}
+}
+
+// TestCreateContainerDemoKeyShape verifies the returned key carries the
+// distinct per-kind infix (so a demo-created key can never collide with a
+// ListContainers-generated -TS-/-TP-/-TE- key or a generated test key) and
+// defaults an empty projectKey to "DEMO".
+func TestCreateContainerDemoKeyShape(t *testing.T) {
+	c := NewClient("demo", "token")
+	ctx := context.Background()
+
+	key, err := c.CreateContainer(ctx, "", KindTestExec, "Login Feature v1.0 - Group A")
+	if err != nil {
+		t.Fatalf("CreateContainer: %v", err)
+	}
+	if !strings.HasPrefix(key, "DEMO-") {
+		t.Fatalf("expected key to default projectKey to DEMO, got %q", key)
+	}
+	if !strings.Contains(key, "CVTE") {
+		t.Fatalf("expected key to carry the testexec infix CVTE, got %q", key)
 	}
 }

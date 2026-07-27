@@ -586,11 +586,13 @@ func containerIssueType(kind string) (string, error) {
 
 // CreateContainer creates a new Test Set, Test Plan or Test Execution issue and
 // returns its key (FR-3.4–3.6). Demo URLs short-circuit to a no-op that still
-// returns a real, non-empty key: a deterministic hash of summary (see
-// demoCreatedContainerKey), since callers (e.g. the coverage publish engine)
-// treat an empty key as a failed create. The demo backend has no persistence,
-// so a container created this way is not reflected in a subsequent
-// ListContainers call — the placeholder is reconciled on the next full sync.
+// returns a real, non-empty, per-call-unique key (see demoCreatedContainerKey),
+// since callers (e.g. the coverage publish engine and the board Test Set create
+// flow) treat an empty key as a failed create, and a key shared between two
+// calls would collide when the board flow renames a local placeholder
+// container to it. The demo backend has no persistence, so a container
+// created this way is not reflected in a subsequent ListContainers call; the
+// placeholder is reconciled on the next full sync.
 //
 // Maps to POST /rest/api/2/issue with the matching issue type. NOTE(xtm):
 // required fields beyond summary vary per project/screen and may need to be

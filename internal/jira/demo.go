@@ -2,9 +2,9 @@ package jira
 
 import (
 	"fmt"
-	"hash/fnv"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -805,21 +805,29 @@ func demoContainerKeyInfix(kind string) string {
 	return "CVXX"
 }
 
-// demoCreatedContainerKey deterministically derives a demo container key for
-// a newly created Test Set / Plan / Execution from its project, kind and
-// summary. The demo client is stateless (no persistence across calls), so
-// the key cannot come from a counter; instead it is an FNV-1a hash of the
-// summary, which is unique per publish group (the coverage publish title is
-// "<Canonical> <Version> - <Group>") and stable across calls for the same
-// summary. If projectKey is empty it defaults to "DEMO", matching
+// demoCreatedContainerCounter hands out a fresh number to every demo
+// CreateContainer call, process-wide. The demo client is stateless (no
+// persistence across calls), so the only way to guarantee a distinct key per
+// call — rather than per summary — is a counter: two containers created with
+// the same summary (an ordinary, unvalidated action from the board create
+// flow) must still get different keys, or the second RenameContainer would
+// collide with the first on test_container's (profile_id, jira_key) primary
+// key.
+var demoCreatedContainerCounter atomic.Int64
+
+// demoCreatedContainerKey mints a fresh demo container key for a newly
+// created Test Set / Plan / Execution, unique to this call. It does not
+// depend on summary (or anything else about the call) beyond project and
+// kind: uniqueness comes from demoCreatedContainerCounter, not from hashing
+// the input, so two calls with an identical summary still get distinct
+// keys. If projectKey is empty it defaults to "DEMO", matching
 // demoContainersAndLinks.
-func demoCreatedContainerKey(projectKey, kind, summary string) string {
+func demoCreatedContainerKey(projectKey, kind, _ string) string {
 	if projectKey == "" {
 		projectKey = "DEMO"
 	}
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(summary))
-	return fmt.Sprintf("%s-%s-%d", projectKey, demoContainerKeyInfix(kind), h.Sum32())
+	n := demoCreatedContainerCounter.Add(1)
+	return fmt.Sprintf("%s-%s-%d", projectKey, demoContainerKeyInfix(kind), n)
 }
 
 // demoPreconditionsAndLinks returns the demo precondition master list plus
