@@ -154,8 +154,9 @@ func (p *Publisher) publishOne(ctx context.Context, profileID, projectKey, canon
 		return gr
 	}
 
+	title := fmt.Sprintf("%s %s - %s", canonicalName, versionName, group.Name)
+
 	if !existed {
-		title := fmt.Sprintf("%s %s - %s", canonicalName, versionName, group.Name)
 		key, err := p.Backend.CreateContainer(ctx, projectKey, backend.KindTestSet, title)
 		if err != nil {
 			gr.Error = fmt.Sprintf("create test set: %v", err)
@@ -190,6 +191,18 @@ func (p *Publisher) publishOne(ctx context.Context, profileID, projectKey, canon
 		}
 	}
 	gr.ContainerKey = containerKey
+
+	// Ensure the Test Set has a row in the local test_container table, the
+	// table the Test Sets view lists from. Create-if-missing: a re-publish
+	// must never overwrite a row a real Jira sync already populated with
+	// richer data (status, parent, timestamps, description), so this only
+	// fills the row in when it is entirely absent -- covering both the
+	// freshly-created Test Set above and an already-published one whose
+	// container row a demo full-sync wiped, or that predates this fix.
+	if err := p.ensureContainerRow(profileID, containerKey, title); err != nil {
+		gr.Error = fmt.Sprintf("record the Test Set in the local container cache: %v", err)
+		return gr
+	}
 
 	current, err := p.currentMembers(profileID, containerKey)
 	if err != nil {
@@ -328,6 +341,22 @@ func (p *Publisher) currentMembers(profileID, containerKey string) ([]string, er
 		out = append(out, k)
 	}
 	return out, rows.Err()
+}
+
+// ensureContainerRow writes a test_container row for containerKey if one does
+// not already exist, so the published Test Set shows up in the Test Sets
+// container view without waiting for a full sync. ON CONFLICT DO NOTHING is
+// essential here: it must never overwrite a row a real Jira sync already
+// populated with richer data (status, parent, timestamps, description). The
+// test_container primary key is (profile_id, jira_key) and every non-key
+// column defaults, so inserting only these four columns is valid.
+func (p *Publisher) ensureContainerRow(profileID, containerKey, summary string) error {
+	_, err := p.db.Exec(
+		`INSERT INTO test_container (profile_id, jira_key, kind, summary)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(profile_id, jira_key) DO NOTHING`,
+		profileID, containerKey, backend.KindTestSet, summary)
+	return err
 }
 
 // mirrorMembersAdded records, in the local test_container_test mirror, the

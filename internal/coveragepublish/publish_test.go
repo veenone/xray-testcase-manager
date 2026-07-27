@@ -690,6 +690,101 @@ func TestPublishGroups_FailedRemoveNotMirrored(t *testing.T) {
 	assertKeys(t, "currentMembers after failed remove", current, []string{"QA-1", "QA-2"})
 }
 
+// TestPublishGroups_CreatesTestContainerRow proves publishing a group writes
+// a test_container row for the new Test Set, so it shows up in the Test Sets
+// container view immediately instead of staying invisible until the next
+// full sync (in demo mode, forever).
+func TestPublishGroups_CreatesTestContainerRow(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("PublishGroups: %v", err)
+	}
+	if result.Failed != 0 {
+		t.Fatalf("result = %+v, want no failures", result)
+	}
+	containerKey := result.Groups[0].ContainerKey
+
+	var kind, summary string
+	if err := st.DB().QueryRow(
+		`SELECT kind, summary FROM test_container WHERE profile_id = ? AND jira_key = ?`,
+		p, containerKey).Scan(&kind, &summary); err != nil {
+		t.Fatalf("read test_container row: %v", err)
+	}
+	if kind != "testset" {
+		t.Fatalf("kind = %q, want testset", kind)
+	}
+	wantSummary := "C_Sign 1.0 - Mechanism"
+	if summary != wantSummary {
+		t.Fatalf("summary = %q, want %q", summary, wantSummary)
+	}
+}
+
+// TestPublishGroups_ContainerRowCreateIfMissingDoesNotClobberSync proves the
+// ON CONFLICT DO NOTHING semantics: a test_container row a real Jira sync
+// already populated (with a status the publish path never writes) must
+// survive a publish run untouched.
+func TestPublishGroups_ContainerRowCreateIfMissingDoesNotClobberSync(t *testing.T) {
+	const p = "profile-1"
+	be := newFakeBackend()
+	pub, st, cov := newTestPublisher(t, be)
+
+	versionID, _, valueIDs := buildGroup(t, cov, p, "C_Sign", "1.0", "Mechanism", 0, []string{"RSA_PKCS"})
+	seedTestCase(t, st, p, "QA-1")
+	if err := cov.SetValueTests(p, valueIDs[0], []string{"QA-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-publish the group once so a container key exists, then seed a
+	// test_container row for it as a full sync would, with a status the
+	// publish path never sets.
+	first, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("first PublishGroups: %v", err)
+	}
+	containerKey := first.Groups[0].ContainerKey
+	if containerKey == "" {
+		t.Fatalf("expected a container key after the first publish")
+	}
+	if _, err := st.DB().Exec(
+		`UPDATE test_container SET status = ? WHERE profile_id = ? AND jira_key = ?`,
+		"In Progress", p, containerKey); err != nil {
+		t.Fatalf("seed synced status: %v", err)
+	}
+
+	// Republish; the group's publication row already exists, so this exercises
+	// the already-published path.
+	second, err := pub.PublishGroups(context.Background(), p, "PROJ", versionID)
+	if err != nil {
+		t.Fatalf("second PublishGroups: %v", err)
+	}
+	if second.Failed != 0 {
+		t.Fatalf("second result = %+v, want no failures", second)
+	}
+	if second.Groups[0].ContainerKey != containerKey {
+		t.Fatalf("second run container = %s, want reused %s", second.Groups[0].ContainerKey, containerKey)
+	}
+
+	var status string
+	if err := st.DB().QueryRow(
+		`SELECT status FROM test_container WHERE profile_id = ? AND jira_key = ?`,
+		p, containerKey).Scan(&status); err != nil {
+		t.Fatalf("read test_container status: %v", err)
+	}
+	if status != "In Progress" {
+		t.Fatalf("status = %q, want In Progress to have survived the create-if-missing insert", status)
+	}
+}
+
 func TestPublishGroups_StaleTestExcludedFromDesiredSet(t *testing.T) {
 	const p = "profile-1"
 	be := newFakeBackend()
