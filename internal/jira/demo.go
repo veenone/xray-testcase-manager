@@ -2,6 +2,7 @@ package jira
 
 import (
 	"fmt"
+	"hash/fnv"
 	"strconv"
 	"strings"
 	"time"
@@ -786,6 +787,39 @@ func demoCategoryIndexForFeature(theme demoTheme, feature string) int {
 		}
 	}
 	return -1
+}
+
+// demoContainerKeyInfix maps a Container kind to the key infix used by
+// demoCreatedContainerKey. Distinct from the infixes demoContainersAndLinks
+// uses for its generated containers (TS/TP/TE) so a key minted for a
+// created container can never collide with a generated demo container key.
+func demoContainerKeyInfix(kind string) string {
+	switch kind {
+	case KindTestSet:
+		return "CVTS"
+	case KindTestPlan:
+		return "CVTP"
+	case KindTestExec:
+		return "CVTE"
+	}
+	return "CVXX"
+}
+
+// demoCreatedContainerKey deterministically derives a demo container key for
+// a newly created Test Set / Plan / Execution from its project, kind and
+// summary. The demo client is stateless (no persistence across calls), so
+// the key cannot come from a counter; instead it is an FNV-1a hash of the
+// summary, which is unique per publish group (the coverage publish title is
+// "<Canonical> <Version> - <Group>") and stable across calls for the same
+// summary. If projectKey is empty it defaults to "DEMO", matching
+// demoContainersAndLinks.
+func demoCreatedContainerKey(projectKey, kind, summary string) string {
+	if projectKey == "" {
+		projectKey = "DEMO"
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(summary))
+	return fmt.Sprintf("%s-%s-%d", projectKey, demoContainerKeyInfix(kind), h.Sum32())
 }
 
 // demoPreconditionsAndLinks returns the demo precondition master list plus
