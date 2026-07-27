@@ -808,7 +808,7 @@ func demoContainerKeyInfix(kind string) string {
 // demoCreatedContainerCounter hands out a fresh number to every demo
 // CreateContainer call, process-wide. The demo client is stateless (no
 // persistence across calls), so the only way to guarantee a distinct key per
-// call — rather than per summary — is a counter: two containers created with
+// call (rather than per summary) is a counter: two containers created with
 // the same summary (an ordinary, unvalidated action from the board create
 // flow) must still get different keys, or the second RenameContainer would
 // collide with the first on test_container's (profile_id, jira_key) primary
