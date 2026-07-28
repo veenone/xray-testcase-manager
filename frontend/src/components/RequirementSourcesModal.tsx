@@ -170,9 +170,20 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
     }
   }
 
+  // The selected link type always needs a matching <option>: a persisted value
+  // not present in the instance's current list (or an empty auto-resolve) would
+  // otherwise be unselectable (RND_P_4TFINT_05-275). Prepend it, deduped.
+  const linkTypeOptions =
+    selectedLinkType && !linkTypes.some((t) => t.name === selectedLinkType)
+      ? [{ name: selectedLinkType, inward: "", outward: "" }, ...linkTypes]
+      : linkTypes;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal pending-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal pending-modal req-sources"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="pending-head">
           <h2>Requirement sources</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
@@ -180,138 +191,173 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
           </button>
         </div>
 
-        <div className="bulk-body">
-          <div className="src-field" style={{ marginBottom: "1rem" }}>
-            <span className="src-field-label">Link type used when linking tests to requirements</span>
-            <span className="src-field-help">
-              The Jira issue-link type created when a test is linked to a
-              requirement (via "Add tests" or the test-detail panel). Options
-              show each type's direction labels; the coverage link is usually
-              "Tests" (the requirement is "tested by" the test). "tested by" is
-              a direction, not a link-type name, so the stored value is the name.
-              Changes take effect on the next commit.
-            </span>
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-              <select
-                className="detail-input"
-                value={selectedLinkType}
-                disabled={linkTypeBusy}
-                onChange={(e) => saveLinkType(e.target.value)}
-                style={{ flex: 1 }}
-              >
-                {/* Ensure the selected name always has a matching <option>: a
-                    persisted value not present in the instance's current list
-                    (or an empty auto-resolve) would otherwise be unselectable
-                    (RND_P_4TFINT_05-275). Prepend it, deduped by name. */}
-                {(selectedLinkType &&
-                !linkTypes.some((t) => t.name === selectedLinkType)
-                  ? [
-                      { name: selectedLinkType, inward: "", outward: "" },
-                      ...linkTypes,
-                    ]
-                  : linkTypes
-                )
-                  .filter((t) => t.name)
-                  .map((t) => (
-                    <option key={t.name} value={t.name}>
-                      {labelForLinkType(t)}
-                    </option>
-                  ))}
-              </select>
-              {linkTypeBusy && <span className="muted">Saving…</span>}
+        <div className="bulk-body req-sources-body">
+          {/* Section: the global coverage link type. */}
+          <section className="rs-section">
+            <div className="rs-section-head">
+              <span className="rs-eyebrow">Coverage link type</span>
             </div>
-            {linkTypeError && <div className="error-text">{linkTypeError}</div>}
-          </div>
-
-          <p className="muted">
-            Projects to pull requirements from, besides those already linked to
-            your synced tests. Applies on the next sync.
-          </p>
-
-          {sources.length === 0 ? (
-            <p className="muted">No sources configured.</p>
-          ) : (
-            <ul className="src-list">
-              {sources.map((s) => (
-                <li key={s.projectKey} className={editingSource === s.projectKey ? "src-list-editing" : ""}>
-                  <span className="mono src-project">{s.projectKey}</span>
-                  <span className="muted src-types">
-                    {s.issueTypes || "(any type)"}
-                  </span>
-                  {s.scopeJql && (
-                    <span className="muted src-jql" title={s.scopeJql}>
-                      {s.scopeJql}
-                    </span>
-                  )}
-                  <button
-                    className="btn btn-ghost src-edit"
-                    onClick={() => startEdit(s)}
-                    title="Edit this source"
-                    disabled={editingSource !== null && editingSource !== s.projectKey}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="btn btn-ghost src-remove"
-                    onClick={() => remove(s.projectKey)}
-                    title="Remove source"
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className="src-add">
-            {editingSource !== null && (
-              <p className="muted src-edit-notice">
-                Editing source <strong>{editingSource}</strong>. Change the project key below to rename it.
+            <div className="rs-linktype">
+              <div className="rs-linktype-control">
+                <select
+                  className="detail-input rs-select"
+                  value={selectedLinkType}
+                  disabled={linkTypeBusy}
+                  onChange={(e) => saveLinkType(e.target.value)}
+                >
+                  {linkTypeOptions
+                    .filter((t) => t.name)
+                    .map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {labelForLinkType(t)}
+                      </option>
+                    ))}
+                </select>
+                {linkTypeBusy && <span className="muted rs-saving">Saving…</span>}
+              </div>
+              <p className="src-field-help rs-linktype-help">
+                The Jira issue-link type created when a test is linked to a
+                requirement. Options show each type's direction labels; the
+                coverage link is usually "Tests" (the requirement is "tested by"
+                the test). The stored value is the link-type name. Changes take
+                effect on the next commit.
               </p>
-            )}
-            <label className="src-field">
-              <span className="src-field-label">Project key</span>
-              <span className="src-field-help">
-                The Jira project to pull requirement issues from (e.g. PRD). Use
-                the project's key, not its name.
-              </span>
-              <input
-                className="detail-input"
-                placeholder="e.g. PRD"
-                value={projectKey}
-                onChange={(e) => setProjectKey(e.target.value)}
-              />
-            </label>
-            <label className="src-field">
-              <span className="src-field-label">Issue types</span>
-              <span className="src-field-help">
-                Which Jira issue types in this project count as requirements —
-                space-separated (e.g. <code>Story Epic</code>). These are the
-                issues that will appear in the Requirements view and can be
-                linked to tests. Leave blank to include any issue type.
-              </span>
-              <input
-                className="detail-input"
-                placeholder="e.g. Story Epic"
-                value={issueTypes}
-                onChange={(e) => setIssueTypes(e.target.value)}
-              />
-            </label>
-            <label className="src-field">
-              <span className="src-field-label">Scope JQL (optional)</span>
-              <span className="src-field-help">
-                Optional JQL to narrow which issues are pulled from this project
-                (e.g. <code>fixVersion = "2.0"</code>). It is combined with the
-                issue types above; leave blank to pull all of them.
-              </span>
-              <input
-                className="detail-input"
-                placeholder="e.g. fixVersion = &quot;2.0&quot;"
-                value={scopeJql}
-                onChange={(e) => setScopeJql(e.target.value)}
-              />
-            </label>
-          </div>
+              {linkTypeError && <div className="error-text">{linkTypeError}</div>}
+            </div>
+          </section>
+
+          {/* Section: requirement source projects (list + add/edit form). */}
+          <section className="rs-section">
+            <div className="rs-section-head">
+              <span className="rs-eyebrow">Source projects</span>
+              {sources.length > 0 && (
+                <span className="rs-count">{sources.length}</span>
+              )}
+            </div>
+            <p className="src-field-help rs-section-intro">
+              Projects to pull requirements from, besides those already linked to
+              your synced tests. Applies on the next sync.
+            </p>
+
+            <div className="rs-grid">
+              {/* Left: the configured sources. */}
+              <div className="rs-list-col">
+                {sources.length === 0 ? (
+                  <div className="rs-empty">
+                    <p className="muted">No source projects yet.</p>
+                    <p className="muted rs-empty-hint">
+                      Add one with the form on the right.
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="src-list rs-list">
+                    {sources.map((s) => (
+                      <li
+                        key={s.projectKey}
+                        className={
+                          editingSource === s.projectKey ? "src-list-editing" : ""
+                        }
+                      >
+                        <span className="mono src-project">{s.projectKey}</span>
+                        <span className="muted src-types">
+                          {s.issueTypes || "(any type)"}
+                        </span>
+                        {s.scopeJql && (
+                          <span className="muted src-jql" title={s.scopeJql}>
+                            {s.scopeJql}
+                          </span>
+                        )}
+                        <button
+                          className="btn btn-ghost src-edit"
+                          onClick={() => startEdit(s)}
+                          title="Edit this source"
+                          disabled={
+                            editingSource !== null &&
+                            editingSource !== s.projectKey
+                          }
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-ghost src-remove"
+                          onClick={() => remove(s.projectKey)}
+                          title="Remove source"
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Right: add or edit a source. */}
+              <div className="rs-form-col">
+                <div className="rs-form-head">
+                  <span className="rs-form-title">
+                    {editingSource !== null ? "Edit source" : "Add source"}
+                  </span>
+                  {editingSource !== null && (
+                    <button
+                      className="btn btn-ghost rs-form-cancel"
+                      onClick={cancelEdit}
+                      disabled={busy}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                {editingSource !== null && (
+                  <p className="muted src-edit-notice">
+                    Editing <strong>{editingSource}</strong>. Change the project
+                    key to rename it.
+                  </p>
+                )}
+                <label className="src-field">
+                  <span className="src-field-label">Project key</span>
+                  <input
+                    className="detail-input"
+                    placeholder="e.g. PRD"
+                    value={projectKey}
+                    onChange={(e) => setProjectKey(e.target.value)}
+                  />
+                  <span className="src-field-help">
+                    The Jira project to pull requirement issues from. Use the
+                    key, not the name.
+                  </span>
+                </label>
+                <label className="src-field">
+                  <span className="src-field-label">Issue types</span>
+                  <input
+                    className="detail-input"
+                    placeholder="e.g. Story Epic"
+                    value={issueTypes}
+                    onChange={(e) => setIssueTypes(e.target.value)}
+                  />
+                  <span className="src-field-help">
+                    Space-separated issue types that count as requirements (e.g.{" "}
+                    <code>Story Epic</code>). Leave blank for any type.
+                  </span>
+                </label>
+                <label className="src-field">
+                  <span className="src-field-label">
+                    Scope JQL <span className="rs-optional">optional</span>
+                  </span>
+                  <input
+                    className="detail-input"
+                    placeholder="e.g. fixVersion = &quot;2.0&quot;"
+                    value={scopeJql}
+                    onChange={(e) => setScopeJql(e.target.value)}
+                  />
+                  <span className="src-field-help">
+                    Narrows which issues are pulled, combined with the issue
+                    types above.
+                  </span>
+                </label>
+              </div>
+            </div>
+          </section>
+
           {error && <div className="error-text">{error}</div>}
         </div>
 
@@ -319,17 +365,12 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
           <button className="btn" onClick={onClose}>
             Close
           </button>
-          {editingSource !== null && (
-            <button className="btn" onClick={cancelEdit} disabled={busy}>
-              Cancel edit
-            </button>
-          )}
           <button
             className="btn btn-primary"
             onClick={save}
             disabled={busy || !projectKey.trim()}
           >
-            {editingSource !== null ? "Save changes" : "Add / update source"}
+            {editingSource !== null ? "Save changes" : "Add source"}
           </button>
         </div>
       </div>

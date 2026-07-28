@@ -4300,6 +4300,146 @@ tr.row-checked:hover {
   font-size: 10px;
 }
 
+/* Requirement sources modal: sectioned, two-column layout (#275 follow-up).
+   The body scrolls so the fixed header/footer never get clipped at 80vh. */
+.req-sources-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  gap: 20px;
+}
+.rs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rs-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.rs-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.rs-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 0 7px;
+  line-height: 18px;
+  min-width: 18px;
+  text-align: center;
+}
+.rs-section-intro {
+  margin: 0;
+}
+
+/* Coverage link-type control. */
+.rs-linktype {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rs-linktype-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rs-select {
+  flex: 1;
+  max-width: 400px;
+  margin-bottom: 0;
+}
+.rs-saving {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.rs-linktype-help {
+  margin: 0;
+  max-width: 660px;
+}
+
+/* Source projects: configured list (left) beside the add/edit form (right). */
+.rs-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.rs-list-col {
+  min-width: 0;
+}
+.rs-list {
+  margin: 0;
+}
+.rs-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 22px 16px;
+  text-align: center;
+}
+.rs-empty p {
+  margin: 0;
+}
+.rs-empty .rs-empty-hint {
+  font-size: 11px;
+  margin-top: 4px;
+}
+.rs-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+.rs-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rs-form-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.rs-form-cancel {
+  font-size: 11px;
+  padding: 1px 8px;
+}
+.rs-optional {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+/* Form fields put the input first, then help; tighten the shared input margin. */
+.req-sources .rs-form-col .src-field {
+  gap: 4px;
+}
+.req-sources .rs-form-col .detail-input {
+  margin-bottom: 2px;
+}
+
+@media (max-width: 700px) {
+  .rs-grid {
+    grid-template-columns: 1fr;
+  }
+  .rs-select {
+    max-width: none;
+  }
+}
+
 /* Duplicates: body = group list (left) + a wider, right-anchored detail panel. */
 .dup-body { display: flex; flex: 1; min-height: 0; }
 .dup-list-col {
