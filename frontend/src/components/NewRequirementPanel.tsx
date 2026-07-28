@@ -1,14 +1,23 @@
 import { useEffect, useState } from "react";
 import {
   CreateRequirement,
+  GetRequirementCreateFields,
   ListRequirementSources,
   ListPriorities,
   ListProjectComponents,
   ListProjectFixVersions,
   errMsg,
 } from "../api";
-import type { RequirementSource } from "../api";
+import type { BugCreateField, RequirementSource } from "../api";
 import { MarkdownField } from "./MarkdownField";
+import { MultiSelect } from "./MultiSelect";
+import type { MultiOption } from "./MultiSelect";
+import {
+  buildCreateFieldsPayload,
+  createFieldsValid,
+  initCreateFieldDefaults,
+  type RawFieldValue,
+} from "./createFields";
 
 interface Props {
   profileId: string;
@@ -35,6 +44,12 @@ export function NewRequirementPanel({ profileId, onCreated, onCancel }: Props) {
   const [priorityOptions, setPriorityOptions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Required custom fields on the requirement create screen (createmeta-driven),
+  // e.g. "Req. type". Loaded per project + issue type; blocked create until set.
+  const [extraFields, setExtraFields] = useState<BugCreateField[]>([]);
+  const [extraLoading, setExtraLoading] = useState(false);
+  const [extraValues, setExtraValues] = useState<Record<string, RawFieldValue>>({});
 
   // #2: width persisted under its own key (not shared with the right-side detail).
   const [width, setWidth] = useState<number>(() => {
@@ -105,6 +120,34 @@ export function NewRequirementPanel({ profileId, onCreated, onCancel }: Props) {
     });
   }, [profileId, projectKey]);
 
+  // Load required custom fields when the project or issue type changes, so the
+  // form can collect them before commit (some instances mark e.g. "Req. type"
+  // required). Non-fatal: a createmeta failure just shows the base form.
+  useEffect(() => {
+    if (!profileId || !projectKey) {
+      setExtraFields([]);
+      setExtraValues({});
+      return;
+    }
+    let cancelled = false;
+    setExtraLoading(true);
+    GetRequirementCreateFields(profileId, projectKey, issueType)
+      .then((fields) => {
+        if (cancelled) return;
+        setExtraFields(fields ?? []);
+        setExtraValues(initCreateFieldDefaults(fields ?? []));
+      })
+      .catch(() => {
+        if (!cancelled) setExtraFields([]);
+      })
+      .finally(() => {
+        if (!cancelled) setExtraLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, projectKey, issueType]);
+
   async function submit() {
     if (!summary.trim()) {
       setError("A summary is required.");
@@ -112,6 +155,10 @@ export function NewRequirementPanel({ profileId, onCreated, onCancel }: Props) {
     }
     if (!projectKey.trim()) {
       setError("A project key is required.");
+      return;
+    }
+    if (!createFieldsValid(extraFields, extraValues)) {
+      setError("Fill in all required fields.");
       return;
     }
     setSaving(true);
@@ -126,12 +173,101 @@ export function NewRequirementPanel({ profileId, onCreated, onCancel }: Props) {
         priority,
         selectedComponents.join(", "),  // #5: comma-joined
         selectedFixVersions.join(", "), // #5: comma-joined
+        buildCreateFieldsPayload(extraFields, extraValues),
       );
       onCreated(tempKey);
     } catch (e) {
       setError(errMsg(e));
       setSaving(false);
     }
+  }
+
+  function setSingleExtra(id: string, value: string) {
+    setExtraValues((prev) => ({ ...prev, [id]: value }));
+  }
+  function setMultiExtra(id: string, selected: string[]) {
+    setExtraValues((prev) => ({ ...prev, [id]: selected }));
+  }
+
+  // Render one required custom field using the panel's field styles.
+  function renderExtraField(f: BugCreateField) {
+    const raw = extraValues[f.id] ?? "";
+    const label = `${f.name}${f.required ? " *" : ""}`;
+    if (f.type === "text") {
+      return (
+        <div key={f.id}>
+          <div className="field-label">{label}</div>
+          <textarea
+            className="detail-input"
+            rows={3}
+            value={typeof raw === "string" ? raw : ""}
+            onChange={(e) => setSingleExtra(f.id, e.target.value)}
+          />
+        </div>
+      );
+    }
+    if (f.type === "number" || f.type === "date") {
+      return (
+        <div key={f.id}>
+          <div className="field-label">{label}</div>
+          <input
+            className="detail-input"
+            type={f.type === "number" ? "number" : "date"}
+            value={typeof raw === "string" ? raw : ""}
+            onChange={(e) => setSingleExtra(f.id, e.target.value)}
+          />
+        </div>
+      );
+    }
+    if (f.type === "option" || f.type === "version") {
+      const selected = typeof raw === "string" ? raw : "";
+      return (
+        <div key={f.id}>
+          <div className="field-label">{label}</div>
+          <select
+            className="detail-input"
+            value={selected}
+            onChange={(e) => setSingleExtra(f.id, e.target.value)}
+          >
+            {!selected && <option value="">(select)</option>}
+            {f.allowedValues.map((av) => (
+              <option key={av.id} value={av.id}>
+                {av.value}
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+    if (f.type === "versions" || f.type === "array") {
+      const selected = Array.isArray(raw) ? raw : [];
+      const opts: MultiOption[] = f.allowedValues.map((av) => ({
+        value: av.id,
+        label: av.value,
+      }));
+      return (
+        <div key={f.id}>
+          <div className="field-label">{label}</div>
+          <MultiSelect
+            options={opts}
+            selected={selected}
+            onChange={(next) => setMultiExtra(f.id, next)}
+            allLabel={`Select ${f.name}…`}
+          />
+        </div>
+      );
+    }
+    return (
+      <div key={f.id}>
+        <div className="field-label">{label}</div>
+        <textarea
+          className="detail-input"
+          rows={3}
+          value={typeof raw === "string" ? raw : ""}
+          onChange={(e) => setSingleExtra(f.id, e.target.value)}
+        />
+      </div>
+    );
   }
 
   // #5 helpers: add/remove a tag in a multi-select tag list.
@@ -401,9 +537,11 @@ export function NewRequirementPanel({ profileId, onCreated, onCancel }: Props) {
           )}
         </div>
 
-        <p className="muted" style={{ fontSize: "0.8em", marginTop: "0.5rem" }}>
-          Additional required custom fields from Jira are applied on commit (Phase 7).
-        </p>
+        {/* Required custom fields from Jira createmeta (e.g. "Req. type"). */}
+        {extraLoading && (
+          <p className="muted req-tag-hint">Loading required fields…</p>
+        )}
+        {!extraLoading && extraFields.map(renderExtraField)}
       </div>
 
       <div className="ntp-foot">
@@ -413,7 +551,13 @@ export function NewRequirementPanel({ profileId, onCreated, onCancel }: Props) {
         <button
           className="btn btn-primary"
           onClick={submit}
-          disabled={saving || !summary.trim() || !projectKey.trim()}
+          disabled={
+            saving ||
+            !summary.trim() ||
+            !projectKey.trim() ||
+            extraLoading ||
+            !createFieldsValid(extraFields, extraValues)
+          }
         >
           {saving ? "Creating…" : "Create →"}
         </button>

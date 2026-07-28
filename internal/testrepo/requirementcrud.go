@@ -245,6 +245,7 @@ func sameReqSet(before []reqLinkSnap, after []string) bool {
 // ListRequirementsWithCoverage. Returns the temp key.
 func (r *Repository) CreateRequirement(
 	profileID, projectKey, issueType, summary, description, priority, components, fixVersions string,
+	fields map[string]any,
 ) (string, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -269,13 +270,14 @@ func (r *Repository) CreateRequirement(
 	}
 
 	type requirementCreatePayload struct {
-		ProjectKey  string `json:"projectKey"`
-		IssueType   string `json:"issueType"`
-		Summary     string `json:"summary"`
-		Description string `json:"description"`
-		Priority    string `json:"priority"`
-		Components  string `json:"components"`
-		FixVersions string `json:"fixVersions"`
+		ProjectKey  string         `json:"projectKey"`
+		IssueType   string         `json:"issueType"`
+		Summary     string         `json:"summary"`
+		Description string         `json:"description"`
+		Priority    string         `json:"priority"`
+		Components  string         `json:"components"`
+		FixVersions string         `json:"fixVersions"`
+		Fields      map[string]any `json:"fields,omitempty"`
 	}
 	payload := requirementCreatePayload{
 		ProjectKey:  projectKey,
@@ -285,6 +287,7 @@ func (r *Repository) CreateRequirement(
 		Priority:    priority,
 		Components:  components,
 		FixVersions: fixVersions,
+		Fields:      fields,
 	}
 	encoded, _ := json.Marshal(payload)
 	if err := upsertPendingChange(

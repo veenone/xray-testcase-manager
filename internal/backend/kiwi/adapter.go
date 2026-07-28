@@ -852,8 +852,12 @@ func (a *Adapter) ListIssueLinkTypeDetails(ctx context.Context) ([]backend.Issue
 	return out, nil
 }
 
-func (a *Adapter) CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error) {
+func (a *Adapter) CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string, extraFields map[string]any) (string, error) {
 	return "", backend.ErrUnsupported // Phase 5 (write)
+}
+
+func (a *Adapter) GetRequirementCreateFields(ctx context.Context, projectKey, issueType string) ([]backend.BugCreateField, error) {
+	return nil, backend.ErrUnsupported // Phase 5 (write); Kiwi has no requirement create screen
 }
 
 func (a *Adapter) DeleteRequirement(ctx context.Context, requirementKey string) error {

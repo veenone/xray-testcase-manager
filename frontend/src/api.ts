@@ -164,6 +164,7 @@ export {
   GetBugCreateFields,
   CreateBugForTest,
   CreateRequirement,
+  GetRequirementCreateFields,
   GetBugDetail,
   ListBugsWithTests,
   ListBugsForContainer,

@@ -413,6 +413,10 @@ func bugCreateFieldKind(schemaType, items string) string {
 			return "versions"
 		case "option":
 			return "option"
+		case "string":
+			// array of plain strings (e.g. the system Labels field): the value
+			// is a JSON string array like ["a","b"], not [{id}].
+			return "stringarray"
 		}
 		return "array"
 	default:

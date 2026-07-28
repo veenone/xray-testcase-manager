@@ -285,8 +285,16 @@ func (a *Adapter) ListIssueLinkTypeDetails(ctx context.Context) ([]backend.Issue
 	return out, nil
 }
 
-func (a *Adapter) CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error) {
-	return a.c.CreateRequirement(ctx, projectKey, issueType, summary, description, priority, components, fixVersions)
+func (a *Adapter) CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string, extraFields map[string]any) (string, error) {
+	return a.c.CreateRequirement(ctx, projectKey, issueType, summary, description, priority, components, fixVersions, extraFields)
+}
+
+func (a *Adapter) GetRequirementCreateFields(ctx context.Context, projectKey, issueType string) ([]backend.BugCreateField, error) {
+	fields, err := a.c.GetRequirementCreateFields(ctx, projectKey, issueType)
+	if err != nil {
+		return nil, err
+	}
+	return toBugCreateFields(fields), nil
 }
 
 func (a *Adapter) DeleteRequirement(ctx context.Context, requirementKey string) error {

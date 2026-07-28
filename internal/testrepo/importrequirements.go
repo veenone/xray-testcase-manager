@@ -172,7 +172,7 @@ func (r *Repository) ImportRequirements(profileID, projectKey, issueType string,
 		if _, err := r.CreateRequirement(
 			profileID, projectKey, issueType,
 			row.Summary, row.Description, row.Priority,
-			row.Components, row.FixVersions,
+			row.Components, row.FixVersions, nil,
 		); err != nil {
 			result.Errors = append(result.Errors, ImportError{Row: rowNum, Message: err.Error()})
 			continue

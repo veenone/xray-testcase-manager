@@ -2909,7 +2909,7 @@ func (a *App) ImportTests(profileID, contentB64 string, isXlsx bool, mapping tes
 // for the given project + issue type, pushed to Jira on commit.
 // The project key and issue types come from the configured requirement sources.
 // Returns the temp key.
-func (a *App) CreateRequirement(profileID, projectKey, issueType, summary, description, priority, components, fixVersions string) (key string, err error) {
+func (a *App) CreateRequirement(profileID, projectKey, issueType, summary, description, priority, components, fixVersions string, fields map[string]any) (key string, err error) {
 	defer recoverToError("CreateRequirement", &err)
 	if err := a.requireStore(); err != nil {
 		return "", err
@@ -2920,7 +2920,30 @@ func (a *App) CreateRequirement(profileID, projectKey, issueType, summary, descr
 	if strings.TrimSpace(projectKey) == "" {
 		return "", fmt.Errorf("a project key is required to create a requirement")
 	}
-	return a.repo.CreateRequirement(profileID, projectKey, issueType, summary, description, priority, components, fixVersions)
+	return a.repo.CreateRequirement(profileID, projectKey, issueType, summary, description, priority, components, fixVersions, fields)
+}
+
+// GetRequirementCreateFields returns the required custom fields on the given
+// project + issue type's requirement create screen (beyond project / issuetype /
+// summary / description / priority / components / fixVersions), so the New
+// Requirement form can render and collect them before the commit creates the
+// issue. Without them, instances that mark a custom field required (e.g. "Req.
+// type") reject the create. Demo mode returns a preset list without a network
+// call.
+func (a *App) GetRequirementCreateFields(profileID, projectKey, issueType string) (fields []jira.BugCreateField, err error) {
+	defer recoverToError("GetRequirementCreateFields", &err)
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	b, err := a.backendFor(profileID)
+	if err != nil {
+		return nil, err
+	}
+	bf, err := b.GetRequirementCreateFields(a.ctx, projectKey, issueType)
+	if err != nil {
+		return nil, err
+	}
+	return toJiraBugCreateFields(bf), nil
 }
 
 // CreateTest queues a brand-new Test locally (temp NEW-N key) with optional

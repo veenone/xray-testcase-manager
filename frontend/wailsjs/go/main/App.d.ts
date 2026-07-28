@@ -90,7 +90,7 @@ export function CreateProfile(arg1:string,arg2:string,arg3:string,arg4:string,ar
 
 export function CreateProfileReusingToken(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string):Promise<profile.Profile>;
 
-export function CreateRequirement(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<string>;
+export function CreateRequirement(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:Record<string, any>):Promise<string>;
 
 export function CreateSavedView(arg1:string,arg2:string,arg3:string):Promise<testrepo.SavedView>;
 
@@ -209,6 +209,8 @@ export function GetExecutionsForPlans(arg1:string,arg2:Array<string>):Promise<Ar
 export function GetParamModel(arg1:string,arg2:string):Promise<coverage.ParamModel>;
 
 export function GetProfileProjectKey(arg1:string):Promise<string>;
+
+export function GetRequirementCreateFields(arg1:string,arg2:string,arg3:string):Promise<Array<jira.BugCreateField>>;
 
 export function GetRequirementLinks(arg1:string,arg2:string):Promise<Array<testrepo.ReqReqLink>>;
 

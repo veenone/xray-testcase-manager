@@ -144,7 +144,7 @@ func TestCreateRequirementTempKeyAndPending(t *testing.T) {
 	// seed a requirement source so the profile exists
 	_ = repo.SetRequirementSource("p1", "PROJ", "Story", "")
 
-	key, err := repo.CreateRequirement("p1", "PROJ", "Story", "My requirement", "desc", "High", "CompA", "v1.0")
+	key, err := repo.CreateRequirement("p1", "PROJ", "Story", "My requirement", "desc", "High", "CompA", "v1.0", nil)
 	if err != nil {
 		t.Fatalf("CreateRequirement: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestRenameRequirementRewritesLinks(t *testing.T) {
 	repo := newRepo(t)
 	_ = repo.SetRequirementSource("p1", "PROJ", "Story", "")
 
-	tempKey, err := repo.CreateRequirement("p1", "PROJ", "Story", "Req", "", "", "", "")
+	tempKey, err := repo.CreateRequirement("p1", "PROJ", "Story", "Req", "", "", "", "", nil)
 	if err != nil {
 		t.Fatalf("CreateRequirement: %v", err)
 	}

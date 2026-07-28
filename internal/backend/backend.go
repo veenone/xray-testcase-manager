@@ -148,7 +148,8 @@ type Backend interface {
 	UpdateTestRequirements(ctx context.Context, testKey string, add []string, removeLinkIDs []string) error
 	ListIssueLinkTypes(ctx context.Context) ([]string, error)
 	ListIssueLinkTypeDetails(ctx context.Context) ([]IssueLinkType, error)
-	CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error)
+	CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string, extraFields map[string]any) (string, error)
+	GetRequirementCreateFields(ctx context.Context, projectKey, issueType string) ([]BugCreateField, error)
 	DeleteRequirement(ctx context.Context, requirementKey string) error
 	UpdateRequirementLinks(ctx context.Context, fromKey string, add []string, removeLinkIDs []string) error
 	ListReqToReqLinks(ctx context.Context, reqKeys []string) ([]ReqToReqLink, error)

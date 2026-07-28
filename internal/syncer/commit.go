@@ -1238,19 +1238,20 @@ func (e *Engine) commitBugCreates(ctx context.Context, profileID string, rows []
 func (e *Engine) commitRequirementCreates(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
 	for _, c := range rows {
 		var p struct {
-			ProjectKey  string `json:"projectKey"`
-			IssueType   string `json:"issueType"`
-			Summary     string `json:"summary"`
-			Description string `json:"description"`
-			Priority    string `json:"priority"`
-			Components  string `json:"components"`
-			FixVersions string `json:"fixVersions"`
+			ProjectKey  string         `json:"projectKey"`
+			IssueType   string         `json:"issueType"`
+			Summary     string         `json:"summary"`
+			Description string         `json:"description"`
+			Priority    string         `json:"priority"`
+			Components  string         `json:"components"`
+			FixVersions string         `json:"fixVersions"`
+			Fields      map[string]any `json:"fields"`
 		}
 		if err := json.Unmarshal([]byte(c.AfterVal), &p); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed requirement payload: " + err.Error()})
 			continue
 		}
-		realKey, err := e.backend.CreateRequirement(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Components, p.FixVersions)
+		realKey, err := e.backend.CreateRequirement(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Components, p.FixVersions, p.Fields)
 		if err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "create requirement: " + sanitizeError(err.Error())})
 			continue

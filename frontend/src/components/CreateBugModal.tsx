@@ -3,6 +3,11 @@ import { CreateBugForTest, GetBugCreateFields, errMsg } from "../api";
 import type { BugCreateField } from "../api";
 import { MultiSelect } from "./MultiSelect";
 import type { MultiOption } from "./MultiSelect";
+import {
+  buildCreateFieldsPayload,
+  createFieldsValid,
+  initCreateFieldDefaults,
+} from "./createFields";
 
 interface Props {
   profileId: string;
@@ -14,28 +19,6 @@ interface Props {
 }
 
 const PRIORITIES = ["Highest", "High", "Medium", "Low", "Lowest"];
-
-// buildFieldValue converts the raw user selection for a BugCreateField into the
-// Jira-shaped value expected by the POST body:
-//   text / number / date -> plain string
-//   option / version     -> {id: selectedId}
-//   versions             -> [{id: id1}, {id: id2}, ...]
-//   array                -> [{id: id} for each selected]
-function buildFieldValue(field: BugCreateField, raw: string | string[]): unknown {
-  switch (field.type) {
-    case "option":
-    case "version":
-      return typeof raw === "string" && raw ? { id: raw } : undefined;
-    case "versions":
-    case "array": {
-      const ids = Array.isArray(raw) ? raw : raw ? [raw] : [];
-      return ids.length ? ids.map((id) => ({ id })) : undefined;
-    }
-    default:
-      // text / number / date — plain string
-      return typeof raw === "string" ? raw : undefined;
-  }
-}
 
 // CreateBugModal files a Bug-type Jira issue against a test marked FAILED in an
 // execution. Local-first: the bug is queued and pushed on the next Commit.
@@ -71,21 +54,7 @@ export function CreateBugModal({
       .then((fields) => {
         if (cancelled) return;
         setExtraFields(fields ?? []);
-        // Initialise defaults: first allowedValue for selects, "" for text.
-        const defaults: Record<string, string | string[]> = {};
-        for (const f of fields ?? []) {
-          if (f.type === "versions" || f.type === "array") {
-            defaults[f.id] = [];
-          } else if (
-            (f.type === "option" || f.type === "version") &&
-            f.allowedValues?.length
-          ) {
-            defaults[f.id] = f.allowedValues[0].id;
-          } else {
-            defaults[f.id] = "";
-          }
-        }
-        setExtraValues(defaults);
+        setExtraValues(initCreateFieldDefaults(fields ?? []));
       })
       .catch(() => {
         // Non-fatal: if createmeta fails, show the base form without extra fields.
@@ -99,19 +68,7 @@ export function CreateBugModal({
     };
   }, [profileId]);
 
-  // Validate that all required extra fields have a non-empty value.
-  function extraValid(): boolean {
-    for (const f of extraFields) {
-      if (!f.required) continue;
-      const v = extraValues[f.id];
-      if (Array.isArray(v)) {
-        if (v.length === 0) return false;
-      } else if (!v) {
-        return false;
-      }
-    }
-    return true;
-  }
+  const extraValid = () => createFieldsValid(extraFields, extraValues);
 
   async function create() {
     if (!summary.trim()) return;
@@ -119,14 +76,7 @@ export function CreateBugModal({
     setBusy(true);
     setError("");
     try {
-      // Build the Jira-shaped extra fields object.
-      const fields: Record<string, unknown> = {};
-      for (const f of extraFields) {
-        const shaped = buildFieldValue(f, extraValues[f.id] ?? "");
-        if (shaped !== undefined) {
-          fields[f.id] = shaped;
-        }
-      }
+      const fields = buildCreateFieldsPayload(extraFields, extraValues);
       await CreateBugForTest(
         profileId,
         testKey,

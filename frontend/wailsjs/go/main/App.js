@@ -158,8 +158,8 @@ export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5, arg6, ar
   return window['go']['main']['App']['CreateProfileReusingToken'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
 
-export function CreateRequirement(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
-  return window['go']['main']['App']['CreateRequirement'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+export function CreateRequirement(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
+  return window['go']['main']['App']['CreateRequirement'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
 
 export function CreateSavedView(arg1, arg2, arg3) {
@@ -396,6 +396,10 @@ export function GetParamModel(arg1, arg2) {
 
 export function GetProfileProjectKey(arg1) {
   return window['go']['main']['App']['GetProfileProjectKey'](arg1);
+}
+
+export function GetRequirementCreateFields(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetRequirementCreateFields'](arg1, arg2, arg3);
 }
 
 export function GetRequirementLinks(arg1, arg2) {
