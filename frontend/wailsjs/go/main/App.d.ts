@@ -304,7 +304,7 @@ export function ListProjectComponents(arg1:string,arg2:string):Promise<Array<str
 
 export function ListProjectFixVersions(arg1:string,arg2:string):Promise<Array<string>>;
 
-export function ListRequirementLinkTypes(arg1:string):Promise<Array<string>>;
+export function ListRequirementLinkTypeDetails(arg1:string):Promise<Array<backend.IssueLinkType>>;
 
 export function ListRequirementSources(arg1:string):Promise<Array<testrepo.RequirementSource>>;
 

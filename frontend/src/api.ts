@@ -13,7 +13,7 @@ export {
   SetDefaultProfile,
   SetTheme,
   SetRequirementLinkType,
-  ListRequirementLinkTypes,
+  ListRequirementLinkTypeDetails,
   GetCapabilities,
   SetShowCoverage,
   ListProfiles,

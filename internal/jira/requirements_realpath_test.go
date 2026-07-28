@@ -129,6 +129,83 @@ func TestRealUpdateTestRequirementsPropagatesError(t *testing.T) {
 	}
 }
 
+// TestResolveRequirementLinkTypeByDirection reproduces the real Jira DC
+// instance shape (#275): the coverage link type is NAMED "Tests" with inward
+// label "tested by" / outward "tests", and NO link type is named "tested by".
+// Auto-resolve must pick "Tests" by matching the direction label, and POST it
+// as type.name (a name that actually exists), not the direction "tested by".
+func TestResolveRequirementLinkTypeByDirection(t *testing.T) {
+	var posted map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/rest/api/2/issueLinkType" {
+			w.Header().Set("Content-Type", "application/json")
+			// No type named "tested by"/"Tests"-first; "tested by" only appears
+			// as the inward label of the "Tests" type. "Relates" is listed
+			// first to prove name-order does not decide the match.
+			_, _ = w.Write([]byte(`{"issueLinkTypes":[` +
+				`{"name":"Relates","inward":"is related to","outward":"relates to"},` +
+				`{"name":"Blockers","inward":"is blocked by","outward":"blocks"},` +
+				`{"name":"Tests","inward":"tested by","outward":"tests"}]}`))
+			return
+		}
+		if r.Method == http.MethodPost {
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &posted)
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	if err := newTestClient(srv).UpdateTestRequirements(
+		context.Background(), "QA-1", []string{"PRD-1"}, nil); err != nil {
+		t.Fatalf("UpdateTestRequirements: %v", err)
+	}
+	typ, _ := posted["type"].(map[string]any)
+	if typ == nil || typ["name"] != "Tests" {
+		t.Fatalf("post type = %+v, want name=Tests (resolved by direction, not the 'tested by' label)", posted["type"])
+	}
+	// Direction: the Test is the outward issue that "tests" the requirement.
+	if out, _ := posted["outwardIssue"].(map[string]any); out == nil || out["key"] != "QA-1" {
+		t.Errorf("post outwardIssue = %+v, want key=QA-1 (the Test)", posted["outwardIssue"])
+	}
+	if in, _ := posted["inwardIssue"].(map[string]any); in == nil || in["key"] != "PRD-1" {
+		t.Errorf("post inwardIssue = %+v, want key=PRD-1 (the requirement)", posted["inwardIssue"])
+	}
+}
+
+// TestListIssueLinkTypeDetails verifies the dropdown source parses inward/
+// outward labels live and that demo mode surfaces the "Tests" coverage type.
+func TestListIssueLinkTypeDetails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issueLinkTypes":[{"name":"Tests","inward":"tested by","outward":"tests"}]}`))
+	}))
+	defer srv.Close()
+
+	got, err := newTestClient(srv).ListIssueLinkTypeDetails(context.Background())
+	if err != nil {
+		t.Fatalf("ListIssueLinkTypeDetails (live): %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "Tests" || got[0].Inward != "tested by" || got[0].Outward != "tests" {
+		t.Fatalf("live parse = %+v, want [{Tests tested by tests}]", got)
+	}
+
+	demo := &Client{baseURL: "demo", token: "t", http: srv.Client()}
+	dd, err := demo.ListIssueLinkTypeDetails(context.Background())
+	if err != nil {
+		t.Fatalf("ListIssueLinkTypeDetails (demo): %v", err)
+	}
+	var foundTests bool
+	for _, lt := range dd {
+		if lt.Name == "Tests" && lt.Inward == "tested by" {
+			foundTests = true
+		}
+	}
+	if !foundTests {
+		t.Fatalf("demo details = %+v, want a Tests/tested by entry", dd)
+	}
+}
+
 // TestRealUpdateTestRequirementsNoOps verifies that an empty add+remove (and the
 // demo URL) make no HTTP calls.
 func TestRealUpdateTestRequirementsNoOps(t *testing.T) {

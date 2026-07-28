@@ -22,7 +22,7 @@ const (
 type Settings struct {
 	DefaultProfileID    string `json:"defaultProfileId"`
 	Theme               string `json:"theme"`               // "light" | "dark" | "system" | "" (= light)
-	RequirementLinkType string `json:"requirementLinkType"` // issue-link type for Test->Requirement coverage; default "tested by"
+	RequirementLinkType string `json:"requirementLinkType"` // issue-link type NAME for Test->Requirement coverage; empty = auto-resolve by direction
 	// ShowCoverage reveals the Coverage top-nav tab. The Coverage module is
 	// opt-in, so it is hidden by default until the user enables it.
 	ShowCoverage bool `json:"showCoverage"`
@@ -39,7 +39,8 @@ func NewManager(s *store.Store) *Manager {
 }
 
 // Get returns the current settings, with zero values for anything unset.
-// RequirementLinkType defaults to "tested by" when no value has been persisted.
+// RequirementLinkType is empty when unset, meaning the coverage link type is
+// auto-resolved from the instance at commit time.
 func (m *Manager) Get() (Settings, error) {
 	var s Settings
 	def, err := m.value(keyDefaultProfileID)
@@ -60,9 +61,11 @@ func (m *Manager) Get() (Settings, error) {
 	}
 	s.DefaultProfileID = def
 	s.Theme = theme
-	if rlt == "" {
-		rlt = "tested by"
-	}
+	// An unset value means "auto-resolve": the backend picks the instance's
+	// coverage link type by direction at commit time. Do NOT substitute a
+	// literal name here; "tested by" is a direction label, not a link-type
+	// name, and would 404 if sent as type.name. The dropdown fills in a
+	// sensible selection from the instance's real link types.
 	s.RequirementLinkType = rlt
 	// Default false (hidden) when unset or unparsable.
 	s.ShowCoverage, _ = strconv.ParseBool(showCov)

@@ -273,6 +273,18 @@ func (a *Adapter) ListIssueLinkTypes(ctx context.Context) ([]string, error) {
 	return a.c.ListIssueLinkTypes(ctx)
 }
 
+func (a *Adapter) ListIssueLinkTypeDetails(ctx context.Context) ([]backend.IssueLinkType, error) {
+	raw, err := a.c.ListIssueLinkTypeDetails(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]backend.IssueLinkType, len(raw))
+	for i, t := range raw {
+		out[i] = backend.IssueLinkType{Name: t.Name, Inward: t.Inward, Outward: t.Outward}
+	}
+	return out, nil
+}
+
 func (a *Adapter) CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error) {
 	return a.c.CreateRequirement(ctx, projectKey, issueType, summary, description, priority, components, fixVersions)
 }

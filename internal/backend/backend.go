@@ -147,6 +147,7 @@ type Backend interface {
 	ListRequirements(ctx context.Context, profileProjectKey string, sources []RequirementSourceSpec, onProgress func(done, total int)) ([]Requirement, []RequirementLink, error)
 	UpdateTestRequirements(ctx context.Context, testKey string, add []string, removeLinkIDs []string) error
 	ListIssueLinkTypes(ctx context.Context) ([]string, error)
+	ListIssueLinkTypeDetails(ctx context.Context) ([]IssueLinkType, error)
 	CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error)
 	DeleteRequirement(ctx context.Context, requirementKey string) error
 	UpdateRequirementLinks(ctx context.Context, fromKey string, add []string, removeLinkIDs []string) error

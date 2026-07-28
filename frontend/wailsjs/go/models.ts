@@ -46,6 +46,22 @@ export namespace backend {
 	        this.supportsTags = source["supportsTags"];
 	    }
 	}
+	export class IssueLinkType {
+	    name: string;
+	    inward: string;
+	    outward: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new IssueLinkType(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.inward = source["inward"];
+	        this.outward = source["outward"];
+	    }
+	}
 
 }
 

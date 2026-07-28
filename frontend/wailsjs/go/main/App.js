@@ -586,8 +586,8 @@ export function ListProjectFixVersions(arg1, arg2) {
   return window['go']['main']['App']['ListProjectFixVersions'](arg1, arg2);
 }
 
-export function ListRequirementLinkTypes(arg1) {
-  return window['go']['main']['App']['ListRequirementLinkTypes'](arg1);
+export function ListRequirementLinkTypeDetails(arg1) {
+  return window['go']['main']['App']['ListRequirementLinkTypeDetails'](arg1);
 }
 
 export function ListRequirementSources(arg1) {

@@ -813,10 +813,13 @@ func (a *App) SetRequirementLinkType(name string) error {
 	return a.settings.SetRequirementLinkType(name)
 }
 
-// ListRequirementLinkTypes returns all issue-link type names defined on the
-// given profile's Jira instance, for populating the link-type config dropdown.
-// Demo mode returns a preset list without a network call.
-func (a *App) ListRequirementLinkTypes(profileID string) ([]string, error) {
+// ListRequirementLinkTypeDetails returns the issue-link types defined on the
+// given profile's Jira instance, each with its name and inward/outward
+// direction labels, for populating the link-type config dropdown. The dropdown
+// shows the direction labels (e.g. "Tests (tested by / tests)") so the user
+// can recognise the coverage relationship, while the stored value is the
+// link-type name. Demo mode returns a preset list without a network call.
+func (a *App) ListRequirementLinkTypeDetails(profileID string) ([]backend.IssueLinkType, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
 	}
@@ -824,7 +827,7 @@ func (a *App) ListRequirementLinkTypes(profileID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return b.ListIssueLinkTypes(a.ctx)
+	return b.ListIssueLinkTypeDetails(a.ctx)
 }
 
 // GetCapabilities reports what the given profile's backend supports, so the

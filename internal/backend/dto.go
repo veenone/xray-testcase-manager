@@ -207,6 +207,20 @@ type ReqToReqLink struct {
 	LinkID   string
 }
 
+// IssueLinkType is a backend issue-link type together with its directional
+// labels. Name is the value a link is actually created with (Jira's
+// type.name); Inward and Outward are the human-readable direction
+// descriptions the server shows in its UI. For example, the coverage link
+// type is typically named "Tests" with Inward "tested by" and Outward
+// "tests", so "tested by" is a direction label, never a link-type name.
+// The link-type config dropdown shows the labels so the user can recognise
+// the coverage relationship while the stored value stays the Name.
+type IssueLinkType struct {
+	Name    string `json:"name"`
+	Inward  string `json:"inward"`
+	Outward string `json:"outward"`
+}
+
 // Bug is a defect issue reachable from a Test.
 type Bug struct {
 	Key        string

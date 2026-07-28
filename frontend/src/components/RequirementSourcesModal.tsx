@@ -3,7 +3,7 @@ import {
   ListRequirementSources,
   SetRequirementSource,
   RemoveRequirementSource,
-  ListRequirementLinkTypes,
+  ListRequirementLinkTypeDetails,
   SetRequirementLinkType,
   GetSettings,
   errMsg,
@@ -13,6 +13,46 @@ import type { RequirementSource } from "../api";
 interface Props {
   profileId: string;
   onClose: () => void;
+}
+
+// LinkTypeOpt is one issue-link type with its directional labels. The value we
+// store is always `name`; `inward`/`outward` are shown so the user can
+// recognise the coverage relationship (e.g. "Tests (tested by / tests)").
+interface LinkTypeOpt {
+  name: string;
+  inward: string;
+  outward: string;
+}
+
+// normLT strips case and non-letters so "Tested By", "tested by", and
+// "tested_by" compare equal.
+function normLT(s: string): string {
+  return (s || "").toLowerCase().replace(/[^a-z]/g, "");
+}
+
+// pickDefaultLinkType chooses the selection shown when the user has not set an
+// explicit type. It matches the coverage link by DIRECTION first (a type whose
+// inward label is "tested by" or outward label is "tests"), then by a name of
+// "Tests", then the first type, mirroring the backend's auto-resolve so the
+// dropdown shows what would actually be committed.
+function pickDefaultLinkType(types: LinkTypeOpt[], stored: string): string {
+  if (stored) return stored;
+  const byDir = types.find(
+    (t) => normLT(t.inward).includes("testedby") || normLT(t.outward) === "tests",
+  );
+  if (byDir) return byDir.name;
+  const byName = types.find((t) => normLT(t.name) === "tests");
+  if (byName) return byName.name;
+  return types[0]?.name ?? "";
+}
+
+// labelForLinkType renders "Name (inward / outward)", falling back to just the
+// name when a backend (e.g. Kiwi) has no distinct direction labels.
+function labelForLinkType(t: LinkTypeOpt): string {
+  if (t.inward && t.outward && (t.inward !== t.name || t.outward !== t.name)) {
+    return `${t.name} (${t.inward} / ${t.outward})`;
+  }
+  return t.name;
 }
 
 // RequirementSourcesModal configures which projects requirements are pulled
@@ -29,8 +69,8 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
   const [editingSource, setEditingSource] = useState<string | null>(null);
 
   // Link-type configuration state.
-  const [linkTypes, setLinkTypes] = useState<string[]>([]);
-  const [selectedLinkType, setSelectedLinkType] = useState("tested by");
+  const [linkTypes, setLinkTypes] = useState<LinkTypeOpt[]>([]);
+  const [selectedLinkType, setSelectedLinkType] = useState("");
   const [linkTypeError, setLinkTypeError] = useState("");
   const [linkTypeBusy, setLinkTypeBusy] = useState(false);
 
@@ -42,13 +82,23 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
 
   useEffect(() => {
     reload();
-    // Load available link types and the current setting in parallel.
-    ListRequirementLinkTypes(profileId)
-      .then((types) => setLinkTypes(types ?? []))
-      .catch(() => setLinkTypes([]));
-    GetSettings()
-      .then((s) => setSelectedLinkType(s.requirementLinkType || "tested by"))
-      .catch(() => {});
+    // Load the instance's link types and the current setting together, then
+    // select the stored type, or auto-pick the coverage type by direction.
+    let cancelled = false;
+    Promise.all([
+      ListRequirementLinkTypeDetails(profileId).catch(() => [] as LinkTypeOpt[]),
+      GetSettings().catch(() => null),
+    ]).then(([types, settings]) => {
+      if (cancelled) return;
+      const opts = (types ?? []) as LinkTypeOpt[];
+      setLinkTypes(opts);
+      setSelectedLinkType(
+        pickDefaultLinkType(opts, settings?.requirementLinkType ?? ""),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileId]);
 
@@ -135,9 +185,11 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
             <span className="src-field-label">Link type used when linking tests to requirements</span>
             <span className="src-field-help">
               The Jira issue-link type created when a test is linked to a
-              requirement (via "Add tests" or the test-detail panel). Default is
-              "tested by" (Jira link-type names are case-sensitive). Changes take
-              effect on the next commit.
+              requirement (via "Add tests" or the test-detail panel). Options
+              show each type's direction labels; the coverage link is usually
+              "Tests" (the requirement is "tested by" the test). "tested by" is
+              a direction, not a link-type name, so the stored value is the name.
+              Changes take effect on the next commit.
             </span>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               <select
@@ -147,16 +199,22 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
                 onChange={(e) => saveLinkType(e.target.value)}
                 style={{ flex: 1 }}
               >
-                {/* Always include the current/default value as an option: the
-                    live instance's issue-link-type names (e.g. "Test", "Blocks")
-                    rarely include the "tested by" default, so without this the
-                    selected value has no matching <option> and can't be picked
-                    (RND_P_4TFINT_05-275). Merge it in, deduped, first. */}
-                {Array.from(new Set([selectedLinkType, ...linkTypes]))
-                  .filter((t) => t)
+                {/* Ensure the selected name always has a matching <option>: a
+                    persisted value not present in the instance's current list
+                    (or an empty auto-resolve) would otherwise be unselectable
+                    (RND_P_4TFINT_05-275). Prepend it, deduped by name. */}
+                {(selectedLinkType &&
+                !linkTypes.some((t) => t.name === selectedLinkType)
+                  ? [
+                      { name: selectedLinkType, inward: "", outward: "" },
+                      ...linkTypes,
+                    ]
+                  : linkTypes
+                )
+                  .filter((t) => t.name)
                   .map((t) => (
-                    <option key={t} value={t}>
-                      {t}
+                    <option key={t.name} value={t.name}>
+                      {labelForLinkType(t)}
                     </option>
                   ))}
               </select>

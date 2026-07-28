@@ -36,16 +36,17 @@ type Requirement struct {
 	EpicKey string
 }
 
-// defaultCoverageLinkType is the fallback issue-link type for Test->Requirement
-// coverage when no type is configured and the instance defines no recognisable
-// coverage link type. "tested by" is the Xray default (inward on the
-// requirement, outward on the Test) — Jira issue-link type names are
-// case-sensitive, and this instance defines it lowercase, so a title-cased
-// "Tested By" 404s. The configurable path in UpdateTestRequirements takes
-// precedence; this is only used as a last resort.
+// defaultCoverageLinkType is the fallback issue-link type NAME for
+// Test->Requirement coverage when no type is configured and the instance
+// defines no recognisable coverage link type. The Xray convention names this
+// link type "Tests" (inward "tested by" on the requirement, outward "tests"
+// on the Test); "tested by" is a direction label, not a link-type name, so it
+// would 404 if used as type.name. The configurable path in
+// UpdateTestRequirements and resolveRequirementLinkType both take precedence;
+// this is only used as a last resort.
 // NOTE(xtm): verify the link-type name and direction against the live Xray
 // Server/DC 8.4.0 instance; the exact name may differ per instance.
-const defaultCoverageLinkType = "tested by"
+const defaultCoverageLinkType = "Tests"
 
 // RequirementLink is a Test <-> Requirement coverage link.
 type RequirementLink struct {
@@ -337,68 +338,121 @@ func (c *Client) UpdateTestRequirements(ctx context.Context, testKey string, add
 
 // resolveRequirementLinkType picks and caches the issue-link type used when
 // linking a Test to a Requirement (Test->Requirement coverage). It is called
-// only when no explicit type is configured. Preferred candidates (first match
-// wins, case/space-insensitive via normalizeTypeName):
-// "testedby", "tests", "relates". Falls back to the first type the instance
-// defines. An empty name (no error) means the instance defines no link types.
+// only when no explicit type is configured. Resolution matches the coverage
+// relationship by DIRECTION first (a link type whose inward label is "tested
+// by", meaning the requirement is tested by the test, or whose outward label
+// is "tests"), because that is how Jira exposes coverage and "tested by" is a
+// direction label rather than a link-type name. It then falls back to a
+// name-based match ("testedby", "tests", "relates") and finally to the first
+// type the instance defines. The resolved value is always a real link-type
+// NAME, so the POST in UpdateTestRequirements succeeds. An empty name (no
+// error) means the instance defines no link types.
 //
-// Demo URLs short-circuit to "Tested By" without a network call.
+// Demo URLs short-circuit to the coverage link resolved from the demo set.
 //
 // NOTE(xtm): verify the preferred link type and direction on the live Xray
 // Server/DC 8.4.0 instance; instances may name it differently.
 func (c *Client) resolveRequirementLinkType(ctx context.Context) (string, error) {
 	c.covLinkTypeOnce.Do(func() {
+		var types []IssueLinkType
 		if isDemoURL(c.baseURL) {
-			c.covLinkTypeName = defaultCoverageLinkType
-			return
+			types = demoIssueLinkTypes()
+		} else {
+			var resp struct {
+				IssueLinkTypes []IssueLinkType `json:"issueLinkTypes"`
+			}
+			if e := c.get(ctx, "/rest/api/2/issueLinkType", &resp); e != nil {
+				c.covLinkTypeErr = e
+				return
+			}
+			types = resp.IssueLinkTypes
 		}
-		var resp struct {
-			IssueLinkTypes []struct {
-				Name string `json:"name"`
-			} `json:"issueLinkTypes"`
+		// Direction match: the coverage link is the one whose inward label is
+		// "tested by" or outward label is "tests", regardless of its name.
+		for _, t := range types {
+			if strings.Contains(normalizeTypeName(t.Inward), "testedby") ||
+				strings.Contains(normalizeTypeName(t.Outward), "tests") {
+				c.covLinkTypeName = t.Name
+				return
+			}
 		}
-		if e := c.get(ctx, "/rest/api/2/issueLinkType", &resp); e != nil {
-			c.covLinkTypeErr = e
-			return
-		}
+		// Name-based fallback.
 		for _, want := range []string{"testedby", "tests", "relates"} {
-			for _, t := range resp.IssueLinkTypes {
+			for _, t := range types {
 				if strings.Contains(normalizeTypeName(t.Name), want) {
 					c.covLinkTypeName = t.Name
 					return
 				}
 			}
 		}
-		if len(resp.IssueLinkTypes) > 0 {
-			c.covLinkTypeName = resp.IssueLinkTypes[0].Name
+		if len(types) > 0 {
+			c.covLinkTypeName = types[0].Name
 		}
 	})
 	return c.covLinkTypeName, c.covLinkTypeErr
 }
 
+// IssueLinkType is a Jira issue-link type together with its directional
+// labels. Name is what a link is created with (POST type.name); Inward and
+// Outward are the direction descriptions Jira shows in its UI. The coverage
+// link type is typically named "Tests" with Inward "tested by" and Outward
+// "tests", so "tested by" is a direction label, never a link-type name.
+type IssueLinkType struct {
+	Name    string `json:"name"`
+	Inward  string `json:"inward"`
+	Outward string `json:"outward"`
+}
+
+// demoIssueLinkTypes mirrors a realistic Jira instance for demo mode: the
+// coverage link is named "Tests" with the "tested by" / "tests" directions,
+// so the dropdown and auto-resolve behave exactly as they do live.
+func demoIssueLinkTypes() []IssueLinkType {
+	return []IssueLinkType{
+		{Name: "Tests", Inward: "tested by", Outward: "tests"},
+		{Name: "Relates", Inward: "is related to", Outward: "relates to"},
+		{Name: "Blockers", Inward: "is blocked by", Outward: "blocks"},
+		{Name: "Cloners", Inward: "is cloned from", Outward: "clones to"},
+		{Name: "Duplicate", Inward: "is duplicated by", Outward: "duplicates"},
+	}
+}
+
 // ListIssueLinkTypes returns the names of all issue-link types defined on this
-// Jira instance, for use in the requirement-link-type config dropdown.
+// Jira instance. Retained for callers that only need names; the config
+// dropdown uses ListIssueLinkTypeDetails so it can show direction labels.
 // Demo URLs return a preset list without a network call.
 //
 // NOTE(xtm): the available types vary per Jira instance; verify against the live
 // Xray Server/DC 8.4.0 instance before using the result in UI logic.
 func (c *Client) ListIssueLinkTypes(ctx context.Context) ([]string, error) {
+	details, err := c.ListIssueLinkTypeDetails(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(details))
+	for _, t := range details {
+		names = append(names, t.Name)
+	}
+	return names, nil
+}
+
+// ListIssueLinkTypeDetails returns every issue-link type defined on this Jira
+// instance with its name and inward/outward direction labels, for the
+// requirement-link-type config dropdown. Demo URLs return a preset list
+// without a network call.
+//
+// NOTE(xtm): the available types vary per Jira instance; verify against the live
+// Xray Server/DC 8.4.0 instance before using the result in UI logic.
+func (c *Client) ListIssueLinkTypeDetails(ctx context.Context) ([]IssueLinkType, error) {
 	if isDemoURL(c.baseURL) {
-		return []string{"tested by", "Tests", "Relates", "Blocks", "Cloners", "Duplicate"}, nil
+		return demoIssueLinkTypes(), nil
 	}
 	var resp struct {
-		IssueLinkTypes []struct {
-			Name string `json:"name"`
-		} `json:"issueLinkTypes"`
+		IssueLinkTypes []IssueLinkType `json:"issueLinkTypes"`
 	}
 	if err := c.get(ctx, "/rest/api/2/issueLinkType", &resp); err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(resp.IssueLinkTypes))
-	for _, t := range resp.IssueLinkTypes {
-		names = append(names, t.Name)
-	}
-	return names, nil
+	return resp.IssueLinkTypes, nil
 }
 
 // DeleteRequirement deletes a requirement issue (often cross-project). Demo URLs

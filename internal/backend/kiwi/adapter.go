@@ -835,6 +835,23 @@ func (a *Adapter) ListIssueLinkTypes(ctx context.Context) ([]string, error) {
 	return []string{"verifies", "validates", "derives-from", "related"}, nil
 }
 
+// ListIssueLinkTypeDetails mirrors ListIssueLinkTypes but in the richer
+// name+direction shape the config dropdown consumes. Kiwi's requirements
+// plugin exposes only a flat vocabulary (no separate inward/outward
+// directions), so Inward and Outward echo the Name. Absent-plugin returns
+// (nil, nil), matching ListIssueLinkTypes.
+func (a *Adapter) ListIssueLinkTypeDetails(ctx context.Context) ([]backend.IssueLinkType, error) {
+	names, err := a.ListIssueLinkTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]backend.IssueLinkType, len(names))
+	for i, n := range names {
+		out[i] = backend.IssueLinkType{Name: n, Inward: n, Outward: n}
+	}
+	return out, nil
+}
+
 func (a *Adapter) CreateRequirement(ctx context.Context, projectKey, issueType, summary, description, priority, components, fixVersions string) (string, error) {
 	return "", backend.ErrUnsupported // Phase 5 (write)
 }
