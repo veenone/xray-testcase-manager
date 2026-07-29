@@ -91,15 +91,17 @@ func TestRealUpdateTestRequirementsLinksAndUnlinks(t *testing.T) {
 		if typ == nil || typ["name"] != "Tested By" {
 			t.Errorf("post type = %+v, want name=Tested By", p.body["type"])
 		}
-		out, _ := p.body["outwardIssue"].(map[string]any)
-		if out == nil || out["key"] != "QA-1" {
-			t.Errorf("post outwardIssue = %+v, want key=QA-1 (the Test)", p.body["outwardIssue"])
-		}
+		// Direction: the Test is the inward issue and the requirement the
+		// outward issue, so the requirement renders the link as "tested by".
 		in, _ := p.body["inwardIssue"].(map[string]any)
-		if in == nil {
-			t.Fatalf("post missing inwardIssue: %+v", p.body)
+		if in == nil || in["key"] != "QA-1" {
+			t.Errorf("post inwardIssue = %+v, want key=QA-1 (the Test)", p.body["inwardIssue"])
 		}
-		byReq[in["key"].(string)] = p.body
+		out, _ := p.body["outwardIssue"].(map[string]any)
+		if out == nil {
+			t.Fatalf("post missing outwardIssue: %+v", p.body)
+		}
+		byReq[out["key"].(string)] = p.body
 	}
 	if _, ok := byReq["PRD-1"]; !ok {
 		t.Errorf("missing POST linking PRD-1")
@@ -164,12 +166,13 @@ func TestResolveRequirementLinkTypeByDirection(t *testing.T) {
 	if typ == nil || typ["name"] != "Tests" {
 		t.Fatalf("post type = %+v, want name=Tests (resolved by direction, not the 'tested by' label)", posted["type"])
 	}
-	// Direction: the Test is the outward issue that "tests" the requirement.
-	if out, _ := posted["outwardIssue"].(map[string]any); out == nil || out["key"] != "QA-1" {
-		t.Errorf("post outwardIssue = %+v, want key=QA-1 (the Test)", posted["outwardIssue"])
+	// Direction: the Test is the inward issue and the requirement the outward
+	// issue, so the requirement renders the link as "tested by" (verified live).
+	if in, _ := posted["inwardIssue"].(map[string]any); in == nil || in["key"] != "QA-1" {
+		t.Errorf("post inwardIssue = %+v, want key=QA-1 (the Test)", posted["inwardIssue"])
 	}
-	if in, _ := posted["inwardIssue"].(map[string]any); in == nil || in["key"] != "PRD-1" {
-		t.Errorf("post inwardIssue = %+v, want key=PRD-1 (the requirement)", posted["inwardIssue"])
+	if out, _ := posted["outwardIssue"].(map[string]any); out == nil || out["key"] != "PRD-1" {
+		t.Errorf("post outwardIssue = %+v, want key=PRD-1 (the requirement)", posted["outwardIssue"])
 	}
 }
 

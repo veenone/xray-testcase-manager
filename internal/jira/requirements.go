@@ -266,20 +266,17 @@ func (c *Client) searchRequirements(ctx context.Context, spec RequirementSourceS
 //
 // Live path: for each removeLinkID, DELETE /rest/api/2/issueLink/{id}; then for
 // each requirement key in add, POST /rest/api/2/issueLink with
-// {type:{name:linkType}, inwardIssue:{key:requirement},
-// outwardIssue:{key:test}} (Jira answers 201 with no body), mirroring
-// CreateBugLink. Blank keys/ids are skipped defensively. This is a commit write:
-// the first error encountered is returned so the pending change is retried
-// rather than silently reported as success.
+// {type:{name:linkType}, inwardIssue:{key:test},
+// outwardIssue:{key:requirement}} (Jira answers 201 with no body). The Test is
+// the inward issue so the requirement renders the link as "tested by"
+// (verified live). Blank keys/ids are skipped defensively. This is a commit
+// write: the first error encountered is returned so the pending change is
+// retried rather than silently reported as success.
 //
 // Link-type precedence (highest wins):
 //  1. Client.requirementLinkType if non-empty (persisted setting, set at construction).
-//  2. Auto-resolved via resolveRequirementLinkType (prefers "Tested By" > "Tests" > "Relates").
-//  3. Hard-coded fallback defaultCoverageLinkType ("Tested By").
-//
-// NOTE(xtm): the coverage link type and its direction (outwardIssue = the Test,
-// inwardIssue = the requirement) should be verified against the live Xray
-// Server/DC 8.4.0 instance; the name and direction may differ per instance.
+//  2. Auto-resolved via resolveRequirementLinkType (matches by direction, then name).
+//  3. Hard-coded fallback defaultCoverageLinkType ("Tests").
 func (c *Client) UpdateTestRequirements(ctx context.Context, testKey string, add []string, removeLinkIDs []string) error {
 	if isDemoURL(c.baseURL) {
 		return nil
@@ -324,10 +321,15 @@ func (c *Client) UpdateTestRequirements(ctx context.Context, testKey string, add
 		if reqKey == "" {
 			continue
 		}
+		// Direction: the Test is the inward issue and the requirement the
+		// outward issue, so the requirement renders the link under "tested by"
+		// (the requirement is tested by the test), matching Xray's native
+		// coverage. The reverse (requirement inward) renders as "tests" on the
+		// requirement, which is wrong. Verified against the live instance.
 		body := map[string]any{
 			"type":         map[string]string{"name": linkType},
-			"inwardIssue":  map[string]string{"key": reqKey},
-			"outwardIssue": map[string]string{"key": testKey},
+			"inwardIssue":  map[string]string{"key": testKey},
+			"outwardIssue": map[string]string{"key": reqKey},
 		}
 		if err := c.writeJSONReturning(ctx, http.MethodPost, "/rest/api/2/issueLink", body, nil); err != nil {
 			return err
