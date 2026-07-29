@@ -3690,6 +3690,15 @@ tr.row-checked:hover {
   flex-direction: column;
   gap: 12px;
 }
+/* Modals built on .pending-modal cap at 80vh with a fixed header and footer, so
+   the body must scroll. Without this, tall content (e.g. the 13-field import
+   mapping, RND_P_4TFINT_05-308) overflows and pushes the action buttons off the
+   bottom of the screen, making the dialog unusable. */
+.pending-modal .bulk-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .bulk-row {
   display: flex;
   flex-direction: column;
