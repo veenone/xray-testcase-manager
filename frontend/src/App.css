@@ -1780,9 +1780,18 @@ button.defect-chip-key:hover {
   flex-wrap: wrap;
 }
 .import-mapping {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+/* Each mapping field (label over select) fills its grid cell. */
+.import-mapping .bulk-row select {
+  width: 100%;
+}
+@media (max-width: 560px) {
+  .import-mapping {
+    grid-template-columns: 1fr;
+  }
 }
 .import-validation {
   font-size: 13px;
