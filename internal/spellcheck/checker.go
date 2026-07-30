@@ -9,25 +9,41 @@ import (
 	_ "embed"
 	"sort"
 	"strings"
+	"sync"
 )
 
 //go:embed words_en.txt
 var wordsEN string
 
+// baseDict is the embedded English wordlist parsed once and shared read-only
+// across scans, so NewDefaultChecker does not rebuild the ~370k-entry map on
+// every scan.
+var (
+	baseDictOnce sync.Once
+	baseDict     map[string]struct{}
+)
+
+func loadBaseDict() map[string]struct{} {
+	baseDictOnce.Do(func() {
+		d := make(map[string]struct{}, 400000)
+		for _, line := range strings.Split(wordsEN, "\n") {
+			w := strings.ToLower(strings.TrimSpace(line))
+			if w != "" {
+				d[w] = struct{}{}
+			}
+		}
+		baseDict = d
+	})
+	return baseDict
+}
+
 // NewDefaultChecker builds a Checker from the embedded English wordlist plus
 // the domain allow-list and any user ignore words.
 func NewDefaultChecker(ignore []string) *Checker {
-	dict := make(map[string]struct{}, 400000)
-	for _, line := range strings.Split(wordsEN, "\n") {
-		w := strings.ToLower(strings.TrimSpace(line))
-		if w != "" {
-			dict[w] = struct{}{}
-		}
-	}
 	allow := make([]string, 0, len(domainAllowList)+len(ignore))
 	allow = append(allow, domainAllowList...)
 	allow = append(allow, ignore...)
-	return NewChecker(dict, allow)
+	return NewChecker(loadBaseDict(), allow)
 }
 
 // Finding is one misspelled word located in one field of one test.
@@ -51,10 +67,16 @@ type TestText struct {
 }
 
 // Checker holds the known-word dictionary and the allow-list (domain terms +
-// user ignore words). All keys are lowercased.
+// user ignore words). All keys are lowercased. byFirst indexes the dictionary
+// by first letter so suggest() only scans same-initial candidates, and sugCache
+// memoizes suggestions per distinct word so a repeated typo is computed once
+// per scan. A Checker is not safe for concurrent CheckText calls (sugCache is
+// mutated); scans are single-goroutine.
 type Checker struct {
-	dict  map[string]struct{}
-	allow map[string]struct{}
+	dict     map[string]struct{}
+	allow    map[string]struct{}
+	byFirst  map[byte][]string
+	sugCache map[string][]string
 }
 
 // NewChecker builds a Checker from a lowercased dictionary set and an
@@ -67,12 +89,24 @@ func NewChecker(dict map[string]struct{}, allow []string) *Checker {
 			a[w] = struct{}{}
 		}
 	}
-	return &Checker{dict: dict, allow: a}
+	byFirst := make(map[byte][]string, 32)
+	for w := range dict {
+		if w != "" {
+			byFirst[w[0]] = append(byFirst[w[0]], w)
+		}
+	}
+	return &Checker{
+		dict:     dict,
+		allow:    a,
+		byFirst:  byFirst,
+		sugCache: make(map[string][]string),
+	}
 }
 
-// CheckText scans one field's text and returns a Finding per unknown word.
-// TestKey is left empty for the caller to fill. Suggestions are populated in a
-// later step.
+// CheckText scans one field's text and returns a Finding per unknown word,
+// including its suggestions (memoized per distinct word via the Checker's
+// cache, so a repeated typo is computed once per scan). TestKey is left empty
+// for the caller to fill.
 func (c *Checker) CheckText(field, text string) []Finding {
 	var out []Finding
 	n := len(text)
@@ -196,22 +230,26 @@ func snippet(text string, off, length int) string {
 
 // suggest returns up to three dictionary words within edit distance 2 of w
 // (lowercased), ranked by distance then by closeness in length then
-// alphabetically. A same-first-letter prefilter keeps the scan cheap on a
-// large dictionary; typos that change the first letter are not suggested for
-// (an acceptable trade-off for speed).
+// alphabetically. Candidates come from the first-letter index (typos that
+// change the first letter are not suggested for, an acceptable trade-off for
+// speed) and the result is memoized per word, so a repeated typo across many
+// tests costs one computation per scan.
 func (c *Checker) suggest(w string) []string {
 	if w == "" {
 		return nil
+	}
+	if s, ok := c.sugCache[w]; ok {
+		return s
 	}
 	type cand struct {
 		word string
 		dist int
 	}
 	var cands []cand
-	for dw := range c.dict {
-		if dw == "" || dw[0] != w[0] {
-			continue
-		}
+	// Only same-first-letter candidates can be within distance while keeping the
+	// first letter; the index makes this a small bucket instead of the whole
+	// dictionary.
+	for _, dw := range c.byFirst[w[0]] {
 		if abs(len(dw)-len(w)) > 2 {
 			continue
 		}
@@ -233,6 +271,7 @@ func (c *Checker) suggest(w string) []string {
 	for i := 0; i < len(cands) && i < 3; i++ {
 		out = append(out, cands[i].word)
 	}
+	c.sugCache[w] = out
 	return out
 }
 
