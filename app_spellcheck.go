@@ -4,7 +4,10 @@ import (
 	"fmt"
 
 	"xray-test-manager/internal/spellcheck"
+	"xray-test-manager/internal/syncer"
 	"xray-test-manager/internal/testrepo"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ListMisspellings scans every synced test in the profile for spelling errors
@@ -22,13 +25,21 @@ func (a *App) ListMisspellings(profileID string) (findings []spellcheck.Finding,
 	}
 	checker := spellcheck.NewDefaultChecker(ignore)
 
-	var texts []spellcheck.TestText
+	// Emit progress on a dedicated channel so the view can show a bar (the scan
+	// is O(tests) and can take a few seconds over a large repository). Each page
+	// is scanned as it is fetched, so progress reflects real work, not just the
+	// paging. A final Done event clears the bar.
+	const stage = "Scanning for typos"
+	runtime.EventsEmit(a.ctx, "spellcheck:progress", syncer.Progress{Stage: stage})
+	defer runtime.EventsEmit(a.ctx, "spellcheck:progress", syncer.Progress{Done: true})
+
 	offset := 0
 	for {
 		page, err := a.repo.ListTests(profileID, testrepo.Query{Limit: 500, Offset: offset})
 		if err != nil {
 			return nil, err
 		}
+		texts := make([]spellcheck.TestText, 0, len(page.Tests))
 		for _, tc := range page.Tests {
 			texts = append(texts, spellcheck.TestText{
 				Key:               tc.Key,
@@ -38,12 +49,16 @@ func (a *App) ListMisspellings(profileID string) (findings []spellcheck.Finding,
 				GenericDefinition: tc.GenericDefinition,
 			})
 		}
+		findings = append(findings, spellcheck.ScanTests(texts, checker)...)
 		offset += len(page.Tests)
+		runtime.EventsEmit(a.ctx, "spellcheck:progress", syncer.Progress{
+			Stage: stage, Fetched: offset, Total: page.Total,
+		})
 		if len(page.Tests) == 0 || offset >= page.Total {
 			break
 		}
 	}
-	return spellcheck.ScanTests(texts, checker), nil
+	return findings, nil
 }
 
 // ApplyCorrection replaces the flagged word at [offset,offset+length) in the
@@ -74,10 +89,12 @@ func (a *App) ApplyCorrection(profileID, testKey, field, word string, offset, le
 		return fmt.Errorf("field %q is not spellcheck-correctable", field)
 	}
 	if offset < 0 || length <= 0 || offset+length > len(cur) || cur[offset:offset+length] != word {
-		return fmt.Errorf("correction is stale — please re-scan")
+		return fmt.Errorf("correction is stale, please re-scan")
 	}
 	newValue := cur[:offset] + replacement + cur[offset+length:]
-	return a.repo.EditTestField(profileID, testKey, field, newValue)
+	// Record a spellcheck-specific audit message for the activity.
+	note := fmt.Sprintf("Spellcheck: replaced %q with %q in %s", word, replacement, field)
+	return a.repo.EditTestFieldWithAudit(profileID, testKey, field, newValue, "spellcheck-fix", note)
 }
 
 // AddIgnoreWord adds a word to the global spellcheck ignore list so future

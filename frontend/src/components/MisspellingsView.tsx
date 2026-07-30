@@ -6,9 +6,10 @@ import {
   GetIgnoreWords,
   RemoveIgnoreWord,
   GetTest,
+  EventsOn,
   errMsg,
 } from "../api";
-import type { TestCase } from "../api";
+import type { TestCase, SyncProgress } from "../api";
 
 interface Finding {
   testKey: string;
@@ -54,11 +55,22 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [error, setError] = useState("");
   const [showIgnore, setShowIgnore] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("test");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // checked holds lowercased words: checking one finding selects every finding
+  // sharing that word, so a bulk action hits all occurrences across tests.
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+
+  // Live scan progress bar.
+  useEffect(() => {
+    return EventsOn("spellcheck:progress", (p: SyncProgress) => {
+      setProgress(p.done ? null : p);
+    });
+  }, []);
 
   // Reset when the profile changes so findings from another profile never
   // linger in the view.
@@ -68,6 +80,7 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     setError("");
     setShowIgnore(false);
     setSelectedId(null);
+    setChecked(new Set());
   }, [profileId]);
 
   async function scan() {
@@ -75,6 +88,7 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     setLoading(true);
     setError("");
     setSelectedId(null);
+    setChecked(new Set());
     try {
       const result = (await ListMisspellings(profileId)) as unknown as Finding[];
       setFindings(result ?? []);
@@ -83,6 +97,7 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
       setError(errMsg(e));
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   }
 
@@ -114,6 +129,17 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     [sorted, selectedId],
   );
 
+  const distinctWords = useMemo(
+    () => Array.from(new Set(findings.map((f) => f.word.toLowerCase()))),
+    [findings],
+  );
+  const allChecked =
+    distinctWords.length > 0 && distinctWords.every((w) => checked.has(w));
+  const checkedFindings = useMemo(
+    () => sorted.filter((f) => checked.has(f.word.toLowerCase())),
+    [sorted, checked],
+  );
+
   function toggleSort(k: SortKey) {
     if (sortKey === k) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -128,9 +154,22 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     return sortDir === "asc" ? " ▲" : " ▼";
   }
 
+  function toggleWord(word: string) {
+    const lower = word.toLowerCase();
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(lower)) next.delete(lower);
+      else next.add(lower);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setChecked(allChecked ? new Set() : new Set(distinctWords));
+  }
+
   // applyReplacement writes an arbitrary replacement for the flagged word
-  // through the pending-change pipeline, then re-scans. Used both by the
-  // suggestion chips (matchCased) and the drawer's custom-replacement input.
+  // through the pending-change pipeline, then re-scans.
   async function applyReplacement(f: Finding, replacement: string) {
     const r = replacement.trim();
     if (!r) return;
@@ -151,12 +190,65 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     }
   }
 
+  // bulkApply replaces every checked finding, tolerating individual stale
+  // failures (a re-scan afterwards surfaces anything that could not be applied,
+  // e.g. two occurrences of the same word in one field).
+  async function bulkApply(replacementFor: (f: Finding) => string) {
+    const list = checkedFindings;
+    if (list.length === 0) return;
+    setLoading(true);
+    setError("");
+    let firstErr = "";
+    for (const f of list) {
+      const r = replacementFor(f).trim();
+      if (!r) continue;
+      try {
+        await ApplyCorrection(
+          profileId,
+          f.testKey,
+          f.field,
+          f.word,
+          f.offset,
+          f.length,
+          r,
+        );
+      } catch (e) {
+        if (!firstErr) firstErr = errMsg(e);
+      }
+    }
+    onChanged();
+    await scan();
+    setLoading(false);
+    if (firstErr) {
+      setError(`${firstErr} (some occurrences may need another pass)`);
+    }
+  }
+
   async function ignore(f: Finding) {
     try {
       await AddIgnoreWord(f.word);
       const lower = f.word.toLowerCase();
       setFindings((prev) => prev.filter((x) => x.word.toLowerCase() !== lower));
       if (selected && selected.word.toLowerCase() === lower) setSelectedId(null);
+      setChecked((prev) => {
+        const next = new Set(prev);
+        next.delete(lower);
+        return next;
+      });
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
+  async function bulkIgnore() {
+    const wordsToIgnore = Array.from(checked);
+    if (wordsToIgnore.length === 0) return;
+    setError("");
+    try {
+      for (const w of wordsToIgnore) await AddIgnoreWord(w);
+      setFindings((prev) => prev.filter((x) => !checked.has(x.word.toLowerCase())));
+      setChecked(new Set());
+      setSelectedId(null);
     } catch (e) {
       setError(errMsg(e));
     }
@@ -168,6 +260,12 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     { key: "word", label: "Word" },
     { key: "context", label: "Context" },
   ];
+
+  // Suggestions for the single selected word (same across its findings).
+  const singleWord = checked.size === 1 ? Array.from(checked)[0] : "";
+  const singleWordSuggestions = singleWord
+    ? findings.find((f) => f.word.toLowerCase() === singleWord)?.suggestions ?? []
+    : [];
 
   return (
     <div className="misspellings-view">
@@ -190,7 +288,41 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
         </button>
       </div>
 
+      {loading && <MspScanBar progress={progress} />}
       {error && <div className="error-text msp-error">{error}</div>}
+
+      {checked.size > 0 && (
+        <div className="msp-bulk">
+          <span className="msp-bulk-count">
+            {checkedFindings.length} finding{checkedFindings.length === 1 ? "" : "s"}
+            {" · "}
+            {checked.size} word{checked.size === 1 ? "" : "s"} selected
+          </span>
+          {checked.size === 1 && singleWordSuggestions.length > 0 && (
+            <div className="msp-bulk-suggests">
+              <span className="muted">Replace all:</span>
+              {singleWordSuggestions.map((s) => (
+                <button
+                  key={s}
+                  className="suggestion-chip"
+                  onClick={() => void bulkApply((f) => matchCase(f.word, s))}
+                  title={`Replace all occurrences with "${s}"`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+          {checked.size === 1 && <BulkCustomReplace onReplace={(v) => void bulkApply(() => v)} />}
+          <span className="msp-bulk-spacer" />
+          <button className="btn" onClick={() => void bulkIgnore()}>
+            Ignore selected
+          </button>
+          <button className="btn btn-ghost" onClick={() => setChecked(new Set())}>
+            Clear
+          </button>
+        </div>
+      )}
 
       <div className="msp-split">
         <div className="msp-body">
@@ -215,6 +347,14 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
             <table className="board-table msp-table">
               <thead>
                 <tr>
+                  <th className="msp-check-col">
+                    <input
+                      type="checkbox"
+                      checked={allChecked}
+                      onChange={toggleAll}
+                      title="Select all words"
+                    />
+                  </th>
                   {columns.map((c) => (
                     <th
                       key={c.key}
@@ -233,12 +373,24 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
               <tbody>
                 {sorted.map((f) => {
                   const id = findingId(f);
+                  const isChecked = checked.has(f.word.toLowerCase());
                   return (
                     <tr
                       key={id}
                       className={id === selectedId ? "selected" : ""}
                       onClick={() => setSelectedId(id)}
                     >
+                      <td
+                        className="msp-check-col"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleWord(f.word)}
+                          title={`Select all "${f.word}"`}
+                        />
+                      </td>
                       <td className="mono">{f.testKey}</td>
                       <td>{FIELD_LABEL[f.field] ?? f.field}</td>
                       <td className="typo-word">{f.word}</td>
@@ -306,6 +458,64 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
   );
 }
 
+// MspScanBar mirrors the sync/duplicate progress bar for the spellcheck scan.
+function MspScanBar({ progress }: { progress: SyncProgress | null }) {
+  const total = progress?.total ?? 0;
+  const fetched = progress?.fetched ?? 0;
+  const hasCount = total > 0;
+  const pct = hasCount ? Math.round((fetched / total) * 100) : 0;
+  return (
+    <div className="syncbar msp-barwrap">
+      {hasCount && (
+        <div className="syncbar-track">
+          <div className="syncbar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <span className="muted">
+        {progress?.stage || "Scanning for typos"}
+        {hasCount
+          ? `: ${fetched.toLocaleString()} / ${total.toLocaleString()}`
+          : "…"}
+      </span>
+    </div>
+  );
+}
+
+// BulkCustomReplace is a small input for replacing every selected occurrence
+// with a typed word.
+function BulkCustomReplace({ onReplace }: { onReplace: (value: string) => void }) {
+  const [v, setV] = useState("");
+  return (
+    <div className="msp-bulk-replace">
+      <input
+        className="detail-input"
+        placeholder="Replace all with…"
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && v.trim()) {
+            e.preventDefault();
+            onReplace(v.trim());
+            setV("");
+          }
+        }}
+      />
+      <button
+        className="btn"
+        onClick={() => {
+          if (v.trim()) {
+            onReplace(v.trim());
+            setV("");
+          }
+        }}
+        disabled={!v.trim()}
+      >
+        Replace all
+      </button>
+    </div>
+  );
+}
+
 // fieldText extracts the full text of a finding's field from a fetched test.
 function fieldText(tc: TestCase, field: string): string {
   switch (field) {
@@ -322,39 +532,40 @@ function fieldText(tc: TestCase, field: string): string {
   }
 }
 
-// highlight renders the field text with the flagged word wrapped in a yellow
-// mark. It highlights the exact occurrence at the finding's offset when that
-// still matches (ASCII-safe), else the first case-insensitive occurrence.
-function highlight(text: string, offset: number, length: number, word: string) {
-  let start = -1;
-  let end = -1;
+// findRange locates the flagged word in the field text: the exact occurrence at
+// the finding's offset when that still matches (ASCII-safe), else the first
+// case-insensitive occurrence. Returns null when the word is not found.
+function findRange(
+  text: string,
+  offset: number,
+  length: number,
+  word: string,
+): [number, number] | null {
   if (
     offset >= 0 &&
     offset + length <= text.length &&
     text.slice(offset, offset + length).toLowerCase() === word.toLowerCase()
   ) {
-    start = offset;
-    end = offset + length;
-  } else {
-    const idx = text.toLowerCase().indexOf(word.toLowerCase());
-    if (idx >= 0) {
-      start = idx;
-      end = idx + word.length;
-    }
+    return [offset, offset + length];
   }
-  if (start < 0) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(word.toLowerCase());
+  return idx >= 0 ? [idx, idx + word.length] : null;
+}
+
+// markedText renders text with [start,end) wrapped in a mark of the given class.
+function markedText(text: string, start: number, end: number, cls: string) {
   return (
     <>
       {text.slice(0, start)}
-      <mark className="typo-hl">{text.slice(start, end)}</mark>
+      <mark className={cls}>{text.slice(start, end)}</mark>
       {text.slice(end)}
     </>
   );
 }
 
 // MisspellingDrawer is the right-side panel for the selected finding: the word,
-// its suggestions, a custom replacement, an ignore action, and the full field
-// text with the flagged word highlighted in context.
+// its suggestions, a custom replacement with a live before/after preview, an
+// ignore action, and the full field text with the flagged word highlighted.
 function MisspellingDrawer({
   profileId,
   finding,
@@ -387,6 +598,12 @@ function MisspellingDrawer({
       cancelled = true;
     };
   }, [profileId, finding]);
+
+  const range =
+    text !== null
+      ? findRange(text, finding.offset, finding.length, finding.word)
+      : null;
+  const trimmed = custom.trim();
 
   return (
     <aside className="msp-drawer">
@@ -434,20 +651,39 @@ function MisspellingDrawer({
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && custom.trim()) {
+              if (e.key === "Enter" && trimmed) {
                 e.preventDefault();
-                onApply(finding, custom.trim());
+                onApply(finding, trimmed);
               }
             }}
           />
           <button
             className="btn btn-primary"
-            onClick={() => onApply(finding, custom.trim())}
-            disabled={!custom.trim()}
+            onClick={() => onApply(finding, trimmed)}
+            disabled={!trimmed}
           >
             Replace
           </button>
         </div>
+
+        {trimmed && text !== null && range && (
+          <div className="msp-preview">
+            <div className="msp-preview-row">
+              <span className="msp-preview-tag">Before</span>
+              <span className="msp-preview-text">
+                {markedText(text, range[0], range[1], "typo-hl")}
+              </span>
+            </div>
+            <div className="msp-preview-row">
+              <span className="msp-preview-tag">After</span>
+              <span className="msp-preview-text">
+                {text.slice(0, range[0])}
+                <mark className="typo-hl-after">{trimmed}</mark>
+                {text.slice(range[1])}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="msp-drawer-actions">
           <button className="btn msp-ignore-btn" onClick={() => onIgnore(finding)}>
@@ -462,7 +698,9 @@ function MisspellingDrawer({
           <p className="muted">Loading…</p>
         ) : (
           <pre className="msp-context-pre">
-            {highlight(text, finding.offset, finding.length, finding.word)}
+            {range
+              ? markedText(text, range[0], range[1], "typo-hl")
+              : text}
           </pre>
         )}
       </div>

@@ -2941,6 +2941,14 @@ func recentMonths(counts map[string]int, n int) []Bucket {
 // The audit log records every individual edit faithfully; only the
 // pending_change table is coalesced.
 func (r *Repository) EditTestField(profileID, testKey, field, newValue string) error {
+	return r.EditTestFieldWithAudit(profileID, testKey, field, newValue, "edit-local", "")
+}
+
+// EditTestFieldWithAudit is EditTestField with a caller-supplied audit action
+// and note, so activities like a spellcheck correction record a descriptive
+// message (e.g. "Spellcheck: replaced ...") in the audit log rather than the
+// generic field edit. The pending change and Jira commit are unchanged.
+func (r *Repository) EditTestFieldWithAudit(profileID, testKey, field, newValue, auditAction, auditNote string) error {
 	col, ok := editableFields[field]
 	if !ok {
 		return fmt.Errorf("field %q is not editable", field)
@@ -2983,7 +2991,7 @@ func (r *Repository) EditTestField(profileID, testKey, field, newValue string) e
 	}
 	if err := writeAudit(
 		tx, profileID, entityTestCase, testKey,
-		"edit-local", field, currentVal, newValue, "",
+		auditAction, field, currentVal, newValue, auditNote,
 	); err != nil {
 		return err
 	}

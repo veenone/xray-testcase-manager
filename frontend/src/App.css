@@ -4451,6 +4451,92 @@ tr.row-checked:hover {
   border-radius: 2px;
   padding: 0 1px;
 }
+/* Green highlight of the replacement in the before/after preview. */
+.typo-hl-after {
+  background: #86efac;
+  color: #14532d;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Scan progress bar placement (reuses .syncbar). */
+.msp-barwrap {
+  margin: 8px 14px 0;
+}
+
+/* Checkbox column in the results table. */
+.msp-check-col {
+  width: 32px;
+  text-align: center;
+  cursor: default;
+}
+.msp-check-col input {
+  cursor: pointer;
+}
+
+/* Bulk-action bar shown when one or more words are selected. */
+.msp-bulk {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.msp-bulk-count {
+  font-size: 12px;
+  font-weight: 600;
+}
+.msp-bulk-suggests {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.msp-bulk-replace {
+  display: flex;
+  gap: 6px;
+}
+.msp-bulk-replace .detail-input {
+  margin-bottom: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  max-width: 180px;
+}
+.msp-bulk-spacer {
+  flex: 1;
+}
+
+/* Before/after preview of a manual replacement in the drawer. */
+.msp-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.msp-preview-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.msp-preview-tag {
+  flex: 0 0 42px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-top: 2px;
+}
+.msp-preview-text {
+  min-width: 0;
+  word-break: break-word;
+}
 
 /* Spellcheck ignore-list modal: add at top, filter to narrow, remove via a
    compact wrapping grid of chips that stays usable with many words. */
