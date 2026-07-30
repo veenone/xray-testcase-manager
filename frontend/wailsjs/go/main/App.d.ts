@@ -211,6 +211,8 @@ export function GetExecutionMembersWithRuns(arg1:string,arg2:string):Promise<Arr
 
 export function GetExecutionsForPlans(arg1:string,arg2:Array<string>):Promise<Array<testrepo.Container>>;
 
+export function GetIgnoreWords():Promise<Array<string>>;
+
 export function GetParamModel(arg1:string,arg2:string):Promise<coverage.ParamModel>;
 
 export function GetProfileProjectKey(arg1:string):Promise<string>;
@@ -350,6 +352,8 @@ export function PublishToTarget(arg1:string,arg2:string,arg3:string):Promise<bri
 export function ReadLog(arg1:number):Promise<string>;
 
 export function RecreateDeletedTest(arg1:string,arg2:string):Promise<string>;
+
+export function RemoveIgnoreWord(arg1:string):Promise<void>;
 
 export function RemoveRequirementSource(arg1:string,arg2:string):Promise<void>;
 

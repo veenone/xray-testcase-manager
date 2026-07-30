@@ -4254,6 +4254,108 @@ tr.row-checked:hover {
 }
 
 /* Duplicate management view (FR — duplicate management). */
+/* Misspellings (spellcheck) view: a scan toolbar over a scrollable results
+   table, matching the duplicates view layout. */
+.misspellings-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.msp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.msp-toolbar-spacer {
+  flex: 1;
+}
+.msp-count {
+  font-size: 12px;
+}
+.msp-error {
+  margin: 8px 14px 0;
+}
+.msp-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+.msp-empty {
+  max-width: 640px;
+  padding: 20px 4px;
+}
+.msp-empty p {
+  margin: 0;
+  line-height: 1.5;
+}
+.msp-table {
+  width: 100%;
+}
+.msp-table td.typo-word {
+  font-weight: 600;
+  color: var(--danger-text);
+  white-space: nowrap;
+}
+.msp-table td.typo-snippet {
+  color: var(--text-muted);
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.typo-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.typo-actions {
+  white-space: nowrap;
+}
+.suggestion-chip {
+  font-size: 12px;
+  padding: 2px 10px;
+}
+
+/* Spellcheck ignore-list modal. */
+.pending-modal.ignore-modal {
+  width: min(520px, 92vw);
+}
+.ignore-add {
+  display: flex;
+  gap: 8px;
+}
+.ignore-add .detail-input {
+  flex: 1;
+  margin-bottom: 0;
+}
+.ignore-empty {
+  margin: 6px 0 0;
+}
+.ignore-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ignore-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+.ignore-remove {
+  font-size: 11px;
+  padding: 1px 7px;
+}
+
 .dup-view { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
 .dup-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
 .dup-error { margin: 8px 14px 0; }

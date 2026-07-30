@@ -89,3 +89,23 @@ func (a *App) AddIgnoreWord(word string) (err error) {
 	}
 	return a.settings.AddIgnoreWord(word)
 }
+
+// GetIgnoreWords returns the global spellcheck ignore list (lowercased words),
+// so the frontend can display and manage it.
+func (a *App) GetIgnoreWords() (words []string, err error) {
+	defer recoverToError("GetIgnoreWords", &err)
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.settings.GetIgnoreWords()
+}
+
+// RemoveIgnoreWord drops a word from the global spellcheck ignore list, so it is
+// flagged again on future scans.
+func (a *App) RemoveIgnoreWord(word string) (err error) {
+	defer recoverToError("RemoveIgnoreWord", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.settings.RemoveIgnoreWord(word)
+}

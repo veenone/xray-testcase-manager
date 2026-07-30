@@ -398,6 +398,10 @@ export function GetExecutionsForPlans(arg1, arg2) {
   return window['go']['main']['App']['GetExecutionsForPlans'](arg1, arg2);
 }
 
+export function GetIgnoreWords() {
+  return window['go']['main']['App']['GetIgnoreWords']();
+}
+
 export function GetParamModel(arg1, arg2) {
   return window['go']['main']['App']['GetParamModel'](arg1, arg2);
 }
@@ -676,6 +680,10 @@ export function ReadLog(arg1) {
 
 export function RecreateDeletedTest(arg1, arg2) {
   return window['go']['main']['App']['RecreateDeletedTest'](arg1, arg2);
+}
+
+export function RemoveIgnoreWord(arg1) {
+  return window['go']['main']['App']['RemoveIgnoreWord'](arg1);
 }
 
 export function RemoveRequirementSource(arg1, arg2) {

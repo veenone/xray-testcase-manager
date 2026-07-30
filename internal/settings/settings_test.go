@@ -83,3 +83,27 @@ func TestIgnoreWordsRoundTrip(t *testing.T) {
 		t.Errorf("words = %v, want [euicc widgetized]", words)
 	}
 }
+
+func TestRemoveIgnoreWord(t *testing.T) {
+	m := newManager(t)
+	for _, w := range []string{"euicc", "widgetized", "pkcs"} {
+		if err := m.AddIgnoreWord(w); err != nil {
+			t.Fatalf("AddIgnoreWord %q: %v", w, err)
+		}
+	}
+	// Remove is normalised (trim/lowercase) and drops only the match.
+	if err := m.RemoveIgnoreWord("  Widgetized "); err != nil {
+		t.Fatalf("RemoveIgnoreWord: %v", err)
+	}
+	// Removing an absent word is a no-op, not an error.
+	if err := m.RemoveIgnoreWord("nothere"); err != nil {
+		t.Fatalf("RemoveIgnoreWord absent: %v", err)
+	}
+	words, err := m.GetIgnoreWords()
+	if err != nil {
+		t.Fatalf("GetIgnoreWords: %v", err)
+	}
+	if len(words) != 2 || words[0] != "euicc" || words[1] != "pkcs" {
+		t.Errorf("words = %v, want [euicc pkcs]", words)
+	}
+}

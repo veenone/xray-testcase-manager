@@ -1392,7 +1392,7 @@ function App() {
           />
         </main>
       ) : view === "misspellings" ? (
-        <main className="content content-dashboard">
+        <main className="content">
           <MisspellingsView
             profileId={activeId}
             refreshKey={refreshKey}
