@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ListMisspellings,
   ApplyCorrection,
   AddIgnoreWord,
   GetIgnoreWords,
   RemoveIgnoreWord,
+  GetTest,
   errMsg,
 } from "../api";
+import type { TestCase } from "../api";
 
 interface Finding {
   testKey: string;
@@ -31,26 +33,48 @@ const FIELD_LABEL: Record<string, string> = {
   generic_definition: "Definition",
 };
 
+type SortKey = "test" | "field" | "word" | "context";
+
+// findingId is a stable identity for a finding, so selection survives re-sorts.
+function findingId(f: Finding): string {
+  return `${f.testKey}|${f.field}|${f.offset}|${f.word}`;
+}
+
+// matchCase preserves the original word's leading capital when applying a
+// lowercase suggestion (so "Recieve" -> "Receive", not "receive").
+function matchCase(original: string, suggestion: string): string {
+  const isTitleCase = /^[A-Z]/.test(original) && !/^[A-Z]+$/.test(original);
+  if (isTitleCase && /^[a-z]/.test(suggestion)) {
+    return suggestion.charAt(0).toUpperCase() + suggestion.slice(1);
+  }
+  return suggestion;
+}
+
 export default function MisspellingsView({ profileId, onChanged }: Props) {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showIgnore, setShowIgnore] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("test");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Reset when the profile changes so findings scanned from another profile
-  // never linger in the view.
+  // Reset when the profile changes so findings from another profile never
+  // linger in the view.
   useEffect(() => {
     setFindings([]);
     setScanned(false);
     setError("");
     setShowIgnore(false);
+    setSelectedId(null);
   }, [profileId]);
 
   async function scan() {
     if (!profileId) return;
     setLoading(true);
     setError("");
+    setSelectedId(null);
     try {
       const result = (await ListMisspellings(profileId)) as unknown as Finding[];
       setFindings(result ?? []);
@@ -62,14 +86,46 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     }
   }
 
-  // matchCase preserves the original word's leading capital when applying a
-  // lowercase suggestion (so "Recieve" -> "Receive", not "receive").
-  function matchCase(original: string, suggestion: string): string {
-    const isTitleCase = /^[A-Z]/.test(original) && !/^[A-Z]+$/.test(original);
-    if (isTitleCase && /^[a-z]/.test(suggestion)) {
-      return suggestion.charAt(0).toUpperCase() + suggestion.slice(1);
+  const sorted = useMemo(() => {
+    const val = (f: Finding): string => {
+      switch (sortKey) {
+        case "test":
+          return f.testKey.toLowerCase();
+        case "field":
+          return (FIELD_LABEL[f.field] ?? f.field).toLowerCase();
+        case "word":
+          return f.word.toLowerCase();
+        case "context":
+          return f.snippet.toLowerCase();
+      }
+    };
+    const arr = [...findings];
+    arr.sort((a, b) => {
+      const av = val(a);
+      const bv = val(b);
+      const c = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? c : -c;
+    });
+    return arr;
+  }, [findings, sortKey, sortDir]);
+
+  const selected = useMemo(
+    () => sorted.find((f) => findingId(f) === selectedId) ?? null,
+    [sorted, selectedId],
+  );
+
+  function toggleSort(k: SortKey) {
+    if (sortKey === k) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(k);
+      setSortDir("asc");
     }
-    return suggestion;
+  }
+
+  function sortIndicator(k: SortKey): string {
+    if (sortKey !== k) return "";
+    return sortDir === "asc" ? " ▲" : " ▼";
   }
 
   async function apply(f: Finding, suggestion: string) {
@@ -96,10 +152,18 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
       await AddIgnoreWord(f.word);
       const lower = f.word.toLowerCase();
       setFindings((prev) => prev.filter((x) => x.word.toLowerCase() !== lower));
+      if (selected && selected.word.toLowerCase() === lower) setSelectedId(null);
     } catch (e) {
       setError(errMsg(e));
     }
   }
+
+  const columns: Array<{ key: SortKey; label: string }> = [
+    { key: "test", label: "Test" },
+    { key: "field", label: "Field" },
+    { key: "word", label: "Word" },
+    { key: "context", label: "Context" },
+  ];
 
   return (
     <div className="misspellings-view">
@@ -117,75 +181,111 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
           </span>
         )}
         <span className="msp-toolbar-spacer" />
-        <button className="btn btn-ghost" onClick={() => setShowIgnore(true)}>
+        <button className="btn" onClick={() => setShowIgnore(true)}>
           Ignore list
         </button>
       </div>
 
       {error && <div className="error-text msp-error">{error}</div>}
 
-      <div className="msp-body">
-        {!scanned && !loading && !error && (
-          <div className="msp-empty">
-            <p className="muted">
-              Scan every synced test for spelling issues across its summary,
-              description, and Gherkin / Definition bodies. Nothing changes until
-              you apply a suggestion, and each fix is queued as a pending change.
-            </p>
-          </div>
-        )}
+      <div className="msp-split">
+        <div className="msp-body">
+          {!scanned && !loading && !error && (
+            <div className="msp-empty">
+              <p className="muted">
+                Scan every synced test for spelling issues across its summary,
+                description, and Gherkin / Definition bodies. Nothing changes
+                until you apply a suggestion, and each fix is queued as a pending
+                change.
+              </p>
+            </div>
+          )}
 
-        {scanned && findings.length === 0 && !loading && !error && (
-          <div className="msp-empty">
-            <p className="muted">No spelling issues found.</p>
-          </div>
-        )}
+          {scanned && findings.length === 0 && !loading && !error && (
+            <div className="msp-empty">
+              <p className="muted">No spelling issues found.</p>
+            </div>
+          )}
 
-        {findings.length > 0 && (
-          <table className="board-table msp-table">
-            <thead>
-              <tr>
-                <th>Test</th>
-                <th>Field</th>
-                <th>Word</th>
-                <th>Context</th>
-                <th>Suggestions</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {findings.map((f, i) => (
-                <tr key={`${f.testKey}-${f.field}-${f.offset}-${i}`}>
-                  <td className="mono">{f.testKey}</td>
-                  <td>{FIELD_LABEL[f.field] ?? f.field}</td>
-                  <td className="typo-word">{f.word}</td>
-                  <td className="typo-snippet" title={f.snippet}>
-                    {f.snippet}
-                  </td>
-                  <td className="typo-suggestions">
-                    {f.suggestions.length === 0 && (
-                      <span className="muted">no suggestions</span>
-                    )}
-                    {f.suggestions.map((s) => (
-                      <button
-                        key={s}
-                        className="btn btn-ghost suggestion-chip"
-                        onClick={() => apply(f, s)}
-                        title={`Replace "${f.word}" with "${matchCase(f.word, s)}"`}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </td>
-                  <td className="typo-actions">
-                    <button className="btn btn-ghost" onClick={() => ignore(f)}>
-                      Ignore
-                    </button>
-                  </td>
+          {findings.length > 0 && (
+            <table className="board-table msp-table">
+              <thead>
+                <tr>
+                  {columns.map((c) => (
+                    <th
+                      key={c.key}
+                      className="sortable"
+                      onClick={() => toggleSort(c.key)}
+                      title={`Sort by ${c.label}`}
+                    >
+                      {c.label}
+                      {sortIndicator(c.key)}
+                    </th>
+                  ))}
+                  <th>Suggestions</th>
+                  <th aria-label="Actions" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sorted.map((f) => {
+                  const id = findingId(f);
+                  return (
+                    <tr
+                      key={id}
+                      className={id === selectedId ? "selected" : ""}
+                      onClick={() => setSelectedId(id)}
+                    >
+                      <td className="mono">{f.testKey}</td>
+                      <td>{FIELD_LABEL[f.field] ?? f.field}</td>
+                      <td className="typo-word">{f.word}</td>
+                      <td className="typo-snippet" title={f.snippet}>
+                        {f.snippet}
+                      </td>
+                      <td className="typo-suggestions">
+                        {f.suggestions.length === 0 && (
+                          <span className="muted">no suggestions</span>
+                        )}
+                        {f.suggestions.map((s) => (
+                          <button
+                            key={s}
+                            className="suggestion-chip"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void apply(f, s);
+                            }}
+                            title={`Replace "${f.word}" with "${matchCase(f.word, s)}"`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </td>
+                      <td className="typo-actions">
+                        <button
+                          className="btn msp-ignore-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void ignore(f);
+                          }}
+                        >
+                          Ignore
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {selected && (
+          <MisspellingDrawer
+            profileId={profileId}
+            finding={selected}
+            onClose={() => setSelectedId(null)}
+            onApply={apply}
+            onIgnore={ignore}
+          />
         )}
       </div>
 
@@ -193,12 +293,150 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
         <IgnoreListModal
           onClose={() => setShowIgnore(false)}
           onChangedList={() => {
-            // Reflect ignore-list edits in the current results.
             if (scanned) void scan();
           }}
         />
       )}
     </div>
+  );
+}
+
+// fieldText extracts the full text of a finding's field from a fetched test.
+function fieldText(tc: TestCase, field: string): string {
+  switch (field) {
+    case "summary":
+      return tc.summary ?? "";
+    case "description":
+      return tc.description ?? "";
+    case "cucumber_scenario":
+      return tc.cucumberScenario ?? "";
+    case "generic_definition":
+      return tc.genericDefinition ?? "";
+    default:
+      return "";
+  }
+}
+
+// highlight renders the field text with the flagged word wrapped in a yellow
+// mark. It highlights the exact occurrence at the finding's offset when that
+// still matches (ASCII-safe), else the first case-insensitive occurrence.
+function highlight(text: string, offset: number, length: number, word: string) {
+  let start = -1;
+  let end = -1;
+  if (
+    offset >= 0 &&
+    offset + length <= text.length &&
+    text.slice(offset, offset + length).toLowerCase() === word.toLowerCase()
+  ) {
+    start = offset;
+    end = offset + length;
+  } else {
+    const idx = text.toLowerCase().indexOf(word.toLowerCase());
+    if (idx >= 0) {
+      start = idx;
+      end = idx + word.length;
+    }
+  }
+  if (start < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, start)}
+      <mark className="typo-hl">{text.slice(start, end)}</mark>
+      {text.slice(end)}
+    </>
+  );
+}
+
+// MisspellingDrawer is the right-side panel for the selected finding: the word,
+// its suggestions, an ignore action, and the full field text with the flagged
+// word highlighted in context.
+function MisspellingDrawer({
+  profileId,
+  finding,
+  onClose,
+  onApply,
+  onIgnore,
+}: {
+  profileId: string;
+  finding: Finding;
+  onClose: () => void;
+  onApply: (f: Finding, suggestion: string) => void;
+  onIgnore: (f: Finding) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setText(null);
+    setErr("");
+    GetTest(profileId, finding.testKey)
+      .then((tc) => {
+        if (!cancelled) setText(fieldText(tc, finding.field));
+      })
+      .catch((e) => {
+        if (!cancelled) setErr(errMsg(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, finding]);
+
+  return (
+    <aside className="msp-drawer">
+      <div className="msp-drawer-head">
+        <div className="msp-drawer-title">
+          <span className="mono">{finding.testKey}</span>
+          <span className="muted">
+            {" · "}
+            {FIELD_LABEL[finding.field] ?? finding.field}
+          </span>
+        </div>
+        <button className="btn btn-ghost" onClick={onClose} title="Close">
+          ✕
+        </button>
+      </div>
+
+      <div className="msp-drawer-body">
+        <div className="msp-drawer-word">
+          <span className="typo-word">{finding.word}</span>
+        </div>
+
+        {finding.suggestions.length > 0 ? (
+          <div className="msp-drawer-suggests">
+            {finding.suggestions.map((s) => (
+              <button
+                key={s}
+                className="suggestion-chip"
+                onClick={() => onApply(finding, s)}
+                title={`Replace with "${matchCase(finding.word, s)}"`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">No suggestions for this word.</p>
+        )}
+
+        <div className="msp-drawer-actions">
+          <button className="btn msp-ignore-btn" onClick={() => onIgnore(finding)}>
+            Ignore word
+          </button>
+        </div>
+
+        <div className="msp-drawer-context-label">Context</div>
+        {err ? (
+          <div className="error-text">{err}</div>
+        ) : text === null ? (
+          <p className="muted">Loading…</p>
+        ) : (
+          <pre className="msp-context-pre">
+            {highlight(text, finding.offset, finding.length, finding.word)}
+          </pre>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -279,8 +517,9 @@ function IgnoreListModal({
 
         <div className="bulk-body">
           <p className="src-field-help">
-            Words here are skipped by every scan, across all profiles. Add
-            product terms, acronyms, or names the checker keeps flagging.
+            Words here are skipped by every scan, across all profiles (the list
+            is global, not per-profile). Add product terms, acronyms, or names
+            the checker keeps flagging.
           </p>
 
           <div className="ignore-add">

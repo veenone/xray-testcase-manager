@@ -4255,10 +4255,13 @@ tr.row-checked:hover {
 
 /* Duplicate management view (FR — duplicate management). */
 /* Misspellings (spellcheck) view: a scan toolbar over a scrollable results
-   table, matching the duplicates view layout. */
+   table, with a right-side detail drawer for the selected finding. Fills the
+   content area (flex: 1) so the toolbar and table stretch full width. */
 .misspellings-view {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
   height: 100%;
   min-height: 0;
 }
@@ -4278,8 +4281,15 @@ tr.row-checked:hover {
 .msp-error {
   margin: 8px 14px 0;
 }
+/* Results (left) beside the detail drawer (right). */
+.msp-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
 .msp-body {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: 12px 14px;
@@ -4294,6 +4304,23 @@ tr.row-checked:hover {
 }
 .msp-table {
   width: 100%;
+}
+.msp-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.msp-table th.sortable:hover {
+  color: var(--text);
+}
+.msp-table tbody tr {
+  cursor: pointer;
+}
+.msp-table tbody tr:hover {
+  background: var(--row-hover);
+}
+.msp-table tbody tr.selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .msp-table td.typo-word {
   font-weight: 600;
@@ -4315,9 +4342,100 @@ tr.row-checked:hover {
 .typo-actions {
   white-space: nowrap;
 }
+/* Suggestions render as clickable pill badges tinted with the accent. */
 .suggestion-chip {
   font-size: 12px;
-  padding: 2px 10px;
+  line-height: 1.6;
+  padding: 1px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+}
+.suggestion-chip:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+/* The Ignore action reads as a real (outlined) button, not flat text. */
+.msp-ignore-btn {
+  font-size: 12px;
+  padding: 3px 12px;
+}
+
+/* Right-side detail drawer for the selected finding. */
+.msp-drawer {
+  flex: 0 0 380px;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.msp-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.msp-drawer-title {
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msp-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.msp-drawer-word .typo-word {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--danger-text);
+}
+.msp-drawer-suggests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.msp-drawer-actions {
+  margin: 2px 0;
+}
+.msp-drawer-context-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.msp-context-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 10px;
+}
+/* Yellow highlight of the flagged word inside the drawer context. */
+.typo-hl {
+  background: #fde047;
+  color: #1f2933;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 /* Spellcheck ignore-list modal. */
