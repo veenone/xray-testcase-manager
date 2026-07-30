@@ -103,6 +103,63 @@ func TestApplyCorrectionSplicesAndQueues(t *testing.T) {
 	}
 }
 
+// TestBulkCorrectionsQueuePerTest verifies the bulk-replace path: correcting the
+// same word across several tests queues one pending change per test (so the
+// commit list grows by the number of corrected tests), not a single coalesced
+// entry.
+func TestBulkCorrectionsQueuePerTest(t *testing.T) {
+	a := newSpellApp(t)
+	keys := []string{"QA-1", "QA-2", "QA-3"}
+	seed := make([]testrepo.TestCase, 0, len(keys))
+	for _, k := range keys {
+		seed = append(seed, testrepo.TestCase{
+			Key:     k,
+			Summary: "User can recieve a token",
+			Status:  "Open",
+			Updated: "2026-01-01T00:00:00.000+0000",
+		})
+	}
+	if err := a.repo.UpsertTests("p1", seed); err != nil {
+		t.Fatalf("UpsertTests: %v", err)
+	}
+
+	findings, err := a.ListMisspellings("p1")
+	if err != nil {
+		t.Fatalf("ListMisspellings: %v", err)
+	}
+	applied := 0
+	for _, f := range findings {
+		if f.Word == "recieve" {
+			if err := a.ApplyCorrection("p1", f.TestKey, f.Field, f.Word, f.Offset, f.Length, "receive"); err != nil {
+				t.Fatalf("ApplyCorrection %s: %v", f.TestKey, err)
+			}
+			applied++
+		}
+	}
+	if applied != len(keys) {
+		t.Fatalf("applied %d corrections, want %d (one per test)", applied, len(keys))
+	}
+
+	pending, err := a.repo.ListPendingChanges("p1")
+	if err != nil {
+		t.Fatalf("ListPendingChanges: %v", err)
+	}
+	queued := map[string]bool{}
+	for _, pc := range pending {
+		if pc.EntityType == "test_case" && pc.Field == "summary" {
+			queued[pc.EntityKey] = true
+		}
+	}
+	if len(queued) != len(keys) {
+		t.Fatalf("queued summary changes for %d tests, want %d; pending=%+v", len(queued), len(keys), pending)
+	}
+	for _, k := range keys {
+		if !queued[k] {
+			t.Errorf("no pending change queued for corrected test %s", k)
+		}
+	}
+}
+
 func TestAddIgnoreWordSuppressesFinding(t *testing.T) {
 	a := newSpellApp(t)
 	if _, err := a.repo.CreateTest("p1", testrepo.TestDraft{Summary: "Check the euicc profile"}); err != nil {

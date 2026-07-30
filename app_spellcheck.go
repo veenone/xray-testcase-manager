@@ -30,8 +30,15 @@ func (a *App) ListMisspellings(profileID string) (findings []spellcheck.Finding,
 	// is scanned as it is fetched, so progress reflects real work, not just the
 	// paging. A final Done event clears the bar.
 	const stage = "Scanning for typos"
-	runtime.EventsEmit(a.ctx, "spellcheck:progress", syncer.Progress{Stage: stage})
-	defer runtime.EventsEmit(a.ctx, "spellcheck:progress", syncer.Progress{Done: true})
+	// emit is nil-ctx safe so the method is unit-testable without a Wails
+	// lifecycle context.
+	emit := func(pr syncer.Progress) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "spellcheck:progress", pr)
+		}
+	}
+	emit(syncer.Progress{Stage: stage})
+	defer emit(syncer.Progress{Done: true})
 
 	offset := 0
 	for {
@@ -51,9 +58,7 @@ func (a *App) ListMisspellings(profileID string) (findings []spellcheck.Finding,
 		}
 		findings = append(findings, spellcheck.ScanTests(texts, checker)...)
 		offset += len(page.Tests)
-		runtime.EventsEmit(a.ctx, "spellcheck:progress", syncer.Progress{
-			Stage: stage, Fetched: offset, Total: page.Total,
-		})
+		emit(syncer.Progress{Stage: stage, Fetched: offset, Total: page.Total})
 		if len(page.Tests) == 0 || offset >= page.Total {
 			break
 		}
