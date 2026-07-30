@@ -84,6 +84,9 @@ export function ContainersView({
   // ContainerQuery.Environment server-side, applied client-side here since the
   // environments are already loaded on each container).
   const [cEnv, setCEnv] = useViewState(profileId, "containers", "cEnv", "");
+  // Label filter (all kinds): "" = any; otherwise keep only containers whose
+  // labels array contains the value.
+  const [cLabel, setCLabel] = useViewState(profileId, "containers", "cLabel", "");
   // Inline environment editor (selected execution): a draft of a new env name.
   const [envDraft, setEnvDraft] = useState("");
   // Batch environment editor (all currently-filtered executions): chosen
@@ -223,6 +226,7 @@ export function ContainersView({
     const base = containers.filter(
       (c) =>
         (!cStatus || c.status === cStatus) &&
+        (!cLabel || (c.labels ?? []).includes(cLabel)) &&
         (kind !== "testexec" ||
           !cExecType ||
           (cExecType === "subtask" ? !!c.parentKey : !c.parentKey)) &&
@@ -244,13 +248,21 @@ export function ContainersView({
       }
       return applyDir(cmp, cSortDesc);
     });
-  }, [containers, cStatus, cExecType, cEnv, kind, cSortField, cSortDesc]);
+  }, [containers, cStatus, cLabel, cExecType, cEnv, kind, cSortField, cSortDesc]);
 
   // Distinct environments across the loaded executions, for the filter dropdown.
   const envOptions = useMemo(() => {
     const s = new Set<string>();
     for (const c of containers)
       for (const e of c.environments ?? []) if (e) s.add(e);
+    return [...s].sort();
+  }, [containers]);
+
+  // Distinct labels across all loaded containers, for the label filter.
+  const labelOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of containers)
+      for (const l of c.labels ?? []) if (l) s.add(l);
     return [...s].sort();
   }, [containers]);
 
@@ -853,6 +865,66 @@ export function ContainersView({
         </div>
       </div>
 
+      <div className="board-tools">
+        <SortControl
+          fields={[
+            { value: "key", label: "Key" },
+            { value: "summary", label: "Name" },
+            { value: "status", label: "Status" },
+          ]}
+          field={cSortField}
+          desc={cSortDesc}
+          onChange={(f, d) => {
+            setCSortField(f);
+            setCSortDesc(d);
+          }}
+        />
+        {caps.supportsEnvironments && kind === "testexec" && (
+          <span
+            className="container-env-batch"
+            title="Apply an environment change to every execution currently shown"
+          >
+            <span className="board-tools-label">Set environment on shown:</span>
+            <select
+              className="container-status-filter app-select"
+              value={batchEnvOp}
+              onChange={(e) =>
+                setBatchEnvOp(e.target.value as "add_env" | "remove_env" | "set_env")
+              }
+              title="Batch environment operation"
+            >
+              <option value="add_env">Add env</option>
+              <option value="remove_env">Remove env</option>
+              <option value="set_env">Set env</option>
+            </select>
+            <input
+              className="container-env-add app-select"
+              list="container-env-names"
+              value={batchEnvName}
+              placeholder="Environment…"
+              onChange={(e) => setBatchEnvName(e.target.value)}
+            />
+            <datalist id="container-env-names">
+              {envOptions.map((e) => (
+                <option key={e} value={e} />
+              ))}
+            </datalist>
+            <button
+              className="btn"
+              onClick={applyBatchEnv}
+              disabled={
+                batchEnvBusy ||
+                viewContainers.length === 0 ||
+                (batchEnvOp !== "set_env" && !batchEnvName.trim())
+              }
+              title="Apply to all executions currently shown by the filter"
+            >
+              {batchEnvBusy ? "Applying…" : `Apply to ${viewContainers.length}`}
+            </button>
+          </span>
+        )}
+      </div>
+
       <div className="container-filter-bar">
         <div className="filter-pill-row">
           <button
@@ -900,62 +972,21 @@ export function ContainersView({
             ))}
           </select>
         )}
-        {caps.supportsEnvironments && kind === "testexec" && (
-          <span
-            className="container-env-batch"
-            title="Apply an environment change to every execution currently shown"
+        {labelOptions.length > 0 && (
+          <select
+            className="container-status-filter app-select"
+            value={cLabel}
+            onChange={(e) => setCLabel(e.target.value)}
+            title="Filter by label"
           >
-            <select
-              className="container-status-filter app-select"
-              value={batchEnvOp}
-              onChange={(e) =>
-                setBatchEnvOp(e.target.value as "add_env" | "remove_env" | "set_env")
-              }
-              title="Batch environment operation"
-            >
-              <option value="add_env">Add env</option>
-              <option value="remove_env">Remove env</option>
-              <option value="set_env">Set env</option>
-            </select>
-            <input
-              className="container-env-add app-select"
-              list="container-env-names"
-              value={batchEnvName}
-              placeholder="Environment…"
-              onChange={(e) => setBatchEnvName(e.target.value)}
-            />
-            <datalist id="container-env-names">
-              {envOptions.map((e) => (
-                <option key={e} value={e} />
-              ))}
-            </datalist>
-            <button
-              className="btn"
-              onClick={applyBatchEnv}
-              disabled={
-                batchEnvBusy ||
-                viewContainers.length === 0 ||
-                (batchEnvOp !== "set_env" && !batchEnvName.trim())
-              }
-              title="Apply to all executions currently shown by the filter"
-            >
-              {batchEnvBusy ? "Applying…" : `Apply to ${viewContainers.length}`}
-            </button>
-          </span>
+            <option value="">All labels</option>
+            {labelOptions.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
         )}
-        <SortControl
-          fields={[
-            { value: "key", label: "Key" },
-            { value: "summary", label: "Name" },
-            { value: "status", label: "Status" },
-          ]}
-          field={cSortField}
-          desc={cSortDesc}
-          onChange={(f, d) => {
-            setCSortField(f);
-            setCSortDesc(d);
-          }}
-        />
         <span className="muted container-filter-count">
           {viewContainers.length} of {containers.length}
         </span>

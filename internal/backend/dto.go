@@ -84,6 +84,7 @@ type Container struct {
 	ParentKey     string
 	ParentSummary string
 	IssueType     string
+	Labels        []string
 	Environments  []string
 	FixVersions   []string
 	Created       string

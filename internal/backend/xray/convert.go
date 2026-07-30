@@ -120,6 +120,7 @@ func toContainer(c jira.Container) backend.Container {
 		ParentKey:     c.ParentKey,
 		ParentSummary: c.ParentSummary,
 		IssueType:     c.IssueType,
+		Labels:        c.Labels,
 		Environments:  c.Environments,
 		FixVersions:   c.FixVersions,
 		Created:       c.Created,

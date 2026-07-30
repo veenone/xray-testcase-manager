@@ -1667,6 +1667,7 @@ export namespace testrepo {
 	    parentKey: string;
 	    parentSummary: string;
 	    issueType: string;
+	    labels: string[];
 	    environments: string[];
 	    fixVersions: string[];
 	    created: string;
@@ -1687,6 +1688,7 @@ export namespace testrepo {
 	        this.parentKey = source["parentKey"];
 	        this.parentSummary = source["parentSummary"];
 	        this.issueType = source["issueType"];
+	        this.labels = source["labels"];
 	        this.environments = source["environments"];
 	        this.fixVersions = source["fixVersions"];
 	        this.created = source["created"];

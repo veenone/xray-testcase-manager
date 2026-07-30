@@ -485,6 +485,23 @@ func demoStepsForKey(theme demoTheme, testKey string) []Step {
 var demoContainerStatuses = []string{"Open", "In Progress", "Done"}
 var demoExecStatuses = []string{"In Progress", "Done", "Open"}
 
+// demoContainerLabelSets rotates a few realistic Jira label sets across demo
+// containers so the Containers label filter is exercisable offline.
+var demoContainerLabelSets = [][]string{
+	{"regression", "smoke"},
+	{"p1", "regression"},
+	{"security"},
+	{"smoke", "p2"},
+	{"performance", "nightly"},
+}
+
+func demoContainerLabels(i int) []string {
+	if i < 0 {
+		i = -i
+	}
+	return demoContainerLabelSets[i%len(demoContainerLabelSets)]
+}
+
 // demoRunStatuses is the weighted Test Run result vocabulary for execution
 // memberships — mostly passing, some failing / not-yet-run.
 var demoRunStatuses = []string{
@@ -580,6 +597,7 @@ func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []
 			Kind:    KindTestSet,
 			Summary: cat.Name + " test set",
 			Status:  demoContainerStatuses[i%len(demoContainerStatuses)],
+			Labels:  demoContainerLabels(i),
 		})
 	}
 
@@ -593,6 +611,7 @@ func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []
 			Kind:    KindTestPlan,
 			Summary: fmt.Sprintf("Release %d.0 test plan", i+1),
 			Status:  demoContainerStatuses[i%len(demoContainerStatuses)],
+			Labels:  demoContainerLabels(i + 2),
 		})
 	}
 
@@ -607,6 +626,7 @@ func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []
 			Kind:         KindTestExec,
 			Summary:      fmt.Sprintf("Cycle %d execution", i+1),
 			Status:       demoExecStatuses[i%len(demoExecStatuses)],
+			Labels:       demoContainerLabels(i + 1),
 			Environments: demoEnvironments(i),
 			FixVersions:  demoFixVersions(i),
 			Created:      created,

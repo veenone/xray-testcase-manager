@@ -18,7 +18,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 45
+const schemaVersion = 46
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS test_container (
 	parent_key TEXT NOT NULL DEFAULT '',
 	issue_type TEXT NOT NULL DEFAULT '',
 	parent_summary TEXT NOT NULL DEFAULT '',
+	labels     TEXT NOT NULL DEFAULT '',
 	environments TEXT NOT NULL DEFAULT '',
 	fix_versions TEXT NOT NULL DEFAULT '',
 	created    TEXT NOT NULL DEFAULT '',
@@ -1269,6 +1270,15 @@ func applyMigrations(db *sql.DB) error {
 		PRIMARY KEY (profile_id, group_id)
 	)`); err != nil && !strings.Contains(err.Error(), "already exists") {
 		return fmt.Errorf("v45 create coverage_group_publication: %w", err)
+	}
+
+	// v46: labels on test_container, so the Containers view can filter by the
+	// standard Jira labels on a Test Set / Plan / Execution. Applied
+	// unconditionally; tolerated when the column already exists.
+	if _, err := db.Exec(
+		`ALTER TABLE test_container ADD COLUMN labels TEXT NOT NULL DEFAULT ''`,
+	); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return fmt.Errorf("v46 add test_container.labels: %w", err)
 	}
 	return nil
 }

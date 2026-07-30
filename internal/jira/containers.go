@@ -35,6 +35,8 @@ type Container struct {
 	ParentKey     string // parent issue key for a sub-task Test Execution; else ""
 	ParentSummary string // parent issue summary; empty when no parent or not fetched
 	IssueType     string // Jira issuetype name (e.g. "Sub Test Execution"); informational
+	// Labels are the standard Jira labels on the container issue (any kind).
+	Labels []string
 	// Environments is the Xray Test Environments field on a Test Execution
 	// (empty for Test Sets / Plans). The live container search resolves the
 	// configured "Test Environments" custom field id per instance
@@ -221,7 +223,7 @@ func (c *Client) TestExecutionsForTest(ctx context.Context, testKey string) ([]C
 		// breakdown can show when the execution was created, updated, and
 		// resolved. NOTE(xtm): verify that all requested fields are present on
 		// Xray Server/DC 8.4.0; resolutiondate is the standard Jira field name.
-		issueURL := "/rest/api/2/issue/" + url.PathEscape(ref.Key) + "?fields=summary,status,issuetype,parent,description,created,updated,resolutiondate"
+		issueURL := "/rest/api/2/issue/" + url.PathEscape(ref.Key) + "?fields=summary,status,issuetype,parent,description,created,updated,resolutiondate,labels"
 		var issueResp struct {
 			Key    string          `json:"key"`
 			Fields json.RawMessage `json:"fields"`
@@ -311,7 +313,7 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 	// them). Resolve the custom field id once and, when present, request it so the
 	// read path can populate Container.Environments. Best-effort: on a resolver
 	// error, log and proceed without environments rather than fail the sync.
-	fields := "summary,status,issuetype,parent,description"
+	fields := "summary,status,issuetype,parent,description,labels"
 	envFieldID := ""
 	if kind == KindTestExec {
 		// Fix Version(s), created, updated, and resolutiondate are standard Jira
@@ -392,10 +394,11 @@ type containerIssueFields struct {
 	FixVersions []struct {
 		Name string `json:"name"`
 	} `json:"fixVersions"`
-	Created        string `json:"created"`
-	Updated        string `json:"updated"`
-	ResolutionDate string `json:"resolutiondate"`
-	Description    string `json:"description"`
+	Created        string   `json:"created"`
+	Updated        string   `json:"updated"`
+	ResolutionDate string   `json:"resolutiondate"`
+	Description    string   `json:"description"`
+	Labels         []string `json:"labels"`
 }
 
 // parseContainerIssue maps one container search issue (raw `fields` plus key) into
@@ -417,6 +420,11 @@ func parseContainerIssue(key, kind string, rawFields json.RawMessage, envFieldID
 		ct.ParentSummary = f.Parent.Fields.Summary
 	}
 	ct.Description = f.Description
+	for _, l := range f.Labels {
+		if s := strings.TrimSpace(l); s != "" {
+			ct.Labels = append(ct.Labels, s)
+		}
+	}
 	if kind == KindTestExec && envFieldID != "" {
 		ct.Environments = environmentsFromRawFields(rawFields, envFieldID)
 	}
