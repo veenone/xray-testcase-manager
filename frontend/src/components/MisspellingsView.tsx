@@ -45,11 +45,20 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     }
   }
 
-  async function apply(f: Finding, replacement: string) {
+  function matchCase(original: string, suggestion: string): string {
+    const isTitleCase = /^[A-Z]/.test(original) && !/^[A-Z]+$/.test(original);
+    if (isTitleCase && /^[a-z]/.test(suggestion)) {
+      return suggestion.charAt(0).toUpperCase() + suggestion.slice(1);
+    }
+    return suggestion;
+  }
+
+  async function apply(f: Finding, suggestion: string) {
     try {
+      const replacement = matchCase(f.word, suggestion);
       await ApplyCorrection(profileId, f.testKey, f.field, f.word, f.offset, f.length, replacement);
-      setFindings((prev) => prev.filter((x) => x !== f));
       onChanged();
+      await scan();
     } catch (e) {
       setError(errMsg(e));
     }
