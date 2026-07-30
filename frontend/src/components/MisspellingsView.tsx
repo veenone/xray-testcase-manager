@@ -128,9 +128,13 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     return sortDir === "asc" ? " ▲" : " ▼";
   }
 
-  async function apply(f: Finding, suggestion: string) {
+  // applyReplacement writes an arbitrary replacement for the flagged word
+  // through the pending-change pipeline, then re-scans. Used both by the
+  // suggestion chips (matchCased) and the drawer's custom-replacement input.
+  async function applyReplacement(f: Finding, replacement: string) {
+    const r = replacement.trim();
+    if (!r) return;
     try {
-      const replacement = matchCase(f.word, suggestion);
       await ApplyCorrection(
         profileId,
         f.testKey,
@@ -138,7 +142,7 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
         f.word,
         f.offset,
         f.length,
-        replacement,
+        r,
       );
       onChanged();
       await scan();
@@ -251,7 +255,7 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
                             className="suggestion-chip"
                             onClick={(e) => {
                               e.stopPropagation();
-                              void apply(f, s);
+                              void applyReplacement(f, matchCase(f.word, s));
                             }}
                             title={`Replace "${f.word}" with "${matchCase(f.word, s)}"`}
                           >
@@ -280,10 +284,11 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
 
         {selected && (
           <MisspellingDrawer
+            key={findingId(selected)}
             profileId={profileId}
             finding={selected}
             onClose={() => setSelectedId(null)}
-            onApply={apply}
+            onApply={applyReplacement}
             onIgnore={ignore}
           />
         )}
@@ -348,8 +353,8 @@ function highlight(text: string, offset: number, length: number, word: string) {
 }
 
 // MisspellingDrawer is the right-side panel for the selected finding: the word,
-// its suggestions, an ignore action, and the full field text with the flagged
-// word highlighted in context.
+// its suggestions, a custom replacement, an ignore action, and the full field
+// text with the flagged word highlighted in context.
 function MisspellingDrawer({
   profileId,
   finding,
@@ -360,11 +365,12 @@ function MisspellingDrawer({
   profileId: string;
   finding: Finding;
   onClose: () => void;
-  onApply: (f: Finding, suggestion: string) => void;
+  onApply: (f: Finding, replacement: string) => void;
   onIgnore: (f: Finding) => void;
 }) {
   const [text, setText] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const [custom, setCustom] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -402,13 +408,14 @@ function MisspellingDrawer({
           <span className="typo-word">{finding.word}</span>
         </div>
 
+        <div className="msp-drawer-field-label">Suggestions</div>
         {finding.suggestions.length > 0 ? (
           <div className="msp-drawer-suggests">
             {finding.suggestions.map((s) => (
               <button
                 key={s}
                 className="suggestion-chip"
-                onClick={() => onApply(finding, s)}
+                onClick={() => onApply(finding, matchCase(finding.word, s))}
                 title={`Replace with "${matchCase(finding.word, s)}"`}
               >
                 {s}
@@ -416,8 +423,31 @@ function MisspellingDrawer({
             ))}
           </div>
         ) : (
-          <p className="muted">No suggestions for this word.</p>
+          <p className="muted msp-no-suggests">No suggestions for this word.</p>
         )}
+
+        <div className="msp-drawer-field-label">Replace with</div>
+        <div className="msp-replace">
+          <input
+            className="detail-input"
+            placeholder="Type a replacement…"
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && custom.trim()) {
+                e.preventDefault();
+                onApply(finding, custom.trim());
+              }
+            }}
+          />
+          <button
+            className="btn btn-primary"
+            onClick={() => onApply(finding, custom.trim())}
+            disabled={!custom.trim()}
+          >
+            Replace
+          </button>
+        </div>
 
         <div className="msp-drawer-actions">
           <button className="btn msp-ignore-btn" onClick={() => onIgnore(finding)}>
@@ -425,7 +455,7 @@ function MisspellingDrawer({
           </button>
         </div>
 
-        <div className="msp-drawer-context-label">Context</div>
+        <div className="msp-drawer-field-label">Context</div>
         {err ? (
           <div className="error-text">{err}</div>
         ) : text === null ? (
@@ -440,9 +470,9 @@ function MisspellingDrawer({
   );
 }
 
-// IgnoreListModal manages the global spellcheck ignore list: add product terms,
-// acronyms, or names the checker keeps flagging, and remove ones added by
-// mistake. The list is shared across all profiles.
+// IgnoreListModal manages the global spellcheck ignore list. It stays usable
+// with many words: add at the top, filter to narrow, and remove via a compact
+// wrapping grid of chips in a capped, scrollable area.
 function IgnoreListModal({
   onClose,
   onChangedList,
@@ -452,6 +482,7 @@ function IgnoreListModal({
 }) {
   const [words, setWords] = useState<string[]>([]);
   const [input, setInput] = useState("");
+  const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -468,6 +499,11 @@ function IgnoreListModal({
   useEffect(() => {
     void reload();
   }, []);
+
+  const shown = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    return q ? words.filter((w) => w.includes(q)) : words;
+  }, [words, filter]);
 
   async function add() {
     const w = input.trim().toLowerCase();
@@ -547,23 +583,43 @@ function IgnoreListModal({
 
           {error && <div className="error-text">{error}</div>}
 
+          <div className="ignore-manage">
+            <span className="ignore-count">
+              {filter.trim()
+                ? `${shown.length} of ${words.length}`
+                : `${words.length}`}{" "}
+              word{words.length === 1 ? "" : "s"}
+            </span>
+            {words.length > 0 && (
+              <input
+                className="detail-input ignore-filter"
+                placeholder="Filter…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              />
+            )}
+          </div>
+
           {words.length === 0 ? (
             <p className="muted ignore-empty">No ignored words yet.</p>
+          ) : shown.length === 0 ? (
+            <p className="muted ignore-empty">No words match "{filter}".</p>
           ) : (
-            <ul className="ignore-list">
-              {words.map((w) => (
-                <li key={w}>
+            <div className="ignore-chips">
+              {shown.map((w) => (
+                <span key={w} className="ignore-chip">
                   <span className="mono">{w}</span>
                   <button
-                    className="btn btn-ghost ignore-remove"
+                    className="ignore-chip-x"
                     onClick={() => void remove(w)}
-                    title="Remove from ignore list"
+                    title={`Remove "${w}"`}
+                    aria-label={`Remove ${w}`}
                   >
                     ✕
                   </button>
-                </li>
+                </span>
               ))}
-            </ul>
+            </div>
           )}
         </div>
 

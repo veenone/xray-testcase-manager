@@ -1131,7 +1131,7 @@ function App() {
             className={`view-tab${view === "misspellings" ? " view-tab-active" : ""}`}
             onClick={() => setView("misspellings")}
           >
-            Misspellings
+            Spellcheck
           </button>
         </nav>
 
