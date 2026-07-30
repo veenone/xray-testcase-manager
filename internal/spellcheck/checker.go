@@ -216,8 +216,9 @@ func (c *Checker) suggest(w string) []string {
 	return out
 }
 
-// levenshtein computes the edit distance between a and b, returning early with
-// max+1 once the minimum of a row exceeds max.
+// levenshtein computes the edit distance between a and b, returning the true
+// edit distance when it is <= max, and max+1 otherwise; it never returns a
+// value greater than max+1.
 func levenshtein(a, b string, max int) int {
 	la, lb := len(a), len(b)
 	if abs(la-lb) > max {
@@ -245,6 +246,9 @@ func levenshtein(a, b string, max int) int {
 			return max + 1
 		}
 		prev, curr = curr, prev
+	}
+	if prev[lb] > max {
+		return max + 1
 	}
 	return prev[lb]
 }
