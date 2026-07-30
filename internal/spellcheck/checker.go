@@ -5,7 +5,10 @@
 // keys, URLs, identifiers, numbers — are skipped so real typos stand out.
 package spellcheck
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Finding is one misspelled word located in one field of one test.
 type Finding struct {
@@ -72,11 +75,12 @@ func (c *Checker) CheckText(field, text string) []Finding {
 		}
 		off := start + coff
 		out = append(out, Finding{
-			Field:   field,
-			Word:    core,
-			Offset:  off,
-			Length:  len(core),
-			Snippet: snippet(text, off, len(core)),
+			Field:       field,
+			Word:        core,
+			Offset:      off,
+			Length:      len(core),
+			Snippet:     snippet(text, off, len(core)),
+			Suggestions: c.suggest(strings.ToLower(core)),
 		})
 	}
 	return out
@@ -168,4 +172,96 @@ func snippet(text string, off, length int) string {
 		s = s + "…"
 	}
 	return s
+}
+
+// suggest returns up to three dictionary words within edit distance 2 of w
+// (lowercased), ranked by distance then by closeness in length then
+// alphabetically. A same-first-letter prefilter keeps the scan cheap on a
+// large dictionary; typos that change the first letter are not suggested for
+// (an acceptable trade-off for speed).
+func (c *Checker) suggest(w string) []string {
+	if w == "" {
+		return nil
+	}
+	type cand struct {
+		word string
+		dist int
+	}
+	var cands []cand
+	for dw := range c.dict {
+		if dw == "" || dw[0] != w[0] {
+			continue
+		}
+		if abs(len(dw)-len(w)) > 2 {
+			continue
+		}
+		if d := levenshtein(w, dw, 2); d <= 2 {
+			cands = append(cands, cand{dw, d})
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].dist != cands[j].dist {
+			return cands[i].dist < cands[j].dist
+		}
+		li, lj := abs(len(cands[i].word)-len(w)), abs(len(cands[j].word)-len(w))
+		if li != lj {
+			return li < lj
+		}
+		return cands[i].word < cands[j].word
+	})
+	out := make([]string, 0, 3)
+	for i := 0; i < len(cands) && i < 3; i++ {
+		out = append(out, cands[i].word)
+	}
+	return out
+}
+
+// levenshtein computes the edit distance between a and b, returning early with
+// max+1 once the minimum of a row exceeds max.
+func levenshtein(a, b string, max int) int {
+	la, lb := len(a), len(b)
+	if abs(la-lb) > max {
+		return max + 1
+	}
+	prev := make([]int, lb+1)
+	curr := make([]int, lb+1)
+	for j := 0; j <= lb; j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		curr[0] = i
+		rowMin := curr[0]
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			curr[j] = min3(prev[j]+1, curr[j-1]+1, prev[j-1]+cost)
+			if curr[j] < rowMin {
+				rowMin = curr[j]
+			}
+		}
+		if rowMin > max {
+			return max + 1
+		}
+		prev, curr = curr, prev
+	}
+	return prev[lb]
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func min3(a, b, c int) int {
+	if b < a {
+		a = b
+	}
+	if c < a {
+		a = c
+	}
+	return a
 }

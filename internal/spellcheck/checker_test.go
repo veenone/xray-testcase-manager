@@ -43,3 +43,25 @@ func TestCheckTextKnownWordsClean(t *testing.T) {
 		t.Fatalf("clean text produced findings: %+v", got)
 	}
 }
+
+func TestSuggestionsRankClosest(t *testing.T) {
+	c := testChecker()
+	got := c.CheckText("summary", "recieve")
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if len(got[0].Suggestions) == 0 || got[0].Suggestions[0] != "receive" {
+		t.Errorf("suggestions = %v, want first = receive", got[0].Suggestions)
+	}
+}
+
+func TestSuggestionsCappedAtThree(t *testing.T) {
+	c := testChecker()
+	got := c.CheckText("summary", "passwrd")
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if len(got[0].Suggestions) > 3 {
+		t.Errorf("suggestions = %v, want <= 3", got[0].Suggestions)
+	}
+}
