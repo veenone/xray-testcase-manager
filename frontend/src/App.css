@@ -4459,11 +4459,6 @@ tr.row-checked:hover {
   padding: 0 1px;
 }
 
-/* Scan progress bar placement (reuses .syncbar). */
-.msp-barwrap {
-  margin: 8px 14px 0;
-}
-
 /* Checkbox column in the results table. */
 .msp-check-col {
   width: 32px;

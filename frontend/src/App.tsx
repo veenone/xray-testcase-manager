@@ -267,6 +267,15 @@ function App() {
     });
   }, []);
 
+  // The Spellcheck scan reports on its own channel, but its bar shares the
+  // bottom status bar so it looks like every other sync. It never touches the
+  // syncing state, so the Sync button stays enabled during a scan.
+  useEffect(() => {
+    return EventsOn("spellcheck:progress", (p: SyncProgress) => {
+      setProgress(p.done ? null : p);
+    });
+  }, []);
+
   // Pending changes grouped by parent Test key — drives the dirty markers
   // in the grid and the per-field dot in the detail panel. test_step rows
   // are bucketed under their parent Test so the row dot lights up for step

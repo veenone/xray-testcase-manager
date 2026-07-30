@@ -6,10 +6,9 @@ import {
   GetIgnoreWords,
   RemoveIgnoreWord,
   GetTest,
-  EventsOn,
   errMsg,
 } from "../api";
-import type { TestCase, SyncProgress } from "../api";
+import type { TestCase } from "../api";
 
 interface Finding {
   testKey: string;
@@ -55,7 +54,6 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [error, setError] = useState("");
   const [showIgnore, setShowIgnore] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("test");
@@ -64,13 +62,6 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
   // checked holds lowercased words: checking one finding selects every finding
   // sharing that word, so a bulk action hits all occurrences across tests.
   const [checked, setChecked] = useState<Set<string>>(new Set());
-
-  // Live scan progress bar.
-  useEffect(() => {
-    return EventsOn("spellcheck:progress", (p: SyncProgress) => {
-      setProgress(p.done ? null : p);
-    });
-  }, []);
 
   // Reset when the profile changes so findings from another profile never
   // linger in the view.
@@ -97,7 +88,6 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
       setError(errMsg(e));
     } finally {
       setLoading(false);
-      setProgress(null);
     }
   }
 
@@ -288,7 +278,6 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
         </button>
       </div>
 
-      {loading && <MspScanBar progress={progress} />}
       {error && <div className="error-text msp-error">{error}</div>}
 
       {checked.size > 0 && (
@@ -454,29 +443,6 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
           }}
         />
       )}
-    </div>
-  );
-}
-
-// MspScanBar mirrors the sync/duplicate progress bar for the spellcheck scan.
-function MspScanBar({ progress }: { progress: SyncProgress | null }) {
-  const total = progress?.total ?? 0;
-  const fetched = progress?.fetched ?? 0;
-  const hasCount = total > 0;
-  const pct = hasCount ? Math.round((fetched / total) * 100) : 0;
-  return (
-    <div className="syncbar msp-barwrap">
-      {hasCount && (
-        <div className="syncbar-track">
-          <div className="syncbar-fill" style={{ width: `${pct}%` }} />
-        </div>
-      )}
-      <span className="muted">
-        {progress?.stage || "Scanning for typos"}
-        {hasCount
-          ? `: ${fetched.toLocaleString()} / ${total.toLocaleString()}`
-          : "…"}
-      </span>
     </div>
   );
 }
