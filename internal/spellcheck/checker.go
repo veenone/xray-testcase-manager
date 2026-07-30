@@ -6,9 +6,29 @@
 package spellcheck
 
 import (
+	_ "embed"
 	"sort"
 	"strings"
 )
+
+//go:embed words_en.txt
+var wordsEN string
+
+// NewDefaultChecker builds a Checker from the embedded English wordlist plus
+// the domain allow-list and any user ignore words.
+func NewDefaultChecker(ignore []string) *Checker {
+	dict := make(map[string]struct{}, 400000)
+	for _, line := range strings.Split(wordsEN, "\n") {
+		w := strings.ToLower(strings.TrimSpace(line))
+		if w != "" {
+			dict[w] = struct{}{}
+		}
+	}
+	allow := make([]string, 0, len(domainAllowList)+len(ignore))
+	allow = append(allow, domainAllowList...)
+	allow = append(allow, ignore...)
+	return NewChecker(dict, allow)
+}
 
 // Finding is one misspelled word located in one field of one test.
 type Finding struct {
