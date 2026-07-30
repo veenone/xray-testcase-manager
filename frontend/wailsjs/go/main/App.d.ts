@@ -11,10 +11,13 @@ import {jira} from '../models';
 import {backend} from '../models';
 import {coveragepublish} from '../models';
 import {settings} from '../models';
+import {spellcheck} from '../models';
 
 export function AddCalledTestStep(arg1:string,arg2:string,arg3:string):Promise<testrepo.Step>;
 
 export function AddConnection(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string,arg12:boolean,arg13:string):Promise<connection.Connection>;
+
+export function AddIgnoreWord(arg1:string):Promise<void>;
 
 export function AddTestComment(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -29,6 +32,8 @@ export function AnalyzeJUnitImport(arg1:string,arg2:string,arg3:string):Promise<
 export function AnalyzeJUnitImportNewExec(arg1:string,arg2:string,arg3:boolean):Promise<testrepo.JUnitNewExecPreview>;
 
 export function AnalyzeRequirementImport(arg1:string,arg2:string,arg3:boolean):Promise<testrepo.RequirementImportPreview>;
+
+export function ApplyCorrection(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number,arg7:string):Promise<void>;
 
 export function ApplyJUnitImport(arg1:string,arg2:string,arg3:Array<testrepo.JUnitMatch>):Promise<testrepo.BulkEditResult>;
 
@@ -293,6 +298,8 @@ export function ListCoverageProjects(arg1:string):Promise<Array<coverage.Project
 export function ListFolders(arg1:string):Promise<Array<testrepo.Folder>>;
 
 export function ListMatchingKeys(arg1:string,arg2:testrepo.Query):Promise<Array<string>>;
+
+export function ListMisspellings(arg1:string):Promise<Array<spellcheck.Finding>>;
 
 export function ListPendingChanges(arg1:string):Promise<Array<testrepo.PendingChange>>;
 

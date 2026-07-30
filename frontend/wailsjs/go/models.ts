@@ -1258,6 +1258,35 @@ export namespace settings {
 
 }
 
+export namespace spellcheck {
+	
+	export class Finding {
+	    testKey: string;
+	    field: string;
+	    word: string;
+	    snippet: string;
+	    offset: number;
+	    length: number;
+	    suggestions: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Finding(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.testKey = source["testKey"];
+	        this.field = source["field"];
+	        this.word = source["word"];
+	        this.snippet = source["snippet"];
+	        this.offset = source["offset"];
+	        this.length = source["length"];
+	        this.suggestions = source["suggestions"];
+	    }
+	}
+
+}
+
 export namespace syncer {
 	
 	export class SkippedCommit {

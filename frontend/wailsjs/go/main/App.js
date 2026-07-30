@@ -10,6 +10,10 @@ export function AddConnection(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, ar
   return window['go']['main']['App']['AddConnection'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13);
 }
 
+export function AddIgnoreWord(arg1) {
+  return window['go']['main']['App']['AddIgnoreWord'](arg1);
+}
+
 export function AddTestComment(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddTestComment'](arg1, arg2, arg3);
 }
@@ -36,6 +40,10 @@ export function AnalyzeJUnitImportNewExec(arg1, arg2, arg3) {
 
 export function AnalyzeRequirementImport(arg1, arg2, arg3) {
   return window['go']['main']['App']['AnalyzeRequirementImport'](arg1, arg2, arg3);
+}
+
+export function ApplyCorrection(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['ApplyCorrection'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function ApplyJUnitImport(arg1, arg2, arg3) {
@@ -564,6 +572,10 @@ export function ListFolders(arg1) {
 
 export function ListMatchingKeys(arg1, arg2) {
   return window['go']['main']['App']['ListMatchingKeys'](arg1, arg2);
+}
+
+export function ListMisspellings(arg1) {
+  return window['go']['main']['App']['ListMisspellings'](arg1);
 }
 
 export function ListPendingChanges(arg1) {
