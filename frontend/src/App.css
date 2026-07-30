@@ -1336,6 +1336,13 @@ i.sankey-node-l2 {
   padding: 14px 16px;
   margin-bottom: 16px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  /* Cap the card so a data-heavy execution (many environments, sub-executions,
+     related bugs) cannot grow tall enough to push the member table off-screen
+     (RND_P_4TFINT_05-311). It scrolls internally past this height; the table
+     below keeps its space. */
+  flex: 0 0 auto;
+  max-height: 42vh;
+  overflow-y: auto;
 }
 .container-card-top {
   display: flex;
@@ -1421,6 +1428,10 @@ i.sankey-node-l2 {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  /* Scroll the related-bugs list in place when there are many, so it does not
+     stretch the card (RND_P_4TFINT_05-311). */
+  max-height: 168px;
+  overflow-y: auto;
 }
 .container-bug {
   display: flex;
