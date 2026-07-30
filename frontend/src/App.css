@@ -981,21 +981,47 @@
   align-items: center;
   gap: 8px;
 }
-/* Tools row (sort + batch-environment) kept separate from the status/label
-   filter bar, since ordering and bulk actions are not status filters (#310). */
-.board-tools {
-  flex: 0 0 auto;
+/* View controls (sort) and the batch-environment action share the filter row
+   but sit in a right-aligned group, visually divided from the status filters,
+   so ordering and bulk actions don't read as status filters (#310). Keeping
+   them on the filter row rather than a dedicated strip saves vertical space. */
+.filter-tools {
+  margin-left: auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: 8px;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-subtle);
 }
-.board-tools-label {
+/* Themed form popover for the batch-environment action, anchored under its
+   trigger. Reuses the Menu backdrop/anchor primitives but takes card surface
+   colours (not the dark bar-native menu) since it holds content-area inputs. */
+.env-tools-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 41;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+}
+.env-tools-title {
   font-size: 12px;
   color: var(--text-muted);
+}
+.env-tools-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.env-tools-apply {
+  align-self: flex-start;
 }
 .container-filter-bar .filter-pill-row {
   margin-bottom: 0;
@@ -1714,13 +1740,20 @@ button.defect-chip-key:hover {
   margin: 0 0 12px;
   outline: none;
 }
+/* Bar and its count badges share one row (bar grows, badges sit beside it) so
+   the run summary costs a single line in the card instead of two (#311
+   follow-up). Wraps to stacked only when the card gets narrow. */
 .container-card-runs {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .run-bar {
   display: flex;
+  flex: 1 1 200px;
+  min-width: 160px;
   height: 8px;
   border-radius: 5px;
   overflow: hidden;
@@ -6106,13 +6139,9 @@ tr.row-checked:hover {
   font-size: 12px;
   white-space: nowrap;
 }
-.container-env-batch {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.container-env-batch .container-env-add {
-  width: 150px;
+.env-tools-panel .container-env-add {
+  flex: 1 1 150px;
+  min-width: 140px;
 }
 .board-sort-th {
   cursor: pointer;

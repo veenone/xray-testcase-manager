@@ -94,6 +94,9 @@ export function ContainersView({
   const [batchEnvOp, setBatchEnvOp] = useState<"add_env" | "remove_env" | "set_env">("add_env");
   const [batchEnvName, setBatchEnvName] = useState("");
   const [batchEnvBusy, setBatchEnvBusy] = useState(false);
+  // The batch-environment controls live in a popover so the filter bar stays a
+  // single compact row instead of a dedicated tools strip (#310 follow-up).
+  const [envToolsOpen, setEnvToolsOpen] = useState(false);
   const [cSortField, setCSortField] = useViewState(profileId, "containers", "cSortField", "key");
   const [cSortDesc, setCSortDesc] = useViewState(profileId, "containers", "cSortDesc", false);
   const [rowSortField, setRowSortField] = useState("key");
@@ -542,7 +545,18 @@ export function ContainersView({
   useEffect(() => {
     setCStatus("");
     setCExecType("");
+    setEnvToolsOpen(false);
   }, [kind]);
+
+  // Close the batch-environment popover on Escape, matching the Menu component.
+  useEffect(() => {
+    if (!envToolsOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setEnvToolsOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [envToolsOpen]);
 
   // Collapse the bugs section whenever the user picks a different container so
   // a previously-expanded list from another container doesn't carry over.
@@ -865,66 +879,6 @@ export function ContainersView({
         </div>
       </div>
 
-      <div className="board-tools">
-        <SortControl
-          fields={[
-            { value: "key", label: "Key" },
-            { value: "summary", label: "Name" },
-            { value: "status", label: "Status" },
-          ]}
-          field={cSortField}
-          desc={cSortDesc}
-          onChange={(f, d) => {
-            setCSortField(f);
-            setCSortDesc(d);
-          }}
-        />
-        {caps.supportsEnvironments && kind === "testexec" && (
-          <span
-            className="container-env-batch"
-            title="Apply an environment change to every execution currently shown"
-          >
-            <span className="board-tools-label">Set environment on shown:</span>
-            <select
-              className="container-status-filter app-select"
-              value={batchEnvOp}
-              onChange={(e) =>
-                setBatchEnvOp(e.target.value as "add_env" | "remove_env" | "set_env")
-              }
-              title="Batch environment operation"
-            >
-              <option value="add_env">Add env</option>
-              <option value="remove_env">Remove env</option>
-              <option value="set_env">Set env</option>
-            </select>
-            <input
-              className="container-env-add app-select"
-              list="container-env-names"
-              value={batchEnvName}
-              placeholder="Environment…"
-              onChange={(e) => setBatchEnvName(e.target.value)}
-            />
-            <datalist id="container-env-names">
-              {envOptions.map((e) => (
-                <option key={e} value={e} />
-              ))}
-            </datalist>
-            <button
-              className="btn"
-              onClick={applyBatchEnv}
-              disabled={
-                batchEnvBusy ||
-                viewContainers.length === 0 ||
-                (batchEnvOp !== "set_env" && !batchEnvName.trim())
-              }
-              title="Apply to all executions currently shown by the filter"
-            >
-              {batchEnvBusy ? "Applying…" : `Apply to ${viewContainers.length}`}
-            </button>
-          </span>
-        )}
-      </div>
-
       <div className="container-filter-bar">
         <div className="filter-pill-row">
           <button
@@ -990,6 +944,99 @@ export function ContainersView({
         <span className="muted container-filter-count">
           {viewContainers.length} of {containers.length}
         </span>
+
+        {/* View controls (sort) and the batch-environment action sit in their
+            own right-aligned group so they read as tools, not status filters
+            (#310), while staying on the filter row to save vertical space. */}
+        <div className="filter-tools">
+          <SortControl
+            fields={[
+              { value: "key", label: "Key" },
+              { value: "summary", label: "Name" },
+              { value: "status", label: "Status" },
+            ]}
+            field={cSortField}
+            desc={cSortDesc}
+            onChange={(f, d) => {
+              setCSortField(f);
+              setCSortDesc(d);
+            }}
+          />
+          {caps.supportsEnvironments && kind === "testexec" && (
+            <div className="menu">
+              <button
+                className="btn"
+                onClick={() => setEnvToolsOpen((o) => !o)}
+                title="Apply an environment change to every execution currently shown"
+                aria-haspopup="dialog"
+                aria-expanded={envToolsOpen}
+              >
+                Set env on shown
+                <span className="menu-caret" aria-hidden="true">
+                  ▾
+                </span>
+              </button>
+              {envToolsOpen && (
+                <>
+                  <div
+                    className="menu-backdrop"
+                    onClick={() => setEnvToolsOpen(false)}
+                  />
+                  <div className="env-tools-panel menu-panel-right" role="dialog">
+                    <span className="env-tools-title">
+                      Set environment on the {viewContainers.length} shown
+                    </span>
+                    <div className="env-tools-row">
+                      <select
+                        className="container-status-filter app-select"
+                        value={batchEnvOp}
+                        onChange={(e) =>
+                          setBatchEnvOp(
+                            e.target.value as "add_env" | "remove_env" | "set_env",
+                          )
+                        }
+                        title="Batch environment operation"
+                      >
+                        <option value="add_env">Add env</option>
+                        <option value="remove_env">Remove env</option>
+                        <option value="set_env">Set env</option>
+                      </select>
+                      <input
+                        className="container-env-add app-select"
+                        list="container-env-names"
+                        value={batchEnvName}
+                        placeholder="Environment…"
+                        onChange={(e) => setBatchEnvName(e.target.value)}
+                      />
+                      <datalist id="container-env-names">
+                        {envOptions.map((e) => (
+                          <option key={e} value={e} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <button
+                      className="btn btn-primary env-tools-apply"
+                      onClick={async () => {
+                        await applyBatchEnv();
+                        setEnvToolsOpen(false);
+                      }}
+                      disabled={
+                        batchEnvBusy ||
+                        viewContainers.length === 0 ||
+                        (batchEnvOp !== "set_env" && !batchEnvName.trim())
+                      }
+                      title="Apply to all executions currently shown by the filter"
+                    >
+                      {batchEnvBusy
+                        ? "Applying…"
+                        : `Apply to ${viewContainers.length}`}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {error && <div className="error-text">{error}</div>}
