@@ -1339,8 +1339,8 @@ i.sankey-node-l2 {
   /* Cap the card so a data-heavy execution (many environments, sub-executions,
      related bugs) cannot grow tall enough to push the member table off-screen
      (RND_P_4TFINT_05-311). It scrolls internally past this height; the table
-     below keeps its space. */
-  flex: 0 0 auto;
+     below keeps its space. (flex: 0 0 auto already applies via the grouped
+     rule above.) */
   max-height: 42vh;
   overflow-y: auto;
 }
