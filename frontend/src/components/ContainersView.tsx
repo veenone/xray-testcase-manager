@@ -135,6 +135,10 @@ export function ContainersView({
   // string means "All". Clicking an execution fix-version chip toggles it; a
   // second click clears the filter (single-select toggle).
   const [memberFvFilter, setMemberFvFilter] = useState("");
+  // Run-status filter for the member table, driven by clicking a segment of the
+  // run colorbar or one of its count badges. Empty string means "all"; the
+  // "(not run)" bucket matches members with a blank run status.
+  const [memberRunFilter, setMemberRunFilter] = useState("");
   // Run roll-up for the selected Test Plan / Test Set.
   const [rollup, setRollup] = useState<RunRollup | null>(null);
   const { prompt, promptUI } = usePrompt();
@@ -603,6 +607,7 @@ export function ContainersView({
     setBoardPage(0);
     setSelectedRuns(new Set());
     setMemberFvFilter("");
+    setMemberRunFilter("");
     GetContainerBoard(profileId, selected)
       .then((b) => {
         if (!cancelled) setBoard(b);
@@ -691,6 +696,16 @@ export function ContainersView({
         (memberRuns.get(r.testKey)?.fixVersions ?? []).includes(memberFvFilter),
       );
     }
+    // Run-status filter from clicking the colorbar / a count badge. "(not run)"
+    // matches members with no run result (blank), mirroring how the backend
+    // buckets runCounts (blankAs(runStatus, "(not run)")).
+    if (memberRunFilter) {
+      rows = rows.filter((r) =>
+        memberRunFilter === "(not run)"
+          ? !r.runStatus
+          : r.runStatus === memberRunFilter,
+      );
+    }
     return [...rows].sort((a, b) => {
       let cmp: number;
       switch (rowSortField) {
@@ -710,7 +725,14 @@ export function ContainersView({
       }
       return applyDir(cmp, rowSortDesc);
     });
-  }, [board, kind, memberRuns, memberFvFilter, rowSortField, rowSortDesc]);
+  }, [board, kind, memberRuns, memberFvFilter, memberRunFilter, rowSortField, rowSortDesc]);
+
+  // Toggle the run-status filter from a colorbar segment / badge and reset to
+  // the first page so the (possibly shorter) filtered list starts at the top.
+  const pickRunFilter = (label: string) => {
+    setMemberRunFilter((cur) => (cur === label ? "" : label));
+    setBoardPage(0);
+  };
   const boardTotalPages = Math.max(
     1,
     Math.ceil(allRows.length / pageSize),
@@ -751,7 +773,11 @@ export function ContainersView({
       <div className="board-head">
         <label className="board-picker">
           <span>Type</span>
-          <select className="app-select" value={kind} onChange={(e) => setKind(e.target.value)}>
+          <select
+            className="app-select container-type-select"
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+          >
             {KINDS.map((k) => (
               <option key={k.value} value={k.value}>
                 {k.label}
@@ -781,6 +807,29 @@ export function ContainersView({
             />
           )}
         </label>
+
+        {/* Status filter pills share the picker row (RND_P_4TFINT_05: keep the
+            filter surface compact) rather than sitting on their own line. */}
+        <div className="filter-pill-row board-head-pills">
+          <button
+            className={`filter-pill${cStatus === "" ? " filter-pill-active" : ""}`}
+            onClick={() => setCStatus("")}
+            title="Show all statuses"
+          >
+            All statuses {statusCounts.get("") ?? 0}
+          </button>
+          {statusOptions.map((s) => (
+            <button
+              key={s}
+              className={`filter-pill${cStatus === s ? " filter-pill-active" : ""}`}
+              onClick={() => setCStatus(cStatus === s ? "" : s)}
+              title={`Filter to status: ${s}`}
+            >
+              {s} {statusCounts.get(s) ?? 0}
+            </button>
+          ))}
+        </div>
+
         <div className="board-head-actions">
           <button
             className="btn"
@@ -880,25 +929,6 @@ export function ContainersView({
       </div>
 
       <div className="container-filter-bar">
-        <div className="filter-pill-row">
-          <button
-            className={`filter-pill${cStatus === "" ? " filter-pill-active" : ""}`}
-            onClick={() => setCStatus("")}
-            title="Show all statuses"
-          >
-            All statuses {statusCounts.get("") ?? 0}
-          </button>
-          {statusOptions.map((s) => (
-            <button
-              key={s}
-              className={`filter-pill${cStatus === s ? " filter-pill-active" : ""}`}
-              onClick={() => setCStatus(cStatus === s ? "" : s)}
-              title={`Filter to status: ${s}`}
-            >
-              {s} {statusCounts.get(s) ?? 0}
-            </button>
-          ))}
-        </div>
         {kind === "testexec" && (
           <select
             className="container-status-filter app-select"
@@ -1192,10 +1222,20 @@ export function ContainersView({
 
           {board && board.runCounts.length > 0 && (
             <div className="container-card-runs">
-              <RunBar counts={board.runCounts} />
+              <RunBar
+                counts={board.runCounts}
+                active={memberRunFilter}
+                onPick={pickRunFilter}
+              />
               <div className="board-counts">
                 {board.runCounts.map((b) => (
-                  <RunBadge key={b.label} status={b.label} count={b.count} />
+                  <RunBadge
+                    key={b.label}
+                    status={b.label}
+                    count={b.count}
+                    active={memberRunFilter === b.label}
+                    onPick={() => pickRunFilter(b.label)}
+                  />
                 ))}
               </div>
             </div>
@@ -1827,17 +1867,37 @@ function formatRunDate(iso: string): string {
 }
 
 // RunBar is a compact stacked bar of run-status proportions for the selected
-// container — a glanceable view of how its tests are doing.
-function RunBar({ counts }: { counts: Bucket[] }) {
+// container, a glanceable view of how its tests are doing. When onPick is
+// given, each segment is clickable and filters the member table to that run
+// status; the active segment stays lit while the rest dim.
+function RunBar({
+  counts,
+  active,
+  onPick,
+}: {
+  counts: Bucket[];
+  active?: string;
+  onPick?: (label: string) => void;
+}) {
   const sum = counts.reduce((a, b) => a + b.count, 0) || 1;
+  const filtering = !!active;
   return (
-    <div className="run-bar" title="Run-status distribution">
+    <div
+      className={`run-bar${onPick ? " run-bar--clickable" : ""}${filtering ? " run-bar--filtering" : ""}`}
+      title={
+        onPick
+          ? "Run-status distribution. Click a segment to filter the list"
+          : "Run-status distribution"
+      }
+    >
       {counts.map((b) => (
         <span
           key={b.label}
-          className={runSegClass(b.label)}
+          className={`${runSegClass(b.label)}${active === b.label ? " run-seg--active" : ""}`}
           style={{ width: `${(b.count / sum) * 100}%` }}
-          title={`${b.label}: ${b.count}`}
+          title={`${b.label}: ${b.count}${onPick ? " (click to filter)" : ""}`}
+          role={onPick ? "button" : undefined}
+          onClick={onPick ? () => onPick(b.label) : undefined}
         />
       ))}
     </div>
@@ -1849,12 +1909,32 @@ function runSegClass(label: string): string {
   return `run-seg run-${label.toLowerCase()}`;
 }
 
-function RunBadge({ status, count }: { status: string; count: number }) {
-  const cls =
+// RunBadge shows a run-status count. When onPick is given it acts as a filter
+// toggle for the member table (active = currently filtering to this status);
+// without onPick it is a plain, non-interactive label (e.g. the roll-up).
+function RunBadge({
+  status,
+  count,
+  active,
+  onPick,
+}: {
+  status: string;
+  count: number;
+  active?: boolean;
+  onPick?: () => void;
+}) {
+  const base =
     status === "(not run)" ? "run-badge" : `run-badge run-${status.toLowerCase()}`;
+  const cls = `${base}${onPick ? " run-badge--click" : ""}${active ? " run-badge--active" : ""}`;
+  const label = status === "(not run)" ? "not run" : status;
   return (
-    <span className={cls}>
-      {status === "(not run)" ? "not run" : status} {count}
+    <span
+      className={cls}
+      role={onPick ? "button" : undefined}
+      onClick={onPick}
+      title={onPick ? `Filter the list to ${label}` : undefined}
+    >
+      {label} {count}
     </span>
   );
 }

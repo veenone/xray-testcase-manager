@@ -1023,9 +1023,6 @@
 .env-tools-apply {
   align-self: flex-start;
 }
-.container-filter-bar .filter-pill-row {
-  margin-bottom: 0;
-}
 /* Only the member table scrolls; the pager stays pinned beneath it. */
 .board-scroll {
   flex: 1;
@@ -1048,6 +1045,19 @@
 }
 .board-picker select {
   min-width: 280px;
+}
+/* The Type picker only holds three short options, so it needs far less width
+   than the container picker beside it. Narrowing it frees room for the status
+   pills that now share this row. */
+.board-picker select.container-type-select {
+  min-width: 0;
+  width: auto;
+}
+/* Status pills sit inline on the picker row: drop the standalone-row margin so
+   they align with the pickers instead of adding vertical space. */
+.board-head-pills {
+  margin: 0;
+  padding: 0;
 }
 .board-counts {
   display: flex;
@@ -1790,6 +1800,28 @@ button.defect-chip-key:hover {
 }
 .run-bar .run-aborted {
   background: var(--text-muted);
+}
+/* The colorbar doubles as a filter control: segments show a pointer, and while
+   a status is active the other segments dim so the filtered slice reads at a
+   glance. Opacity (not an outline) keeps the active state inside the bar's
+   overflow:hidden clip. */
+.run-bar--clickable .run-seg {
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+.run-bar--filtering .run-seg {
+  opacity: 0.3;
+}
+.run-bar--filtering .run-seg--active {
+  opacity: 1;
+}
+/* Count badges are filter toggles too; the active one gets a ring. */
+.run-badge--click {
+  cursor: pointer;
+}
+.run-badge--active {
+  outline: 2px solid var(--text-strong);
+  outline-offset: 1px;
 }
 
 .board-table {
