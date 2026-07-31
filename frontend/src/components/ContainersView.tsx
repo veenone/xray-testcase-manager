@@ -843,7 +843,7 @@ export function ContainersView({
               }
               options={viewContainers.map((c) => ({
                 value: c.key,
-                label: `${c.key} — ${c.summary}`,
+                label: `${c.key} · ${c.summary}`,
                 className: c.parentKey ? "is-subtask" : undefined,
               }))}
             />
@@ -985,9 +985,10 @@ export function ContainersView({
               className="container-rollup-label"
               title={
                 `Each of this ${kindLabel}'s member tests is given one combined result across the ` +
-                `${rollup.execCount} Test Execution${rollup.execCount === 1 ? "" : "s"} that ran it — ` +
-                `the worst result wins (any FAIL counts the test as FAIL). The badges count member ` +
-                `tests by that consolidated result; "(not run)" means no execution has recorded a result yet.`
+                `${rollup.execCount} Test Execution${rollup.execCount === 1 ? "" : "s"} that ran it. The ` +
+                `worst result wins (any FAIL counts the test as FAIL). The badges count member tests by ` +
+                `that consolidated result; "(not run)" means no execution has recorded a result yet. ` +
+                `Click a badge to see the tests behind it.`
               }
             >
               Consolidated results across {rollup.execCount} execution{rollup.execCount === 1 ? "" : "s"}
@@ -1225,7 +1226,7 @@ export function ContainersView({
                       className={`env-chip fix-version-chip${memberFvFilter === fv ? " fix-version-chip--active" : ""}`}
                       title={
                         memberFvFilter === fv
-                          ? `Showing only members with fix version ${fv} — click to clear`
+                          ? `Showing only members with fix version ${fv} (click to clear)`
                           : `Filter member table to fix version ${fv}`
                       }
                       onClick={() =>
@@ -1441,7 +1442,7 @@ export function ContainersView({
             {allRows.length === 0 ? (
               <tr>
                 <td colSpan={kind === "testexec" ? 12 : 5} className="muted">
-                  This {kindLabel.toLowerCase()} has no tests yet — use "+ Add
+                  This {kindLabel.toLowerCase()} has no tests yet. Use "+ Add
                   tests".
                 </td>
               </tr>
@@ -1494,7 +1495,7 @@ export function ContainersView({
                         onChange={(e) => setRunStatus(r.testKey, e.target.value)}
                         title="Set this test's result in this execution"
                       >
-                        {!r.runStatus && <option value="">— set result —</option>}
+                        {!r.runStatus && <option value="">Set result…</option>}
                         {RUN_STATUSES.map((s) => (
                           <option key={s} value={s}>
                             {s}
@@ -1684,7 +1685,7 @@ export function ContainersView({
                 (result.failed && result.failed.length > 0
                   ? ` (${result.failed.length} failed)`
                   : "") +
-                " — queued; commit from the Pending list.",
+                ". Queued; commit from the Pending list.",
             });
           }}
         />

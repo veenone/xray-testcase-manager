@@ -1050,10 +1050,15 @@
 }
 /* The Type and Status pickers hold a few short options each, so they need far
    less width than the item picker beside them. */
-.board-picker select.container-type-select,
 .board-picker select.container-filter-select {
   min-width: 0;
   width: auto;
+}
+/* Fixed width so switching Type (Test Set / Plan / Execution) never resizes the
+   control and shifts the pickers or the action buttons after it. Sized to fit
+   the longest option ("Test Execution"). */
+.board-picker select.container-type-select {
+  width: 150px;
 }
 
 /* Picker-row importance ramp. The three container pickers carry a deliberate
@@ -6502,13 +6507,22 @@ tr.row-checked:hover {
    long Test Execution summaries cannot push the action buttons to the next
    line. The multiselect-summary inside already carries text-overflow:ellipsis,
    so bounding the wrapper is sufficient to trigger truncation. */
+/* Fixed-width trigger so a long container name never grows the field and shifts
+   the Sync / action buttons. The selected text ellipsizes; the open panel below
+   sizes to its own content so long names stay fully readable. */
 .container-exec-filter {
-  max-width: 260px;
-  min-width: 0;
-  flex-shrink: 1;
+  width: 260px;
+  flex-shrink: 0;
 }
 .container-exec-filter .multiselect-btn {
+  width: 100%;
+  max-width: none;
   overflow: hidden;
+}
+.container-exec-filter .multiselect-panel {
+  width: max-content;
+  min-width: 260px;
+  max-width: 460px;
 }
 
 /* -274: collapsible related-bugs section inside the container detail card.
