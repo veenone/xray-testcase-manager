@@ -1585,6 +1585,20 @@ var seedRunStatuses = []string{
 // seedContainerStatuses cycles issue statuses for the generated containers.
 var seedContainerStatuses = []string{"Open", "In Progress", "Done"}
 
+// seedContainerLabelSets rotates realistic Jira label sets across seeded
+// containers so the Containers label filter is demonstrable offline without a
+// live sync (the "Regenerate sample data" demo aid).
+var seedContainerLabelSets = [][]string{
+	{"regression", "smoke"},
+	{"p1", "critical"},
+	{"security"},
+	{"performance", "nightly"},
+	{"sanity", "api"},
+	{"e2e", "ui"},
+	{"integration"},
+	{"automation", "regression"},
+}
+
 // SeedSampleContainers populates the local store with sample Test Sets, Test
 // Plans and Test Executions (with run statuses) linked to the profile's
 // already-synced Tests. It exists so the board / grouping / coverage features
@@ -1635,10 +1649,11 @@ func (r *Repository) SeedSampleContainers(profileID, projectKey string) (SeedRes
 	// parent_key / issue_type omitted on purpose: seeded containers are always
 	// standalone, so a re-seed must not clobber a synced sub-task's parent link.
 	containerStmt, err := tx.Prepare(
-		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status)
-		 VALUES (?, ?, ?, ?, ?)
+		`INSERT INTO test_container (profile_id, jira_key, kind, summary, status, labels)
+		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(profile_id, jira_key) DO UPDATE SET
-		   kind = excluded.kind, summary = excluded.summary, status = excluded.status`)
+		   kind = excluded.kind, summary = excluded.summary, status = excluded.status,
+		   labels = excluded.labels`)
 	if err != nil {
 		return result, fmt.Errorf("prepare container: %w", err)
 	}
@@ -1653,6 +1668,7 @@ func (r *Repository) SeedSampleContainers(profileID, projectKey string) (SeedRes
 				profileID, key, kind,
 				fmt.Sprintf("Sample %s %d", label, i+1),
 				seedContainerStatuses[i%len(seedContainerStatuses)],
+				encodeFixVersions(seedContainerLabelSets[i%len(seedContainerLabelSets)]),
 			); err != nil {
 				return nil, fmt.Errorf("seed container %s: %w", key, err)
 			}

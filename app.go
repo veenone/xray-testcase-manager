@@ -1643,6 +1643,7 @@ func (a *App) refreshCrossProjectExecsForTest(profileID, testKey string) {
 			ParentKey:     c.ParentKey,
 			ParentSummary: c.ParentSummary,
 			IssueType:     c.IssueType,
+			Labels:        c.Labels,
 			Environments:  c.Environments,
 			FixVersions:   c.FixVersions,
 			Created:       c.Created,
