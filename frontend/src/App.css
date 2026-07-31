@@ -1051,7 +1051,7 @@
 /* The Type and Status pickers hold a few short options each, so they need far
    less width than the item picker beside them. */
 .board-picker select.container-type-select,
-.board-picker select.container-status-select {
+.board-picker select.container-filter-select {
   min-width: 0;
   width: auto;
 }
@@ -1079,22 +1079,36 @@
 .board-picker--secondary select.container-type-select {
   border-color: var(--border);
 }
-/* The Status filter is accent-coloured so it reads clearly as an interactive
-   filter rather than a recessed field. Idle: an accent outline on the plain
+/* The Status and Label filters are accent-coloured so they read clearly as
+   interactive filters rather than recessed fields, and group as "the filters"
+   beside the neutral Type/item pickers. Idle: an accent outline on the plain
    surface. Applied: an accent-soft fill with accent text, so a constrained
-   view is unmistakable at a glance (mirroring the pills it replaced). */
-.board-picker--tertiary select.container-status-select {
+   view is unmistakable at a glance (mirroring the pills they replaced). */
+.board-picker--tertiary select.container-filter-select {
   border-color: var(--accent);
   background: var(--surface);
   color: var(--text);
 }
-.board-picker--tertiary select.container-status-select.is-filtering {
+.board-picker--tertiary select.container-filter-select.is-filtering {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
 }
 
+/* The consolidated-results summary sits inline on the filter row: label and
+   result badges on one line, wrapping only when the row runs out of width. */
+.container-rollup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.container-rollup-label {
+  font-size: 12px;
+  color: var(--text-strong);
+  font-weight: 600;
+}
 /* Small "explain this" affordance next to the consolidated-results label; the
    full explanation lives in the label's tooltip. */
 .rollup-info {

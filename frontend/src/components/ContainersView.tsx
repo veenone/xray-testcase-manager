@@ -792,7 +792,7 @@ export function ContainersView({
         <label className="board-picker board-picker--tertiary">
           <span>Status</span>
           <select
-            className={`app-select container-status-select${
+            className={`app-select container-filter-select${
               cStatus ? " is-filtering" : ""
             }`}
             value={cStatus}
@@ -807,6 +807,26 @@ export function ContainersView({
             ))}
           </select>
         </label>
+        {labelOptions.length > 0 && (
+          <label className="board-picker board-picker--tertiary">
+            <span>Label</span>
+            <select
+              className={`app-select container-filter-select${
+                cLabel ? " is-filtering" : ""
+              }`}
+              value={cLabel}
+              onChange={(e) => setCLabel(e.target.value)}
+              title="Filter containers by label"
+            >
+              <option value="">All labels</option>
+              {labelOptions.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="board-picker board-picker--primary">
           <span>{kindLabel}</span>
           {loading ? (
@@ -956,20 +976,44 @@ export function ContainersView({
             ))}
           </select>
         )}
-        {labelOptions.length > 0 && (
-          <select
-            className="container-status-filter app-select"
-            value={cLabel}
-            onChange={(e) => setCLabel(e.target.value)}
-            title="Filter by label"
-          >
-            <option value="">All labels</option>
-            {labelOptions.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
+        {/* Consolidated-results summary for the selected Test Plan / Set, shown
+            inline on the filter row (moved here from the detail card; the label
+            filter it replaced now sits beside the Status filter above). */}
+        {kind !== "testexec" && rollup && rollup.total > 0 && (
+          <div className="container-rollup">
+            <span
+              className="container-rollup-label"
+              title={
+                `Each of this ${kindLabel}'s member tests is given one combined result across the ` +
+                `${rollup.execCount} Test Execution${rollup.execCount === 1 ? "" : "s"} that ran it — ` +
+                `the worst result wins (any FAIL counts the test as FAIL). The badges count member ` +
+                `tests by that consolidated result; "(not run)" means no execution has recorded a result yet.`
+              }
+            >
+              Consolidated results across {rollup.execCount} execution{rollup.execCount === 1 ? "" : "s"}
+              <span className="rollup-info" aria-hidden="true">ⓘ</span>
+            </span>
+            <div className="board-counts">
+              {rollup.passed > 0 && (
+                <RunBadge status="PASS" count={rollup.passed} />
+              )}
+              {rollup.failed > 0 && (
+                <RunBadge status="FAIL" count={rollup.failed} />
+              )}
+              {rollup.executing > 0 && (
+                <RunBadge status="EXECUTING" count={rollup.executing} />
+              )}
+              {rollup.aborted > 0 && (
+                <RunBadge status="ABORTED" count={rollup.aborted} />
+              )}
+              {rollup.blocked > 0 && (
+                <RunBadge status="BLOCKED" count={rollup.blocked} />
+              )}
+              {rollup.notRun > 0 && (
+                <RunBadge status="(not run)" count={rollup.notRun} />
+              )}
+            </div>
+          </div>
         )}
         <span className="muted container-filter-count">
           {viewContainers.length} of {containers.length}
@@ -1237,44 +1281,6 @@ export function ContainersView({
                     onPick={() => pickRunFilter(b.label)}
                   />
                 ))}
-              </div>
-            </div>
-          )}
-
-          {/* Roll-up summary bar across all executions, for plans and sets. */}
-          {kind !== "testexec" && rollup && rollup.total > 0 && (
-            <div className="container-rollup">
-              <span
-                className="container-rollup-label"
-                title={
-                  `Each of this ${kindLabel}'s member tests is given one combined result across the ` +
-                  `${rollup.execCount} Test Execution${rollup.execCount === 1 ? "" : "s"} that ran it — ` +
-                  `the worst result wins (any FAIL counts the test as FAIL). The badges below count member ` +
-                  `tests by that consolidated result; "(not run)" means no execution has recorded a result yet.`
-                }
-              >
-                Consolidated results across {rollup.execCount} execution{rollup.execCount === 1 ? "" : "s"}
-                <span className="rollup-info" aria-hidden="true">ⓘ</span>
-              </span>
-              <div className="board-counts">
-                {rollup.passed > 0 && (
-                  <RunBadge status="PASS" count={rollup.passed} />
-                )}
-                {rollup.failed > 0 && (
-                  <RunBadge status="FAIL" count={rollup.failed} />
-                )}
-                {rollup.executing > 0 && (
-                  <RunBadge status="EXECUTING" count={rollup.executing} />
-                )}
-                {rollup.aborted > 0 && (
-                  <RunBadge status="ABORTED" count={rollup.aborted} />
-                )}
-                {rollup.blocked > 0 && (
-                  <RunBadge status="BLOCKED" count={rollup.blocked} />
-                )}
-                {rollup.notRun > 0 && (
-                  <RunBadge status="(not run)" count={rollup.notRun} />
-                )}
               </div>
             </div>
           )}
