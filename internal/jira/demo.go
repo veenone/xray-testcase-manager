@@ -493,6 +493,19 @@ var demoContainerLabelSets = [][]string{
 	{"security"},
 	{"smoke", "p2"},
 	{"performance", "nightly"},
+	{"sanity", "api"},
+	{"e2e", "ui", "regression"},
+	{"integration"},
+	{"critical", "p1"},
+	{"automation", "nightly"},
+	{"flaky", "regression"},
+	{"release-blocker", "p1", "critical"},
+	{"mobile", "smoke"},
+	{"accessibility"},
+	{"compliance", "security"},
+	{"load", "performance"},
+	{"manual", "p3"},
+	{"backend", "api", "integration"},
 }
 
 func demoContainerLabels(i int) []string {
