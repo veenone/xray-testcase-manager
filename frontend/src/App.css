@@ -1046,18 +1046,48 @@
 .board-picker select {
   min-width: 280px;
 }
-/* The Type picker only holds three short options, so it needs far less width
-   than the container picker beside it. Narrowing it frees room for the status
-   pills that now share this row. */
-.board-picker select.container-type-select {
+/* The Type and Status pickers hold a few short options each, so they need far
+   less width than the item picker beside them. */
+.board-picker select.container-type-select,
+.board-picker select.container-status-select {
   min-width: 0;
   width: auto;
 }
-/* Status pills sit inline on the picker row: drop the standalone-row margin so
-   they align with the pickers instead of adding vertical space. */
-.board-head-pills {
-  margin: 0;
-  padding: 0;
+
+/* Picker-row importance ramp. The three container pickers carry a deliberate
+   visual hierarchy built only from existing tokens — no new colours or radii:
+   the item picker (primary) is the selection you make, Type (secondary) sets
+   context, and the Status filter (tertiary) recedes until it is applied. The
+   ramp is expressed through label weight and frame weight; the accent is
+   reserved for the one meaningful moment — an active status filter. */
+.board-picker--primary > span {
+  color: var(--text);
+  font-weight: 650;
+}
+.board-picker--secondary > span {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+.board-picker--tertiary > span {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+/* Frame weight: primary keeps the strong border (default), secondary lightens
+   to --border, tertiary lightens further and sits on a recessed surface. */
+.board-picker--secondary select.container-type-select {
+  border-color: var(--border);
+}
+.board-picker--tertiary select.container-status-select {
+  border-color: var(--border-subtle);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+/* Applied filter: the Status control adopts the accent (mirroring the pills it
+   replaced) so a constrained view is obvious without reading the value. */
+.board-picker--tertiary select.container-status-select.is-filtering {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--text-strong);
 }
 .board-counts {
   display: flex;

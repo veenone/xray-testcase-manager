@@ -771,7 +771,7 @@ export function ContainersView({
       ) : (
         <>
       <div className="board-head">
-        <label className="board-picker">
+        <label className="board-picker board-picker--secondary">
           <span>Type</span>
           <select
             className="app-select container-type-select"
@@ -785,7 +785,29 @@ export function ContainersView({
             ))}
           </select>
         </label>
-        <label className="board-picker">
+        {/* Status filter: a compact dropdown between Type and the item picker
+            (replaces the old pill row to save horizontal space). It reads as the
+            tertiary control — recessed until a status is applied, when it adopts
+            the accent so an active filter is obvious at a glance. */}
+        <label className="board-picker board-picker--tertiary">
+          <span>Status</span>
+          <select
+            className={`app-select container-status-select${
+              cStatus ? " is-filtering" : ""
+            }`}
+            value={cStatus}
+            onChange={(e) => setCStatus(e.target.value)}
+            title="Filter containers by status"
+          >
+            <option value="">All statuses ({statusCounts.get("") ?? 0})</option>
+            {statusOptions.map((s) => (
+              <option key={s} value={s}>
+                {s} ({statusCounts.get(s) ?? 0})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="board-picker board-picker--primary">
           <span>{kindLabel}</span>
           {loading ? (
             <span className="muted">Loading…</span>
@@ -807,28 +829,6 @@ export function ContainersView({
             />
           )}
         </label>
-
-        {/* Status filter pills share the picker row (RND_P_4TFINT_05: keep the
-            filter surface compact) rather than sitting on their own line. */}
-        <div className="filter-pill-row board-head-pills">
-          <button
-            className={`filter-pill${cStatus === "" ? " filter-pill-active" : ""}`}
-            onClick={() => setCStatus("")}
-            title="Show all statuses"
-          >
-            All statuses {statusCounts.get("") ?? 0}
-          </button>
-          {statusOptions.map((s) => (
-            <button
-              key={s}
-              className={`filter-pill${cStatus === s ? " filter-pill-active" : ""}`}
-              onClick={() => setCStatus(cStatus === s ? "" : s)}
-              title={`Filter to status: ${s}`}
-            >
-              {s} {statusCounts.get(s) ?? 0}
-            </button>
-          ))}
-        </div>
 
         <div className="board-head-actions">
           <button
