@@ -80,6 +80,60 @@ func TestGetRunRollup(t *testing.T) {
 	}
 }
 
+func TestGetRunRollupBreakdown(t *testing.T) {
+	r := seedRollupRepo(t)
+	rows, err := r.GetRunRollupBreakdown("p1", "DEMO-TP-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("members = %d, want 2", len(rows))
+	}
+	byKey := map[string]testrepo.RollupMember{}
+	for _, m := range rows {
+		byKey[m.TestKey] = m
+	}
+
+	d1, ok := byKey["DEMO-1"]
+	if !ok {
+		t.Fatal("DEMO-1 missing from breakdown")
+	}
+	// PASS in both executions -> consolidated PASS, two runs.
+	if d1.Consolidated != "PASS" {
+		t.Errorf("DEMO-1 consolidated = %q, want PASS", d1.Consolidated)
+	}
+	if d1.Summary != "Login test" {
+		t.Errorf("DEMO-1 summary = %q, want Login test", d1.Summary)
+	}
+	if len(d1.Runs) != 2 {
+		t.Errorf("DEMO-1 runs = %d, want 2", len(d1.Runs))
+	}
+
+	d2, ok := byKey["DEMO-2"]
+	if !ok {
+		t.Fatal("DEMO-2 missing from breakdown")
+	}
+	// FAIL in TE-1, PASS in TE-2 -> worst-wins FAIL.
+	if d2.Consolidated != "FAIL" {
+		t.Errorf("DEMO-2 consolidated = %q, want FAIL", d2.Consolidated)
+	}
+	var te1 *testrepo.RollupRun
+	for i := range d2.Runs {
+		if d2.Runs[i].ExecKey == "DEMO-TE-1" {
+			te1 = &d2.Runs[i]
+		}
+	}
+	if te1 == nil {
+		t.Fatal("DEMO-2 has no run row for DEMO-TE-1")
+	}
+	if te1.Status != "FAIL" {
+		t.Errorf("DEMO-2 in DEMO-TE-1 status = %q, want FAIL", te1.Status)
+	}
+	if te1.ExecSummary != "Exec 1" {
+		t.Errorf("DEMO-2 in DEMO-TE-1 exec summary = %q, want Exec 1", te1.ExecSummary)
+	}
+}
+
 func TestGetExecutionMembersWithRuns(t *testing.T) {
 	r := seedRollupRepo(t)
 	rows, err := r.GetExecutionMembersWithRuns("p1", "DEMO-TE-1")

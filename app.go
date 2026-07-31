@@ -1711,6 +1711,16 @@ func (a *App) GetRunRollup(profileID, containerKey string) (testrepo.RunRollup, 
 	return a.repo.GetRunRollup(profileID, containerKey)
 }
 
+// GetRunRollupBreakdown returns each member test of a Test Plan or Test Set with
+// its consolidated result and the per-execution results behind it, for the
+// clickable roll-up breakdown.
+func (a *App) GetRunRollupBreakdown(profileID, containerKey string) ([]testrepo.RollupMember, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.GetRunRollupBreakdown(profileID, containerKey)
+}
+
 // GetExecutionMembersWithRuns returns an execution's member tests with run details.
 func (a *App) GetExecutionMembersWithRuns(profileID, execKey string) ([]testrepo.ExecMemberRun, error) {
 	if err := a.requireStore(); err != nil {

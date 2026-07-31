@@ -426,6 +426,10 @@ export function GetRunRollup(arg1, arg2) {
   return window['go']['main']['App']['GetRunRollup'](arg1, arg2);
 }
 
+export function GetRunRollupBreakdown(arg1, arg2) {
+  return window['go']['main']['App']['GetRunRollupBreakdown'](arg1, arg2);
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }

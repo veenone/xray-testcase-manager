@@ -225,6 +225,8 @@ export function GetRequirementTraceability(arg1:string,arg2:Array<string>):Promi
 
 export function GetRunRollup(arg1:string,arg2:string):Promise<testrepo.RunRollup>;
 
+export function GetRunRollupBreakdown(arg1:string,arg2:string):Promise<Array<testrepo.RollupMember>>;
+
 export function GetSettings():Promise<settings.Settings>;
 
 export function GetStatistics(arg1:string,arg2:string,arg3:string,arg4:string):Promise<testrepo.Statistics>;

@@ -123,6 +123,129 @@ func (r *Repository) GetRunRollup(profileID, containerKey string) (RunRollup, er
 	return roll, nil
 }
 
+// RollupRun is one execution's recorded result for a member test, used in the
+// roll-up breakdown to show what fed into the consolidated result.
+type RollupRun struct {
+	ExecKey     string `json:"execKey"`
+	ExecSummary string `json:"execSummary"`
+	Status      string `json:"status"`
+}
+
+// RollupMember is one member test of a Test Plan / Set with its consolidated
+// result and the per-execution results behind it.
+type RollupMember struct {
+	TestKey      string      `json:"testKey"`
+	Summary      string      `json:"summary"`
+	Consolidated string      `json:"consolidated"` // PASS|FAIL|EXECUTING|ABORTED|BLOCKED|(not run)
+	Runs         []RollupRun `json:"runs"`
+}
+
+// rollupBucketLabel maps a consolidated run status to the badge bucket label the
+// roll-up counts by, matching the buckets in GetRunRollup.
+func rollupBucketLabel(status string) string {
+	switch strings.ToUpper(status) {
+	case "PASS", "PASSED":
+		return "PASS"
+	case "FAIL", "FAILED":
+		return "FAIL"
+	case "EXECUTING":
+		return "EXECUTING"
+	case "ABORTED":
+		return "ABORTED"
+	case "BLOCKED":
+		return "BLOCKED"
+	default:
+		return "(not run)"
+	}
+}
+
+// GetRunRollupBreakdown returns every member test of a Test Plan / Set with its
+// consolidated result and the per-execution results that produced it, so the UI
+// can show what sits behind each roll-up badge. Members are ordered by key and
+// each member's runs follow execution-key order, for stable output.
+func (r *Repository) GetRunRollupBreakdown(profileID, containerKey string) ([]RollupMember, error) {
+	// Member keys + summaries (local test_case, falling back to external_test
+	// for cross-project members).
+	memberRows, err := r.db.Query(
+		`SELECT l.test_key, COALESCE(t.summary, x.summary, '')
+		   FROM test_container_test l
+		   LEFT JOIN test_case     t ON t.profile_id = l.profile_id AND t.jira_key = l.test_key
+		   LEFT JOIN external_test x ON x.profile_id = l.profile_id AND x.jira_key = l.test_key
+		  WHERE l.profile_id = ? AND l.container_key = ?
+		  ORDER BY l.test_key`,
+		profileID, containerKey)
+	if err != nil {
+		return nil, err
+	}
+	defer memberRows.Close()
+	type memberInfo struct {
+		summary string
+		runs    []RollupRun
+	}
+	members := map[string]*memberInfo{}
+	var order []string
+	for memberRows.Next() {
+		var k, summary string
+		if err := memberRows.Scan(&k, &summary); err != nil {
+			return nil, err
+		}
+		if _, ok := members[k]; !ok {
+			members[k] = &memberInfo{summary: summary}
+			order = append(order, k)
+		}
+	}
+	if err := memberRows.Err(); err != nil {
+		return nil, err
+	}
+	if len(order) == 0 {
+		return nil, nil
+	}
+
+	// Per-execution results for these members.
+	runRows, err := r.db.Query(
+		`SELECT l.test_key, l.run_status, l.container_key, COALESCE(c.summary, '')
+		   FROM test_container_test l
+		   JOIN test_container c
+		     ON c.profile_id = l.profile_id AND c.jira_key = l.container_key
+		  WHERE l.profile_id = ? AND c.kind = 'testexec'
+		  ORDER BY l.container_key`,
+		profileID)
+	if err != nil {
+		return nil, err
+	}
+	defer runRows.Close()
+	for runRows.Next() {
+		var testKey, runStatus, execKey, execSummary string
+		if err := runRows.Scan(&testKey, &runStatus, &execKey, &execSummary); err != nil {
+			return nil, err
+		}
+		m, ok := members[testKey]
+		if !ok {
+			continue
+		}
+		m.runs = append(m.runs, RollupRun{ExecKey: execKey, ExecSummary: execSummary, Status: runStatus})
+	}
+	if err := runRows.Err(); err != nil {
+		return nil, err
+	}
+
+	out := make([]RollupMember, 0, len(order))
+	for _, k := range order {
+		m := members[k]
+		statuses := make([]string, 0, len(m.runs))
+		for _, run := range m.runs {
+			statuses = append(statuses, run.Status)
+		}
+		out = append(out, RollupMember{
+			TestKey:      k,
+			Summary:      m.summary,
+			Consolidated: rollupBucketLabel(consolidateRunStatus(statuses)),
+			Runs:         m.runs,
+		})
+	}
+	return out, nil
+}
+
 // GetExecutionMembersWithRuns returns the member tests of a Test Execution
 // enriched with run details from the test_run table. Summary and status are
 // resolved from the local test_case cache, falling back to the external_test

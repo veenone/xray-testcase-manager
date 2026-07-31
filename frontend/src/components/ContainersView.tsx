@@ -21,9 +21,11 @@ import {
   BrowserOpenURL,
   GetExecutionMembersWithRuns,
   GetRunRollup,
+  GetRunRollupBreakdown,
   errMsg,
 } from "../api";
-import type { Container, TestPlanBoard, Bucket, Bug, ExecMemberRun, RunRollup } from "../api";
+import type { Container, TestPlanBoard, Bucket, Bug, ExecMemberRun, RunRollup, RollupMember } from "../api";
+import { RollupBreakdownModal } from "./RollupBreakdownModal";
 import { SortControl } from "./SortControl";
 import { SearchableSelect } from "./SearchableSelect";
 import { keyCompare, cmpStr, applyDir } from "../sort";
@@ -141,6 +143,12 @@ export function ContainersView({
   const [memberRunFilter, setMemberRunFilter] = useState("");
   // Run roll-up for the selected Test Plan / Test Set.
   const [rollup, setRollup] = useState<RunRollup | null>(null);
+  // Clickable roll-up breakdown: which bucket's modal is open, and the member
+  // detail (lazily fetched on first badge click, cached per selected container).
+  const [breakdownStatus, setBreakdownStatus] = useState<string | null>(null);
+  const [breakdown, setBreakdown] = useState<RollupMember[] | null>(null);
+  const [breakdownFor, setBreakdownFor] = useState("");
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
   const { prompt, promptUI } = usePrompt();
   const { confirm, confirmUI } = useConfirm();
   const { notice, noticeUI } = useNotice();
@@ -685,6 +693,32 @@ export function ContainersView({
     };
   }, [profileId, selected, kind, refreshKey]);
 
+  // Reset the cached breakdown when the selected container changes, so a stale
+  // one is never shown for a different plan/set.
+  useEffect(() => {
+    setBreakdown(null);
+    setBreakdownFor("");
+    setBreakdownStatus(null);
+  }, [selected]);
+
+  // openBreakdown opens the informational modal for one roll-up bucket, fetching
+  // the member breakdown for the selected container on first use.
+  async function openBreakdown(status: string) {
+    if (!selected) return;
+    setBreakdownStatus(status);
+    if (breakdownFor === selected && breakdown) return;
+    setBreakdownLoading(true);
+    try {
+      const rows = await GetRunRollupBreakdown(profileId, selected);
+      setBreakdown(rows ?? []);
+      setBreakdownFor(selected);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBreakdownLoading(false);
+    }
+  }
+
   // Client-side paging of the member table.
   const allRows = useMemo(() => {
     let rows = board?.rows ?? [];
@@ -996,22 +1030,52 @@ export function ContainersView({
             </span>
             <div className="board-counts">
               {rollup.passed > 0 && (
-                <RunBadge status="PASS" count={rollup.passed} />
+                <RunBadge
+                  status="PASS"
+                  count={rollup.passed}
+                  onPick={() => openBreakdown("PASS")}
+                  pickHint="See the tests behind this result"
+                />
               )}
               {rollup.failed > 0 && (
-                <RunBadge status="FAIL" count={rollup.failed} />
+                <RunBadge
+                  status="FAIL"
+                  count={rollup.failed}
+                  onPick={() => openBreakdown("FAIL")}
+                  pickHint="See the tests behind this result"
+                />
               )}
               {rollup.executing > 0 && (
-                <RunBadge status="EXECUTING" count={rollup.executing} />
+                <RunBadge
+                  status="EXECUTING"
+                  count={rollup.executing}
+                  onPick={() => openBreakdown("EXECUTING")}
+                  pickHint="See the tests behind this result"
+                />
               )}
               {rollup.aborted > 0 && (
-                <RunBadge status="ABORTED" count={rollup.aborted} />
+                <RunBadge
+                  status="ABORTED"
+                  count={rollup.aborted}
+                  onPick={() => openBreakdown("ABORTED")}
+                  pickHint="See the tests behind this result"
+                />
               )}
               {rollup.blocked > 0 && (
-                <RunBadge status="BLOCKED" count={rollup.blocked} />
+                <RunBadge
+                  status="BLOCKED"
+                  count={rollup.blocked}
+                  onPick={() => openBreakdown("BLOCKED")}
+                  pickHint="See the tests behind this result"
+                />
               )}
               {rollup.notRun > 0 && (
-                <RunBadge status="(not run)" count={rollup.notRun} />
+                <RunBadge
+                  status="(not run)"
+                  count={rollup.notRun}
+                  onPick={() => openBreakdown("(not run)")}
+                  pickHint="See the tests behind this result"
+                />
               )}
             </div>
           </div>
@@ -1691,6 +1755,17 @@ export function ContainersView({
         />
       )}
 
+      {breakdownStatus !== null && (
+        <RollupBreakdownModal
+          kindLabel={kindLabel}
+          containerKey={selected}
+          status={breakdownStatus}
+          members={breakdown ?? []}
+          loading={breakdownLoading}
+          onClose={() => setBreakdownStatus(null)}
+        />
+      )}
+
       {promptUI}
       {confirmUI}
       {noticeUI}
@@ -1933,11 +2008,14 @@ function RunBadge({
   count,
   active,
   onPick,
+  pickHint,
 }: {
   status: string;
   count: number;
   active?: boolean;
   onPick?: () => void;
+  // Overrides the click tooltip. Defaults to the member-table filter wording.
+  pickHint?: string;
 }) {
   const base =
     status === "(not run)" ? "run-badge" : `run-badge run-${status.toLowerCase()}`;
@@ -1948,7 +2026,7 @@ function RunBadge({
       className={cls}
       role={onPick ? "button" : undefined}
       onClick={onPick}
-      title={onPick ? `Filter the list to ${label}` : undefined}
+      title={onPick ? (pickHint ?? `Filter the list to ${label}`) : undefined}
     >
       {label} {count}
     </span>

@@ -172,6 +172,7 @@ export {
   ListTestsForBug,
   GetTestRunHistory,
   GetRunRollup,
+  GetRunRollupBreakdown,
   GetExecutionMembersWithRuns,
   AnalyzeJUnitImport,
   ApplyJUnitImport,
@@ -1337,6 +1338,23 @@ export interface RunRollup {
   blocked: number;
   total: number;
   execCount: number;
+}
+
+// RollupRun mirrors testrepo.RollupRun — one execution's result for a member
+// test in the roll-up breakdown.
+export interface RollupRun {
+  execKey: string;
+  execSummary: string;
+  status: string;
+}
+
+// RollupMember mirrors testrepo.RollupMember — a member test with its
+// consolidated result and the per-execution results behind it.
+export interface RollupMember {
+  testKey: string;
+  summary: string;
+  consolidated: string;
+  runs: RollupRun[];
 }
 
 // ExecMemberRun mirrors testrepo.ExecMemberRun — one member test of an
