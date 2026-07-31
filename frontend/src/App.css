@@ -13,6 +13,7 @@
   --text-muted: #6b7280;
   --accent: #3b5bdb;
   --accent-hover: #2f49b3;
+  --accent-soft: rgba(59, 91, 219, 0.13);
   --row-hover: #eef0f3;
   --danger-text: #c0392b;
   /* semantic warn (separate from --accent/--danger) for non-destructive but
@@ -36,6 +37,7 @@
   --text-muted: #94a3b8;
   --accent: #5b78f0;
   --accent-hover: #748df5;
+  --accent-soft: rgba(91, 120, 240, 0.20);
   --row-hover: #222d3c;
   --danger-text: #f0a0a0;
   --warn-text: #e0b062;
@@ -1069,25 +1071,37 @@
   font-weight: 600;
 }
 .board-picker--tertiary > span {
-  color: var(--text-muted);
-  font-weight: 500;
+  color: var(--accent);
+  font-weight: 600;
 }
 /* Frame weight: primary keeps the strong border (default), secondary lightens
    to --border, tertiary lightens further and sits on a recessed surface. */
 .board-picker--secondary select.container-type-select {
   border-color: var(--border);
 }
+/* The Status filter is accent-coloured so it reads clearly as an interactive
+   filter rather than a recessed field. Idle: an accent outline on the plain
+   surface. Applied: an accent-soft fill with accent text, so a constrained
+   view is unmistakable at a glance (mirroring the pills it replaced). */
 .board-picker--tertiary select.container-status-select {
-  border-color: var(--border-subtle);
-  background: var(--surface-2);
-  color: var(--text-muted);
-}
-/* Applied filter: the Status control adopts the accent (mirroring the pills it
-   replaced) so a constrained view is obvious without reading the value. */
-.board-picker--tertiary select.container-status-select.is-filtering {
   border-color: var(--accent);
   background: var(--surface);
-  color: var(--text-strong);
+  color: var(--text);
+}
+.board-picker--tertiary select.container-status-select.is-filtering {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Small "explain this" affordance next to the consolidated-results label; the
+   full explanation lives in the label's tooltip. */
+.rollup-info {
+  margin-left: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: help;
 }
 .board-counts {
   display: flex;

@@ -1244,8 +1244,17 @@ export function ContainersView({
           {/* Roll-up summary bar across all executions, for plans and sets. */}
           {kind !== "testexec" && rollup && rollup.total > 0 && (
             <div className="container-rollup">
-              <span className="container-rollup-label">
-                Run roll-up across {rollup.execCount} execution{rollup.execCount === 1 ? "" : "s"}
+              <span
+                className="container-rollup-label"
+                title={
+                  `Each of this ${kindLabel}'s member tests is given one combined result across the ` +
+                  `${rollup.execCount} Test Execution${rollup.execCount === 1 ? "" : "s"} that ran it — ` +
+                  `the worst result wins (any FAIL counts the test as FAIL). The badges below count member ` +
+                  `tests by that consolidated result; "(not run)" means no execution has recorded a result yet.`
+                }
+              >
+                Consolidated results across {rollup.execCount} execution{rollup.execCount === 1 ? "" : "s"}
+                <span className="rollup-info" aria-hidden="true">ⓘ</span>
               </span>
               <div className="board-counts">
                 {rollup.passed > 0 && (
