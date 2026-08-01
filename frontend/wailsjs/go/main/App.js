@@ -738,6 +738,10 @@ export function ScanDuplicates(arg1) {
   return window['go']['main']['App']['ScanDuplicates'](arg1);
 }
 
+export function SeedASPICEReference(arg1) {
+  return window['go']['main']['App']['SeedASPICEReference'](arg1);
+}
+
 export function SeedDemoCoverageExample(arg1) {
   return window['go']['main']['App']['SeedDemoCoverageExample'](arg1);
 }

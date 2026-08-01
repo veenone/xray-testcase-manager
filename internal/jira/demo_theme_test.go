@@ -85,4 +85,21 @@ func TestThemeForSelectsVariant(t *testing.T) {
 			t.Errorf("pkcs feature %q has no preconditions mapping", f)
 		}
 	}
+
+	as := themeFor("demo-aspice")
+	if as.Variant != "aspice" {
+		t.Fatalf("demo-aspice Variant = %q, want aspice", as.Variant)
+	}
+	if len(as.Features) != 7 || as.Features[0] != "SYS.2 System Requirements Analysis" {
+		t.Errorf("aspice features = %v, want 7 ASPICE processes starting with SYS.2", as.Features)
+	}
+	// Every ASPICE process maps to preconditions and to a folder category.
+	for _, f := range as.Features {
+		if _, ok := as.FeaturePre[f]; !ok {
+			t.Errorf("aspice process %q has no preconditions mapping", f)
+		}
+		if demoCategoryIndexForFeature(as, f) < 0 {
+			t.Errorf("aspice process %q maps to no folder category", f)
+		}
+	}
 }
