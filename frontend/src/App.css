@@ -1059,7 +1059,7 @@
    to the longest option ("Test Execution") so the row keeps room for the action
    buttons instead of wrapping them to a second line. */
 .board-picker select.container-type-select {
-  width: 128px;
+  width: 124px;
 }
 
 /* Picker-row importance ramp. The three container pickers carry a deliberate
@@ -6614,17 +6614,23 @@ tr.row-checked:hover {
    the Sync / action buttons. The selected text ellipsizes; the open panel below
    sizes to its own content so long names stay fully readable. */
 .container-exec-filter {
-  width: 260px;
+  width: 200px;
   flex-shrink: 0;
 }
+/* Match the plain .app-select box of the Type / Status pickers (border radius,
+   padding, font size) so the item picker reads as one of the same set rather
+   than a differently-styled control. */
 .container-exec-filter .multiselect-btn {
   width: 100%;
   max-width: none;
   overflow: hidden;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 13px;
 }
 .container-exec-filter .multiselect-panel {
   width: max-content;
-  min-width: 260px;
+  min-width: 200px;
   max-width: 460px;
 }
 
