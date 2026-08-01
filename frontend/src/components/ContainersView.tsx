@@ -913,7 +913,7 @@ export function ContainersView({
               onClick={() => setShowJUnitNewExec(true)}
               title="Create a new Test Execution from a JUnit XML report"
             >
-              New exec from JUnit XML
+              Import JUnit
             </button>
           )}
           <Menu
