@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import type { RollupMember } from "../api";
 
@@ -45,6 +45,17 @@ export function RollupBreakdownModal({
   loading,
   onClose,
 }: Props) {
+  // Per-test execution detail is collapsed by default to keep the modal short;
+  // the user expands the tests they want to inspect.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -88,32 +99,48 @@ export function RollupBreakdownModal({
             <p className="muted">No tests in this result.</p>
           ) : (
             <ul className="rollup-breakdown-list">
-              {shown.map((m) => (
-                <li key={m.testKey} className="rollup-breakdown-item">
-                  <div className="rollup-breakdown-test">
-                    <span className="mono">{m.testKey}</span>
-                    <span className="rollup-breakdown-summary">{m.summary}</span>
-                    <StatusChip raw={m.consolidated} />
-                  </div>
-                  {m.runs.length === 0 ? (
-                    <div className="rollup-breakdown-runs muted">
-                      No execution has run this test yet.
-                    </div>
-                  ) : (
-                    <ul className="rollup-breakdown-runs">
-                      {m.runs.map((run) => (
-                        <li key={run.execKey} className="rollup-breakdown-run">
-                          <span className="mono">{run.execKey}</span>
-                          <span className="rollup-breakdown-exec-summary">
-                            {run.execSummary}
-                          </span>
-                          <StatusChip raw={run.status} />
-                        </li>
+              {shown.map((m) => {
+                const isOpen = expanded.has(m.testKey);
+                return (
+                  <li key={m.testKey} className="rollup-breakdown-item">
+                    <button
+                      type="button"
+                      className="rollup-breakdown-test"
+                      onClick={() => toggle(m.testKey)}
+                      aria-expanded={isOpen}
+                      title={isOpen ? "Hide executions" : "Show executions"}
+                    >
+                      <span className="rollup-breakdown-caret" aria-hidden="true">
+                        {isOpen ? "▾" : "▸"}
+                      </span>
+                      <span className="mono rollup-breakdown-key">{m.testKey}</span>
+                      <span className="rollup-breakdown-summary">{m.summary}</span>
+                      <span className="rollup-breakdown-runcount">
+                        {m.runs.length} exec{m.runs.length === 1 ? "" : "s"}
+                      </span>
+                      <StatusChip raw={m.consolidated} />
+                    </button>
+                    {isOpen &&
+                      (m.runs.length === 0 ? (
+                        <div className="rollup-breakdown-runs muted">
+                          No execution has run this test yet.
+                        </div>
+                      ) : (
+                        <ul className="rollup-breakdown-runs">
+                          {m.runs.map((run) => (
+                            <li key={run.execKey} className="rollup-breakdown-run">
+                              <span className="mono">{run.execKey}</span>
+                              <span className="rollup-breakdown-exec-summary">
+                                {run.execSummary}
+                              </span>
+                              <StatusChip raw={run.status} />
+                            </li>
+                          ))}
+                        </ul>
                       ))}
-                    </ul>
-                  )}
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

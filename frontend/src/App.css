@@ -1055,10 +1055,11 @@
   width: auto;
 }
 /* Fixed width so switching Type (Test Set / Plan / Execution) never resizes the
-   control and shifts the pickers or the action buttons after it. Sized to fit
-   the longest option ("Test Execution"). */
+   control and shifts the pickers or the action buttons after it. Sized snugly
+   to the longest option ("Test Execution") so the row keeps room for the action
+   buttons instead of wrapping them to a second line. */
 .board-picker select.container-type-select {
-  width: 150px;
+  width: 128px;
 }
 
 /* Picker-row importance ramp. The three container pickers carry a deliberate
@@ -1155,10 +1156,37 @@
 .rollup-breakdown-item:first-child {
   border-top: 0;
 }
+/* The test row is a full-width toggle that expands the per-execution detail. */
 .rollup-breakdown-test {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rollup-breakdown-caret {
+  flex-shrink: 0;
+  width: 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.rollup-breakdown-key {
+  flex-shrink: 0;
+  font-weight: 700;
+}
+.rollup-breakdown-test:hover .rollup-breakdown-key {
+  color: var(--accent);
+}
+.rollup-breakdown-runcount {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 .rollup-breakdown-summary {
   flex: 1;
