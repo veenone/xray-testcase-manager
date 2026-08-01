@@ -232,6 +232,48 @@ export namespace connection {
 
 export namespace coverage {
 	
+	export class ASPICEAssessmentSummary {
+	    processes: number;
+	    members: number;
+	    tests: number;
+	    mappings: number;
+	    gaps: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ASPICEAssessmentSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.processes = source["processes"];
+	        this.members = source["members"];
+	        this.tests = source["tests"];
+	        this.mappings = source["mappings"];
+	        this.gaps = source["gaps"];
+	    }
+	}
+	export class ASPICESeedSummary {
+	    features: number;
+	    requirements: number;
+	    tests: number;
+	    versions: number;
+	    changeRequests: number;
+	    mappings: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ASPICESeedSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.features = source["features"];
+	        this.requirements = source["requirements"];
+	        this.tests = source["tests"];
+	        this.versions = source["versions"];
+	        this.changeRequests = source["changeRequests"];
+	        this.mappings = source["mappings"];
+	    }
+	}
 	export class CRDecision {
 	    requirementKey: string;
 	    projectKey: string;

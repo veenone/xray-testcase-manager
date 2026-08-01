@@ -738,8 +738,16 @@ export function ScanDuplicates(arg1) {
   return window['go']['main']['App']['ScanDuplicates'](arg1);
 }
 
+export function SeedASPICEReference(arg1) {
+  return window['go']['main']['App']['SeedASPICEReference'](arg1);
+}
+
 export function SeedDemoCoverageExample(arg1) {
   return window['go']['main']['App']['SeedDemoCoverageExample'](arg1);
+}
+
+export function SeedEUICCASPICEAssessment(arg1) {
+  return window['go']['main']['App']['SeedEUICCASPICEAssessment'](arg1);
 }
 
 export function SeedEUICCReference(arg1) {
