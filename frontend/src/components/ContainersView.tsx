@@ -149,6 +149,15 @@ export function ContainersView({
   const [breakdown, setBreakdown] = useState<RollupMember[] | null>(null);
   const [breakdownFor, setBreakdownFor] = useState("");
   const [breakdownLoading, setBreakdownLoading] = useState(false);
+  // Collapse the selected container's detail (parent, environments, fix
+  // versions, name, run bar) to a single header line to give the member table
+  // more room. Persisted per profile so the choice sticks across selections.
+  const [cardCollapsed, setCardCollapsed] = useViewState(
+    profileId,
+    "containers",
+    "cardCollapsed",
+    false,
+  );
   const { prompt, promptUI } = usePrompt();
   const { confirm, confirmUI } = useConfirm();
   const { notice, noticeUI } = useNotice();
@@ -1189,6 +1198,15 @@ export function ContainersView({
       {selectedContainer && (
         <div className="container-card">
           <div className="container-card-top">
+            <button
+              type="button"
+              className="collapse-caret"
+              onClick={() => setCardCollapsed(!cardCollapsed)}
+              aria-expanded={!cardCollapsed}
+              title={cardCollapsed ? "Show details" : "Hide details"}
+            >
+              {cardCollapsed ? "▸" : "▾"}
+            </button>
             <span className={`kind-badge kind-${kind}`}>{kindLabel}</span>
             <span className="mono container-card-key">
               {selectedContainer.key}
@@ -1218,6 +1236,8 @@ export function ContainersView({
             )}
           </div>
 
+          {!cardCollapsed && (
+            <>
           {selectedContainer.parentKey && (
             <div className="container-parent">
               <button
@@ -1348,6 +1368,8 @@ export function ContainersView({
                 ))}
               </div>
             </div>
+          )}
+            </>
           )}
 
           {/* Related defects reached through this container's member Tests -

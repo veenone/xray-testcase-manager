@@ -1570,6 +1570,27 @@ i.sankey-node-l2 {
   gap: 10px;
   margin-bottom: 8px;
 }
+/* Caret that collapses a detail block (container card, requirement detail) to
+   just its header line, giving the list/table below more room. */
+.collapse-caret {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-right: -2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.collapse-caret:hover {
+  color: var(--accent);
+}
+/* Summary line with a leading collapse caret in the requirement detail. */
+.reqs-detail-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .kind-badge {
   font-size: 10px;
   font-weight: 700;
@@ -5190,15 +5211,30 @@ tr.row-checked:hover {
 }
 
 /* Compact pager for narrow side panels (requirement / precondition lists, #2). */
+/* Compact pager for narrow side panels (requirement / precondition lists): a
+   wrapping row that keeps the rows-per-page selector on the same line as the
+   Prev / Go / Next controls, with the range summary wrapping onto its own line
+   below. Mirrors the bugs-panel pager so the two read the same. */
 .pager-compact {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
   flex: 0 0 auto;
 }
-.pager-compact .board-pagesize { justify-content: flex-start; }
-.pager-compact .board-pager-range { flex: none; text-align: left; }
-.pager-compact .board-pager-nav { justify-content: flex-start; flex-wrap: wrap; }
+.pager-compact .board-pagesize {
+  justify-content: flex-start;
+}
+.pager-compact .board-pager-nav {
+  order: 2;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.pager-compact .board-pager-range {
+  order: 3;
+  flex: 1 1 100%;
+  text-align: left;
+}
 
 /* Make enabled pager nav buttons visually distinct from disabled ones.
    Without this the Prev/Go/Next buttons look identically grey in narrow panels. */

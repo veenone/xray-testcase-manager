@@ -99,6 +99,9 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   const { confirm, confirmUI } = useConfirm();
   // Collapsible description in the detail pane -- collapsed by default, resets on selection change.
   const [descOpen, setDescOpen] = useState(false);
+  // Collapsible detail block (priority, components, fix versions, sprint,
+  // description) -- expanded by default; collapse to give the tests list room.
+  const [detailsOpen, setDetailsOpen] = useState(true);
   // A covering test opened in a slide-over detail panel (#5).
   const [detailKey, setDetailKey] = useViewState(profileId, "requirements", "detailKey", "");
   const [detailVersion, setDetailVersion] = useState(0);
@@ -154,6 +157,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   useEffect(() => {
     setEditing(false);
     setDescOpen(false);
+    setDetailsOpen(true);
   }, [selected]);
 
   useEffect(() => {
@@ -606,14 +610,26 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
                 </div>
               </div>
             ) : (
-              <h2 className="reqs-detail-summary">
-                {sel.summary || "(no summary)"}
-              </h2>
+              <div className="reqs-detail-summary-row">
+                <button
+                  type="button"
+                  className="collapse-caret"
+                  onClick={() => setDetailsOpen((o) => !o)}
+                  aria-expanded={detailsOpen}
+                  title={detailsOpen ? "Hide details" : "Show details"}
+                >
+                  {detailsOpen ? "▾" : "▸"}
+                </button>
+                <h2 className="reqs-detail-summary">
+                  {sel.summary || "(no summary)"}
+                </h2>
+              </div>
             )}
 
             {/* Read-only metadata grid + collapsible description: hidden in edit mode
-                because the edit form shows these fields inline. */}
-            {!editing && (
+                because the edit form shows these fields inline, and collapsible
+                via the summary caret to give the tests list more room. */}
+            {!editing && detailsOpen && (
               <>
                 <dl className="detail-meta">
                   {sel.priority && (
