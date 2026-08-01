@@ -1055,11 +1055,13 @@
   width: auto;
 }
 /* Fixed width so switching Type (Test Set / Plan / Execution) never resizes the
-   control and shifts the pickers or the action buttons after it. Sized snugly
-   to the longest option ("Test Execution") so the row keeps room for the action
-   buttons instead of wrapping them to a second line. */
+   control and shifts the pickers or the action buttons after it. min-width: 0
+   is required to defeat the .board-picker select default of 280px; without it
+   the width below is ignored and the control renders at the full 280px. Sized
+   to fit the longest option ("Test Execution"). */
 .board-picker select.container-type-select {
-  width: 124px;
+  min-width: 0;
+  width: 150px;
 }
 
 /* Picker-row importance ramp. The three container pickers carry a deliberate
