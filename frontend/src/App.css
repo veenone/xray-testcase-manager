@@ -6610,16 +6610,12 @@ tr.row-checked:hover {
    long Test Execution summaries cannot push the action buttons to the next
    line. The multiselect-summary inside already carries text-overflow:ellipsis,
    so bounding the wrapper is sufficient to trigger truncation. */
-/* The item picker stretches to fill the space between the filters and the
-   action buttons (flex-grow), so it uses the available width instead of sitting
-   at a fixed size with a gap to its right. Its width is driven by layout, not by
-   the selected text, so a long container name still ellipsizes without shifting
-   the action buttons; the open panel below sizes to its own content so long
-   names stay fully readable. */
+/* Fixed-width item picker: it neither grows nor tracks the selected text, so a
+   long container name simply ellipsizes without shifting the action buttons.
+   The open panel below sizes to its own content so long names stay readable. */
 .container-exec-filter {
-  flex: 1 1 200px;
-  min-width: 160px;
-  max-width: 520px;
+  width: 160px;
+  flex-shrink: 0;
 }
 /* Match the plain .app-select box of the Type / Status pickers (border radius,
    padding, font size) so the item picker reads as one of the same set rather
@@ -6634,7 +6630,7 @@ tr.row-checked:hover {
 }
 .container-exec-filter .multiselect-panel {
   width: max-content;
-  min-width: 200px;
+  min-width: 160px;
   max-width: 460px;
 }
 
