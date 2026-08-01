@@ -5311,6 +5311,17 @@ tr.row-checked:hover {
   height: 100%;
   min-height: 0;
 }
+/* Row wrapper so the list and the inline TestDetail dock side by side (like the
+   Browse test-case view) instead of the detail opening as a full-screen
+   overlay. The list takes the remaining width; the .detail panel docks right. */
+.testcalls-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.testcalls-main > .testcalls-body {
+  min-width: 0;
+}
 /* Scrollable content region below the flush toolbar + tiles. Flex column so the
    list scrolls between the controls header and the pinned pager footer. */
 .testcalls-body {

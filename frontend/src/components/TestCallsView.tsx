@@ -235,6 +235,7 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
         </div>
       </div>
 
+      <div className="testcalls-main">
       <div className="testcalls-body">
         {links.length === 0 ? (
         <p className="muted testcalls-empty">
@@ -350,23 +351,20 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
       </div>
 
       {detailKey && (
-        <div className="detail-slideover" onClick={() => setDetailKey("")}>
-          <div onClick={(e) => e.stopPropagation()}>
-            <TestDetail
-              profileId={profileId}
-              testKey={detailKey}
-              version={detailVersion}
-              pendingForTest={[]}
-              folders={[]}
-              onClose={() => setDetailKey("")}
-              onEdited={() => {
-                setDetailVersion((v) => v + 1);
-                onChanged?.();
-              }}
-            />
-          </div>
-        </div>
+        <TestDetail
+          profileId={profileId}
+          testKey={detailKey}
+          version={detailVersion}
+          pendingForTest={[]}
+          folders={[]}
+          onClose={() => setDetailKey("")}
+          onEdited={() => {
+            setDetailVersion((v) => v + 1);
+            onChanged?.();
+          }}
+        />
       )}
+      </div>
     </div>
   );
 }
