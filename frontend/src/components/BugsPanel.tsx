@@ -89,6 +89,9 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [descOpen, setDescOpen] = useState(false);
   // Collapsible defect analysis in the detail card -- collapsed by default.
   const [analysisOpen, setAnalysisOpen] = useState(false);
+  // Collapse the bug metadata + extra fields to a header line, like the
+  // requirement detail. Expanded by default.
+  const [detailsOpen, setDetailsOpen] = useState(true);
 
   // In-view right sidebar: persists the open test key across sessions (test detail
   // only; plan/exec panels are ephemeral and reset to null on navigation).
@@ -445,6 +448,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     setExpandedTests(new Set());
     setDescOpen(false);
     setAnalysisOpen(false);
+    setDetailsOpen(true);
   }, [selected]);
 
   // Load the affected tests (with run status) for the selected bug.
@@ -766,9 +770,22 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                 )}
                 {sel.status && <span className="status-pill">{sel.status}</span>}
               </div>
-              <h2 className="bugs-md-detail-summary">
-                {sel.summary || "(no summary)"}
-              </h2>
+              <div className="bugs-md-summary-row">
+                <button
+                  type="button"
+                  className="collapse-caret"
+                  onClick={() => setDetailsOpen((o) => !o)}
+                  aria-expanded={detailsOpen}
+                  title={detailsOpen ? "Hide details" : "Show details"}
+                >
+                  {detailsOpen ? "▾" : "▸"}
+                </button>
+                <h2 className="bugs-md-detail-summary">
+                  {sel.summary || "(no summary)"}
+                </h2>
+              </div>
+              {detailsOpen && (
+                <>
               <dl className="detail-fields bugs-md-detail-fields bugs-md-detail-fields-2col">
                 {sel.issueType && (
                   <>
@@ -857,6 +874,8 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                     </div>
                   )}
                 </div>
+              )}
+              </>
               )}
             </div>
 

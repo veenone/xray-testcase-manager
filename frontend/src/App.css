@@ -1585,8 +1585,9 @@ i.sankey-node-l2 {
 .collapse-caret:hover {
   color: var(--accent);
 }
-/* Summary line with a leading collapse caret in the requirement detail. */
-.reqs-detail-summary-row {
+/* Summary line with a leading collapse caret in the requirement / bug detail. */
+.reqs-detail-summary-row,
+.bugs-md-summary-row {
   display: flex;
   align-items: center;
   gap: 8px;

@@ -88,6 +88,9 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   // Collapsible read-only fields -- collapsed by default, reset on selection change.
   const [condOpen, setCondOpen] = useState(false);
   const [descOpen, setDescOpen] = useState(false);
+  // Collapse the read-only detail fields (summary, type, condition, description)
+  // to a header line, like the requirement detail. Expanded by default.
+  const [detailsOpen, setDetailsOpen] = useState(true);
   useEffect(() => {
     setEditing(false);
     setSummaryDraft(selectedPre?.summary ?? "");
@@ -96,6 +99,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
     setTypeDraft(selectedPre?.type || "Manual");
     setCondOpen(false);
     setDescOpen(false);
+    setDetailsOpen(true);
   }, [selectedPre]);
 
   // Per-bucket counts for the usage pill filter, computed from the text-filtered
@@ -392,6 +396,17 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
           <>
             <div className="precond-detail-head">
               <div className="precond-detail-id">
+                {!editing && (
+                  <button
+                    type="button"
+                    className="collapse-caret"
+                    onClick={() => setDetailsOpen((o) => !o)}
+                    aria-expanded={detailsOpen}
+                    title={detailsOpen ? "Hide details" : "Show details"}
+                  >
+                    {detailsOpen ? "▾" : "▸"}
+                  </button>
+                )}
                 <span className="mono precond-detail-key">{selectedPre.key}</span>
                 {isLocal && (
                   <span className="pending-badge" title="Not yet created in Jira">
@@ -501,7 +516,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
                   />
                 </div>
               </>
-            ) : (
+            ) : detailsOpen ? (
               <>
                 <div className="precond-field">
                   <span>Summary</span>
@@ -569,7 +584,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
                   </div>
                 )}
               </>
-            )}
+            ) : null}
 
             <div className="precond-tests-head">
               <h4>
