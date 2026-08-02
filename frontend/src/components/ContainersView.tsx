@@ -787,7 +787,7 @@ export function ContainersView({
   );
 
   return (
-    <div className={`board${mode === "bugs" ? " board--bugs" : ""}${detailKey && kind === "testexec" && mode !== "bugs" ? " board--with-exec-detail" : ""}`}>
+    <div className={`board${mode === "bugs" ? " board--bugs" : ""}${detailKey && mode !== "bugs" ? " board--with-exec-detail" : ""}`}>
       <div className="board-exec-body">
       <div className="containers-mode">
         <button
@@ -1557,19 +1557,17 @@ export function ContainersView({
                         ext
                       </span>
                     )}
-                    {kind === "testexec" && (
-                      <button
-                        className="btn-icon"
-                        title={`Open ${r.testKey} detail here`}
-                        onClick={() => {
-                          setDetailKey(r.testKey);
-                          setDetailVersion((v) => v + 1);
-                        }}
-                        style={{ fontSize: "0.75rem", padding: "0 0.25rem", marginLeft: "0.25rem" }}
-                      >
-                        ↗
-                      </button>
-                    )}
+                    <button
+                      className="btn-icon"
+                      title={`Open ${r.testKey} detail here`}
+                      onClick={() => {
+                        setDetailKey(r.testKey);
+                        setDetailVersion((v) => v + 1);
+                      }}
+                      style={{ fontSize: "0.75rem", padding: "0 0.25rem", marginLeft: "0.25rem" }}
+                    >
+                      ↗
+                    </button>
                   </td>
                   <td>{r.summary}</td>
                   <td>{r.status || "—"}</td>
@@ -1793,7 +1791,7 @@ export function ContainersView({
       {noticeUI}
       </div>
 
-      {detailKey && kind === "testexec" && mode !== "bugs" && (
+      {detailKey && mode !== "bugs" && (
         <TestDetail
           profileId={profileId}
           testKey={detailKey}
