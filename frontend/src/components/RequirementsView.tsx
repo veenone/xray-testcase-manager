@@ -342,7 +342,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
     <div className={`reqs${detailKey ? " reqs-with-detail" : ""}`}>
       <div className="reqs-list">
         <div className="reqs-list-head">
-          {/* Primary row: filter (fills space) + Sync, Sources, Create — mirrors .precond-list-head */}
+          {/* View controls: filter (fills space) + partial Sync + Sort */}
           <div className="reqs-head-row">
             <input
               className="precond-search"
@@ -358,6 +358,23 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
             >
               {syncing ? "Syncing…" : "Sync"}
             </button>
+            <SortControl
+              fields={[
+                { value: "key", label: "Key" },
+                { value: "coverage", label: "Coverage" },
+                { value: "tests", label: "Tests" },
+                { value: "status", label: "Status" },
+              ]}
+              field={sortField}
+              desc={sortDesc}
+              onChange={(f, d) => {
+                setSortField(f);
+                setSortDesc(d);
+              }}
+            />
+          </div>
+          {/* Data actions: sources, create, import, export */}
+          <div className="reqs-list-toolbar">
             <button
               className="btn reqs-sources-btn"
               onClick={() => setShowSources(true)}
@@ -372,9 +389,13 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
             >
               + Create
             </button>
-          </div>
-          {/* Secondary row: audit + import actions */}
-          <div className="reqs-list-toolbar">
+            <button
+              className="btn"
+              onClick={() => setShowImportReqs(true)}
+              title="Import requirements from a CSV or XLSX file"
+            >
+              Import…
+            </button>
             <button
               className="btn"
               onClick={exportAudit}
@@ -382,13 +403,6 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               title="Export the coverage / sign-off audit (CSV or XLSX)"
             >
               Export audit…
-            </button>
-            <button
-              className="btn"
-              onClick={() => setShowImportReqs(true)}
-              title="Import requirements from a CSV or XLSX file"
-            >
-              Import…
             </button>
           </div>
           {notice && <p className="reqs-notice muted">{notice}</p>}
@@ -405,20 +419,6 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
             </button>
           ))}
         </div>
-        <SortControl
-          fields={[
-            { value: "key", label: "Key" },
-            { value: "coverage", label: "Coverage" },
-            { value: "tests", label: "Tests" },
-            { value: "status", label: "Status" },
-          ]}
-          field={sortField}
-          desc={sortDesc}
-          onChange={(f, d) => {
-            setSortField(f);
-            setSortDesc(d);
-          }}
-        />
         {loading ? (
           <p className="muted reqs-empty">Loading…</p>
         ) : filtered.length === 0 ? (
