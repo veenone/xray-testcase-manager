@@ -819,7 +819,12 @@ export function ContainersView({
           <select
             className="app-select container-type-select"
             value={kind}
-            onChange={(e) => setKind(e.target.value)}
+            onChange={(e) => {
+              // Switching type changes the member set, so close any open test
+              // detail (it belongs to the previous type's selection).
+              setKind(e.target.value);
+              setDetailKey(null);
+            }}
           >
             {KINDS.map((k) => (
               <option key={k.value} value={k.value}>
