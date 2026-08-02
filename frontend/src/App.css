@@ -5198,6 +5198,15 @@ tr.row-checked:hover {
   color: var(--text);
   font-size: 12px;
 }
+/* Icon-only Prev / Next: a compact square button showing just the chevron, so
+   the pager nav stays narrow (shared by every pager across the app). */
+.pager-arrow {
+  min-width: 30px;
+  padding: 4px 8px;
+  font-size: 15px;
+  line-height: 1;
+  text-align: center;
+}
 
 /* Requirement Sankey filter dropdown (#3). */
 .sankey-filter { display: flex; align-items: center; gap: 6px; font-size: 12px; }

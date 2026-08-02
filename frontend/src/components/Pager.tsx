@@ -60,11 +60,13 @@ export function Pager({
       </span>
       <span className="board-pager-nav">
         <button
-          className="btn"
+          className="btn pager-arrow"
           disabled={safePage === 0}
           onClick={() => onPage(Math.max(0, safePage - 1))}
+          title="Previous page"
+          aria-label="Previous page"
         >
-          ‹ Prev
+          ‹
         </button>
         <input
           className="pager-goto"
@@ -83,11 +85,13 @@ export function Pager({
           Go
         </button>
         <button
-          className="btn"
+          className="btn pager-arrow"
           disabled={safePage >= totalPages - 1}
           onClick={() => onPage(Math.min(totalPages - 1, safePage + 1))}
+          title="Next page"
+          aria-label="Next page"
         >
-          Next ›
+          ›
         </button>
       </span>
     </div>
