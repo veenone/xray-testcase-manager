@@ -6584,14 +6584,17 @@ tr.row-checked:hover {
 
 .gap-cols {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr) — not plain 1fr — so a long summary / folder path in one
+     panel can't blow its track out and starve the other. Both columns stay
+     equal and the item text ellipsizes within them. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
 @media (max-width: 880px) {
   .gap-cols { grid-template-columns: 1fr; }
 }
-.gap-panel { display: flex; flex-direction: column; min-height: 0; }
+.gap-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .gap-panel-head {
   display: flex;
   align-items: center;
