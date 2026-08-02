@@ -74,8 +74,8 @@ export function ProfilesModal({
             <h2>Manage Profiles</h2>
             <span className="profiles-modal-sub">
               {creating
-                ? "A new profile does not become active until you switch to it."
-                : "Editing here does not switch your active connection."}
+                ? "A new profile won't become active until you switch to it."
+                : "Editing here won't switch your active connection."}
             </span>
           </div>
           <button className="btn btn-ghost" onClick={onClose} title="Close" aria-label="Close">
@@ -138,7 +138,7 @@ export function ProfilesModal({
                     className="profiles-star"
                     title={
                       defaultProfileId === p.id
-                        ? "Default on launch — click to clear"
+                        ? "Default on launch (click to clear)"
                         : "Set as default on launch"
                     }
                     aria-label={
@@ -208,7 +208,7 @@ export function ProfilesModal({
                     </svg>
                     <span>
                       <b>This is your active profile.</b> Saving updates the
-                      Jira connection you&apos;re using right now — it
+                      Jira connection you&apos;re using right now. It
                       won&apos;t create a new one.
                     </span>
                   </div>

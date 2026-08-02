@@ -104,10 +104,10 @@ export function PendingChangesModal({
                   <strong>
                     Conflict{lastResult!.conflicted.length === 1 ? "" : "s"} (
                     {lastResult!.conflicted.length})
-                  </strong>{" "}
-                  — someone changed {lastResult!.conflicted.length === 1 ? "this test" : "these tests"} in
-                  Jira too. Non-overlapping edits were merged automatically; the
-                  fields below changed on both sides — pick which wins.
+                  </strong>
+                  : someone changed {lastResult!.conflicted.length === 1 ? "this test" : "these tests"} in
+                  Jira too. Non-overlapping edits were merged automatically. The
+                  fields below changed on both sides, so pick which one wins.
                 </p>
                 <ul className="conflict-list">
                   {lastResult!.conflicted.map((c, i) => (
@@ -128,7 +128,7 @@ export function PendingChangesModal({
                       {c.remoteDeleted ? (
                         <div className="conflict-deleted">
                           <span>
-                            This test was <strong>deleted in Jira</strong> — your
+                            This test was <strong>deleted in Jira</strong>, so your
                             local edits can&apos;t be pushed.
                           </span>
                           <span className="conflict-row-actions">
@@ -311,7 +311,7 @@ export function PendingChangesModal({
             {lastResult!.failed.length > 0 && (
               <div className="error-text">
                 <p>
-                  Failed ({lastResult!.failed.length}) — these changes remain
+                  Failed ({lastResult!.failed.length}). These changes remain
                   in pending:
                 </p>
                 <ul className="commit-fail-list">

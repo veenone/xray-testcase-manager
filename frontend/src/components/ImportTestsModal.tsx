@@ -137,7 +137,7 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
               </div>
               {fileName && (
                 <p className="muted">
-                  {fileName} — {rowCount} row{rowCount === 1 ? "" : "s"}
+                  {fileName} ({rowCount} row{rowCount === 1 ? "" : "s"})
                 </p>
               )}
 

@@ -206,7 +206,7 @@ export function BulkPreconditionsModal({
               {mode === "remove" &&
                 "The precondition is removed from tests that have it. "}
               {mode === "replace" &&
-                "Per test the ticked Remove items are dropped and the ticked Add items are linked, in one apply. "}
+                "For each test, checked Remove items are dropped and checked Add items are linked, all in one apply. "}
               Changes are queued locally; commit them from the Pending list.
             </p>
 

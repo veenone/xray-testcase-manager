@@ -362,7 +362,7 @@ export function ContainersView({
       batchEnvOp === "set_env" &&
       !window.confirm(
         `Set environments to "${name || "(none)"}" on ${keys.length} execution${keys.length === 1 ? "" : "s"}? ` +
-          "This replaces their current environments.",
+          "This will replace their current environments.",
       )
     )
       return;
@@ -407,8 +407,8 @@ export function ContainersView({
       !(await confirm({
         title: "Clean sample data",
         message:
-          "Remove all sample Test Sets / Plans / Executions created by 'Regenerate sample data'? " +
-          "Real synced containers are not affected.",
+          "Remove all sample Test Sets, Plans, and Executions created by 'Regenerate sample data'? " +
+          "Your real synced containers won't be affected.",
         confirmLabel: "Delete",
         danger: true,
       }))
@@ -542,7 +542,7 @@ export function ContainersView({
     if (
       !(await confirm({
         title: `Delete ${kindLabel}`,
-        message: `Delete this ${kindLabel}? Its test memberships are removed (committed on sync).`,
+        message: `Delete this ${kindLabel}? Its test memberships are removed too (committed on sync).`,
         confirmLabel: "Delete",
         danger: true,
       }))
@@ -1032,11 +1032,11 @@ export function ContainersView({
             <span
               className="container-rollup-label"
               title={
-                `Each of this ${kindLabel}'s member tests is given one combined result across the ` +
-                `${rollup.execCount} Test Execution${rollup.execCount === 1 ? "" : "s"} that ran it. The ` +
-                `worst result wins (any FAIL counts the test as FAIL). The badges count member tests by ` +
-                `that consolidated result; "(not run)" means no execution has recorded a result yet. ` +
-                `Click a badge to see the tests behind it.`
+                `Each test in this ${kindLabel} gets one combined result across the ` +
+                `${rollup.execCount} Test Execution${rollup.execCount === 1 ? "" : "s"} that ran it. ` +
+                `The worst result wins, so any FAIL makes the test FAIL overall. These badges count ` +
+                `tests by that combined result; "(not run)" means no execution has recorded a result yet. ` +
+                `Click a badge to see which tests are behind it.`
               }
             >
               Consolidated results across {rollup.execCount} execution{rollup.execCount === 1 ? "" : "s"}
@@ -1196,7 +1196,8 @@ export function ContainersView({
 
       {!loading && containers.length === 0 && (
         <p className="muted">
-          No {kindLabel}s yet. Create one, run a sync, or generate sample data.
+          You don't have any {kindLabel}s yet. Create one, run a sync, or
+          generate sample data.
         </p>
       )}
 
@@ -1533,8 +1534,8 @@ export function ContainersView({
             {allRows.length === 0 ? (
               <tr>
                 <td colSpan={kind === "testexec" ? 12 : 5} className="muted">
-                  This {kindLabel.toLowerCase()} has no tests yet. Use "+ Add
-                  tests".
+                  This {kindLabel.toLowerCase()} doesn't have any tests yet.
+                  Use "+ Add tests" to add some.
                 </td>
               </tr>
             ) : (
@@ -1752,7 +1753,7 @@ export function ContainersView({
             notice({
               title: "JUnit import applied",
               message:
-                `${succeeded} result${succeeded !== 1 ? "s" : ""} queued; commit from the Pending list.` +
+                `${succeeded} result${succeeded !== 1 ? "s" : ""} queued. Commit them from the Pending list.` +
                 (failed > 0 ? ` (${failed} failed)` : ""),
             });
           }}
@@ -1774,7 +1775,7 @@ export function ContainersView({
                 (result.failed && result.failed.length > 0
                   ? ` (${result.failed.length} failed)`
                   : "") +
-                ". Queued; commit from the Pending list.",
+                ". Queued, commit it from the Pending list.",
             });
           }}
         />

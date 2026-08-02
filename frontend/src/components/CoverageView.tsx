@@ -211,7 +211,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
   async function deleteCanonical(c: CanonicalRequirement) {
     const ok = await confirm({
       title: `Delete "${c.name}"?`,
-      message: "This removes its parameter model, mappings, and memberships. The Jira tests are untouched.",
+      message: "This deletes its parameter model, mappings, and memberships, but leaves your Jira tests untouched.",
       danger: true,
     });
     if (!ok) return;
@@ -302,11 +302,11 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
       onChanged?.();
       setNotice(
         isEuicc
-          ? `Mapped eUICC coverage onto synced demo-euicc data — ${s.features} features, ${s.versions} versions, ` +
-              `${s.changeRequests} change requests, ${s.mappings} value→test mappings. ` +
+          ? `Mapped eUICC coverage onto the synced demo-euicc data: ${s.features} features, ${s.versions} versions, ` +
+              `${s.changeRequests} change requests, ${s.mappings} value-to-test mappings. ` +
               `Sync the demo-euicc profile first if you haven't already.`
-          : `Mapped PKCS#11 coverage onto synced demo-pkcs data — ${s.features} features, ${s.versions} versions, ` +
-              `${s.changeRequests} change requests, ${s.mappings} value→test mappings. ` +
+          : `Mapped PKCS#11 coverage onto the synced demo-pkcs data: ${s.features} features, ${s.versions} versions, ` +
+              `${s.changeRequests} change requests, ${s.mappings} value-to-test mappings. ` +
               `Sync the demo-pkcs profile first if you haven't already.`,
       );
     } catch (e) {
@@ -425,7 +425,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
               <div className="cov-welcome">
                 <h2>Parameter-level coverage</h2>
                 <p>
-                  This tab is a local workspace — <strong>sync does not populate it</strong>. Sync only loads your
+                  This tab is a local workspace, and <strong>sync does not populate it</strong>. Sync only loads your
                   tests and requirements; you build the coverage model here from them.
                 </p>
                 <ol>
@@ -433,11 +433,11 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
                     In the left panel, name a function (e.g. <code>C_Sign</code>) and click <strong>Add</strong>.
                   </li>
                   <li>
-                    Select it, then <strong>Import template…</strong> to load a parameter workbook — or
-                    <strong> Add group</strong> and build it by hand.
+                    Select it, then <strong>Import template…</strong> to load a parameter workbook, or use
+                    <strong> Add group</strong> to build it by hand.
                   </li>
                   <li>
-                    Use <strong>Map…</strong> on each value to attach the tests that exercise it; the coverage % and
+                    Use <strong>Map…</strong> on each value to attach the tests that exercise it. The coverage % and
                     gap list update live.
                   </li>
                   <li>
@@ -565,7 +565,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
                     <h3 className="cov-section-title">
                       Customer version locks
                       {versionId
-                        ? ` — relative to ${versionName}`
+                        ? ` (relative to ${versionName})`
                         : ""}
                     </h3>
                     {versionId && reuse.length > 0 && (
@@ -580,7 +580,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
                     )}
                   </div>
                   {versions.length === 0 ? (
-                    <p className="cov-muted">No versions yet — create a version first to assign member locks.</p>
+                    <p className="cov-muted">No versions yet. Create a version first to assign member locks.</p>
                   ) : reuse.length === 0 ? (
                     <p className="cov-muted">No member requirements linked to this canonical.</p>
                   ) : (
@@ -725,7 +725,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
                 <tbody>
                   {gaps.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="cov-empty">No gaps — every required value has a test. 🎉</td>
+                      <td colSpan={4} className="cov-empty">No gaps. Every required value has a test. 🎉</td>
                     </tr>
                   )}
                   {gaps.map((g) => (

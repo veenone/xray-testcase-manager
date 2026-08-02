@@ -106,7 +106,7 @@ export function JUnitImportModal({ profileId, execKey, onCancel, onApplied }: Pr
           {preview && (
             <>
               <p>
-                Parsed <strong>{preview.total}</strong> testcase{preview.total !== 1 ? "s" : ""} —{" "}
+                Parsed <strong>{preview.total}</strong> testcase{preview.total !== 1 ? "s" : ""}.{" "}
                 <strong>{matchedCount}</strong> will be applied,{" "}
                 <strong>{skippedCount}</strong> skipped.
               </p>

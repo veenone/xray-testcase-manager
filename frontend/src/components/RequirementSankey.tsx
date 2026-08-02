@@ -84,7 +84,7 @@ export function RequirementSankey({ data }: Props) {
     <div className="sankey-wrap" ref={ref}>
       {empty ? (
         <p className="muted sankey-empty">
-          No requirements cached yet — add a requirement source and sync (or
+          No requirements cached yet. Add a requirement source and sync (or
           sync a demo profile) to trace coverage.
         </p>
       ) : !layout ? (

@@ -354,7 +354,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               className="btn"
               onClick={syncRequirements}
               disabled={syncing}
-              title="Refresh just the requirements from Jira (partial sync)"
+              title="Refresh just the requirements from Jira, without syncing everything else"
             >
               {syncing ? "Syncing…" : "Sync"}
             </button>
@@ -378,14 +378,14 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
             <button
               className="btn reqs-sources-btn"
               onClick={() => setShowSources(true)}
-              title="Configure which projects requirements are pulled from"
+              title="Choose which projects to pull requirements from"
             >
               Sources…
             </button>
             <button
               className="btn btn-primary"
               onClick={() => setShowCreateReq(true)}
-              title="Create a new requirement locally (pushed to Jira on commit)"
+              title="Create a new requirement here. It's pushed to Jira when you commit"
             >
               + Create
             </button>
@@ -400,7 +400,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               className="btn"
               onClick={exportAudit}
               disabled={busy || list.length === 0}
-              title="Export the coverage / sign-off audit (CSV or XLSX)"
+              title="Export the coverage and sign-off audit as CSV or XLSX"
             >
               Export audit…
             </button>
@@ -424,7 +424,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
         ) : filtered.length === 0 ? (
           <p className="muted reqs-empty">
             {list.length === 0
-              ? "No requirements cached. Add a requirement source and sync, or sync a demo profile."
+              ? "No requirements yet. Add a requirement source and sync, or try a demo profile."
               : "No requirements match the filter."}
           </p>
         ) : (
@@ -690,7 +690,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
               </button>
             </div>
             {reqLinks.length === 0 ? (
-              <p className="muted">This requirement has no outbound "requires" links.</p>
+              <p className="muted">This requirement doesn't require any other requirements yet.</p>
             ) : (
               <ul className="precond-list">
                 {reqLinks.map((l) => (

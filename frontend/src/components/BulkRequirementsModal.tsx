@@ -206,7 +206,7 @@ export function BulkRequirementsModal({
               {mode === "remove" &&
                 "The requirement link is removed from tests that have it. "}
               {mode === "replace" &&
-                "Per test the ticked Remove links are dropped and the ticked Add links are created, in one apply. "}
+                "For each test, checked Remove links are dropped and checked Add links are created, all in one apply. "}
               Changes are queued locally; commit them from the Pending list.
             </p>
 

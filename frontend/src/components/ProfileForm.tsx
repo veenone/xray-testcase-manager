@@ -413,7 +413,7 @@ export function ProfileForm({
           <input
             value={scopeJql}
             onChange={(e) => setScopeJql(e.target.value)}
-            placeholder="e.g. labels = smoke — narrows which tests sync"
+            placeholder="e.g. labels = smoke (narrows which tests sync)"
           />
         </label>
       )}
@@ -423,7 +423,7 @@ export function ProfileForm({
           <input
             value={bugIssueType}
             onChange={(e) => setBugIssueType(e.target.value)}
-            placeholder="Bug — Jira issuetype used when filing a defect"
+            placeholder="Bug (the Jira issue type used when filing a defect)"
             spellCheck={false}
           />
         </label>
@@ -447,7 +447,7 @@ export function ProfileForm({
           <input
             value={bugProjectKey}
             onChange={(e) => setBugProjectKey(e.target.value.toUpperCase())}
-            placeholder="e.g. DEFECTS — project where bugs are filed"
+            placeholder="e.g. DEFECTS (the project where bugs are filed)"
             spellCheck={false}
           />
         </label>
@@ -530,7 +530,7 @@ export function ProfileForm({
               placeholder={
                 isEdit
                   ? "Leave blank to keep the current token"
-                  : "Jira PAT — stored in Windows Credential Manager"
+                  : "Jira PAT (stored in Windows Credential Manager)"
               }
               autoComplete="off"
             />
@@ -560,8 +560,9 @@ export function ProfileForm({
           />
           <span className="field-hint">
             Paste a PEM-encoded CA certificate to trust when connecting to this Jira
-            instance. Required when the server uses a private or internal CA that is
-            not in the system trust store (e.g. on macOS with a corporate CA).
+            instance. You'll need this if the server uses a private or internal CA
+            that isn't in your system's trust store (for example, a corporate CA on
+            macOS).
           </span>
         </label>
         <label className="profile-form-checkbox">
@@ -572,8 +573,8 @@ export function ProfileForm({
           />
           Allow untrusted certificate (skip TLS verification)
           <span className="field-hint field-hint-warn">
-            Disables all TLS certificate checks. Only enable this for trusted
-            internal servers where no CA certificate is available. This is insecure
+            Turns off all TLS certificate checks. Only use this for trusted
+            internal servers when no CA certificate is available. This is insecure
             and should not be used in production.
           </span>
         </label>
@@ -581,8 +582,8 @@ export function ProfileForm({
 
       {willClearCache && (
         <div className="form-warning">
-          Changing the project key or Jira URL will clear this profile's cached
-          data — re-sync afterwards to pull the new project.
+          Changing the project key or Jira URL clears this profile's cached
+          data. Re-sync afterwards to pull in the new project.
         </div>
       )}
 

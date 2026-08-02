@@ -652,8 +652,8 @@ function SummaryCompareModal({
 
         <div className="dup-compare-wrap">
           <p className="muted dup-compare-ref">
-            Grouped by normalized summary: "{title}". Members can still differ in
-            case, whitespace, or punctuation.
+            These tests share the same normalized summary, "{title}". Their raw
+            text can still differ in case, whitespace, or punctuation.
           </p>
           <table className="dup-compare-table">
             <thead>

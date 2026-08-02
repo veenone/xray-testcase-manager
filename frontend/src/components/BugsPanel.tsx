@@ -587,7 +587,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
               className="btn"
               onClick={syncBugs}
               disabled={syncing}
-              title="Refresh just the linked bugs from Jira (partial sync)"
+              title="Refresh just the linked bugs from Jira, without syncing everything else"
             >
               {syncing ? "Syncing…" : "Sync"}
             </button>
@@ -655,7 +655,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
         {shown.length === 0 ? (
           <p className="muted bugs-md-empty">
             {bugs.length === 0
-              ? "No bugs linked to this profile's tests. File one from a failed test in a Test Execution, or sync a demo profile."
+              ? "No bugs linked to this profile's tests yet. File one from a failed test in a Test Execution, or try a demo profile."
               : "No bugs match the filter."}
           </p>
         ) : (

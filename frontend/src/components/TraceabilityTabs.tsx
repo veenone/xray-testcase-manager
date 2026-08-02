@@ -335,7 +335,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
           className="btn btn-ghost trace-export"
           onClick={exportActive}
           disabled={exporting}
-          title="Export the active tab's traceability (Flow + Table) to XLSX"
+          title="Export this tab's traceability (flow and table) as an XLSX file"
         >
           {exporting ? "Exporting…" : "Export XLSX"}
         </button>
@@ -376,7 +376,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
           ) : stats.byCoverage.length === 0 ? (
             <p className="muted sankey-empty">
               No requirement coverage yet. Add a requirement source (Requirements
-              tab → Sources), link requirements to tests, then sync — the flow
+              tab → Sources), link requirements to tests, then sync. The flow
               from requirement → coverage → Test plan → test result appears here.
             </p>
           ) : (
@@ -417,7 +417,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
               />
               <label
                 className="sankey-crossproject"
-                title="Show only Test Plans in this project whose runs are in a different project"
+                title="Show only Test Plans in this project whose runs happened in a different project"
               >
                 <input
                   type="checkbox"
@@ -520,7 +520,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
               )}
               <label
                 className="sankey-crossproject"
-                title="Show member tests that live in another Jira project (cached locally during sync)"
+                title="Show member tests from another Jira project (cached locally during sync)"
               >
                 <input
                   type="checkbox"
@@ -547,7 +547,7 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
               filtered={parentSel.length > 0}
               onClearFilter={() => setParentSel([])}
               columns={["Parent issues", "Test Executions", "Run Status"]}
-              emptyHint="No sub-task executions to trace yet — sync a project that has sub-task Test Executions (or a demo profile)."
+              emptyHint="No sub-task executions to trace yet. Sync a project that has sub-task Test Executions (or a demo profile)."
               filteredHint="No sub-task execution runs match the selected parent."
             />
           )}

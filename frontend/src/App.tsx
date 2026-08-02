@@ -512,7 +512,7 @@ function App() {
       await notice({
         title: "Commit in progress",
         message:
-          "A commit is in progress. Please wait for it to finish before syncing.",
+          "A commit is still running. Please wait for it to finish before syncing.",
         tone: "info",
       });
       return;
@@ -547,7 +547,7 @@ function App() {
       await notice({
         title: "Commit in progress",
         message:
-          "A commit is in progress. Please wait for it to finish before syncing.",
+          "A commit is still running. Please wait for it to finish before syncing.",
         tone: "info",
       });
       return;
@@ -556,8 +556,8 @@ function App() {
       !(await confirm({
         title: "Full resync",
         message:
-          "Full resync re-pulls every test and re-maps Test Repository folders. " +
-          "This can take a while on large projects. Continue?",
+          "A full resync re-pulls every test and re-maps Test Repository folders. " +
+          "It can take a while on large projects. Continue?",
         confirmLabel: "Continue",
         danger: false,
       }))
@@ -576,7 +576,7 @@ function App() {
       await notice({
         title: "Commit in progress",
         message:
-          "A commit is in progress. Please wait for it to finish before syncing.",
+          "A commit is still running. Please wait for it to finish before syncing.",
         tone: "info",
       });
       return;
@@ -827,7 +827,7 @@ function App() {
       await notice({
         title: "Sync in progress",
         message:
-          "A sync is in progress. Please wait for it to finish before committing.",
+          "A sync is still running. Please wait for it to finish before committing.",
         tone: "info",
       });
       return;
@@ -861,7 +861,7 @@ function App() {
       await notice({
         title: "Sync in progress",
         message:
-          "A sync is in progress. Please wait for it to finish before committing.",
+          "A sync is still running. Please wait for it to finish before committing.",
         tone: "info",
       });
       return;
@@ -1011,8 +1011,8 @@ function App() {
             </p>
           )}
           <p className="muted">
-            Try removing the database file and relaunching, or check the log
-            for a more detailed error.
+            Try removing the database file and relaunching. If that doesn't
+            help, check the log for more detail.
           </p>
         </div>
       </div>
@@ -1049,7 +1049,7 @@ function App() {
             disabled={syncActive}
             title={
               syncActive
-                ? "Profile switching is disabled while a sync is in progress"
+                ? "You can't switch profiles while a sync is running"
                 : "Switch active profile"
             }
             onChange={(e) => {
@@ -1077,22 +1077,22 @@ function App() {
                 key: "profiles",
                 label: "Manage Profiles…",
                 onClick: () => setShowProfiles(true),
-                title: "Manage profiles — add, edit, set default, export, delete",
+                title: "Manage profiles: add, edit, set default, export, or delete",
               },
               {
                 key: "connections",
                 label: "Connections…",
                 onClick: () => setShowConnections(true),
                 title:
-                  "Manage this workspace's connections — add a target " +
-                  "(e.g. Kiwi) beside its primary connection",
+                  "Manage this workspace's connections. Add a target " +
+                  "(e.g. Kiwi) alongside its primary connection.",
               },
               {
                 key: "bridge",
                 label: "Bridge…",
                 onClick: () => setShowBridge(true),
                 title:
-                  "Publish/migrate this workspace's tests from one connection to another",
+                  "Publish or migrate this workspace's tests from one connection to another",
               },
             ]}
           />
@@ -1215,8 +1215,8 @@ function App() {
                 label: "Full resync (re-pull folders)",
                 onClick: runFullSync,
                 title:
-                  "Force a full re-sync, ignoring the incremental watermark — " +
-                  "re-maps Test Repository folder membership",
+                  "Force a full re-sync, ignoring the incremental watermark. " +
+                  "This re-maps Test Repository folder membership.",
               },
               {
                 key: "history",

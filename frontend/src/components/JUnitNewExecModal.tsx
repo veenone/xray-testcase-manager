@@ -133,7 +133,7 @@ export function JUnitNewExecModal({ profileId, onCancel, onApplied }: Props) {
                 <strong>{preview.rows.length}</strong> test
                 {preview.rows.length !== 1 ? "s" : ""} (
                 {existingCount} existing{toCreateCount > 0 ? `, ${toCreateCount} new` : ""}
-                ){" — "}
+                ){". "}
                 <span className={`run-badge run-pass`}>PASS</span> {passCount}{" / "}
                 <span className={`run-badge run-fail`}>FAIL</span> {failCount}{" / "}
                 <span className="muted">unset {unsetCount}</span>.

@@ -121,7 +121,7 @@ export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Prop
           <div className="cov-map-empty">
             <p className="cov-muted">
               No coverage data yet. This view is built from your canonical functions
-              and the customer requirements that reuse them — a <strong>Sync</strong> alone
+              and the customer requirements that reuse them; a <strong>Sync</strong> alone
               doesn&apos;t populate it. Define a coverage model on the <strong>Coverage</strong> tab
               {isDemo && demoVariant === "euicc"
                 ? ", or load the eUICC demo coverage onto the synced demo-euicc tests:"
@@ -168,7 +168,7 @@ export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Prop
         <SankeyChart
           data={sankey}
           columns={["Project", "Function", "Coverage"]}
-          emptyHint="No coverage relation yet — define a coverage model (or load the PKCS#11 demo coverage above) to see the flow."
+          emptyHint="No coverage relation yet. Define a coverage model (or load the PKCS#11 demo coverage above) to see the flow."
         />
       </section>
 

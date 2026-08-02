@@ -110,7 +110,7 @@ export function NewTestPanel({
 
   async function submit() {
     if (!summary.trim()) {
-      setError("A summary is required.");
+      setError("Enter a summary before creating the test.");
       return;
     }
     setSaving(true);
@@ -318,7 +318,7 @@ export function NewTestPanel({
                     onChange={(v) => updateStep(i, "action", v)}
                     onCommit={() => {}}
                     rows={2}
-                    placeholder="Action — markdown supported"
+                    placeholder="Action (markdown supported)"
                   />
                   <MarkdownField
                     className="detail-input"
@@ -326,7 +326,7 @@ export function NewTestPanel({
                     onChange={(v) => updateStep(i, "data", v)}
                     onCommit={() => {}}
                     multiline={false}
-                    placeholder="Data — markdown supported"
+                    placeholder="Data (markdown supported)"
                   />
                   <MarkdownField
                     className="detail-input"
@@ -334,7 +334,7 @@ export function NewTestPanel({
                     onChange={(v) => updateStep(i, "expected", v)}
                     onCommit={() => {}}
                     rows={2}
-                    placeholder="Expected result — markdown supported"
+                    placeholder="Expected result (markdown supported)"
                   />
                 </div>
               ))}

@@ -124,7 +124,7 @@ export function Dashboard({
         className="dashboard-filter"
         value={folder}
         onChange={(e) => setFolder(e.target.value)}
-        title="Limit the dashboard to a Test Repository folder (and its subfolders)"
+        title="Limit the dashboard to one Test Repository folder and its subfolders"
       >
         <option value="">All folders</option>
         {folderOptions.map((f) => (
@@ -181,8 +181,8 @@ export function Dashboard({
         {filterBar}
         <p className="muted">
           {hasFilter
-            ? "No tests match the selected filters."
-            : "No tests cached yet. Run a sync to populate the dashboard."}
+            ? "No tests match these filters."
+            : "No tests cached yet. Run a sync to fill in the dashboard."}
         </p>
       </div>
     );
@@ -197,7 +197,7 @@ export function Dashboard({
             className="btn"
             onClick={exportDashboard}
             disabled={exporting}
-            title="Export the dashboard (Summary + breakdowns) to XLSX, honouring the current filters"
+            title="Export the dashboard (summary and breakdowns) to XLSX, using the current filters"
           >
             {exporting ? "Exporting…" : "Export XLSX"}
           </button>
@@ -312,8 +312,8 @@ export function Dashboard({
       </div>
 
       <p className="muted dashboard-note">
-        Computed from the local cache (FR-9.5). Execution coverage and Test
-        Set / Plan stats arrive once executions are synced.
+        Computed from the local cache. Execution coverage and Test Set / Plan
+        stats appear once executions are synced.
       </p>
     </div>
   );

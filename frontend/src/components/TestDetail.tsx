@@ -517,7 +517,7 @@ export function TestDetail({
     if (
       !(await confirm({
         title: "Remove from container",
-        message: `Remove ${testKey} from ${containerKey}? The membership change is committed to Jira on commit.`,
+        message: `Remove ${testKey} from ${containerKey}? This change is queued and applied to Jira when you commit.`,
         confirmLabel: "Remove",
       }))
     )
@@ -580,7 +580,7 @@ export function TestDetail({
     if (
       !(await confirm({
         title: "Unlink requirement",
-        message: `Unlink ${key} from ${testKey}? The requirement isn't deleted; the coverage link is removed on commit.`,
+        message: `Unlink ${key} from ${testKey}? This doesn't delete the requirement, just removes the coverage link when you commit.`,
         confirmLabel: "Unlink",
       }))
     )
@@ -608,7 +608,7 @@ export function TestDetail({
     if (
       !(await confirm({
         title: "Unlink precondition",
-        message: `Unlink ${key} from ${testKey}? The precondition itself isn't deleted; the association is removed on commit.`,
+        message: `Unlink ${key} from ${testKey}? This doesn't delete the precondition, just removes the link when you commit.`,
         confirmLabel: "Unlink",
       }))
     )
@@ -738,7 +738,7 @@ export function TestDetail({
       // FR-4.4: optionally capture a comment for this transition.
       const comment = await prompt({
         title: `Comment for moving to "${targetStatus}"`,
-        placeholder: "Optional — leave blank to skip",
+        placeholder: "Optional (leave blank to skip)",
         submitLabel: "Save",
       });
       if (comment && comment.trim()) {
@@ -833,8 +833,8 @@ export function TestDetail({
 
       {testKey.startsWith("NEW-") && (
         <div className="detail-uncommitted-banner">
-          Uncommitted — this test is local only and will be created in Jira when
-          you commit.
+          This test hasn't been created in Jira yet. It'll be created when you
+          commit.
         </div>
       )}
 
@@ -1182,7 +1182,9 @@ export function TestDetail({
               return (
                 <>
                   <h4>Memberships</h4>
-                  <p className="muted">Not in any set, plan or execution.</p>
+                  <p className="muted">
+                    This test isn't in any set, plan, or execution yet.
+                  </p>
                 </>
               );
             }
@@ -1223,7 +1225,9 @@ export function TestDetail({
                 Requirements {isDirty("requirements") && <DirtyDot />}
               </h4>
               {requirements.length === 0 ? (
-                <p className="muted">Not linked to any requirement.</p>
+                <p className="muted">
+                  This test isn't linked to any requirement yet.
+                </p>
               ) : (
                 <ul className="pre-list req-link-list">
                   {requirements.map((rq) => (
@@ -1277,7 +1281,7 @@ export function TestDetail({
 
           <h4>Bugs</h4>
           {bugs.length === 0 ? (
-            <p className="muted">No linked bugs.</p>
+            <p className="muted">No bugs linked yet.</p>
           ) : (
             <ul className="pre-list bug-link-list">
               {bugs.map((b) => (
@@ -1312,7 +1316,7 @@ export function TestDetail({
           )}
           {!runHistoryError && !runHistoryLoading && runHistory !== null && (
             runHistory.length === 0 ? (
-              <p className="muted">No run history.</p>
+              <p className="muted">No run history yet.</p>
             ) : (
               <table className="run-history-table">
                 <thead>
@@ -1414,7 +1418,7 @@ export function TestDetail({
           </h4>
           {readOnly ? (
             <p className="detail-input detail-input-static detail-desc-static">
-              {description || <span className="muted">No description.</span>}
+              {description || <span className="muted">No description yet.</span>}
             </p>
           ) : (
             <MarkdownField
@@ -1423,13 +1427,13 @@ export function TestDetail({
               onChange={setDescription}
               onCommit={() => saveField("description", description)}
               rows={8}
-              placeholder="No description. Click to add — markdown supported."
+              placeholder="No description. Click to add (markdown supported)."
             />
           )}
 
           {prefillNotice && (
             <div className="prefill-notice">
-              The previous type had content; it was left unchanged.{" "}
+              The previous type already had content, so it was left unchanged.{" "}
               <button
                 className="link-btn"
                 onClick={() => setPrefillNotice(null)}
@@ -1524,7 +1528,7 @@ export function TestDetail({
                   <div className="steps-warning">
                     ⚠ Jira reports {jiraStepInfo.count} step
                     {jiraStepInfo.count === 1 ? "" : "s"} for this test that didn't
-                    load here. Don't add new steps yet — that would create
+                    load here. Don't add new steps yet, since that would create
                     duplicates.{" "}
                     <button className="link-btn" onClick={refreshSteps}>
                       Load from Jira
@@ -1538,9 +1542,9 @@ export function TestDetail({
                 steps.length > 0 &&
                 steps.every((s) => !s.action && !s.data && !s.expected) && (
                   <div className="steps-warning">
-                    ⚠ These steps loaded without content — this Xray instance may use
-                    a step format the tool doesn't recognise yet. Avoid editing them
-                    to prevent overwriting the real steps in Jira.
+                    ⚠ These steps loaded without content. This Xray instance may use
+                    a step format the tool doesn't recognise yet, so avoid editing
+                    them to prevent overwriting the real steps in Jira.
                   </div>
                 )}
               {steps.length > 0 && (
@@ -1613,8 +1617,9 @@ export function TestDetail({
 
           {!readOnly && (
             <p className="muted detail-note">
-              Edits are saved locally and queued in <b>Pending</b> until you
-              commit them to Jira. Reordering steps lands in a later update.
+              Your edits are saved locally and queued in <b>Pending</b> until
+              you commit them to Jira. Reordering steps will land in a later
+              update.
             </p>
           )}
             </>
@@ -1800,8 +1805,9 @@ function SwapModal({
             </ul>
           </div>
           <p className="muted bulk-preview">
-            Ticked Remove items are dropped and ticked Add items are linked in
-            one apply. The change is queued locally; commit it from Pending.
+            Ticked Remove items are dropped, and ticked Add items are linked,
+            in one apply. The change is queued locally, commit it from
+            Pending.
           </p>
         </div>
         <div className="pending-actions">

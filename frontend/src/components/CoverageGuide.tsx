@@ -7,10 +7,10 @@ export function CoverageGuide() {
       {/* ── Introduction ─────────────────────────────────────────────── */}
       <h2 className="cov-guide-heading">What the coverage module models</h2>
       <p className="cov-guide-body">
-        A <strong>canonical functional requirement</strong> is a reusable function — for example a PKCS#11
-        function such as <code className="cov-guide-code">C_GenerateKeyPair</code> — that one or more
+        A <strong>canonical functional requirement</strong> is a reusable function (for example, a PKCS#11
+        function such as <code className="cov-guide-code">C_GenerateKeyPair</code>) that one or more
         customer requirements across different projects reuse. You register canonical functions here, then
-        measure how thoroughly each is tested relative to its parameter space.
+        measure how thoroughly each is tested against its parameter space.
       </p>
       <p className="cov-guide-body">
         Coverage % = <em>values with at least one mapped test</em> / <em>total required values</em> within
@@ -32,7 +32,7 @@ export function CoverageGuide() {
         <div className="cov-guide-arrow">▼</div>
         <div className="cov-guide-node cov-guide-node-ver">
           <span className="cov-guide-label">Version</span>
-          <span className="cov-guide-desc">e.g. PKCS#11 v2.40 — coverage is measured per version</span>
+          <span className="cov-guide-desc">e.g. PKCS#11 v2.40 (coverage is measured per version)</span>
         </div>
         <div className="cov-guide-arrow">▼</div>
         <div className="cov-guide-node cov-guide-node-grp">
@@ -52,7 +52,7 @@ export function CoverageGuide() {
         <div className="cov-guide-arrow">▼</div>
         <div className="cov-guide-node cov-guide-node-tst">
           <span className="cov-guide-label">Mapped tests</span>
-          <span className="cov-guide-desc">one or more Xray tests that exercise this value — a value with at least one mapped test is <em>covered</em>; otherwise it is a <em>gap</em></span>
+          <span className="cov-guide-desc">one or more Xray tests that exercise this value. A value with at least one mapped test is <em>covered</em>; otherwise it's a <em>gap</em></span>
         </div>
       </div>
 
@@ -61,16 +61,16 @@ export function CoverageGuide() {
       <p className="cov-guide-body">Three ways to populate the model:</p>
       <ol className="cov-guide-list">
         <li>
-          <strong>Built-in demo seed</strong> — in demo mode the "Seed PKCS#11 reference" action loads a
+          <strong>Built-in demo seed</strong>: in demo mode, the "Seed PKCS#11 reference" action loads a
           ready-made model for the most common PKCS#11 functions, so you can explore the UI immediately.
         </li>
         <li>
-          <strong>Excel import</strong> — download the blank template ("Download blank template…"), fill in
+          <strong>Excel import</strong>: download the blank template ("Download blank template…"), fill in
           groups, parameters, and values using the function's specification, then use the "Import" action to
           load it.
         </li>
         <li>
-          <strong>Manual entry</strong> — add groups and parameters directly in the <em>Coverage</em> tab,
+          <strong>Manual entry</strong>: add groups and parameters directly in the <em>Coverage</em> tab,
           then map tests to individual values with the "Map…" button.
         </li>
       </ol>

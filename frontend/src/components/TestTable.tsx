@@ -679,7 +679,7 @@ export function TestTable({
 
       {canSelectAllMatching && (
         <div className="select-all-banner">
-          All {pageKeys.length} tests on this page are selected.{" "}
+          You've selected all {pageKeys.length} tests on this page.{" "}
           <button
             className="link-btn"
             onClick={selectAllMatching}
@@ -775,7 +775,7 @@ export function TestTable({
                   containerKey === "" &&
                   component === "" &&
                   review === ""
-                    ? "No tests yet — run a sync to pull them from Jira."
+                    ? "No tests yet. Run a sync to pull them from Jira."
                     : "No tests match the current filter."}
                 </td>
               </tr>

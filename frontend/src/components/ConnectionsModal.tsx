@@ -221,10 +221,10 @@ function PrimaryConnectionSummary({ connection }: { connection: Connection }) {
     <div className="profile-form">
       <h2>{connection.name}</h2>
       <p className="muted">
-        This is the workspace's primary connection — it's backed by the
-        profile record, not a separate connection. Edit its URL, project,
-        backend, or credential via <strong>Manage Profiles…</strong> instead;
-        changes made here wouldn't affect sync or commit.
+        This is the workspace's primary connection, backed by the profile
+        record rather than a separate connection. To edit its URL, project,
+        backend, or credential, use <strong>Manage Profiles…</strong> instead.
+        Changes made here wouldn't affect sync or commit.
       </p>
       <label>
         Backend

@@ -196,7 +196,7 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
           className="btn btn-primary"
           onClick={syncCalls}
           disabled={syncing}
-          title="Re-pull steps for the known caller tests to refresh the call graph (no full sync)"
+          title="Re-pull steps for the known caller tests to refresh the call graph, without running a full sync"
         >
           {syncing ? "Syncing…" : "↻ Sync"}
         </button>
@@ -210,7 +210,7 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
         )}
         <span style={{ flex: 1 }} />
         <span className="muted">
-          Which tests call other tests (Xray test calls) in their steps.
+          Shows which tests call other tests (Xray test calls) within their steps.
         </span>
       </div>
 
@@ -240,8 +240,8 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
         {links.length === 0 ? (
         <p className="muted testcalls-empty">
           No call-test relationships yet. Open a test, add a{" "}
-          <b>+ Call test</b> step in its detail panel, and the caller → called
-          links appear here.
+          <b>+ Call test</b> step in its detail panel, and the caller-to-called
+          links show up here.
         </p>
       ) : (
         <>

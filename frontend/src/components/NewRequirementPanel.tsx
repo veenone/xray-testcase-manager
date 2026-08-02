@@ -150,11 +150,11 @@ export function NewRequirementPanel({ profileId, onCreated, onCancel }: Props) {
 
   async function submit() {
     if (!summary.trim()) {
-      setError("A summary is required.");
+      setError("Enter a summary.");
       return;
     }
     if (!projectKey.trim()) {
-      setError("A project key is required.");
+      setError("Choose a project.");
       return;
     }
     if (!createFieldsValid(extraFields, extraValues)) {

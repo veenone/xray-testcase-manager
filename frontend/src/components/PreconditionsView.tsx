@@ -336,7 +336,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
           <p className="muted precond-empty">Loading…</p>
         ) : list.length === 0 ? (
           <p className="muted precond-empty">
-            No preconditions yet. Create one, or run a sync to pull them from
+            No preconditions yet. Create one, or sync to pull them from
             Jira.
           </p>
         ) : filtered.length === 0 ? (
@@ -803,7 +803,7 @@ function CreatePreconditionModal({
               onChange={setCondition}
               onCommit={() => {}}
               rows={3}
-              placeholder="e.g. Given the user is authenticated — markdown supported."
+              placeholder="e.g. Given the user is authenticated. Markdown supported."
             />
           </div>
           <div className="precond-field">
@@ -814,7 +814,7 @@ function CreatePreconditionModal({
               onChange={setDescription}
               onCommit={() => {}}
               rows={3}
-              placeholder="Optional — markdown supported."
+              placeholder="Optional. Markdown supported."
             />
           </div>
           {error && <div className="error-text">{error}</div>}

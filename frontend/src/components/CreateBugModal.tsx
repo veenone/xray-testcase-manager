@@ -143,7 +143,7 @@ export function CreateBugModal({
         <label key={f.id}>
           {f.name}{f.required ? " *" : ""}
           <select value={selected} onChange={(e) => setSingleExtra(f.id, e.target.value)}>
-            {!selected && <option value="">— select —</option>}
+            {!selected && <option value="">(select)</option>}
             {f.allowedValues.map((av) => (
               <option key={av.id} value={av.id}>
                 {av.value}

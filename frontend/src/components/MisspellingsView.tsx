@@ -757,8 +757,8 @@ function IgnoreListModal({
 
         <div className="bulk-body">
           <p className="src-field-help">
-            Words here are skipped by every scan, across all profiles (the list
-            is global, not per-profile). Add product terms, acronyms, or names
+            Words here are skipped by every scan, across all profiles. The list
+            is shared, not per-profile. Add product terms, acronyms, or names
             the checker keeps flagging.
           </p>
 

@@ -167,8 +167,8 @@ export function ImportRequirementsModal({ profileId, onComplete, onCancel }: Pro
                 <p className="muted">
                   {fileName}
                   {preview && (
-                    <> &mdash; {preview.rows.length} row{preview.rows.length === 1 ? "" : "s"}
-                      {" "}({preview.newCount} new, {preview.existingCount} existing)</>
+                    <> ({preview.rows.length} row{preview.rows.length === 1 ? "" : "s"}
+                      {": "}{preview.newCount} new, {preview.existingCount} existing)</>
                   )}
                 </p>
               )}
@@ -213,7 +213,7 @@ export function ImportRequirementsModal({ profileId, onComplete, onCancel }: Pro
               Imported {result.created} requirement{result.created === 1 ? "" : "s"} as
               pending creates
               {result.skippedExisting > 0
-                ? ` (${result.skippedExisting} already existed — skipped)`
+                ? ` (${result.skippedExisting} already existed, skipped)`
                 : ""}
               . Commit them from the Pending list.
             </p>

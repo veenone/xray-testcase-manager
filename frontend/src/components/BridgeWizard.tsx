@@ -313,7 +313,7 @@ export function BridgeWizard({ activeId, onClose, onOpenConnections }: Props) {
                   {blocking.length > 0 && (
                     <div className="bridge-gap-group bridge-gap-blocking">
                       <p className="error-text bridge-gap-title">
-                        Blocking — the target cannot represent this; publishing is disabled:
+                        Blocking: the target can't represent this, so publishing is disabled.
                       </p>
                       <ul className="commit-fail-list">
                         {blocking.map((g, i) => (
@@ -325,7 +325,7 @@ export function BridgeWizard({ activeId, onClose, onOpenConnections }: Props) {
                   {lossy.length > 0 && (
                     <div className="bridge-gap-group bridge-gap-lossy conflict-text">
                       <p className="bridge-gap-title">
-                        Lossy — publishing will lose or degrade this:
+                        Lossy: publishing will lose or degrade this.
                       </p>
                       <ul className="commit-fail-list">
                         {lossy.map((g, i) => (
@@ -337,7 +337,7 @@ export function BridgeWizard({ activeId, onClose, onOpenConnections }: Props) {
                   {info.length > 0 && (
                     <div className="bridge-gap-group">
                       <p className="muted bridge-gap-title">
-                        Info — handled, for reference:
+                        Info: handled, for reference.
                       </p>
                       <ul className="commit-fail-list muted">
                         {info.map((g, i) => (
@@ -347,7 +347,7 @@ export function BridgeWizard({ activeId, onClose, onOpenConnections }: Props) {
                     </div>
                   )}
                   {blocking.length === 0 && lossy.length === 0 && info.length === 0 && (
-                    <p className="ok-text">No gaps — the target can fully represent this data.</p>
+                    <p className="ok-text">No gaps. The target can fully represent this data.</p>
                   )}
 
                   {lossy.length > 0 && blocking.length === 0 && (
@@ -467,8 +467,8 @@ export function BridgeWizard({ activeId, onClose, onOpenConnections }: Props) {
                               {f.targetKey && (
                                 <span className="warn-text">
                                   {" "}
-                                  — created in target ({f.targetKey}) but incomplete —
-                                  a retry will skip it.
+                                  (created in target as {f.targetKey} but incomplete;
+                                  a retry will skip it)
                                 </span>
                               )}
                             </li>
