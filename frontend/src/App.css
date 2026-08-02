@@ -3168,6 +3168,18 @@ tr.row-selected {
   max-width: none;
   min-height: 0; /* let the columns own their own scroll */
 }
+/* When a test from the "Used by" list is open, add a third auto-width column so
+   the test detail docks beside the precondition detail instead of overlaying it
+   (mirrors .reqs-with-detail). */
+.precond-with-detail {
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr) auto;
+}
+.precond-with-detail .detail {
+  position: relative;
+}
+.precond-test-row-active > td {
+  background: var(--row-hover);
+}
 /* Card layout mirroring the Requirements list: no wrapping panel — each item
    is a standalone rounded card floating on the content background. */
 .precond-list {

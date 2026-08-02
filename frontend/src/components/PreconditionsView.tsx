@@ -13,6 +13,7 @@ import type { PreconditionUsage, PreconditionTest } from "../api";
 import { Menu } from "./Menu";
 import { useConfirm } from "./useConfirm";
 import { AddTestsModal } from "./AddTestsModal";
+import { TestDetail } from "./TestDetail";
 import { Markdown } from "./Markdown";
 import { MarkdownField } from "./MarkdownField";
 import { Pager } from "./Pager";
@@ -62,6 +63,10 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  // A test opened from the "Used by" list, docked as an inline detail beside the
+  // precondition detail (mirrors the requirement / browse views, #4).
+  const [detailKey, setDetailKey] = useViewState(profileId, "preconditions", "detailKey", "");
+  const [detailVersion, setDetailVersion] = useState(0);
   const { confirm, confirmUI } = useConfirm();
 
   // editing toggles the detail pane between read-only display and an explicit
@@ -274,7 +279,7 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   }
 
   return (
-    <div className="precond-view">
+    <div className={`precond-view${detailKey ? " precond-with-detail" : ""}`}>
       <aside className="precond-list">
         <div className="precond-list-head">
           <input
@@ -596,8 +601,21 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
                   </thead>
                   <tbody>
                     {pageTests.map((t) => (
-                      <tr key={t.key}>
-                        <td className="mono">{t.key}</td>
+                      <tr
+                        key={t.key}
+                        className={
+                          t.key === detailKey ? "precond-test-row-active" : ""
+                        }
+                      >
+                        <td>
+                          <button
+                            className="link-btn mono"
+                            onClick={() => setDetailKey(t.key)}
+                            title="Open test detail"
+                          >
+                            {t.key}
+                          </button>
+                        </td>
                         <td>{t.summary}</td>
                         <td>{t.status || "—"}</td>
                         <td className="board-remove-cell">
@@ -630,6 +648,21 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
           </>
         )}
       </section>
+
+      {detailKey && (
+        <TestDetail
+          profileId={profileId}
+          testKey={detailKey}
+          version={detailVersion}
+          pendingForTest={[]}
+          folders={[]}
+          onClose={() => setDetailKey("")}
+          onEdited={() => {
+            setDetailVersion((v) => v + 1);
+            onChanged();
+          }}
+        />
+      )}
 
       {showCreate && (
         <CreatePreconditionModal
