@@ -5242,6 +5242,10 @@ tr.row-checked:hover {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
+  /* Left-align (override the base .board-pager centering) so the controls read
+     the same in a narrow list column and in a wide panel like Gap Analysis,
+     instead of floating in the middle of the wider container. */
+  justify-content: flex-start;
   gap: 6px 10px;
   flex: 0 0 auto;
 }
