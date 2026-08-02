@@ -3162,7 +3162,8 @@ tr.row-selected {
 .precond-view {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(240px, 320px) 1fr;
+  /* Match the requirements list column so the compact pager wraps identically. */
+  grid-template-columns: minmax(280px, 360px) 1fr;
   gap: 18px;
   width: 100%;
   max-width: none;
