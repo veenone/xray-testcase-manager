@@ -301,7 +301,7 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
                   checked={threeWay}
                   onChange={(e) => { setThreeWay(e.target.checked); resetResult(); }}
                 />
-                Three-way (also complete the project)
+                Three-way: also fill gaps in the active project
               </label>
             )}
           </div>
@@ -318,9 +318,11 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
 
           <div className="gap-run">
             <p className="muted gap-hint">
-              Matched by test summary. Files use the import template columns (Summary required);
-              summary-only adds default Priority/Description on create.
-              {compareBy === "summaryFolder" && " Folder differences are reported separately."}
+              Tests are matched by their summary. Upload files using the import
+              template (a Summary column is required). If a file has only
+              summaries, any new tests get a default priority and description.
+              {compareBy === "summaryFolder" &&
+                " With Summary + folder, tests that match by summary but sit in a different folder are listed on their own."}
             </p>
             <button className="btn btn-primary" onClick={runAnalysis} disabled={busy || !canRun}>
               {busy ? "Working…" : "Run analysis"}
@@ -337,15 +339,15 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
               </div>
               <div className="gap-tile">
                 <span className="gap-tile-n">{result.missingFromTarget.length}</span>
-                <span className="gap-tile-l">Orphaned in reference</span>
+                <span className="gap-tile-l">Only in the reference</span>
               </div>
               <div className="gap-tile">
                 <span className="gap-tile-n">{result.missingFromReference.length}</span>
-                <span className="gap-tile-l">Orphaned in target</span>
+                <span className="gap-tile-l">Only in the target</span>
               </div>
               <div className="gap-tile gap-tile-total">
                 <span className="gap-tile-n">{result.missingFromReference.length + result.missingFromTarget.length}</span>
-                <span className="gap-tile-l">Total gap</span>
+                <span className="gap-tile-l">Total gaps</span>
               </div>
               {result.threeWay && (
                 <div className="gap-tile gap-tile-proj">
@@ -362,13 +364,13 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
             <div className="gap-cols">
               <section className="gap-card gap-panel">
                 <div className="gap-panel-head">
-                  <span className="gap-dir gap-dir-in">Target&nbsp;→&nbsp;Reference</span>
+                  <span className="gap-dir gap-dir-in">Only in the target</span>
                   <span className="gap-count">{result.missingFromReference.length}</span>
                 </div>
-                <p className="muted gap-panel-sub">In the target, missing from the reference — addable as tests.</p>
+                <p className="muted gap-panel-sub">Tests in your target that aren't in the reference yet. You can add these as new tests.</p>
                 <GapList
                   items={result.missingFromReference}
-                  emptyText="None — the reference already covers every target test."
+                  emptyText="Nothing to add. The reference already covers every test in your target."
                   selectable
                   selected={selRef}
                   onToggle={(i) => toggleIn(selRef, setSelRef, i)}
@@ -389,26 +391,26 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
 
               <section className="gap-card gap-panel">
                 <div className="gap-panel-head">
-                  <span className="gap-dir gap-dir-out">Reference&nbsp;→&nbsp;Target</span>
+                  <span className="gap-dir gap-dir-out">Only in the reference</span>
                   <span className="gap-count">{result.missingFromTarget.length}</span>
                 </div>
-                <p className="muted gap-panel-sub">In the reference, missing from the target — report only.</p>
-                <GapList items={result.missingFromTarget} emptyText="None." />
+                <p className="muted gap-panel-sub">Tests in the reference that aren't in your target. Listed for information only.</p>
+                <GapList items={result.missingFromTarget} emptyText="Nothing here. Your target already has every test in the reference." />
               </section>
             </div>
 
             {result.threeWay && (
               <section className="gap-card gap-panel">
                 <div className="gap-panel-head">
-                  <span className="gap-dir gap-dir-proj">Reference&nbsp;∪&nbsp;Target&nbsp;→&nbsp;Project</span>
+                  <span className="gap-dir gap-dir-proj">Missing from the project</span>
                   <span className="gap-count">{result.missingFromProject.length}</span>
                 </div>
                 <p className="muted gap-panel-sub">
-                  In the reference or target but not yet in the project — add these to complete the project (committed to Jira on sync).
+                  Tests in the reference or target that aren't in the project yet. Add them to round out the project (they're created in Jira on your next sync).
                 </p>
                 <GapList
                   items={result.missingFromProject}
-                  emptyText="None — the project already contains every reference/target test."
+                  emptyText="Nothing to add. The project already contains every test from the reference and target."
                   selectable
                   selected={selProj}
                   onToggle={(i) => toggleIn(selProj, setSelProj, i)}
@@ -434,7 +436,7 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
                   <span className="gap-dir gap-dir-folder">Folder mismatches</span>
                   <span className="gap-count">{result.folderMismatches.length}</span>
                 </div>
-                <p className="muted gap-panel-sub">Matched by summary, but the folder location differs.</p>
+                <p className="muted gap-panel-sub">These tests match by summary but live in different folders.</p>
                 <table className="board-table gap-folder-table">
                   <thead>
                     <tr><th>Summary</th><th>Reference folder</th><th>Target folder</th></tr>
