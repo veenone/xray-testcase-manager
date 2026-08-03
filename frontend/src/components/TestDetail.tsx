@@ -213,6 +213,10 @@ export function TestDetail({
   const [steps, setSteps] = useState<Step[]>([]);
   const [stepsLoading, setStepsLoading] = useState(false);
   const [stepsError, setStepsError] = useState("");
+  // Custom Fields section is collapsed by default: it holds many rarely-needed
+  // Xray fields that clutter the test-case review (RND_P_4TFINT_05-321). A
+  // triangle toggle expands it on demand.
+  const [customFieldsOpen, setCustomFieldsOpen] = useState(false);
   const [showCloneSteps, setShowCloneSteps] = useState(false);
   const [showCallPicker, setShowCallPicker] = useState(false);
   // Cross-project link affordances (RND_P_4TFINT_05-322): the profile's
@@ -1150,27 +1154,55 @@ export function TestDetail({
 
           {customFields.length > 0 && (
             <>
-              <h4>Custom Fields</h4>
-              <dl className="detail-fields">
-                {customFields.map((f) => (
-                  <CustomFieldRow
-                    key={f.fieldId}
-                    profileId={profileId}
-                    testKey={testKey}
-                    field={f}
-                    pendingForTest={pendingForTest}
-                    readOnly={readOnly}
-                    onLocalChange={(value) =>
-                      setCustomFields((prev) =>
-                        prev.map((p) =>
-                          p.fieldId === f.fieldId ? { ...p, value } : p,
-                        ),
-                      )
-                    }
-                    onEdited={onEdited}
-                  />
-                ))}
-              </dl>
+              <h4 className="detail-collapse-h4">
+                <button
+                  type="button"
+                  className="detail-collapse-toggle"
+                  onClick={() => setCustomFieldsOpen((o) => !o)}
+                  aria-expanded={customFieldsOpen}
+                  title={
+                    customFieldsOpen
+                      ? "Hide custom fields"
+                      : "Show custom fields"
+                  }
+                >
+                  <span
+                    className="detail-collapse-chevron"
+                    style={{
+                      transform: customFieldsOpen ? "rotate(90deg)" : "none",
+                    }}
+                    aria-hidden="true"
+                  >
+                    ▶
+                  </span>
+                  Custom Fields
+                  <span className="detail-collapse-count">
+                    {customFields.length}
+                  </span>
+                </button>
+              </h4>
+              {customFieldsOpen && (
+                <dl className="detail-fields">
+                  {customFields.map((f) => (
+                    <CustomFieldRow
+                      key={f.fieldId}
+                      profileId={profileId}
+                      testKey={testKey}
+                      field={f}
+                      pendingForTest={pendingForTest}
+                      readOnly={readOnly}
+                      onLocalChange={(value) =>
+                        setCustomFields((prev) =>
+                          prev.map((p) =>
+                            p.fieldId === f.fieldId ? { ...p, value } : p,
+                          ),
+                        )
+                      }
+                      onEdited={onEdited}
+                    />
+                  ))}
+                </dl>
+              )}
             </>
           )}
 

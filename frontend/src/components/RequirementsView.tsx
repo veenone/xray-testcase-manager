@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
   ListRequirementsWithCoverage,
@@ -208,6 +208,25 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
     safePage * pageSize,
     (safePage + 1) * pageSize,
   );
+
+  // Arrow-key navigation through the requirement list (RND_P_4TFINT_05-320):
+  // Up/Down move the selection across the whole filtered list, auto-paging at
+  // page boundaries. The selected row is scrolled into view.
+  const listRef = useRef<HTMLUListElement>(null);
+  function moveSelection(delta: number) {
+    if (filtered.length === 0) return;
+    const cur = filtered.findIndex((r) => r.key === selected);
+    const next = cur < 0 ? (delta > 0 ? 0 : filtered.length - 1) : cur + delta;
+    if (next < 0 || next >= filtered.length) return;
+    setSelected(filtered[next].key);
+    const targetPage = Math.floor(next / pageSize);
+    if (targetPage !== safePage) setPage(targetPage);
+  }
+  useEffect(() => {
+    listRef.current
+      ?.querySelector(".reqs-item-selected")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selected, safePage]);
 
   // Pagination of the covering-tests table in the detail pane.
   const [testsPage, setTestsPage] = useViewState(profileId, "requirements", "testsPage", 0);
@@ -429,12 +448,28 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
           </p>
         ) : (
           <>
-            <ul className="reqs-items">
+            <ul
+              className="reqs-items"
+              ref={listRef}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  moveSelection(1);
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  moveSelection(-1);
+                }
+              }}
+            >
               {pageItems.map((r) => (
                 <li
                   key={r.key}
                   className={`reqs-item${r.key === selected ? " reqs-item-selected" : ""}`}
-                  onClick={() => setSelected(r.key)}
+                  onClick={() => {
+                    setSelected(r.key);
+                    listRef.current?.focus({ preventScroll: true });
+                  }}
                 >
                   <div className="reqs-item-top">
                     <span className="mono reqs-key">{r.key}</span>
