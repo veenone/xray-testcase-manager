@@ -2452,6 +2452,107 @@ export namespace testrepo {
 	        this.condition = source["condition"];
 	    }
 	}
+	export class PreconditionDuplicateMember {
+	    key: string;
+	    summary: string;
+	    type: string;
+	    condition: string;
+	    description: string;
+	    testCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreconditionDuplicateMember(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.summary = source["summary"];
+	        this.type = source["type"];
+	        this.condition = source["condition"];
+	        this.description = source["description"];
+	        this.testCount = source["testCount"];
+	    }
+	}
+	export class PreconditionDuplicateGroup {
+	    normalizedSummary: string;
+	    displaySummary: string;
+	    definitionVerdict: string;
+	    members: PreconditionDuplicateMember[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PreconditionDuplicateGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.normalizedSummary = source["normalizedSummary"];
+	        this.displaySummary = source["displaySummary"];
+	        this.definitionVerdict = source["definitionVerdict"];
+	        this.members = this.convertValues(source["members"], PreconditionDuplicateMember);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class PreconditionDuplicateReport {
+	    groups: PreconditionDuplicateGroup[];
+	    groupCount: number;
+	    preconditionCount: number;
+	    definitionIdentical: number;
+	    definitionDiffer: number;
+	    excluded: number;
+	    scannedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreconditionDuplicateReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groups = this.convertValues(source["groups"], PreconditionDuplicateGroup);
+	        this.groupCount = source["groupCount"];
+	        this.preconditionCount = source["preconditionCount"];
+	        this.definitionIdentical = source["definitionIdentical"];
+	        this.definitionDiffer = source["definitionDiffer"];
+	        this.excluded = source["excluded"];
+	        this.scannedAt = source["scannedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PreconditionTest {
 	    key: string;
 	    summary: string;

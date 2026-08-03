@@ -166,6 +166,9 @@ export {
   ScanAllDuplicateSteps,
   ExcludeFromDuplicates,
   UnexcludeFromDuplicates,
+  ScanPreconditionDuplicates,
+  ExcludePreconditionFromDuplicates,
+  UnexcludePreconditionFromDuplicates,
   GetBugCreateFields,
   CreateBugForTest,
   CreateRequirement,
@@ -1131,6 +1134,36 @@ export interface DuplicateReport {
   stepsIdentical: number;
   stepsDiffer: number;
   stepsUnscanned: number;
+  excluded: number;
+  scannedAt: string;
+}
+
+// Precondition duplicate management (RND_P_4TFINT_05-323). Mirrors the testrepo
+// PreconditionDuplicate* shapes. Preconditions have no object-level steps, so
+// the verdict compares definition (condition + description) text and there is
+// no "unscanned" state.
+export interface PreconditionDuplicateMember {
+  key: string;
+  summary: string;
+  type: string;
+  condition: string;
+  description: string;
+  testCount: number;
+}
+
+export interface PreconditionDuplicateGroup {
+  normalizedSummary: string;
+  displaySummary: string;
+  definitionVerdict: "identical" | "differ";
+  members: PreconditionDuplicateMember[];
+}
+
+export interface PreconditionDuplicateReport {
+  groups: PreconditionDuplicateGroup[];
+  groupCount: number;
+  preconditionCount: number;
+  definitionIdentical: number;
+  definitionDiffer: number;
   excluded: number;
   scannedAt: string;
 }

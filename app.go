@@ -2982,6 +2982,34 @@ func (a *App) UnexcludeFromDuplicates(profileID, testKey string) error {
 	return a.repo.UnexcludeFromDuplicates(profileID, testKey)
 }
 
+// ScanPreconditionDuplicates returns the precondition duplicate report for a
+// profile (RND_P_4TFINT_05-323): summary groups computed from the local cache,
+// with a definition verdict comparing each group's condition/description text.
+// Instant, no Jira call — preconditions have no lazy-loaded steps.
+func (a *App) ScanPreconditionDuplicates(profileID string) (testrepo.PreconditionDuplicateReport, error) {
+	if err := a.requireStore(); err != nil {
+		return testrepo.PreconditionDuplicateReport{}, err
+	}
+	return a.repo.ScanPreconditionDuplicates(profileID)
+}
+
+// ExcludePreconditionFromDuplicates permanently ignores a Precondition in
+// precondition duplicate scans (local).
+func (a *App) ExcludePreconditionFromDuplicates(profileID, preconditionKey string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.ExcludePreconditionFromDuplicates(profileID, preconditionKey)
+}
+
+// UnexcludePreconditionFromDuplicates restores a previously-excluded Precondition.
+func (a *App) UnexcludePreconditionFromDuplicates(profileID, preconditionKey string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.repo.UnexcludePreconditionFromDuplicates(profileID, preconditionKey)
+}
+
 // --- Test Repository moves (FR-13.3) ---
 
 // MoveTestToFolder relocates a Test in the Test Repository tree locally and

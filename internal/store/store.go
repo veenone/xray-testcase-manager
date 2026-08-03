@@ -18,7 +18,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 47
+const schemaVersion = 48
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -276,6 +276,15 @@ CREATE TABLE IF NOT EXISTS duplicate_step_scan (
 	fingerprint TEXT NOT NULL,
 	scanned_at  TEXT NOT NULL,
 	PRIMARY KEY (profile_id, test_key)
+);
+
+-- Preconditions excluded from precondition duplicate scans (local only). The
+-- analog of duplicate_ignore for the Preconditions duplicate mode.
+CREATE TABLE IF NOT EXISTS precondition_duplicate_ignore (
+	profile_id       TEXT NOT NULL,
+	precondition_key TEXT NOT NULL,
+	created_at       TEXT NOT NULL,
+	PRIMARY KEY (profile_id, precondition_key)
 );
 
 -- Defect issues (possibly cross-project) linked to Tests. Discovered via
@@ -607,6 +616,7 @@ CREATE INDEX IF NOT EXISTS idx_test_container_test_key ON test_container_test(pr
 CREATE INDEX IF NOT EXISTS idx_sync_log_profile_time   ON sync_log(profile_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_duplicate_ignore_profile   ON duplicate_ignore(profile_id);
 CREATE INDEX IF NOT EXISTS idx_duplicate_step_scan_profile ON duplicate_step_scan(profile_id);
+CREATE INDEX IF NOT EXISTS idx_precond_dup_ignore_profile  ON precondition_duplicate_ignore(profile_id);
 CREATE INDEX IF NOT EXISTS idx_test_bug_test ON test_bug(profile_id, test_key);
 CREATE INDEX IF NOT EXISTS idx_test_bug_bug  ON test_bug(profile_id, bug_key);
 CREATE INDEX IF NOT EXISTS idx_requirement_link_from ON requirement_link(profile_id, from_requirement_key);
@@ -1289,6 +1299,17 @@ func applyMigrations(db *sql.DB) error {
 		`ALTER TABLE profiles ADD COLUMN cross_project_sources TEXT NOT NULL DEFAULT ''`,
 	); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 		return fmt.Errorf("v47 add profiles.cross_project_sources: %w", err)
+	}
+
+	// v48: precondition_duplicate_ignore backs the Preconditions duplicate mode
+	// in the Duplicates view. Additive; CREATE TABLE IF NOT EXISTS is idempotent.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS precondition_duplicate_ignore (
+		profile_id       TEXT NOT NULL,
+		precondition_key TEXT NOT NULL,
+		created_at       TEXT NOT NULL,
+		PRIMARY KEY (profile_id, precondition_key)
+	)`); err != nil {
+		return fmt.Errorf("v48 create precondition_duplicate_ignore: %w", err)
 	}
 	return nil
 }

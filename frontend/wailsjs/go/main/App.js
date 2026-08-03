@@ -286,6 +286,10 @@ export function ExcludeFromDuplicates(arg1, arg2) {
   return window['go']['main']['App']['ExcludeFromDuplicates'](arg1, arg2);
 }
 
+export function ExcludePreconditionFromDuplicates(arg1, arg2) {
+  return window['go']['main']['App']['ExcludePreconditionFromDuplicates'](arg1, arg2);
+}
+
 export function ExportBugsWithRunHistory(arg1, arg2) {
   return window['go']['main']['App']['ExportBugsWithRunHistory'](arg1, arg2);
 }
@@ -750,6 +754,10 @@ export function ScanDuplicates(arg1) {
   return window['go']['main']['App']['ScanDuplicates'](arg1);
 }
 
+export function ScanPreconditionDuplicates(arg1) {
+  return window['go']['main']['App']['ScanPreconditionDuplicates'](arg1);
+}
+
 export function SearchPreconditionsCrossProject(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SearchPreconditionsCrossProject'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -892,6 +900,10 @@ export function TransitionTest(arg1, arg2, arg3) {
 
 export function UnexcludeFromDuplicates(arg1, arg2) {
   return window['go']['main']['App']['UnexcludeFromDuplicates'](arg1, arg2);
+}
+
+export function UnexcludePreconditionFromDuplicates(arg1, arg2) {
+  return window['go']['main']['App']['UnexcludePreconditionFromDuplicates'](arg1, arg2);
 }
 
 export function UnlinkBugFromRun(arg1, arg2, arg3, arg4) {

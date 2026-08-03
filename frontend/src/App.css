@@ -5020,6 +5020,8 @@ tr.row-checked:hover {
 .dup-seg { display: flex; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; }
 .dup-seg-btn { background: var(--surface); border: none; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--text); }
 .dup-seg-btn.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 600; }
+/* Tests / Preconditions mode switch at the top of the Duplicates tab (#323). */
+.dup-mode-toggle { align-self: flex-start; width: fit-content; margin-bottom: 12px; }
 
 .dup-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; padding: 12px 14px; }
 .dup-tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface-2); }

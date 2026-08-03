@@ -21,6 +21,7 @@ import type {
 } from "../api";
 import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
+import { PreconditionDuplicatesView } from "./PreconditionDuplicatesView";
 
 type Filter = "all" | "identical" | "differ" | "excluded";
 
@@ -68,6 +69,15 @@ export function DuplicatesView({
   pendingByTestKey,
   onChanged,
 }: Props) {
+  // Which entity the Duplicates tab is scanning (RND_P_4TFINT_05-323). Tests
+  // keep the full step-comparison flow; Preconditions use a simpler self-
+  // contained view (no object-level steps).
+  const [mode, setMode] = useViewState<"tests" | "preconditions">(
+    profileId,
+    "duplicates",
+    "mode",
+    "tests",
+  );
   const [report, setReport] = useState<DuplicateReport | null>(null);
   const [error, setError] = useState("");
   const [filter, setFilter] = useViewState<Filter>(profileId, "duplicates", "filter", "all");
@@ -101,11 +111,11 @@ export function DuplicatesView({
   } | null>(null);
 
   const load = useCallback(() => {
-    if (!profileId) return;
+    if (!profileId || mode !== "tests") return;
     ScanDuplicates(profileId)
       .then((r) => setReport(r as unknown as DuplicateReport))
       .catch((e) => setError(errMsg(e)));
-  }, [profileId]);
+  }, [profileId, mode]);
 
   useEffect(() => {
     load();
@@ -232,6 +242,25 @@ export function DuplicatesView({
 
   return (
     <div className="dup-view">
+      <div className="dup-mode-toggle dup-seg">
+        <button
+          className={`dup-seg-btn${mode === "tests" ? " on" : ""}`}
+          onClick={() => setMode("tests")}
+        >
+          Tests
+        </button>
+        <button
+          className={`dup-seg-btn${mode === "preconditions" ? " on" : ""}`}
+          onClick={() => setMode("preconditions")}
+        >
+          Preconditions
+        </button>
+      </div>
+
+      {mode === "preconditions" ? (
+        <PreconditionDuplicatesView profileId={profileId} refreshKey={refreshKey} />
+      ) : (
+        <>
       <div className="dup-toolbar">
         <button
           className="btn btn-primary"
@@ -485,6 +514,8 @@ export function DuplicatesView({
           members={summaryCompare.members}
           onClose={() => setSummaryCompare(null)}
         />
+      )}
+        </>
       )}
     </div>
   );

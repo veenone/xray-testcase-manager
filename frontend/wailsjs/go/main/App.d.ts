@@ -155,6 +155,8 @@ export function EditTestStepField(arg1:string,arg2:string,arg3:string,arg4:strin
 
 export function ExcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
 
+export function ExcludePreconditionFromDuplicates(arg1:string,arg2:string):Promise<void>;
+
 export function ExportBugsWithRunHistory(arg1:string,arg2:Array<string>):Promise<string>;
 
 export function ExportCoverageReport(arg1:string,arg2:string):Promise<string>;
@@ -387,6 +389,8 @@ export function ScanDuplicateGroupSteps(arg1:string,arg2:string):Promise<testrep
 
 export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;
 
+export function ScanPreconditionDuplicates(arg1:string):Promise<testrepo.PreconditionDuplicateReport>;
+
 export function SearchPreconditionsCrossProject(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<main.CrossProjectPreconditionPage>;
 
 export function SearchTestsCrossProject(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<main.CrossProjectTestPage>;
@@ -458,6 +462,8 @@ export function TestProfileConnection(arg1:string,arg2:string,arg3:string,arg4:b
 export function TransitionTest(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function UnexcludeFromDuplicates(arg1:string,arg2:string):Promise<void>;
+
+export function UnexcludePreconditionFromDuplicates(arg1:string,arg2:string):Promise<void>;
 
 export function UnlinkBugFromRun(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

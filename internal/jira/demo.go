@@ -885,6 +885,44 @@ func demoPreconditionsAndLinks(theme demoTheme, projectKey string) ([]Preconditi
 		})
 	}
 
+	// Seed two deterministic duplicate precondition clusters for the
+	// Preconditions duplicate-detection demo (RND_P_4TFINT_05-323), generic
+	// theme only. Cluster A shares an identical definition (a true duplicate);
+	// cluster B shares only the summary, with differing definition text. The
+	// "PDUP" key infix keeps them clear of the linked "P-N" range.
+	if theme.Variant == "" {
+		preconditions = append(preconditions,
+			Precondition{
+				Key:         fmt.Sprintf("%s-PDUP-1", projectKey),
+				Summary:     "User is authenticated",
+				Type:        "Manual",
+				Description: "(Demo duplicate precondition)",
+				Condition:   "A valid session token exists",
+			},
+			Precondition{
+				Key:         fmt.Sprintf("%s-PDUP-2", projectKey),
+				Summary:     "user  IS authenticated", // normalizes equal to PDUP-1
+				Type:        "Manual",
+				Description: "(Demo duplicate precondition)",
+				Condition:   "A valid session token exists", // identical definition
+			},
+			Precondition{
+				Key:         fmt.Sprintf("%s-PDUP-3", projectKey),
+				Summary:     "Cart contains at least one item",
+				Type:        "Manual",
+				Description: "(Demo duplicate precondition)",
+				Condition:   "Cart item count >= 1",
+			},
+			Precondition{
+				Key:         fmt.Sprintf("%s-PDUP-4", projectKey),
+				Summary:     "Cart contains at least one item",
+				Type:        "Manual",
+				Description: "(Demo duplicate precondition)",
+				Condition:   "The shopping cart has one or more products", // differing definition
+			},
+		)
+	}
+
 	links := make(map[string][]string, theme.TestCount)
 	for i := 0; i < theme.TestCount; i++ {
 		feature := theme.Features[i%len(theme.Features)]
