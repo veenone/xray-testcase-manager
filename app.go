@@ -2463,6 +2463,23 @@ type CrossProjectTest struct {
 	ProjectKey string `json:"projectKey"`
 }
 
+// crossProjectPageSize bounds each page of a cross-project browse/search.
+const crossProjectPageSize = 50
+
+// CrossProjectTestPage is one page of cross-project Test results plus the total
+// match count, so the picker can paginate (RND_P_4TFINT_05-322).
+type CrossProjectTestPage struct {
+	Tests []CrossProjectTest `json:"tests"`
+	Total int                `json:"total"`
+}
+
+// CrossProjectPreconditionPage is one page of cross-project Precondition
+// results plus the total match count.
+type CrossProjectPreconditionPage struct {
+	Preconditions []testrepo.Precondition `json:"preconditions"`
+	Total         int                     `json:"total"`
+}
+
 // parseCrossProjectSources splits a profile's comma/whitespace-separated source
 // project keys into a clean list.
 func parseCrossProjectSources(s string) []string {
@@ -2507,25 +2524,25 @@ func (a *App) GetProfileCrossProjectSources(profileID string) (string, error) {
 // pickers can reach tests in those projects (RND_P_4TFINT_05-322). Live backend
 // call; returns up to 50 matches. No configured sources or an empty query
 // yields no results.
-func (a *App) SearchTestsCrossProject(profileID, query string) ([]CrossProjectTest, error) {
+func (a *App) SearchTestsCrossProject(profileID, query string, offset int) (CrossProjectTestPage, error) {
 	if err := a.requireStore(); err != nil {
-		return nil, err
+		return CrossProjectTestPage{}, err
 	}
 	p, err := a.profiles.Get(profileID)
 	if err != nil {
-		return nil, err
+		return CrossProjectTestPage{}, err
 	}
 	sources := parseCrossProjectSources(p.CrossProjectSources)
 	if len(sources) == 0 {
-		return []CrossProjectTest{}, nil
+		return CrossProjectTestPage{Tests: []CrossProjectTest{}}, nil
 	}
 	b, err := a.backendFor(profileID)
 	if err != nil {
-		return nil, err
+		return CrossProjectTestPage{}, err
 	}
-	rows, err := b.SearchTestsAcrossProjects(a.ctx, sources, query, 50)
+	rows, total, err := b.SearchTestsAcrossProjects(a.ctx, sources, query, offset, crossProjectPageSize)
 	if err != nil {
-		return nil, err
+		return CrossProjectTestPage{}, err
 	}
 	out := make([]CrossProjectTest, 0, len(rows))
 	for _, t := range rows {
@@ -2536,7 +2553,7 @@ func (a *App) SearchTestsCrossProject(profileID, query string) ([]CrossProjectTe
 			ProjectKey: t.ProjectKey,
 		})
 	}
-	return out, nil
+	return CrossProjectTestPage{Tests: out, Total: total}, nil
 }
 
 // CacheExternalPreconditions upserts cross-project preconditions chosen in a
@@ -2555,28 +2572,29 @@ func (a *App) CacheExternalPreconditions(profileID string, preconditions []testr
 	return a.repo.UpsertPreconditions(profileID, preconditions)
 }
 
-// SearchPreconditionsCrossProject searches Preconditions in projects OTHER than
-// the profile's own project by free text, for cross-project precondition
-// linking (RND_P_4TFINT_05-322). Live backend call; returns up to 50 matches.
-func (a *App) SearchPreconditionsCrossProject(profileID, query string) ([]testrepo.Precondition, error) {
+// SearchPreconditionsCrossProject browses or searches Preconditions in the
+// profile's configured source projects for cross-project linking
+// (RND_P_4TFINT_05-322). An empty query lists all; paged from offset with the
+// total match count.
+func (a *App) SearchPreconditionsCrossProject(profileID, query string, offset int) (CrossProjectPreconditionPage, error) {
 	if err := a.requireStore(); err != nil {
-		return nil, err
+		return CrossProjectPreconditionPage{}, err
 	}
 	p, err := a.profiles.Get(profileID)
 	if err != nil {
-		return nil, err
+		return CrossProjectPreconditionPage{}, err
 	}
 	sources := parseCrossProjectSources(p.CrossProjectSources)
 	if len(sources) == 0 {
-		return []testrepo.Precondition{}, nil
+		return CrossProjectPreconditionPage{Preconditions: []testrepo.Precondition{}}, nil
 	}
 	b, err := a.backendFor(profileID)
 	if err != nil {
-		return nil, err
+		return CrossProjectPreconditionPage{}, err
 	}
-	rows, err := b.SearchPreconditionsAcrossProjects(a.ctx, sources, query, 50)
+	rows, total, err := b.SearchPreconditionsAcrossProjects(a.ctx, sources, query, offset, crossProjectPageSize)
 	if err != nil {
-		return nil, err
+		return CrossProjectPreconditionPage{}, err
 	}
 	out := make([]testrepo.Precondition, 0, len(rows))
 	for _, pc := range rows {
@@ -2588,7 +2606,7 @@ func (a *App) SearchPreconditionsCrossProject(profileID, query string) ([]testre
 			Condition:   pc.Condition,
 		})
 	}
-	return out, nil
+	return CrossProjectPreconditionPage{Preconditions: out, Total: total}, nil
 }
 
 // --- pytest helper (FR-7.2) ---

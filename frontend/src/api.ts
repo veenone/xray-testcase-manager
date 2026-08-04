@@ -262,6 +262,17 @@ export interface CrossProjectTest {
   projectKey: string;
 }
 
+// One page of cross-project browse/search results, plus the total match count.
+export interface CrossProjectTestPage {
+  tests: CrossProjectTest[];
+  total: number;
+}
+
+export interface CrossProjectPreconditionPage {
+  preconditions: Precondition[];
+  total: number;
+}
+
 // Coverage module data shapes (mirror internal/coverage/*.go JSON tags).
 export interface CanonicalRequirement {
   id: string;

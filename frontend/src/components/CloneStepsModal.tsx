@@ -75,13 +75,13 @@ export function CloneStepsModal({
       setSearching(true);
       setError("");
       const req = crossProject
-        ? SearchTestsCrossProject(profileId, search).then((rows) => ({
-            tests: (rows ?? []).map((r) => ({
+        ? SearchTestsCrossProject(profileId, search, page * PAGE_SIZE).then((p) => ({
+            tests: (p.tests ?? []).map((r) => ({
               key: r.key,
               summary: r.summary,
               projectKey: r.projectKey,
             })),
-            total: (rows ?? []).length,
+            total: p.total ?? 0,
           }))
         : ListTests(profileId, {
             search,
@@ -224,14 +224,12 @@ export function CloneStepsModal({
                     ))}
                     {visibleResults.length === 0 && (
                       <li className="muted">
-                        {crossProject && !search.trim()
-                          ? "Type to search other projects."
-                          : "No tests match."}
+                        {searching ? "" : "No tests match."}
                       </li>
                     )}
                   </ul>
                 )}
-                {!crossProject && total > PAGE_SIZE && (
+                {total > PAGE_SIZE && (
                   <div className="add-test-pager">
                     <button
                       className="btn"

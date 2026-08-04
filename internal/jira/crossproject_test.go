@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -31,12 +32,13 @@ func TestSearchTestsAcrossProjectsDemo(t *testing.T) {
 	c := NewClient("demo", "tok")
 	ctx := context.Background()
 
-	got, err := c.SearchTestsAcrossProjects(ctx, []string{"PROJVAL"}, "login", 50)
+	// Browse (empty query) lists all in the source project, paged.
+	got, total, err := c.SearchTestsAcrossProjects(ctx, []string{"PROJVAL"}, "", 0, 50)
 	if err != nil {
-		t.Fatalf("search: %v", err)
+		t.Fatalf("browse: %v", err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("want 3 cross-project matches, got %d", len(got))
+	if total == 0 || len(got) == 0 {
+		t.Fatalf("browse should list source tests, got %d (total %d)", len(got), total)
 	}
 	for _, tb := range got {
 		if tb.ProjectKey != "PROJVAL" {
@@ -44,13 +46,25 @@ func TestSearchTestsAcrossProjectsDemo(t *testing.T) {
 		}
 	}
 
-	// Empty query → no results.
-	if got, _ := c.SearchTestsAcrossProjects(ctx, []string{"PROJVAL"}, "  ", 50); len(got) != 0 {
-		t.Errorf("empty query should yield no results, got %d", len(got))
+	// A query narrows the browse list.
+	narrowed, nTotal, _ := c.SearchTestsAcrossProjects(ctx, []string{"PROJVAL"}, "login", 0, 50)
+	if nTotal == 0 || nTotal >= total {
+		t.Errorf("query should narrow results: narrowed total %d vs all %d", nTotal, total)
 	}
+	for _, tb := range narrowed {
+		if !strings.Contains(strings.ToLower(tb.Summary), "login") {
+			t.Errorf("narrowed result %q does not match query", tb.Summary)
+		}
+	}
+
+	// Paging: offset past the total yields no rows but keeps the total.
+	if rows, tot, _ := c.SearchTestsAcrossProjects(ctx, []string{"PROJVAL"}, "", 1000, 50); len(rows) != 0 || tot != total {
+		t.Errorf("offset past end: rows=%d total=%d (want 0 rows, total %d)", len(rows), tot, total)
+	}
+
 	// No configured source projects → no results.
-	if got, _ := c.SearchTestsAcrossProjects(ctx, nil, "login", 50); len(got) != 0 {
-		t.Errorf("no source projects should yield no results, got %d", len(got))
+	if rows, tot, _ := c.SearchTestsAcrossProjects(ctx, nil, "login", 0, 50); len(rows) != 0 || tot != 0 {
+		t.Errorf("no source projects should yield no results, got %d (total %d)", len(rows), tot)
 	}
 }
 
@@ -58,22 +72,19 @@ func TestSearchPreconditionsAcrossProjectsDemo(t *testing.T) {
 	c := NewClient("demo", "tok")
 	ctx := context.Background()
 
-	got, err := c.SearchPreconditionsAcrossProjects(ctx, []string{"PROJVAL"}, "logged in", 50)
+	got, total, err := c.SearchPreconditionsAcrossProjects(ctx, []string{"PROJVAL"}, "", 0, 50)
 	if err != nil {
-		t.Fatalf("search: %v", err)
+		t.Fatalf("browse: %v", err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("want 3 cross-project preconditions, got %d", len(got))
+	if total == 0 || len(got) == 0 {
+		t.Fatalf("browse should list source preconditions, got %d (total %d)", len(got), total)
 	}
 	for _, p := range got {
 		if p.Key == "" || p.Summary == "" {
 			t.Errorf("precondition missing key/summary: %+v", p)
 		}
 	}
-	if got, _ := c.SearchPreconditionsAcrossProjects(ctx, []string{"PROJVAL"}, "", 50); len(got) != 0 {
-		t.Errorf("empty query should yield no results, got %d", len(got))
-	}
-	if got, _ := c.SearchPreconditionsAcrossProjects(ctx, nil, "logged in", 50); len(got) != 0 {
-		t.Errorf("no source projects should yield no results, got %d", len(got))
+	if rows, tot, _ := c.SearchPreconditionsAcrossProjects(ctx, nil, "logged in", 0, 50); len(rows) != 0 || tot != 0 {
+		t.Errorf("no source projects should yield no results, got %d (total %d)", len(rows), tot)
 	}
 }

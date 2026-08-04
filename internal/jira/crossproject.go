@@ -55,28 +55,37 @@ func inProjectClause(projectKeys []string) string {
 	return "project in (" + strings.Join(quoted, ", ") + ")"
 }
 
-// SearchTestsAcrossProjects finds Tests in the given source projects matching
-// query (by key or summary), for cross-project linking of test calls and cloned
-// steps. Returns up to limit lightweight basics ordered by key. An empty query
-// or no source projects yields no results.
-func (c *Client) SearchTestsAcrossProjects(ctx context.Context, projectKeys []string, query string, limit int) ([]TestBasic, error) {
+// SearchTestsAcrossProjects browses/searches Tests in the given source
+// projects, for cross-project linking of test calls and cloned steps. An empty
+// query lists all Tests in the source projects (browse); a non-empty query
+// narrows by key or summary. Results are paged from offset (up to limit),
+// ordered by key, and the total match count is returned so the caller can
+// paginate. No source projects yields no results.
+func (c *Client) SearchTestsAcrossProjects(ctx context.Context, projectKeys []string, query string, offset, limit int) ([]TestBasic, int, error) {
 	proj := inProjectClause(projectKeys)
-	if strings.TrimSpace(query) == "" || proj == "" {
-		return []TestBasic{}, nil
+	if proj == "" {
+		return []TestBasic{}, 0, nil
 	}
 	if limit <= 0 {
 		limit = 50
 	}
+	if offset < 0 {
+		offset = 0
+	}
 	if isDemoURL(c.baseURL) {
-		return demoSearchTestsAcrossProjects(projectKeys, query, limit), nil
+		rows, total := demoSearchTestsAcrossProjects(projectKeys, query, offset, limit)
+		return rows, total, nil
 	}
 
-	jql := proj + " AND issuetype = Test AND " + crossProjectClause(query) +
-		" ORDER BY key ASC"
+	jql := proj + " AND issuetype = Test"
+	if strings.TrimSpace(query) != "" {
+		jql += " AND " + crossProjectClause(query)
+	}
+	jql += " ORDER BY key ASC"
 
 	q := url.Values{}
 	q.Set("jql", jql)
-	q.Set("startAt", "0")
+	q.Set("startAt", strconv.Itoa(offset))
 	q.Set("maxResults", strconv.Itoa(limit))
 	q.Set("fields", testBasicFieldList)
 
@@ -86,48 +95,56 @@ func (c *Client) SearchTestsAcrossProjects(ctx context.Context, projectKeys []st
 		if errors.As(err, &he) && he.Code == http.StatusBadRequest {
 			// A malformed query (e.g. reserved JQL characters) shouldn't error
 			// the picker; return no matches so the user can refine.
-			return []TestBasic{}, nil
+			return []TestBasic{}, 0, nil
 		}
-		return nil, err
+		return nil, 0, err
 	}
-	return parseTestBasics(resp.Issues), nil
+	return parseTestBasics(resp.Issues), resp.Total, nil
 }
 
-// SearchPreconditionsAcrossProjects finds Precondition issues in the given
-// source projects matching query, for cross-project precondition linking.
-// Returns up to limit results ordered by key. An empty query or no source
-// projects yields no results; an instance without a Precondition issue type
-// yields no results.
-func (c *Client) SearchPreconditionsAcrossProjects(ctx context.Context, projectKeys []string, query string, limit int) ([]Precondition, error) {
+// SearchPreconditionsAcrossProjects browses/searches Precondition issues in the
+// given source projects for cross-project precondition linking. An empty query
+// lists all; a non-empty query narrows. Paged from offset (up to limit) with a
+// total count. No source projects — or an instance without a Precondition issue
+// type — yields no results.
+func (c *Client) SearchPreconditionsAcrossProjects(ctx context.Context, projectKeys []string, query string, offset, limit int) ([]Precondition, int, error) {
 	proj := inProjectClause(projectKeys)
-	if strings.TrimSpace(query) == "" || proj == "" {
-		return []Precondition{}, nil
+	if proj == "" {
+		return []Precondition{}, 0, nil
 	}
 	if limit <= 0 {
 		limit = 50
 	}
+	if offset < 0 {
+		offset = 0
+	}
 	if isDemoURL(c.baseURL) {
-		return demoSearchPreconditionsAcrossProjects(projectKeys, query, limit), nil
+		rows, total := demoSearchPreconditionsAcrossProjects(projectKeys, query, offset, limit)
+		return rows, total, nil
 	}
 
 	typeID, _, err := c.resolvePreconditionType(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("resolve precondition issue type: %w", err)
+		return nil, 0, fmt.Errorf("resolve precondition issue type: %w", err)
 	}
 	if typeID == "" {
-		return []Precondition{}, nil
+		return []Precondition{}, 0, nil
 	}
 
-	jql := fmt.Sprintf("%s AND issuetype = %s AND %s", proj, typeID, crossProjectClause(query)) +
-		" ORDER BY key ASC"
+	jql := fmt.Sprintf("%s AND issuetype = %s", proj, typeID)
+	if strings.TrimSpace(query) != "" {
+		jql += " AND " + crossProjectClause(query)
+	}
+	jql += " ORDER BY key ASC"
 
 	q := url.Values{}
 	q.Set("jql", jql)
-	q.Set("startAt", "0")
+	q.Set("startAt", strconv.Itoa(offset))
 	q.Set("maxResults", strconv.Itoa(limit))
 	q.Set("fields", "summary,description")
 
 	var resp struct {
+		Total  int `json:"total"`
 		Issues []struct {
 			Key    string `json:"key"`
 			Fields struct {
@@ -139,9 +156,9 @@ func (c *Client) SearchPreconditionsAcrossProjects(ctx context.Context, projectK
 	if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
 		var he *HTTPError
 		if errors.As(err, &he) && he.Code == http.StatusBadRequest {
-			return []Precondition{}, nil
+			return []Precondition{}, 0, nil
 		}
-		return nil, err
+		return nil, 0, err
 	}
 	out := make([]Precondition, 0, len(resp.Issues))
 	for _, is := range resp.Issues {
@@ -152,7 +169,7 @@ func (c *Client) SearchPreconditionsAcrossProjects(ctx context.Context, projectK
 			Description: is.Fields.Description,
 		})
 	}
-	return out, nil
+	return out, resp.Total, nil
 }
 
 // demoSourceProject returns the first configured source project key, so the
@@ -166,43 +183,89 @@ func demoSourceProject(projectKeys []string) string {
 	return ""
 }
 
-// demoSearchTestsAcrossProjects returns a small deterministic set of tests in
-// the first configured source project matching the query. Minimal by design —
-// live Jira is the real target.
-func demoSearchTestsAcrossProjects(projectKeys []string, query string, limit int) []TestBasic {
-	q := strings.TrimSpace(query)
-	src := demoSourceProject(projectKeys)
-	if q == "" || src == "" {
-		return []TestBasic{}
+// demoCrossProjectFeatures gives the demo browse list varied, queryable
+// summaries so both browsing and searching are demonstrable offline.
+var demoCrossProjectFeatures = []string{
+	"Login flow", "Logout flow", "User registration", "Password reset",
+	"Search results", "Checkout", "Add to cart", "Payment", "Refund",
+	"Profile update", "Dashboard", "Notifications", "File upload",
+	"File download", "Session timeout", "Multi-factor auth", "Admin console",
+	"Permissions", "Audit log", "Bulk operations", "Export to CSV", "Import data",
+	"Reports", "API rate limit",
+}
+
+// demoPageBasics filters a browse list by query (key or summary substring) and
+// returns the requested page plus the total match count.
+func demoPageBasics(all []TestBasic, query string, offset, limit int) ([]TestBasic, int) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	filtered := all[:0:0]
+	for _, t := range all {
+		if q == "" || strings.Contains(strings.ToLower(t.Summary), q) ||
+			strings.Contains(strings.ToLower(t.Key), q) {
+			filtered = append(filtered, t)
+		}
 	}
-	out := []TestBasic{}
-	for i := 1; i <= 3 && i <= limit; i++ {
-		out = append(out, TestBasic{
-			Key:        fmt.Sprintf("%s-%d", src, i),
-			Summary:    fmt.Sprintf("%s (cross-project test %d)", q, i),
+	total := len(filtered)
+	if offset >= total {
+		return []TestBasic{}, total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return filtered[offset:end], total
+}
+
+// demoSearchTestsAcrossProjects returns a deterministic browse list of tests in
+// the first configured source project, filtered by query and paged. Minimal by
+// design — live Jira is the real target.
+func demoSearchTestsAcrossProjects(projectKeys []string, query string, offset, limit int) ([]TestBasic, int) {
+	src := demoSourceProject(projectKeys)
+	if src == "" {
+		return []TestBasic{}, 0
+	}
+	all := make([]TestBasic, 0, len(demoCrossProjectFeatures))
+	for i, feat := range demoCrossProjectFeatures {
+		all = append(all, TestBasic{
+			Key:        fmt.Sprintf("%s-%d", src, i+1),
+			Summary:    feat,
 			Status:     "Approved",
 			ProjectKey: src,
 		})
 	}
-	return out
+	return demoPageBasics(all, query, offset, limit)
 }
 
 // demoSearchPreconditionsAcrossProjects mirrors demoSearchTestsAcrossProjects
 // for preconditions.
-func demoSearchPreconditionsAcrossProjects(projectKeys []string, query string, limit int) []Precondition {
-	q := strings.TrimSpace(query)
+func demoSearchPreconditionsAcrossProjects(projectKeys []string, query string, offset, limit int) ([]Precondition, int) {
 	src := demoSourceProject(projectKeys)
-	if q == "" || src == "" {
-		return []Precondition{}
+	if src == "" {
+		return []Precondition{}, 0
 	}
-	out := []Precondition{}
-	for i := 1; i <= 3 && i <= limit; i++ {
-		out = append(out, Precondition{
-			Key:         fmt.Sprintf("%s-P-%d", src, i),
-			Summary:     fmt.Sprintf("%s (cross-project precondition %d)", q, i),
+	q := strings.ToLower(strings.TrimSpace(query))
+	all := make([]Precondition, 0, len(demoCrossProjectFeatures))
+	for i, feat := range demoCrossProjectFeatures {
+		summary := feat + " precondition"
+		key := fmt.Sprintf("%s-P-%d", src, i+1)
+		if q != "" && !strings.Contains(strings.ToLower(summary), q) &&
+			!strings.Contains(strings.ToLower(key), q) {
+			continue
+		}
+		all = append(all, Precondition{
+			Key:         key,
+			Summary:     summary,
 			Type:        "Manual",
-			Description: fmt.Sprintf("(Demo cross-project precondition for %q)", q),
+			Description: fmt.Sprintf("(Demo cross-project precondition: %s)", feat),
 		})
 	}
-	return out
+	total := len(all)
+	if offset >= total {
+		return []Precondition{}, total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return all[offset:end], total
 }

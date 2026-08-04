@@ -80,14 +80,17 @@ type Backend interface {
 	SearchTestsPage(ctx context.Context, projectKey, scopeJQL, since string, startAt, maxResults int) ([]Test, int, error)
 	ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic, error)
 	GetTestFields(ctx context.Context, key string) (Test, error)
-	// SearchTestsAcrossProjects / SearchPreconditionsAcrossProjects find issues
-	// in the given source projects by free text (key or summary), for cross-
-	// project linking of preconditions, test calls, and cloned steps
-	// (RND_P_4TFINT_05-322). Search is restricted to projectKeys (the profile's
-	// configured sources); an empty list yields no results. A backend with no
-	// cross-project search returns an empty slice.
-	SearchTestsAcrossProjects(ctx context.Context, projectKeys []string, query string, limit int) ([]TestBasic, error)
-	SearchPreconditionsAcrossProjects(ctx context.Context, projectKeys []string, query string, limit int) ([]Precondition, error)
+	// SearchTestsAcrossProjects / SearchPreconditionsAcrossProjects browse or
+	// search issues in the given source projects, for cross-project linking of
+	// preconditions, test calls, and cloned steps (RND_P_4TFINT_05-322). An
+	// empty query lists all in the source projects (browse); a non-empty query
+	// narrows by key or summary. Results are paged from offset (up to limit) and
+	// the total match count is returned so the caller can paginate. Search is
+	// restricted to projectKeys (the profile's configured sources); an empty
+	// list yields no results. A backend with no cross-project search returns an
+	// empty slice and zero total.
+	SearchTestsAcrossProjects(ctx context.Context, projectKeys []string, query string, offset, limit int) ([]TestBasic, int, error)
+	SearchPreconditionsAcrossProjects(ctx context.Context, projectKeys []string, query string, offset, limit int) ([]Precondition, int, error)
 	CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error)
 	UpdateIssue(ctx context.Context, key string, fields map[string]any) error
 	GetTestMeta(ctx context.Context, key string) (TestMeta, error)

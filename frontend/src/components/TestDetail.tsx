@@ -658,19 +658,24 @@ export function TestDetail({
     applyPreconditions([...linked, ...additions]);
   }
 
-  // addCrossProjectPrecondition links a precondition from another project
-  // (RND_P_4TFINT_05-322). It first caches the foreign precondition locally so
-  // it displays with its summary, then links its key like any other.
-  async function addCrossProjectPrecondition(pc: Precondition) {
+  // addCrossProjectPreconditions links one or more preconditions from another
+  // project (RND_P_4TFINT_05-322). It first caches the foreign preconditions
+  // locally so they display with their summaries, then links their keys.
+  async function addCrossProjectPreconditions(pcs: Precondition[]) {
     if (readOnly) return;
     setShowCrossPrecond(false);
-    if (preconditions.some((p) => p.key === pc.key)) return;
+    const linked = new Set(preconditions.map((p) => p.key));
+    const additions = pcs.filter((p) => p.key && !linked.has(p.key));
+    if (additions.length === 0) return;
     setSaveError("");
     try {
-      await CacheExternalPreconditions(profileId, [pc]);
+      await CacheExternalPreconditions(profileId, additions);
       const all = await ListAllPreconditions(profileId);
       setAllPreconditions(all ?? []);
-      await applyPreconditions([...preconditions.map((p) => p.key), pc.key]);
+      await applyPreconditions([
+        ...preconditions.map((p) => p.key),
+        ...additions.map((p) => p.key),
+      ]);
     } catch (e) {
       setSaveError(`Link precondition failed: ${errMsg(e)}`);
     }
@@ -1758,7 +1763,7 @@ export function TestDetail({
           profileId={profileId}
           excludeKeys={preconditions.map((p) => p.key)}
           onCancel={() => setShowCrossPrecond(false)}
-          onPick={addCrossProjectPrecondition}
+          onPick={addCrossProjectPreconditions}
         />
       )}
 
