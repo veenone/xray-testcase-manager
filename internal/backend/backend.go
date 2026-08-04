@@ -80,6 +80,13 @@ type Backend interface {
 	SearchTestsPage(ctx context.Context, projectKey, scopeJQL, since string, startAt, maxResults int) ([]Test, int, error)
 	ListTestsBasic(ctx context.Context, keys []string) ([]TestBasic, error)
 	GetTestFields(ctx context.Context, key string) (Test, error)
+	// SearchTestsAcrossProjects / SearchPreconditionsAcrossProjects find issues
+	// in projects OTHER than excludeProjectKey by free text (key or summary),
+	// for cross-project linking of preconditions, test calls, and cloned steps
+	// (RND_P_4TFINT_05-322). Results are transient picker candidates. A backend
+	// with no cross-project search returns an empty slice.
+	SearchTestsAcrossProjects(ctx context.Context, excludeProjectKey, query string, limit int) ([]TestBasic, error)
+	SearchPreconditionsAcrossProjects(ctx context.Context, excludeProjectKey, query string, limit int) ([]Precondition, error)
 	CreateTest(ctx context.Context, projectKey, summary, description, priority string, labels, components []string) (string, error)
 	UpdateIssue(ctx context.Context, key string, fields map[string]any) error
 	GetTestMeta(ctx context.Context, key string) (TestMeta, error)

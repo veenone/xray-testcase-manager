@@ -1114,6 +1114,24 @@ export namespace main {
 		}
 	}
 	
+	export class CrossProjectTest {
+	    key: string;
+	    summary: string;
+	    status: string;
+	    projectKey: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CrossProjectTest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.summary = source["summary"];
+	        this.status = source["status"];
+	        this.projectKey = source["projectKey"];
+	    }
+	}
 	export class Diagnostics {
 	    version: string;
 	    dbPath: string;

@@ -9,6 +9,7 @@ import {
   SetTestPreconditions,
   EditPreconditionField,
   CreatePrecondition,
+  CacheExternalPreconditions,
   GetTestContainers,
   DeallocateTests,
   GetTestTransitions,
@@ -63,6 +64,7 @@ import { MarkdownField } from "./MarkdownField";
 import { MultiAddSelect } from "./MultiAddSelect";
 import { CloneStepsModal } from "./CloneStepsModal";
 import { PickTestModal } from "./PickTestModal";
+import { PickPreconditionModal } from "./PickPreconditionModal";
 import { formatDateTime } from "../dates";
 import { REVIEW_ENABLED, useCapabilities } from "../features";
 
@@ -169,6 +171,8 @@ export function TestDetail({
   const [meta, setMeta] = useState<TestMeta | null>(null);
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [allPreconditions, setAllPreconditions] = useState<Precondition[]>([]);
+  // Cross-project precondition picker open state (RND_P_4TFINT_05-322).
+  const [showCrossPrecond, setShowCrossPrecond] = useState(false);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [bugs, setBugs] = useState<TestBug[]>([]);
   const [allRequirements, setAllRequirements] = useState<RequirementCoverage[]>(
@@ -628,6 +632,24 @@ export function TestDetail({
     const additions = keys.filter((k) => k && !linked.has(k));
     if (additions.length === 0) return;
     applyPreconditions([...linked, ...additions]);
+  }
+
+  // addCrossProjectPrecondition links a precondition from another project
+  // (RND_P_4TFINT_05-322). It first caches the foreign precondition locally so
+  // it displays with its summary, then links its key like any other.
+  async function addCrossProjectPrecondition(pc: Precondition) {
+    if (readOnly) return;
+    setShowCrossPrecond(false);
+    if (preconditions.some((p) => p.key === pc.key)) return;
+    setSaveError("");
+    try {
+      await CacheExternalPreconditions(profileId, [pc]);
+      const all = await ListAllPreconditions(profileId);
+      setAllPreconditions(all ?? []);
+      await applyPreconditions([...preconditions.map((p) => p.key), pc.key]);
+    } catch (e) {
+      setSaveError(`Link precondition failed: ${errMsg(e)}`);
+    }
   }
 
   // createAndAssociatePrecondition creates a brand-new Precondition (FR-13.5)
@@ -1163,6 +1185,14 @@ export function TestDetail({
                   <button
                     type="button"
                     className="btn btn-ghost pre-add-new"
+                    onClick={() => setShowCrossPrecond(true)}
+                    title="Link a precondition from another project"
+                  >
+                    ↗ Other project
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost pre-add-new"
                     onClick={() => setSwapKind("precondition")}
                     disabled={preconditions.length === 0 && allPreconditions.length === 0}
                     title="Swap preconditions: remove some and add others in one apply"
@@ -1638,6 +1668,15 @@ export function TestDetail({
             setShowCallPicker(false);
             onEdited();
           }}
+        />
+      )}
+
+      {!readOnly && showCrossPrecond && (
+        <PickPreconditionModal
+          profileId={profileId}
+          excludeKeys={preconditions.map((p) => p.key)}
+          onCancel={() => setShowCrossPrecond(false)}
+          onPick={addCrossProjectPrecondition}
         />
       )}
 

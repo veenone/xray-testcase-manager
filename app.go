@@ -2454,6 +2454,95 @@ func (a *App) GetProfileProjectKey(profileID string) (string, error) {
 	return p.ProjectKey, nil
 }
 
+// CrossProjectTest is a lightweight cross-project Test search result for the
+// link pickers (RND_P_4TFINT_05-322).
+type CrossProjectTest struct {
+	Key        string `json:"key"`
+	Summary    string `json:"summary"`
+	Status     string `json:"status"`
+	ProjectKey string `json:"projectKey"`
+}
+
+// SearchTestsCrossProject searches Tests in projects OTHER than the profile's
+// own project by free text (key or summary), so the test-call and clone-steps
+// pickers can reach tests in other projects (RND_P_4TFINT_05-322). Live backend
+// call; returns up to 50 matches. Empty query yields no results.
+func (a *App) SearchTestsCrossProject(profileID, query string) ([]CrossProjectTest, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	b, err := a.backendFor(profileID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := b.SearchTestsAcrossProjects(a.ctx, p.ProjectKey, query, 50)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CrossProjectTest, 0, len(rows))
+	for _, t := range rows {
+		out = append(out, CrossProjectTest{
+			Key:        t.Key,
+			Summary:    t.Summary,
+			Status:     t.Status,
+			ProjectKey: t.ProjectKey,
+		})
+	}
+	return out, nil
+}
+
+// CacheExternalPreconditions upserts cross-project preconditions chosen in a
+// picker into the local cache, so a linked precondition from another project
+// still displays with its summary even though the pull sync only fetches the
+// profile's own project (RND_P_4TFINT_05-322). The precondition table has no
+// project column, so a foreign precondition sits alongside local ones; sync is
+// additive and never deletes it.
+func (a *App) CacheExternalPreconditions(profileID string, preconditions []testrepo.Precondition) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	if len(preconditions) == 0 {
+		return nil
+	}
+	return a.repo.UpsertPreconditions(profileID, preconditions)
+}
+
+// SearchPreconditionsCrossProject searches Preconditions in projects OTHER than
+// the profile's own project by free text, for cross-project precondition
+// linking (RND_P_4TFINT_05-322). Live backend call; returns up to 50 matches.
+func (a *App) SearchPreconditionsCrossProject(profileID, query string) ([]testrepo.Precondition, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	b, err := a.backendFor(profileID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := b.SearchPreconditionsAcrossProjects(a.ctx, p.ProjectKey, query, 50)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]testrepo.Precondition, 0, len(rows))
+	for _, pc := range rows {
+		out = append(out, testrepo.Precondition{
+			Key:         pc.Key,
+			Summary:     pc.Summary,
+			Type:        pc.Type,
+			Description: pc.Description,
+			Condition:   pc.Condition,
+		})
+	}
+	return out, nil
+}
+
 // --- pytest helper (FR-7.2) ---
 
 // ExportPytest generates a Python test scaffold from a Test Set / Plan /

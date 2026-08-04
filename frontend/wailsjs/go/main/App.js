@@ -94,6 +94,10 @@ export function BulkTransitionTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkTransitionTests'](arg1, arg2, arg3);
 }
 
+export function CacheExternalPreconditions(arg1, arg2) {
+  return window['go']['main']['App']['CacheExternalPreconditions'](arg1, arg2);
+}
+
 export function ChangeTestType(arg1, arg2, arg3) {
   return window['go']['main']['App']['ChangeTestType'](arg1, arg2, arg3);
 }
@@ -740,6 +744,14 @@ export function ScanDuplicateGroupSteps(arg1, arg2) {
 
 export function ScanDuplicates(arg1) {
   return window['go']['main']['App']['ScanDuplicates'](arg1);
+}
+
+export function SearchPreconditionsCrossProject(arg1, arg2) {
+  return window['go']['main']['App']['SearchPreconditionsCrossProject'](arg1, arg2);
+}
+
+export function SearchTestsCrossProject(arg1, arg2) {
+  return window['go']['main']['App']['SearchTestsCrossProject'](arg1, arg2);
 }
 
 export function SeedDemoCoverageExample(arg1) {

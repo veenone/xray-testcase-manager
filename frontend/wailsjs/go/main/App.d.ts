@@ -59,6 +59,8 @@ export function BulkSetTestRunStatus(arg1:string,arg2:string,arg3:Array<string>,
 
 export function BulkTransitionTests(arg1:string,arg2:Array<string>,arg3:string):Promise<main.BulkTransitionResult>;
 
+export function CacheExternalPreconditions(arg1:string,arg2:Array<testrepo.Precondition>):Promise<void>;
+
 export function ChangeTestType(arg1:string,arg2:string,arg3:string):Promise<testrepo.TypeConversion>;
 
 export function CheckJiraTestSteps(arg1:string,arg2:string):Promise<main.JiraStepInfo>;
@@ -382,6 +384,10 @@ export function ScanAllDuplicateSteps(arg1:string):Promise<number>;
 export function ScanDuplicateGroupSteps(arg1:string,arg2:string):Promise<testrepo.DuplicateGroup>;
 
 export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;
+
+export function SearchPreconditionsCrossProject(arg1:string,arg2:string):Promise<Array<testrepo.Precondition>>;
+
+export function SearchTestsCrossProject(arg1:string,arg2:string):Promise<Array<main.CrossProjectTest>>;
 
 export function SeedDemoCoverageExample(arg1:string):Promise<string>;
 

@@ -54,6 +54,22 @@ func (a *Adapter) ListTestsBasic(ctx context.Context, keys []string) ([]backend.
 	return toTestBasics(tb), nil
 }
 
+func (a *Adapter) SearchTestsAcrossProjects(ctx context.Context, excludeProjectKey, query string, limit int) ([]backend.TestBasic, error) {
+	tb, err := a.c.SearchTestsAcrossProjects(ctx, excludeProjectKey, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	return toTestBasics(tb), nil
+}
+
+func (a *Adapter) SearchPreconditionsAcrossProjects(ctx context.Context, excludeProjectKey, query string, limit int) ([]backend.Precondition, error) {
+	pcs, err := a.c.SearchPreconditionsAcrossProjects(ctx, excludeProjectKey, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	return toPreconditions(pcs), nil
+}
+
 func (a *Adapter) GetTestFields(ctx context.Context, key string) (backend.Test, error) {
 	t, err := a.c.GetTestFields(ctx, key)
 	if err != nil {

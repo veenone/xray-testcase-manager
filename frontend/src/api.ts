@@ -155,6 +155,9 @@ export {
   GetSubTaskTraceability,
   GetExecutionsForPlans,
   GetProfileProjectKey,
+  SearchTestsCrossProject,
+  SearchPreconditionsCrossProject,
+  CacheExternalPreconditions,
   GetRequirementTraceability,
   ScanDuplicates,
   ScanDuplicateGroupSteps,
@@ -246,6 +249,15 @@ export interface TypeConversion {
   newType: string;
   prefilled: boolean;
   canPrefill: boolean;
+}
+
+// CrossProjectTest is a cross-project Test search result for the link pickers
+// (RND_P_4TFINT_05-322).
+export interface CrossProjectTest {
+  key: string;
+  summary: string;
+  status: string;
+  projectKey: string;
 }
 
 // Coverage module data shapes (mirror internal/coverage/*.go JSON tags).

@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
-import { ListTests, GetTestSteps, errMsg } from "../api";
-import type { TestCase, Step, StepDraft } from "../api";
+import { ListTests, SearchTestsCrossProject, GetTestSteps, errMsg } from "../api";
+import type { Step, StepDraft } from "../api";
+
+// A normalized source row: same-project rows carry no projectKey; cross-project
+// rows (RND_P_4TFINT_05-322) carry the owning project's key.
+interface SourceRow {
+  key: string;
+  summary: string;
+  projectKey?: string;
+}
 
 interface Props {
   profileId: string;
@@ -35,13 +43,15 @@ export function CloneStepsModal({
 }: Props) {
   // Stage 1 — source search.
   const [search, setSearch] = useState("");
-  const [results, setResults] = useState<TestCase[]>([]);
+  const [results, setResults] = useState<SourceRow[]>([]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [searching, setSearching] = useState(false);
+  // When on, search source tests across all OTHER projects (live Jira).
+  const [crossProject, setCrossProject] = useState(false);
 
   // Stage 2 — step selection for the chosen source.
-  const [source, setSource] = useState<TestCase | null>(null);
+  const [source, setSource] = useState<SourceRow | null>(null);
   const [sourceSteps, setSourceSteps] = useState<Step[]>([]);
   const [stepsLoading, setStepsLoading] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -51,30 +61,44 @@ export function CloneStepsModal({
 
   useEffect(() => {
     setPage(0);
-  }, [search]);
+  }, [search, crossProject]);
 
   useEffect(() => {
     if (source) return; // pause searching while choosing steps
     let cancelled = false;
     const handle = setTimeout(() => {
       setSearching(true);
-      ListTests(profileId, {
-        search,
-        status: "",
-        folderId: "",
-        containerKey: "",
-        component: "",
-        execType: "",
-        review: "",
-        sortBy: "key",
-        desc: false,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      })
+      setError("");
+      const req = crossProject
+        ? SearchTestsCrossProject(profileId, search).then((rows) => ({
+            tests: (rows ?? []).map((r) => ({
+              key: r.key,
+              summary: r.summary,
+              projectKey: r.projectKey,
+            })),
+            total: (rows ?? []).length,
+          }))
+        : ListTests(profileId, {
+            search,
+            status: "",
+            folderId: "",
+            containerKey: "",
+            component: "",
+            execType: "",
+            review: "",
+            sortBy: "key",
+            desc: false,
+            limit: PAGE_SIZE,
+            offset: page * PAGE_SIZE,
+          }).then((p) => ({
+            tests: (p.tests ?? []).map((t) => ({ key: t.key, summary: t.summary })),
+            total: p.total ?? 0,
+          }));
+      req
         .then((p) => {
           if (cancelled) return;
-          setResults(p.tests ?? []);
-          setTotal(p.total ?? 0);
+          setResults(p.tests);
+          setTotal(p.total);
         })
         .catch((e) => {
           if (!cancelled) setError(errMsg(e));
@@ -87,9 +111,9 @@ export function CloneStepsModal({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [profileId, search, page, source]);
+  }, [profileId, search, page, source, crossProject]);
 
-  async function chooseSource(t: TestCase) {
+  async function chooseSource(t: SourceRow) {
     setError("");
     setStepsLoading(true);
     setSource(t);
@@ -156,10 +180,22 @@ export function CloneStepsModal({
                 <input
                   className="detail-input"
                   autoFocus
-                  placeholder="Search key, summary, description…"
+                  placeholder={
+                    crossProject
+                      ? "Search other projects by key or summary…"
+                      : "Search key, summary, description…"
+                  }
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                <label className="pick-crossproj">
+                  <input
+                    type="checkbox"
+                    checked={crossProject}
+                    onChange={(e) => setCrossProject(e.target.checked)}
+                  />
+                  Search other projects
+                </label>
                 {searching ? (
                   <p className="muted">Searching…</p>
                 ) : (
@@ -171,15 +207,24 @@ export function CloneStepsModal({
                           onClick={() => chooseSource(t)}
                         >
                           <span className="mono">{t.key}</span> {t.summary}
+                          {t.projectKey && (
+                            <span className="pick-proj-badge">
+                              {t.projectKey}
+                            </span>
+                          )}
                         </button>
                       </li>
                     ))}
                     {visibleResults.length === 0 && (
-                      <li className="muted">No tests match.</li>
+                      <li className="muted">
+                        {crossProject && !search.trim()
+                          ? "Type to search other projects."
+                          : "No tests match."}
+                      </li>
                     )}
                   </ul>
                 )}
-                {total > PAGE_SIZE && (
+                {!crossProject && total > PAGE_SIZE && (
                   <div className="add-test-pager">
                     <button
                       className="btn"
