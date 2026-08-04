@@ -430,9 +430,14 @@ export function ProfileForm({
           <input
             value={crossProjectSources}
             onChange={(e) => setCrossProjectSources(e.target.value)}
-            placeholder="e.g. PROJVAL, JKTEE (link preconditions / test calls / cloned steps from these)"
+            placeholder="e.g. PROJVAL, JKTEE"
             spellCheck={false}
           />
+          <span className="field-hint">
+            Project keys you can link preconditions, test calls, and cloned steps
+            from. Separate multiple keys with a comma or space (e.g. "PROJVAL,
+            JKTEE"). Leave blank to disable cross-project linking.
+          </span>
         </label>
       )}
       {!backendIsKiwi && (
