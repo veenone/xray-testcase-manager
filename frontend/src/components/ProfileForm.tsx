@@ -3,6 +3,7 @@ import {
   CreateProfile,
   CreateProfileReusingToken,
   UpdateProfile,
+  SetProfileCrossProjectSources,
   AddConnection,
   UpdateConnection,
   TestConnection,
@@ -127,6 +128,9 @@ export function ProfileForm({
   const [jiraUrl, setJiraUrl] = useState(profile?.jiraUrl ?? connection?.url ?? "");
   const [projectKey, setProjectKey] = useState(profile?.projectKey ?? connection?.projectKey ?? "");
   const [scopeJql, setScopeJql] = useState(profile?.scopeJql ?? connection?.scopeJql ?? "");
+  const [crossProjectSources, setCrossProjectSources] = useState(
+    profile?.crossProjectSources ?? "",
+  );
   const [bugIssueType, setBugIssueType] = useState(profile?.bugIssueType ?? connection?.bugIssueType ?? "");
   const [bugProjectMode, setBugProjectMode] = useState(
     profile?.bugProjectMode || connection?.bugProjectMode || "test",
@@ -332,6 +336,9 @@ export function ProfileForm({
           backend,
         );
       }
+      // Cross-project source projects are stored via a targeted setter
+      // (RND_P_4TFINT_05-322), separate from the main profile write.
+      await SetProfileCrossProjectSources(p.id, crossProjectSources.trim());
       onCreated?.(p);
     } catch (e) {
       setError(errMsg(e));
@@ -414,6 +421,17 @@ export function ProfileForm({
             value={scopeJql}
             onChange={(e) => setScopeJql(e.target.value)}
             placeholder="e.g. labels = smoke (narrows which tests sync)"
+          />
+        </label>
+      )}
+      {!backendIsKiwi && !isConnection && (
+        <label>
+          Cross-project source projects (optional)
+          <input
+            value={crossProjectSources}
+            onChange={(e) => setCrossProjectSources(e.target.value)}
+            placeholder="e.g. PROJVAL, JKTEE (link preconditions / test calls / cloned steps from these)"
+            spellCheck={false}
           />
         </label>
       )}

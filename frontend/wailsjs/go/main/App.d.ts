@@ -217,6 +217,8 @@ export function GetIgnoreWords():Promise<Array<string>>;
 
 export function GetParamModel(arg1:string,arg2:string):Promise<coverage.ParamModel>;
 
+export function GetProfileCrossProjectSources(arg1:string):Promise<string>;
+
 export function GetProfileProjectKey(arg1:string):Promise<string>;
 
 export function GetRequirementCreateFields(arg1:string,arg2:string,arg3:string):Promise<Array<jira.BugCreateField>>;
@@ -408,6 +410,8 @@ export function SetCoverageProjects(arg1:string,arg2:Array<coverage.ProjectConfi
 export function SetDefaultProfile(arg1:string):Promise<void>;
 
 export function SetMemberVersion(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SetProfileCrossProjectSources(arg1:string,arg2:string):Promise<void>;
 
 export function SetRequirementLinkType(arg1:string):Promise<void>;
 

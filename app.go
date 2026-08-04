@@ -2463,10 +2463,50 @@ type CrossProjectTest struct {
 	ProjectKey string `json:"projectKey"`
 }
 
-// SearchTestsCrossProject searches Tests in projects OTHER than the profile's
-// own project by free text (key or summary), so the test-call and clone-steps
-// pickers can reach tests in other projects (RND_P_4TFINT_05-322). Live backend
-// call; returns up to 50 matches. Empty query yields no results.
+// parseCrossProjectSources splits a profile's comma/whitespace-separated source
+// project keys into a clean list.
+func parseCrossProjectSources(s string) []string {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == ';'
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// SetProfileCrossProjectSources sets a profile's cross-project source project
+// keys (comma-separated), the projects it may link preconditions, test calls,
+// and cloned steps from (RND_P_4TFINT_05-322).
+func (a *App) SetProfileCrossProjectSources(profileID, sources string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.profiles.UpdateCrossProjectSources(profileID, sources)
+}
+
+// GetProfileCrossProjectSources returns a profile's comma-separated
+// cross-project source project keys, so the UI can gate the cross-project link
+// pickers (RND_P_4TFINT_05-322). Empty means cross-project linking is off.
+func (a *App) GetProfileCrossProjectSources(profileID string) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return "", err
+	}
+	return p.CrossProjectSources, nil
+}
+
+// SearchTestsCrossProject searches Tests in the profile's configured source
+// projects by free text (key or summary), so the test-call and clone-steps
+// pickers can reach tests in those projects (RND_P_4TFINT_05-322). Live backend
+// call; returns up to 50 matches. No configured sources or an empty query
+// yields no results.
 func (a *App) SearchTestsCrossProject(profileID, query string) ([]CrossProjectTest, error) {
 	if err := a.requireStore(); err != nil {
 		return nil, err
@@ -2475,11 +2515,15 @@ func (a *App) SearchTestsCrossProject(profileID, query string) ([]CrossProjectTe
 	if err != nil {
 		return nil, err
 	}
+	sources := parseCrossProjectSources(p.CrossProjectSources)
+	if len(sources) == 0 {
+		return []CrossProjectTest{}, nil
+	}
 	b, err := a.backendFor(profileID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := b.SearchTestsAcrossProjects(a.ctx, p.ProjectKey, query, 50)
+	rows, err := b.SearchTestsAcrossProjects(a.ctx, sources, query, 50)
 	if err != nil {
 		return nil, err
 	}
@@ -2522,11 +2566,15 @@ func (a *App) SearchPreconditionsCrossProject(profileID, query string) ([]testre
 	if err != nil {
 		return nil, err
 	}
+	sources := parseCrossProjectSources(p.CrossProjectSources)
+	if len(sources) == 0 {
+		return []testrepo.Precondition{}, nil
+	}
 	b, err := a.backendFor(profileID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := b.SearchPreconditionsAcrossProjects(a.ctx, p.ProjectKey, query, 50)
+	rows, err := b.SearchPreconditionsAcrossProjects(a.ctx, sources, query, 50)
 	if err != nil {
 		return nil, err
 	}

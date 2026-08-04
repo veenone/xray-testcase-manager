@@ -16,6 +16,9 @@ interface Props {
   targetLabel: string;
   // Test key to exclude from the source list (the test being edited), if any.
   excludeKey?: string;
+  // When true, only search the profile's configured source projects (cross-
+  // project), with no same-project toggle (RND_P_4TFINT_05-322).
+  crossProjectOnly?: boolean;
   // Called with the chosen source and the selected steps. stepIds are the
   // source step xray_ids (for a backend clone); steps carries their content
   // (for callers building a local draft). May return a promise; the modal shows
@@ -38,6 +41,7 @@ export function CloneStepsModal({
   profileId,
   targetLabel,
   excludeKey,
+  crossProjectOnly,
   onConfirm,
   onCancel,
 }: Props) {
@@ -47,8 +51,9 @@ export function CloneStepsModal({
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [searching, setSearching] = useState(false);
-  // When on, search source tests across all OTHER projects (live Jira).
-  const [crossProject, setCrossProject] = useState(false);
+  // When on, search source tests in the profile's configured source projects.
+  // Forced (and toggle hidden) when opened as a cross-project picker.
+  const [crossProject, setCrossProject] = useState(!!crossProjectOnly);
 
   // Stage 2 — step selection for the chosen source.
   const [source, setSource] = useState<SourceRow | null>(null);
@@ -188,14 +193,16 @@ export function CloneStepsModal({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
-                <label className="pick-crossproj">
-                  <input
-                    type="checkbox"
-                    checked={crossProject}
-                    onChange={(e) => setCrossProject(e.target.checked)}
-                  />
-                  Search other projects
-                </label>
+                {!crossProjectOnly && (
+                  <label className="pick-crossproj">
+                    <input
+                      type="checkbox"
+                      checked={crossProject}
+                      onChange={(e) => setCrossProject(e.target.checked)}
+                    />
+                    Search other projects
+                  </label>
+                )}
                 {searching ? (
                   <p className="muted">Searching…</p>
                 ) : (

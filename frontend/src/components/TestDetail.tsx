@@ -10,6 +10,7 @@ import {
   EditPreconditionField,
   CreatePrecondition,
   CacheExternalPreconditions,
+  GetProfileCrossProjectSources,
   GetTestContainers,
   DeallocateTests,
   GetTestTransitions,
@@ -147,6 +148,22 @@ export function TestDetail({
     localStorage.setItem("xtm.detailWidth", String(width));
   }, [width]);
 
+  // Load the profile's cross-project source projects once, to gate the
+  // "Other project" link buttons (RND_P_4TFINT_05-322).
+  useEffect(() => {
+    let cancelled = false;
+    GetProfileCrossProjectSources(profileId)
+      .then((s) => {
+        if (!cancelled) setCrossProjectSources(s ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) setCrossProjectSources("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
   function startResize(e: React.MouseEvent) {
     e.preventDefault();
     const startX = e.clientX;
@@ -198,6 +215,13 @@ export function TestDetail({
   const [stepsError, setStepsError] = useState("");
   const [showCloneSteps, setShowCloneSteps] = useState(false);
   const [showCallPicker, setShowCallPicker] = useState(false);
+  // Cross-project link affordances (RND_P_4TFINT_05-322): the profile's
+  // configured source projects gate the "Other project" buttons; separate
+  // modal flags open the pickers in cross-project-only mode.
+  const [crossProjectSources, setCrossProjectSources] = useState("");
+  const crossProjectEnabled = crossProjectSources.trim() !== "";
+  const [showCrossCall, setShowCrossCall] = useState(false);
+  const [showCrossClone, setShowCrossClone] = useState(false);
   const [cloning, setCloning] = useState(false);
   // What Jira itself reports about this Test's steps — used to warn when the
   // panel is empty but Jira actually has steps (a load/shape problem), so the
@@ -1182,14 +1206,16 @@ export function TestDetail({
                   >
                     ＋ New
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost pre-add-new"
-                    onClick={() => setShowCrossPrecond(true)}
-                    title="Link a precondition from another project"
-                  >
-                    ↗ Other project
-                  </button>
+                  {crossProjectEnabled && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost pre-add-new"
+                      onClick={() => setShowCrossPrecond(true)}
+                      title="Link a precondition from another project"
+                    >
+                      ↗ Other project
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn-ghost pre-add-new"
@@ -1546,6 +1572,16 @@ export function TestDetail({
                 Clone from…
               </button>
             )}
+            {!readOnly && caps.stepModel === "objects" && crossProjectEnabled && (
+              <button
+                className="link-btn steps-clone"
+                onClick={() => setShowCrossClone(true)}
+                disabled={stepsLoading}
+                title="Clone steps from a test in another project"
+              >
+                ↗ Other project
+              </button>
+            )}
           </h4>
           {stepsError && <div className="error-text">{stepsError}</div>}
           {caps.stepModel === "objects" ? (
@@ -1619,6 +1655,15 @@ export function TestDetail({
                   >
                     + Call test
                   </button>
+                  {crossProjectEnabled && (
+                    <button
+                      className="link-btn steps-add"
+                      onClick={() => setShowCrossCall(true)}
+                      title="Call a test from another project"
+                    >
+                      ↗ Other project
+                    </button>
+                  )}
                 </div>
               )}
             </>
@@ -1666,6 +1711,43 @@ export function TestDetail({
             const s = await AddCalledTestStep(profileId, testKey, calledKey);
             setSteps((prev) => [...prev, s]);
             setShowCallPicker(false);
+            onEdited();
+          }}
+        />
+      )}
+
+      {!readOnly && showCrossCall && (
+        <PickTestModal
+          profileId={profileId}
+          heading={`Call a test from another project`}
+          excludeKey={testKey}
+          crossProjectOnly
+          onCancel={() => setShowCrossCall(false)}
+          onPick={async (calledKey) => {
+            const s = await AddCalledTestStep(profileId, testKey, calledKey);
+            setSteps((prev) => [...prev, s]);
+            setShowCrossCall(false);
+            onEdited();
+          }}
+        />
+      )}
+
+      {!readOnly && showCrossClone && (
+        <CloneStepsModal
+          profileId={profileId}
+          targetLabel={testKey}
+          excludeKey={testKey}
+          crossProjectOnly
+          onCancel={() => setShowCrossClone(false)}
+          onConfirm={async (sourceKey, stepIds) => {
+            const newSteps = await CloneTestSteps(
+              profileId,
+              testKey,
+              sourceKey,
+              stepIds,
+            );
+            setSteps(newSteps ?? []);
+            setShowCrossClone(false);
             onEdited();
           }}
         />

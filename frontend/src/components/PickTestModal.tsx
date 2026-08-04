@@ -6,6 +6,9 @@ interface Props {
   heading: string;
   // Test key to exclude from the list (e.g. the test being edited).
   excludeKey?: string;
+  // When true, the modal only searches the profile's configured source projects
+  // (cross-project), with no same-project toggle (RND_P_4TFINT_05-322).
+  crossProjectOnly?: boolean;
   onPick: (key: string) => void | Promise<void>;
   onCancel: () => void;
 }
@@ -28,6 +31,7 @@ export function PickTestModal({
   profileId,
   heading,
   excludeKey,
+  crossProjectOnly,
   onPick,
   onCancel,
 }: Props) {
@@ -38,9 +42,10 @@ export function PickTestModal({
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // When on, search tests across all OTHER projects (live Jira), instead of the
-  // profile's own cached tests.
-  const [crossProject, setCrossProject] = useState(false);
+  // When on, search tests in the profile's configured source projects instead
+  // of the profile's own cached tests. Forced (and toggle hidden) when the
+  // caller opened this as a cross-project picker.
+  const [crossProject, setCrossProject] = useState(!!crossProjectOnly);
 
   useEffect(() => {
     setPage(0);
@@ -131,15 +136,17 @@ export function PickTestModal({
               onChange={(e) => setSearch(e.target.value)}
               disabled={busy}
             />
-            <label className="pick-crossproj">
-              <input
-                type="checkbox"
-                checked={crossProject}
-                onChange={(e) => setCrossProject(e.target.checked)}
-                disabled={busy}
-              />
-              Search other projects
-            </label>
+            {!crossProjectOnly && (
+              <label className="pick-crossproj">
+                <input
+                  type="checkbox"
+                  checked={crossProject}
+                  onChange={(e) => setCrossProject(e.target.checked)}
+                  disabled={busy}
+                />
+                Search other projects
+              </label>
+            )}
             {loading ? (
               <p className="muted">Searching…</p>
             ) : (

@@ -353,11 +353,11 @@ func (a *Adapter) ListTestsBasic(ctx context.Context, keys []string) ([]backend.
 // analog (Kiwi has no cross-Product issue-key search and no separate
 // precondition issues), so they return no candidates. Cross-project linking
 // (RND_P_4TFINT_05-322) is an Xray-only capability today.
-func (a *Adapter) SearchTestsAcrossProjects(ctx context.Context, excludeProjectKey, query string, limit int) ([]backend.TestBasic, error) {
+func (a *Adapter) SearchTestsAcrossProjects(ctx context.Context, projectKeys []string, query string, limit int) ([]backend.TestBasic, error) {
 	return []backend.TestBasic{}, nil
 }
 
-func (a *Adapter) SearchPreconditionsAcrossProjects(ctx context.Context, excludeProjectKey, query string, limit int) ([]backend.Precondition, error) {
+func (a *Adapter) SearchPreconditionsAcrossProjects(ctx context.Context, projectKeys []string, query string, limit int) ([]backend.Precondition, error) {
 	return []backend.Precondition{}, nil
 }
 

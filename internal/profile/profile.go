@@ -30,7 +30,11 @@ type Profile struct {
 	JiraURL      string `json:"jiraUrl"`
 	ProjectKey   string `json:"projectKey"`
 	ScopeJQL     string `json:"scopeJql"`
-	BugIssueType string `json:"bugIssueType"`
+	// CrossProjectSources is a comma-separated list of project keys this profile
+	// may link preconditions, test calls, and cloned steps from (across
+	// projects, RND_P_4TFINT_05-322). Empty disables cross-project linking.
+	CrossProjectSources string `json:"crossProjectSources"`
+	BugIssueType        string `json:"bugIssueType"`
 	// BugProjectMode is where a filed defect lands: "test" (the test's project,
 	// the default), "execution" (the Test Execution's project), or "dedicated"
 	// (BugProjectKey).
@@ -90,7 +94,7 @@ func (m *Manager) syncConnection(p Profile) error {
 // List returns all profiles, ordered by name.
 func (m *Manager) List() ([]Profile, error) {
 	rows, err := m.db.Query(
-		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, backend, created_at FROM profiles ORDER BY name`)
+		`SELECT id, name, jira_url, project_key, scope_jql, cross_project_sources, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, backend, created_at FROM profiles ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list profiles: %w", err)
 	}
@@ -110,7 +114,7 @@ func (m *Manager) List() ([]Profile, error) {
 // Get returns one profile by id, or ErrNotFound.
 func (m *Manager) Get(id string) (Profile, error) {
 	row := m.db.QueryRow(
-		`SELECT id, name, jira_url, project_key, scope_jql, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, backend, created_at FROM profiles WHERE id = ?`, id)
+		`SELECT id, name, jira_url, project_key, scope_jql, cross_project_sources, bug_issue_type, bug_project_mode, bug_project_key, ca_cert, allow_untrusted_tls, backend, created_at FROM profiles WHERE id = ?`, id)
 	p, err := scanProfile(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Profile{}, ErrNotFound
@@ -233,6 +237,21 @@ func (m *Manager) UpdateScope(id, scopeJQL string) error {
 	return nil
 }
 
+// UpdateCrossProjectSources sets a profile's comma-separated list of source
+// project keys for cross-project linking (RND_P_4TFINT_05-322).
+func (m *Manager) UpdateCrossProjectSources(id, sources string) error {
+	res, err := m.db.Exec(
+		`UPDATE profiles SET cross_project_sources = ? WHERE id = ?`,
+		strings.TrimSpace(sources), id)
+	if err != nil {
+		return fmt.Errorf("update cross-project sources: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Delete removes a profile, or returns ErrNotFound. Its primary connection
 // row is removed alongside it; an already-missing connection (e.g. a profile
 // created before the connection table existed on a database that has not
@@ -263,7 +282,7 @@ func scanProfile(s scanner) (Profile, error) {
 		allowUntrustedInt int
 		created           string
 	)
-	if err := s.Scan(&p.ID, &p.Name, &p.JiraURL, &p.ProjectKey, &p.ScopeJQL, &p.BugIssueType, &p.BugProjectMode, &p.BugProjectKey, &p.CACert, &allowUntrustedInt, &p.Backend, &created); err != nil {
+	if err := s.Scan(&p.ID, &p.Name, &p.JiraURL, &p.ProjectKey, &p.ScopeJQL, &p.CrossProjectSources, &p.BugIssueType, &p.BugProjectMode, &p.BugProjectKey, &p.CACert, &allowUntrustedInt, &p.Backend, &created); err != nil {
 		return Profile{}, err
 	}
 	p.AllowUntrustedTLS = allowUntrustedInt != 0

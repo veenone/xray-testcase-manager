@@ -1203,6 +1203,7 @@ export namespace profile {
 	    jiraUrl: string;
 	    projectKey: string;
 	    scopeJql: string;
+	    crossProjectSources: string;
 	    bugIssueType: string;
 	    bugProjectMode: string;
 	    bugProjectKey: string;
@@ -1223,6 +1224,7 @@ export namespace profile {
 	        this.jiraUrl = source["jiraUrl"];
 	        this.projectKey = source["projectKey"];
 	        this.scopeJql = source["scopeJql"];
+	        this.crossProjectSources = source["crossProjectSources"];
 	        this.bugIssueType = source["bugIssueType"];
 	        this.bugProjectMode = source["bugProjectMode"];
 	        this.bugProjectKey = source["bugProjectKey"];

@@ -22,6 +22,7 @@ export {
   UpdateProfile,
   SyncProfileFull,
   UpdateProfileScope,
+  SetProfileCrossProjectSources,
   ExportProfile,
   ImportProfile,
   UpdateProfileToken,
@@ -158,6 +159,7 @@ export {
   SearchTestsCrossProject,
   SearchPreconditionsCrossProject,
   CacheExternalPreconditions,
+  GetProfileCrossProjectSources,
   GetRequirementTraceability,
   ScanDuplicates,
   ScanDuplicateGroupSteps,
@@ -531,6 +533,10 @@ export interface Profile {
   jiraUrl: string;
   projectKey: string;
   scopeJql: string;
+  // crossProjectSources is a comma-separated list of source project keys this
+  // profile may link preconditions, test calls, and cloned steps from
+  // (RND_P_4TFINT_05-322). Empty disables cross-project linking.
+  crossProjectSources: string;
   bugIssueType: string;
   bugProjectMode: string; // "test" | "execution" | "dedicated"
   bugProjectKey: string;

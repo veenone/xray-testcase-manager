@@ -18,7 +18,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 46
+const schemaVersion = 47
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS profiles (
 	bug_project_key TEXT NOT NULL DEFAULT '',
 	ca_cert TEXT NOT NULL DEFAULT '',
 	allow_untrusted_tls INTEGER NOT NULL DEFAULT 0,
-	backend TEXT NOT NULL DEFAULT 'xray'
+	backend TEXT NOT NULL DEFAULT 'xray',
+	cross_project_sources TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS sync_state (
@@ -1279,6 +1280,15 @@ func applyMigrations(db *sql.DB) error {
 		`ALTER TABLE test_container ADD COLUMN labels TEXT NOT NULL DEFAULT ''`,
 	); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 		return fmt.Errorf("v46 add test_container.labels: %w", err)
+	}
+
+	// v47: cross_project_sources on profiles — the per-profile list of source
+	// project keys for cross-project linking (RND_P_4TFINT_05-322). Applied
+	// unconditionally; tolerated when the column already exists.
+	if _, err := db.Exec(
+		`ALTER TABLE profiles ADD COLUMN cross_project_sources TEXT NOT NULL DEFAULT ''`,
+	); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return fmt.Errorf("v47 add profiles.cross_project_sources: %w", err)
 	}
 	return nil
 }

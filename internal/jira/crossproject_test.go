@@ -18,12 +18,12 @@ func TestCrossProjectClause(t *testing.T) {
 	}
 }
 
-func TestExcludeProjectClause(t *testing.T) {
-	if got := excludeProjectClause("DEMO"); got != ` AND project != "DEMO"` {
+func TestInProjectClause(t *testing.T) {
+	if got := inProjectClause([]string{"PROJVAL", "JKTEE"}); got != `project in ("PROJVAL", "JKTEE")` {
 		t.Errorf("clause = %q", got)
 	}
-	if got := excludeProjectClause("  "); got != "" {
-		t.Errorf("blank project should yield no clause, got %q", got)
+	if got := inProjectClause([]string{"  ", ""}); got != "" {
+		t.Errorf("blank projects should yield no clause, got %q", got)
 	}
 }
 
@@ -31,7 +31,7 @@ func TestSearchTestsAcrossProjectsDemo(t *testing.T) {
 	c := NewClient("demo", "tok")
 	ctx := context.Background()
 
-	got, err := c.SearchTestsAcrossProjects(ctx, "DEMO", "login", 50)
+	got, err := c.SearchTestsAcrossProjects(ctx, []string{"PROJVAL"}, "login", 50)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -39,21 +39,18 @@ func TestSearchTestsAcrossProjectsDemo(t *testing.T) {
 		t.Fatalf("want 3 cross-project matches, got %d", len(got))
 	}
 	for _, tb := range got {
-		if tb.ProjectKey != demoForeignProject {
-			t.Errorf("result %s projectKey = %q, want %q", tb.Key, tb.ProjectKey, demoForeignProject)
-		}
-		if tb.ProjectKey == "DEMO" {
-			t.Errorf("cross-project search must exclude the active project")
+		if tb.ProjectKey != "PROJVAL" {
+			t.Errorf("result %s projectKey = %q, want PROJVAL", tb.Key, tb.ProjectKey)
 		}
 	}
 
 	// Empty query → no results.
-	if got, _ := c.SearchTestsAcrossProjects(ctx, "DEMO", "  ", 50); len(got) != 0 {
+	if got, _ := c.SearchTestsAcrossProjects(ctx, []string{"PROJVAL"}, "  ", 50); len(got) != 0 {
 		t.Errorf("empty query should yield no results, got %d", len(got))
 	}
-	// Excluding the foreign project itself → no results.
-	if got, _ := c.SearchTestsAcrossProjects(ctx, demoForeignProject, "login", 50); len(got) != 0 {
-		t.Errorf("excluding the foreign project should yield no results, got %d", len(got))
+	// No configured source projects → no results.
+	if got, _ := c.SearchTestsAcrossProjects(ctx, nil, "login", 50); len(got) != 0 {
+		t.Errorf("no source projects should yield no results, got %d", len(got))
 	}
 }
 
@@ -61,7 +58,7 @@ func TestSearchPreconditionsAcrossProjectsDemo(t *testing.T) {
 	c := NewClient("demo", "tok")
 	ctx := context.Background()
 
-	got, err := c.SearchPreconditionsAcrossProjects(ctx, "DEMO", "logged in", 50)
+	got, err := c.SearchPreconditionsAcrossProjects(ctx, []string{"PROJVAL"}, "logged in", 50)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -73,7 +70,10 @@ func TestSearchPreconditionsAcrossProjectsDemo(t *testing.T) {
 			t.Errorf("precondition missing key/summary: %+v", p)
 		}
 	}
-	if got, _ := c.SearchPreconditionsAcrossProjects(ctx, "DEMO", "", 50); len(got) != 0 {
+	if got, _ := c.SearchPreconditionsAcrossProjects(ctx, []string{"PROJVAL"}, "", 50); len(got) != 0 {
 		t.Errorf("empty query should yield no results, got %d", len(got))
+	}
+	if got, _ := c.SearchPreconditionsAcrossProjects(ctx, nil, "logged in", 50); len(got) != 0 {
+		t.Errorf("no source projects should yield no results, got %d", len(got))
 	}
 }

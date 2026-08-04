@@ -410,6 +410,10 @@ export function GetParamModel(arg1, arg2) {
   return window['go']['main']['App']['GetParamModel'](arg1, arg2);
 }
 
+export function GetProfileCrossProjectSources(arg1) {
+  return window['go']['main']['App']['GetProfileCrossProjectSources'](arg1);
+}
+
 export function GetProfileProjectKey(arg1) {
   return window['go']['main']['App']['GetProfileProjectKey'](arg1);
 }
@@ -792,6 +796,10 @@ export function SetDefaultProfile(arg1) {
 
 export function SetMemberVersion(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetMemberVersion'](arg1, arg2, arg3, arg4);
+}
+
+export function SetProfileCrossProjectSources(arg1, arg2) {
+  return window['go']['main']['App']['SetProfileCrossProjectSources'](arg1, arg2);
 }
 
 export function SetRequirementLinkType(arg1) {
