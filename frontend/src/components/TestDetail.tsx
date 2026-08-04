@@ -219,7 +219,11 @@ export function TestDetail({
   // configured source projects gate the "Other project" buttons; separate
   // modal flags open the pickers in cross-project-only mode.
   const [crossProjectSources, setCrossProjectSources] = useState("");
-  const crossProjectEnabled = crossProjectSources.trim() !== "";
+  const crossProjectSourceList = crossProjectSources
+    .split(/[\s,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const crossProjectEnabled = crossProjectSourceList.length > 0;
   const [showCrossCall, setShowCrossCall] = useState(false);
   const [showCrossClone, setShowCrossClone] = useState(false);
   const [cloning, setCloning] = useState(false);
@@ -1727,6 +1731,7 @@ export function TestDetail({
           heading={`Call a test from another project`}
           excludeKey={testKey}
           crossProjectOnly
+          sourceProjects={crossProjectSourceList}
           onCancel={() => setShowCrossCall(false)}
           onPick={async (calledKey) => {
             const s = await AddCalledTestStep(profileId, testKey, calledKey);
@@ -1743,6 +1748,7 @@ export function TestDetail({
           targetLabel={testKey}
           excludeKey={testKey}
           crossProjectOnly
+          sourceProjects={crossProjectSourceList}
           onCancel={() => setShowCrossClone(false)}
           onConfirm={async (sourceKey, stepIds) => {
             const newSteps = await CloneTestSteps(
@@ -1762,6 +1768,7 @@ export function TestDetail({
         <PickPreconditionModal
           profileId={profileId}
           excludeKeys={preconditions.map((p) => p.key)}
+          sourceProjects={crossProjectSourceList}
           onCancel={() => setShowCrossPrecond(false)}
           onPick={addCrossProjectPreconditions}
         />

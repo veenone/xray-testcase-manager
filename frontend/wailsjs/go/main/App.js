@@ -750,12 +750,12 @@ export function ScanDuplicates(arg1) {
   return window['go']['main']['App']['ScanDuplicates'](arg1);
 }
 
-export function SearchPreconditionsCrossProject(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SearchPreconditionsCrossProject'](arg1, arg2, arg3);
+export function SearchPreconditionsCrossProject(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SearchPreconditionsCrossProject'](arg1, arg2, arg3, arg4);
 }
 
-export function SearchTestsCrossProject(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SearchTestsCrossProject'](arg1, arg2, arg3);
+export function SearchTestsCrossProject(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SearchTestsCrossProject'](arg1, arg2, arg3, arg4);
 }
 
 export function SeedDemoCoverageExample(arg1) {

@@ -387,9 +387,9 @@ export function ScanDuplicateGroupSteps(arg1:string,arg2:string):Promise<testrep
 
 export function ScanDuplicates(arg1:string):Promise<testrepo.DuplicateReport>;
 
-export function SearchPreconditionsCrossProject(arg1:string,arg2:string,arg3:number):Promise<main.CrossProjectPreconditionPage>;
+export function SearchPreconditionsCrossProject(arg1:string,arg2:string,arg3:string,arg4:number):Promise<main.CrossProjectPreconditionPage>;
 
-export function SearchTestsCrossProject(arg1:string,arg2:string,arg3:number):Promise<main.CrossProjectTestPage>;
+export function SearchTestsCrossProject(arg1:string,arg2:string,arg3:string,arg4:number):Promise<main.CrossProjectTestPage>;
 
 export function SeedDemoCoverageExample(arg1:string):Promise<string>;
 

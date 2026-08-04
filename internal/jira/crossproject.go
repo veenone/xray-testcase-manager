@@ -172,17 +172,6 @@ func (c *Client) SearchPreconditionsAcrossProjects(ctx context.Context, projectK
 	return out, resp.Total, nil
 }
 
-// demoSourceProject returns the first configured source project key, so the
-// demo search yields results keyed by a project the user actually configured.
-func demoSourceProject(projectKeys []string) string {
-	for _, p := range projectKeys {
-		if p = strings.TrimSpace(p); p != "" {
-			return p
-		}
-	}
-	return ""
-}
-
 // demoCrossProjectFeatures gives the demo browse list varied, queryable
 // summaries so both browsing and searching are demonstrable offline.
 var demoCrossProjectFeatures = []string{
@@ -216,22 +205,24 @@ func demoPageBasics(all []TestBasic, query string, offset, limit int) ([]TestBas
 	return filtered[offset:end], total
 }
 
-// demoSearchTestsAcrossProjects returns a deterministic browse list of tests in
-// the first configured source project, filtered by query and paged. Minimal by
-// design — live Jira is the real target.
+// demoSearchTestsAcrossProjects returns a deterministic browse list of tests
+// across the given source projects (so the picker's project sidebar is
+// demonstrable offline), filtered by query and paged. Minimal by design — live
+// Jira is the real target.
 func demoSearchTestsAcrossProjects(projectKeys []string, query string, offset, limit int) ([]TestBasic, int) {
-	src := demoSourceProject(projectKeys)
-	if src == "" {
-		return []TestBasic{}, 0
-	}
-	all := make([]TestBasic, 0, len(demoCrossProjectFeatures))
-	for i, feat := range demoCrossProjectFeatures {
-		all = append(all, TestBasic{
-			Key:        fmt.Sprintf("%s-%d", src, i+1),
-			Summary:    feat,
-			Status:     "Approved",
-			ProjectKey: src,
-		})
+	all := []TestBasic{}
+	for _, src := range projectKeys {
+		if src = strings.TrimSpace(src); src == "" {
+			continue
+		}
+		for i, feat := range demoCrossProjectFeatures {
+			all = append(all, TestBasic{
+				Key:        fmt.Sprintf("%s-%d", src, i+1),
+				Summary:    feat,
+				Status:     "Approved",
+				ProjectKey: src,
+			})
+		}
 	}
 	return demoPageBasics(all, query, offset, limit)
 }
@@ -239,25 +230,26 @@ func demoSearchTestsAcrossProjects(projectKeys []string, query string, offset, l
 // demoSearchPreconditionsAcrossProjects mirrors demoSearchTestsAcrossProjects
 // for preconditions.
 func demoSearchPreconditionsAcrossProjects(projectKeys []string, query string, offset, limit int) ([]Precondition, int) {
-	src := demoSourceProject(projectKeys)
-	if src == "" {
-		return []Precondition{}, 0
-	}
 	q := strings.ToLower(strings.TrimSpace(query))
-	all := make([]Precondition, 0, len(demoCrossProjectFeatures))
-	for i, feat := range demoCrossProjectFeatures {
-		summary := feat + " precondition"
-		key := fmt.Sprintf("%s-P-%d", src, i+1)
-		if q != "" && !strings.Contains(strings.ToLower(summary), q) &&
-			!strings.Contains(strings.ToLower(key), q) {
+	all := []Precondition{}
+	for _, src := range projectKeys {
+		if src = strings.TrimSpace(src); src == "" {
 			continue
 		}
-		all = append(all, Precondition{
-			Key:         key,
-			Summary:     summary,
-			Type:        "Manual",
-			Description: fmt.Sprintf("(Demo cross-project precondition: %s)", feat),
-		})
+		for i, feat := range demoCrossProjectFeatures {
+			summary := feat + " precondition"
+			key := fmt.Sprintf("%s-P-%d", src, i+1)
+			if q != "" && !strings.Contains(strings.ToLower(summary), q) &&
+				!strings.Contains(strings.ToLower(key), q) {
+				continue
+			}
+			all = append(all, Precondition{
+				Key:         key,
+				Summary:     summary,
+				Type:        "Manual",
+				Description: fmt.Sprintf("(Demo cross-project precondition: %s)", feat),
+			})
+		}
 	}
 	total := len(all)
 	if offset >= total {

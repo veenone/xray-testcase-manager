@@ -2495,6 +2495,22 @@ func parseCrossProjectSources(s string) []string {
 	return out
 }
 
+// scopeCrossProjectSources returns the configured source projects, narrowed to a
+// single project when `project` names one of them (the picker's project-sidebar
+// selection, RND_P_4TFINT_05-322). A blank or unknown project returns all
+// configured sources.
+func scopeCrossProjectSources(configured, project string) []string {
+	sources := parseCrossProjectSources(configured)
+	if project = strings.TrimSpace(project); project != "" {
+		for _, s := range sources {
+			if strings.EqualFold(s, project) {
+				return []string{s}
+			}
+		}
+	}
+	return sources
+}
+
 // SetProfileCrossProjectSources sets a profile's cross-project source project
 // keys (comma-separated), the projects it may link preconditions, test calls,
 // and cloned steps from (RND_P_4TFINT_05-322).
@@ -2524,7 +2540,7 @@ func (a *App) GetProfileCrossProjectSources(profileID string) (string, error) {
 // pickers can reach tests in those projects (RND_P_4TFINT_05-322). Live backend
 // call; returns up to 50 matches. No configured sources or an empty query
 // yields no results.
-func (a *App) SearchTestsCrossProject(profileID, query string, offset int) (CrossProjectTestPage, error) {
+func (a *App) SearchTestsCrossProject(profileID, query, project string, offset int) (CrossProjectTestPage, error) {
 	if err := a.requireStore(); err != nil {
 		return CrossProjectTestPage{}, err
 	}
@@ -2532,7 +2548,7 @@ func (a *App) SearchTestsCrossProject(profileID, query string, offset int) (Cros
 	if err != nil {
 		return CrossProjectTestPage{}, err
 	}
-	sources := parseCrossProjectSources(p.CrossProjectSources)
+	sources := scopeCrossProjectSources(p.CrossProjectSources, project)
 	if len(sources) == 0 {
 		return CrossProjectTestPage{Tests: []CrossProjectTest{}}, nil
 	}
@@ -2576,7 +2592,7 @@ func (a *App) CacheExternalPreconditions(profileID string, preconditions []testr
 // profile's configured source projects for cross-project linking
 // (RND_P_4TFINT_05-322). An empty query lists all; paged from offset with the
 // total match count.
-func (a *App) SearchPreconditionsCrossProject(profileID, query string, offset int) (CrossProjectPreconditionPage, error) {
+func (a *App) SearchPreconditionsCrossProject(profileID, query, project string, offset int) (CrossProjectPreconditionPage, error) {
 	if err := a.requireStore(); err != nil {
 		return CrossProjectPreconditionPage{}, err
 	}
@@ -2584,7 +2600,7 @@ func (a *App) SearchPreconditionsCrossProject(profileID, query string, offset in
 	if err != nil {
 		return CrossProjectPreconditionPage{}, err
 	}
-	sources := parseCrossProjectSources(p.CrossProjectSources)
+	sources := scopeCrossProjectSources(p.CrossProjectSources, project)
 	if len(sources) == 0 {
 		return CrossProjectPreconditionPage{Preconditions: []testrepo.Precondition{}}, nil
 	}

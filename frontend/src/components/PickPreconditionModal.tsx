@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { SearchPreconditionsCrossProject, errMsg } from "../api";
 import type { Precondition } from "../api";
+import { ProjectSidebar } from "./ProjectSidebar";
 
 interface Props {
   profileId: string;
   // Keys already linked, shown disabled.
   excludeKeys?: string[];
+  // Configured source project keys, for the left project filter sidebar.
+  sourceProjects?: string[];
   // Called with the chosen preconditions (in full, so the caller can cache
   // them for display). May return a promise; errors surface without closing.
   onPick: (preconditions: Precondition[]) => void | Promise<void>;
@@ -22,6 +25,7 @@ const PAGE_SIZE = 50;
 export function PickPreconditionModal({
   profileId,
   excludeKeys,
+  sourceProjects,
   onPick,
   onCancel,
 }: Props) {
@@ -30,22 +34,24 @@ export function PickPreconditionModal({
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [project, setProject] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const exclude = new Set(excludeKeys ?? []);
+  const projects = sourceProjects ?? [];
 
   useEffect(() => {
     setPage(0);
-  }, [search]);
+  }, [search, project]);
 
   useEffect(() => {
     let cancelled = false;
     const handle = setTimeout(() => {
       setLoading(true);
       setError("");
-      SearchPreconditionsCrossProject(profileId, search, page * PAGE_SIZE)
+      SearchPreconditionsCrossProject(profileId, search, project, page * PAGE_SIZE)
         .then((p) => {
           if (cancelled) return;
           setResults(p.preconditions ?? []);
@@ -62,7 +68,7 @@ export function PickPreconditionModal({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [profileId, search, page]);
+  }, [profileId, search, project, page]);
 
   function toggle(key: string) {
     setPicked((prev) => {
@@ -98,6 +104,13 @@ export function PickPreconditionModal({
           </button>
         </div>
         <div className="add-tests-body">
+          {projects.length > 1 && (
+            <ProjectSidebar
+              projects={projects}
+              selected={project}
+              onSelect={setProject}
+            />
+          )}
           <div className="add-tests-main">
             <input
               className="detail-input"

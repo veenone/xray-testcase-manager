@@ -1898,6 +1898,47 @@ button.defect-chip-key:hover {
   display: flex;
   flex-direction: column;
 }
+/* Project filter sidebar for the cross-project link pickers (#322): a list of
+   the configured source project keys on the left of the modal body. */
+.xproj-sidebar {
+  width: 170px;
+  flex-shrink: 0;
+  overflow: auto;
+  max-height: 52vh;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-3);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.xproj-sidebar-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 4px 8px;
+}
+.xproj-sidebar-item {
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.xproj-sidebar-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.xproj-sidebar-item.on {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
 /* Cross-project picker toggle + owning-project badge (RND_P_4TFINT_05-322). */
 .pick-crossproj {
   display: inline-flex;

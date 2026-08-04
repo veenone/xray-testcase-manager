@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ListTests, SearchTestsCrossProject, errMsg } from "../api";
+import { ProjectSidebar } from "./ProjectSidebar";
 
 interface Props {
   profileId: string;
@@ -9,6 +10,9 @@ interface Props {
   // When true, the modal only searches the profile's configured source projects
   // (cross-project), with no same-project toggle (RND_P_4TFINT_05-322).
   crossProjectOnly?: boolean;
+  // Configured source project keys, for the left project filter sidebar (only
+  // shown in cross-project mode).
+  sourceProjects?: string[];
   onPick: (key: string) => void | Promise<void>;
   onCancel: () => void;
 }
@@ -32,6 +36,7 @@ export function PickTestModal({
   heading,
   excludeKey,
   crossProjectOnly,
+  sourceProjects,
   onPick,
   onCancel,
 }: Props) {
@@ -39,6 +44,7 @@ export function PickTestModal({
   const [results, setResults] = useState<PickRow[]>([]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  const [project, setProject] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -46,10 +52,11 @@ export function PickTestModal({
   // of the profile's own cached tests. Forced (and toggle hidden) when the
   // caller opened this as a cross-project picker.
   const [crossProject, setCrossProject] = useState(!!crossProjectOnly);
+  const projects = sourceProjects ?? [];
 
   useEffect(() => {
     setPage(0);
-  }, [search, crossProject]);
+  }, [search, crossProject, project]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +64,7 @@ export function PickTestModal({
       setLoading(true);
       setError("");
       const req = crossProject
-        ? SearchTestsCrossProject(profileId, search, page * PAGE_SIZE).then((p) => ({
+        ? SearchTestsCrossProject(profileId, search, project, page * PAGE_SIZE).then((p) => ({
             tests: (p.tests ?? []).map((r) => ({
               key: r.key,
               summary: r.summary,
@@ -98,7 +105,7 @@ export function PickTestModal({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [profileId, search, page, crossProject]);
+  }, [profileId, search, page, crossProject, project]);
 
   async function pick(key: string) {
     setBusy(true);
@@ -123,6 +130,13 @@ export function PickTestModal({
           </button>
         </div>
         <div className="add-tests-body">
+          {crossProject && projects.length > 1 && (
+            <ProjectSidebar
+              projects={projects}
+              selected={project}
+              onSelect={setProject}
+            />
+          )}
           <div className="add-tests-main">
             <input
               className="detail-input"

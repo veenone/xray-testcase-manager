@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ListTests, SearchTestsCrossProject, GetTestSteps, errMsg } from "../api";
 import type { Step, StepDraft } from "../api";
+import { ProjectSidebar } from "./ProjectSidebar";
 
 // A normalized source row: same-project rows carry no projectKey; cross-project
 // rows (RND_P_4TFINT_05-322) carry the owning project's key.
@@ -19,6 +20,8 @@ interface Props {
   // When true, only search the profile's configured source projects (cross-
   // project), with no same-project toggle (RND_P_4TFINT_05-322).
   crossProjectOnly?: boolean;
+  // Configured source project keys, for the left project filter sidebar.
+  sourceProjects?: string[];
   // Called with the chosen source and the selected steps. stepIds are the
   // source step xray_ids (for a backend clone); steps carries their content
   // (for callers building a local draft). May return a promise; the modal shows
@@ -42,6 +45,7 @@ export function CloneStepsModal({
   targetLabel,
   excludeKey,
   crossProjectOnly,
+  sourceProjects,
   onConfirm,
   onCancel,
 }: Props) {
@@ -54,6 +58,8 @@ export function CloneStepsModal({
   // When on, search source tests in the profile's configured source projects.
   // Forced (and toggle hidden) when opened as a cross-project picker.
   const [crossProject, setCrossProject] = useState(!!crossProjectOnly);
+  const [project, setProject] = useState("");
+  const projects = sourceProjects ?? [];
 
   // Stage 2 — step selection for the chosen source.
   const [source, setSource] = useState<SourceRow | null>(null);
@@ -66,7 +72,7 @@ export function CloneStepsModal({
 
   useEffect(() => {
     setPage(0);
-  }, [search, crossProject]);
+  }, [search, crossProject, project]);
 
   useEffect(() => {
     if (source) return; // pause searching while choosing steps
@@ -75,7 +81,7 @@ export function CloneStepsModal({
       setSearching(true);
       setError("");
       const req = crossProject
-        ? SearchTestsCrossProject(profileId, search, page * PAGE_SIZE).then((p) => ({
+        ? SearchTestsCrossProject(profileId, search, project, page * PAGE_SIZE).then((p) => ({
             tests: (p.tests ?? []).map((r) => ({
               key: r.key,
               summary: r.summary,
@@ -116,7 +122,7 @@ export function CloneStepsModal({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [profileId, search, page, source, crossProject]);
+  }, [profileId, search, page, source, crossProject, project]);
 
   async function chooseSource(t: SourceRow) {
     setError("");
@@ -176,6 +182,13 @@ export function CloneStepsModal({
         </div>
 
         <div className="add-tests-body">
+          {!source && crossProject && projects.length > 1 && (
+            <ProjectSidebar
+              projects={projects}
+              selected={project}
+              onSelect={setProject}
+            />
+          )}
           <div className="add-tests-main">
             {!source ? (
               <>
