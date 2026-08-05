@@ -43,6 +43,8 @@ export function PickPreconditionModal({
 
   const exclude = new Set(excludeKeys ?? []);
   const projects = sourceProjects ?? [];
+  // Show the owning-project badge only when browsing all projects (#322).
+  const showProjectBadge = project === "";
 
   useEffect(() => {
     setPage(0);
@@ -125,33 +127,53 @@ export function PickPreconditionModal({
             {loading ? (
               <p className="muted">Loading…</p>
             ) : (
-              <ul className="add-test-list">
-                {results.map((p) => {
-                  const already = exclude.has(p.key);
-                  return (
-                    <li key={p.key} className={already ? "add-test-already" : ""}>
-                      <label>
-                        <input
-                          type="checkbox"
-                          disabled={already || busy}
-                          checked={already || picked.has(p.key)}
-                          onChange={() => toggle(p.key)}
-                        />
-                        <span className="mono">{p.key}</span> {p.summary}
-                        <span className="pick-proj-badge">
-                          {p.key.split("-")[0]}
-                        </span>
-                        {already && (
-                          <span className="muted"> · already linked</span>
-                        )}
-                      </label>
-                    </li>
-                  );
-                })}
-                {results.length === 0 && (
-                  <li className="muted">No preconditions match.</li>
-                )}
-              </ul>
+              <div className="pick-table-wrap">
+                <table className="pick-table">
+                  <tbody>
+                    {results.map((p) => {
+                      const already = exclude.has(p.key);
+                      return (
+                        <tr
+                          key={p.key}
+                          className={already ? "pick-row-disabled" : "pick-row"}
+                          onClick={() => {
+                            if (!already && !busy) toggle(p.key);
+                          }}
+                        >
+                          <td className="pick-check">
+                            <input
+                              type="checkbox"
+                              disabled={already || busy}
+                              checked={already || picked.has(p.key)}
+                              onChange={() => toggle(p.key)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </td>
+                          <td className="pick-key mono">{p.key}</td>
+                          <td className="pick-summary">
+                            {p.summary}
+                            {showProjectBadge && (
+                              <span className="pick-proj-badge">
+                                {p.key.split("-")[0]}
+                              </span>
+                            )}
+                            {already && (
+                              <span className="muted"> · already linked</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {results.length === 0 && (
+                      <tr>
+                        <td className="pick-empty" colSpan={3}>
+                          No preconditions match.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             )}
             {total > 0 && (
               <Pager

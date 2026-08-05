@@ -55,6 +55,9 @@ export function PickTestModal({
   // caller opened this as a cross-project picker.
   const [crossProject, setCrossProject] = useState(!!crossProjectOnly);
   const projects = sourceProjects ?? [];
+  // Show the owning-project badge only when browsing all projects; when a single
+  // project is selected in the sidebar it is redundant (#322).
+  const showProjectBadge = crossProject && project === "";
 
   useEffect(() => {
     setPage(0);
@@ -166,27 +169,38 @@ export function PickTestModal({
             {loading ? (
               <p className="muted">Searching…</p>
             ) : (
-              <ul className="add-test-list">
-                {visible.map((t) => (
-                  <li key={t.key}>
-                    <button
-                      className="link-btn clone-src-pick"
-                      onClick={() => pick(t.key)}
-                      disabled={busy}
-                    >
-                      <span className="mono">{t.key}</span> {t.summary}
-                      {t.projectKey && (
-                        <span className="pick-proj-badge">{t.projectKey}</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-                {visible.length === 0 && (
-                  <li className="muted">
-                    {loading ? "" : "No tests match."}
-                  </li>
-                )}
-              </ul>
+              <div className="pick-table-wrap">
+                <table className="pick-table">
+                  <tbody>
+                    {visible.map((t) => (
+                      <tr
+                        key={t.key}
+                        className="pick-row"
+                        onClick={() => {
+                          if (!busy) pick(t.key);
+                        }}
+                      >
+                        <td className="pick-key mono">{t.key}</td>
+                        <td className="pick-summary">
+                          {t.summary}
+                          {showProjectBadge && t.projectKey && (
+                            <span className="pick-proj-badge">
+                              {t.projectKey}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {visible.length === 0 && (
+                      <tr>
+                        <td className="pick-empty" colSpan={2}>
+                          No tests match.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             )}
             {total > 0 && (
               <Pager

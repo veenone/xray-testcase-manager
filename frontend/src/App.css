@@ -1960,6 +1960,59 @@ button.defect-chip-key:hover {
   color: var(--accent);
   vertical-align: middle;
 }
+/* Cross-project picker item table (#322): key and summary in neat columns,
+   instead of a run-on line. */
+.pick-table-wrap {
+  margin-top: 10px;
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.pick-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pick-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  vertical-align: top;
+  text-align: left;
+}
+.pick-table tr:last-child td {
+  border-bottom: none;
+}
+.pick-check {
+  width: 1%;
+  padding-right: 0;
+}
+.pick-key {
+  width: 1%;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-strong);
+}
+.pick-summary {
+  font-size: 13px;
+  color: var(--text);
+}
+.pick-row {
+  cursor: pointer;
+}
+.pick-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.pick-row-disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.pick-row-disabled:hover {
+  background: none;
+}
+.pick-empty {
+  padding: 12px 10px;
+  color: var(--text-muted);
+}
 .add-test-list {
   list-style: none;
   margin: 10px 0 0;

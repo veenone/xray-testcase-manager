@@ -62,6 +62,8 @@ export function CloneStepsModal({
   const [crossProject, setCrossProject] = useState(!!crossProjectOnly);
   const [project, setProject] = useState("");
   const projects = sourceProjects ?? [];
+  // Show the owning-project badge only when browsing all projects (#322).
+  const showProjectBadge = crossProject && project === "";
 
   // Stage 2 — step selection for the chosen source.
   const [source, setSource] = useState<SourceRow | null>(null);
@@ -221,28 +223,36 @@ export function CloneStepsModal({
                 {searching ? (
                   <p className="muted">Searching…</p>
                 ) : (
-                  <ul className="add-test-list">
-                    {visibleResults.map((t) => (
-                      <li key={t.key}>
-                        <button
-                          className="link-btn clone-src-pick"
-                          onClick={() => chooseSource(t)}
-                        >
-                          <span className="mono">{t.key}</span> {t.summary}
-                          {t.projectKey && (
-                            <span className="pick-proj-badge">
-                              {t.projectKey}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                    {visibleResults.length === 0 && (
-                      <li className="muted">
-                        {searching ? "" : "No tests match."}
-                      </li>
-                    )}
-                  </ul>
+                  <div className="pick-table-wrap">
+                    <table className="pick-table">
+                      <tbody>
+                        {visibleResults.map((t) => (
+                          <tr
+                            key={t.key}
+                            className="pick-row"
+                            onClick={() => chooseSource(t)}
+                          >
+                            <td className="pick-key mono">{t.key}</td>
+                            <td className="pick-summary">
+                              {t.summary}
+                              {showProjectBadge && t.projectKey && (
+                                <span className="pick-proj-badge">
+                                  {t.projectKey}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {visibleResults.length === 0 && (
+                          <tr>
+                            <td className="pick-empty" colSpan={2}>
+                              No tests match.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
                 {total > 0 && (
                   <Pager
