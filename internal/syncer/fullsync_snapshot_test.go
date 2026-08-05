@@ -67,9 +67,12 @@ func TestFullSyncStoreSnapshot(t *testing.T) {
 	if got := count("test_folder"); got != 37 {
 		t.Errorf("test_folder count = %d, want 37 (7 categories + 30 features)", got)
 	}
-	// precondition: len(preconditionDefs) = 15 (internal/jira/demo.go).
-	if got := count("precondition"); got != 15 {
-		t.Errorf("precondition count = %d, want 15 (len(preconditionDefs))", got)
+	// precondition: 15 linked defs (len(preconditionDefs)) + 4 standalone
+	// duplicate-cluster preconditions (DEMO-PDUP-1..4), seeded on the generic
+	// theme for the Preconditions duplicate demo (demoPreconditionsAndLinks in
+	// internal/jira/demo.go) = 19.
+	if got := count("precondition"); got != 19 {
+		t.Errorf("precondition count = %d, want 19 (15 defs + 4 PDUP duplicates)", got)
 	}
 	// requirement: generic demoRequirements seeds PRD-1..PRD-24 = 24
 	// (internal/jira/requirements.go, const count = 24).
