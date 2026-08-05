@@ -183,6 +183,11 @@ var demoCrossProjectFeatures = []string{
 	"Reports", "API rate limit",
 }
 
+// demoCrossProjectVariants multiplies the feature list into a larger demo browse
+// set (24 features x 3 = 72 items per project), so the picker's pager is
+// demonstrable offline (a single project exceeds one 50-item page).
+var demoCrossProjectVariants = []string{"", " (regression)", " (edge cases)"}
+
 // demoPageBasics filters a browse list by query (key or summary substring) and
 // returns the requested page plus the total match count.
 func demoPageBasics(all []TestBasic, query string, offset, limit int) ([]TestBasic, int) {
@@ -215,13 +220,17 @@ func demoSearchTestsAcrossProjects(projectKeys []string, query string, offset, l
 		if src = strings.TrimSpace(src); src == "" {
 			continue
 		}
-		for i, feat := range demoCrossProjectFeatures {
-			all = append(all, TestBasic{
-				Key:        fmt.Sprintf("%s-%d", src, i+1),
-				Summary:    feat,
-				Status:     "Approved",
-				ProjectKey: src,
-			})
+		n := 0
+		for _, variant := range demoCrossProjectVariants {
+			for _, feat := range demoCrossProjectFeatures {
+				n++
+				all = append(all, TestBasic{
+					Key:        fmt.Sprintf("%s-%d", src, n),
+					Summary:    feat + variant,
+					Status:     "Approved",
+					ProjectKey: src,
+				})
+			}
 		}
 	}
 	return demoPageBasics(all, query, offset, limit)
@@ -236,19 +245,23 @@ func demoSearchPreconditionsAcrossProjects(projectKeys []string, query string, o
 		if src = strings.TrimSpace(src); src == "" {
 			continue
 		}
-		for i, feat := range demoCrossProjectFeatures {
-			summary := feat + " precondition"
-			key := fmt.Sprintf("%s-P-%d", src, i+1)
-			if q != "" && !strings.Contains(strings.ToLower(summary), q) &&
-				!strings.Contains(strings.ToLower(key), q) {
-				continue
+		n := 0
+		for _, variant := range demoCrossProjectVariants {
+			for _, feat := range demoCrossProjectFeatures {
+				n++
+				summary := feat + variant + " precondition"
+				key := fmt.Sprintf("%s-P-%d", src, n)
+				if q != "" && !strings.Contains(strings.ToLower(summary), q) &&
+					!strings.Contains(strings.ToLower(key), q) {
+					continue
+				}
+				all = append(all, Precondition{
+					Key:         key,
+					Summary:     summary,
+					Type:        "Manual",
+					Description: fmt.Sprintf("(Demo cross-project precondition: %s%s)", feat, variant),
+				})
 			}
-			all = append(all, Precondition{
-				Key:         key,
-				Summary:     summary,
-				Type:        "Manual",
-				Description: fmt.Sprintf("(Demo cross-project precondition: %s)", feat),
-			})
 		}
 	}
 	total := len(all)
