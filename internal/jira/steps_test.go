@@ -49,6 +49,64 @@ func TestMoveTestStepSendsFieldsAndIndex(t *testing.T) {
 	}
 }
 
+// TestCreateCalledTestStepSendsCallFields guards RND_P_4TFINT_05-322: a call
+// step must post the called Test's issue key under "callTestIssueKey" plus a
+// "testCallStep": true marker (verified against a live Xray step response), NOT
+// an unknown "calledTestIssueId" field — otherwise Xray sees an empty step and
+// returns "Step fields must be provided to create a new test step".
+func TestCreateCalledTestStepSendsCallFields(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/rest/raven/2.0/api/test/QA-1/steps" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id": 2069782}`))
+	}))
+	defer srv.Close()
+
+	id, err := newTestClient(srv).CreateCalledTestStep(
+		context.Background(), "QA-1", "RND_I_4SPHEE_05-27", "")
+	if err != nil {
+		t.Fatalf("CreateCalledTestStep: %v", err)
+	}
+	if id != "2069782" {
+		t.Errorf("returned id = %q, want 2069782", id)
+	}
+	if gotBody["callTestIssueKey"] != "RND_I_4SPHEE_05-27" {
+		t.Errorf("callTestIssueKey = %v, want the called test key", gotBody["callTestIssueKey"])
+	}
+	if gotBody["testCallStep"] != true {
+		t.Errorf("testCallStep = %v, want true", gotBody["testCallStep"])
+	}
+	if _, hasFields := gotBody["fields"]; hasFields {
+		t.Errorf("call step must not send manual step fields; got %v", gotBody)
+	}
+}
+
+// TestParseStepsResponse_CallStep covers a real "call test" step from Xray: it
+// carries callTestIssueKey + testCallStep and no content fields.
+func TestParseStepsResponse_CallStep(t *testing.T) {
+	body := []byte(`{"steps":[
+		{"id":2069782,"index":2,"callTestIssueKey":"RND_I_4SPHEE_05-27","testCallStep":true}
+	]}`)
+	steps, err := parseStepsResponse(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(steps) != 1 {
+		t.Fatalf("want 1 step, got %d", len(steps))
+	}
+	if steps[0].CalledTestKey != "RND_I_4SPHEE_05-27" {
+		t.Errorf("CalledTestKey = %q, want RND_I_4SPHEE_05-27", steps[0].CalledTestKey)
+	}
+}
+
 // TestParseStepsResponse_Array covers the normal Xray Server/DC shape: a bare
 // array whose step content fields are {"raw": …} objects.
 func TestParseStepsResponse_Array(t *testing.T) {

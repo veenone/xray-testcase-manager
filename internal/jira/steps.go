@@ -64,6 +64,24 @@ const (
 	stepFieldResult = "Expected Result"
 )
 
+// stepIDString normalizes a step-create response id to a clean string. Xray may
+// return the id as a JSON number, which decodes into a float64 — fmt.Sprint on a
+// large float (e.g. 2069782) yields scientific notation ("2.069782e+06"),
+// corrupting the id used to swap the local placeholder. Format whole numbers as
+// integers.
+func stepIDString(v any) string {
+	switch n := v.(type) {
+	case float64:
+		return strconv.FormatInt(int64(n), 10)
+	case json.Number:
+		return n.String()
+	case string:
+		return n
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
 // CreateTestStep appends a new Test Step (FR-2.5) and returns the new step's
 // Xray id when the create response includes one — the commit path uses it to
 // swap the local "new-N" placeholder for the real id. Demo URLs short-circuit
@@ -108,28 +126,32 @@ func (c *Client) CreateTestStep(ctx context.Context, key, action, data, expected
 		return "", err
 	}
 	if id, ok := resp["id"]; ok && id != nil {
-		return fmt.Sprint(id), nil
+		return stepIDString(id), nil
 	}
 	return "", nil
 }
 
 // CreateCalledTestStep appends a "call test" step that invokes another Test
-// (FR-2.5, #2). calledTestID is the called Test's numeric Jira issue id (Xray's
-// preferred reference); calledTestKey is sent as a fallback for builds that
-// accept the key. Returns the new step's id when the response carries one.
+// (FR-2.5, #2). A call step is not a manual step: Xray represents it as a step
+// carrying "callTestIssueKey" (the called Test's issue key) plus a
+// "testCallStep": true marker, and no Action/Data/Expected fields — verified
+// against a live Xray Server/DC step response. The earlier body sent an unknown
+// "calledTestIssueId" field, which Xray ignored and then rejected the step as
+// empty ("Step fields must be provided to create a new test step"), so
+// committing a call step (same-project or cross-project) always failed
+// (RND_P_4TFINT_05-322).
 //
-// Maps to POST /rest/raven/2.0/api/test/{key}/steps. NOTE(xtm): the exact
-// call-step body varies by Xray Server/DC version — this sends calledTestIssueId
-// and needs verification against a live instance.
+// calledTestID is accepted for signature compatibility but unused: the call
+// reference is keyed by issue key, which also makes cross-project called tests
+// work (a foreign called test has no local numeric id). Maps to
+// POST /rest/raven/2.0/api/test/{key}/steps.
 func (c *Client) CreateCalledTestStep(ctx context.Context, key, calledTestKey, calledTestID string) (string, error) {
 	if isDemoURL(c.baseURL) {
 		return "", nil
 	}
-	body := map[string]any{}
-	if strings.TrimSpace(calledTestID) != "" {
-		body["calledTestIssueId"] = calledTestID
-	} else {
-		body["calledTestIssueKey"] = calledTestKey
+	body := map[string]any{
+		"callTestIssueKey": strings.TrimSpace(calledTestKey),
+		"testCallStep":     true,
 	}
 	var resp map[string]any
 	if err := c.writeJSONReturning(
@@ -139,7 +161,7 @@ func (c *Client) CreateCalledTestStep(ctx context.Context, key, calledTestKey, c
 		return "", err
 	}
 	if id, ok := resp["id"]; ok && id != nil {
-		return fmt.Sprint(id), nil
+		return stepIDString(id), nil
 	}
 	return "", nil
 }
