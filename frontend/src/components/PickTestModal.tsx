@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ListTests, SearchTestsCrossProject, errMsg } from "../api";
 import { ProjectSidebar } from "./ProjectSidebar";
+import { Pager } from "./Pager";
 
 interface Props {
   profileId: string;
@@ -43,6 +44,7 @@ export function PickTestModal({
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<PickRow[]>([]);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [total, setTotal] = useState(0);
   const [project, setProject] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,7 +66,7 @@ export function PickTestModal({
       setLoading(true);
       setError("");
       const req = crossProject
-        ? SearchTestsCrossProject(profileId, search, project, page * PAGE_SIZE).then((p) => ({
+        ? SearchTestsCrossProject(profileId, search, project, page * pageSize, pageSize).then((p) => ({
             tests: (p.tests ?? []).map((r) => ({
               key: r.key,
               summary: r.summary,
@@ -82,8 +84,8 @@ export function PickTestModal({
             review: "",
             sortBy: "key",
             desc: false,
-            limit: PAGE_SIZE,
-            offset: page * PAGE_SIZE,
+            limit: pageSize,
+            offset: page * pageSize,
           }).then((p) => ({
             tests: (p.tests ?? []).map((t) => ({ key: t.key, summary: t.summary })),
             total: p.total ?? 0,
@@ -105,7 +107,7 @@ export function PickTestModal({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [profileId, search, page, crossProject, project]);
+  }, [profileId, search, page, pageSize, crossProject, project]);
 
   async function pick(key: string) {
     setBusy(true);
@@ -130,7 +132,7 @@ export function PickTestModal({
           </button>
         </div>
         <div className="add-tests-body">
-          {crossProject && projects.length > 1 && (
+          {crossProject && projects.length > 0 && (
             <ProjectSidebar
               projects={projects}
               selected={project}
@@ -186,28 +188,17 @@ export function PickTestModal({
                 )}
               </ul>
             )}
-            {total > PAGE_SIZE && (
-              <div className="add-test-pager">
-                <button
-                  className="btn"
-                  disabled={page === 0 || loading || busy}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  ‹ Prev
-                </button>
-                <span className="muted">
-                  {(page * PAGE_SIZE + 1).toLocaleString()}–
-                  {Math.min((page + 1) * PAGE_SIZE, total).toLocaleString()} of{" "}
-                  {total.toLocaleString()}
-                </span>
-                <button
-                  className="btn"
-                  disabled={(page + 1) * PAGE_SIZE >= total || loading || busy}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next ›
-                </button>
-              </div>
+            {total > 0 && (
+              <Pager
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPage={setPage}
+                onPageSize={(n) => {
+                  setPageSize(n);
+                  setPage(0);
+                }}
+              />
             )}
             {error && <div className="error-text">{error}</div>}
           </div>

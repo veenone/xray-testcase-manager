@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ListTests, SearchTestsCrossProject, GetTestSteps, errMsg } from "../api";
 import type { Step, StepDraft } from "../api";
 import { ProjectSidebar } from "./ProjectSidebar";
+import { Pager } from "./Pager";
 
 // A normalized source row: same-project rows carry no projectKey; cross-project
 // rows (RND_P_4TFINT_05-322) carry the owning project's key.
@@ -53,6 +54,7 @@ export function CloneStepsModal({
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<SourceRow[]>([]);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [total, setTotal] = useState(0);
   const [searching, setSearching] = useState(false);
   // When on, search source tests in the profile's configured source projects.
@@ -81,7 +83,7 @@ export function CloneStepsModal({
       setSearching(true);
       setError("");
       const req = crossProject
-        ? SearchTestsCrossProject(profileId, search, project, page * PAGE_SIZE).then((p) => ({
+        ? SearchTestsCrossProject(profileId, search, project, page * pageSize, pageSize).then((p) => ({
             tests: (p.tests ?? []).map((r) => ({
               key: r.key,
               summary: r.summary,
@@ -99,8 +101,8 @@ export function CloneStepsModal({
             review: "",
             sortBy: "key",
             desc: false,
-            limit: PAGE_SIZE,
-            offset: page * PAGE_SIZE,
+            limit: pageSize,
+            offset: page * pageSize,
           }).then((p) => ({
             tests: (p.tests ?? []).map((t) => ({ key: t.key, summary: t.summary })),
             total: p.total ?? 0,
@@ -122,7 +124,7 @@ export function CloneStepsModal({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [profileId, search, page, source, crossProject, project]);
+  }, [profileId, search, page, pageSize, source, crossProject, project]);
 
   async function chooseSource(t: SourceRow) {
     setError("");
@@ -182,7 +184,7 @@ export function CloneStepsModal({
         </div>
 
         <div className="add-tests-body">
-          {!source && crossProject && projects.length > 1 && (
+          {!source && crossProject && projects.length > 0 && (
             <ProjectSidebar
               projects={projects}
               selected={project}
@@ -242,28 +244,17 @@ export function CloneStepsModal({
                     )}
                   </ul>
                 )}
-                {total > PAGE_SIZE && (
-                  <div className="add-test-pager">
-                    <button
-                      className="btn"
-                      disabled={page === 0 || searching}
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                    >
-                      ‹ Prev
-                    </button>
-                    <span className="muted">
-                      {(page * PAGE_SIZE + 1).toLocaleString()}–
-                      {Math.min((page + 1) * PAGE_SIZE, total).toLocaleString()}{" "}
-                      of {total.toLocaleString()}
-                    </span>
-                    <button
-                      className="btn"
-                      disabled={(page + 1) * PAGE_SIZE >= total || searching}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Next ›
-                    </button>
-                  </div>
+                {total > 0 && (
+                  <Pager
+                    page={page}
+                    pageSize={pageSize}
+                    total={total}
+                    onPage={setPage}
+                    onPageSize={(n) => {
+                      setPageSize(n);
+                      setPage(0);
+                    }}
+                  />
                 )}
               </>
             ) : (

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { SearchPreconditionsCrossProject, errMsg } from "../api";
 import type { Precondition } from "../api";
 import { ProjectSidebar } from "./ProjectSidebar";
+import { Pager } from "./Pager";
 
 interface Props {
   profileId: string;
@@ -33,6 +34,7 @@ export function PickPreconditionModal({
   const [results, setResults] = useState<Precondition[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [project, setProject] = useState("");
   const [loading, setLoading] = useState(false);
@@ -51,7 +53,7 @@ export function PickPreconditionModal({
     const handle = setTimeout(() => {
       setLoading(true);
       setError("");
-      SearchPreconditionsCrossProject(profileId, search, project, page * PAGE_SIZE)
+      SearchPreconditionsCrossProject(profileId, search, project, page * pageSize, pageSize)
         .then((p) => {
           if (cancelled) return;
           setResults(p.preconditions ?? []);
@@ -68,7 +70,7 @@ export function PickPreconditionModal({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [profileId, search, project, page]);
+  }, [profileId, search, project, page, pageSize]);
 
   function toggle(key: string) {
     setPicked((prev) => {
@@ -104,7 +106,7 @@ export function PickPreconditionModal({
           </button>
         </div>
         <div className="add-tests-body">
-          {projects.length > 1 && (
+          {projects.length > 0 && (
             <ProjectSidebar
               projects={projects}
               selected={project}
@@ -151,28 +153,17 @@ export function PickPreconditionModal({
                 )}
               </ul>
             )}
-            {total > PAGE_SIZE && (
-              <div className="add-test-pager">
-                <button
-                  className="btn"
-                  disabled={page === 0 || loading || busy}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  ‹ Prev
-                </button>
-                <span className="muted">
-                  {(page * PAGE_SIZE + 1).toLocaleString()}–
-                  {Math.min((page + 1) * PAGE_SIZE, total).toLocaleString()} of{" "}
-                  {total.toLocaleString()}
-                </span>
-                <button
-                  className="btn"
-                  disabled={(page + 1) * PAGE_SIZE >= total || loading || busy}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next ›
-                </button>
-              </div>
+            {total > 0 && (
+              <Pager
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPage={setPage}
+                onPageSize={(n) => {
+                  setPageSize(n);
+                  setPage(0);
+                }}
+              />
             )}
             {error && <div className="error-text">{error}</div>}
           </div>

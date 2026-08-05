@@ -2463,8 +2463,23 @@ type CrossProjectTest struct {
 	ProjectKey string `json:"projectKey"`
 }
 
-// crossProjectPageSize bounds each page of a cross-project browse/search.
-const crossProjectPageSize = 50
+// crossProjectPageSize is the default page size for a cross-project
+// browse/search; crossProjectMaxPageSize caps a caller-requested page size.
+const (
+	crossProjectPageSize    = 50
+	crossProjectMaxPageSize = 200
+)
+
+// clampCrossProjectLimit normalizes a requested page size to a sane range.
+func clampCrossProjectLimit(limit int) int {
+	if limit <= 0 {
+		return crossProjectPageSize
+	}
+	if limit > crossProjectMaxPageSize {
+		return crossProjectMaxPageSize
+	}
+	return limit
+}
 
 // CrossProjectTestPage is one page of cross-project Test results plus the total
 // match count, so the picker can paginate (RND_P_4TFINT_05-322).
@@ -2540,7 +2555,7 @@ func (a *App) GetProfileCrossProjectSources(profileID string) (string, error) {
 // pickers can reach tests in those projects (RND_P_4TFINT_05-322). Live backend
 // call; returns up to 50 matches. No configured sources or an empty query
 // yields no results.
-func (a *App) SearchTestsCrossProject(profileID, query, project string, offset int) (CrossProjectTestPage, error) {
+func (a *App) SearchTestsCrossProject(profileID, query, project string, offset, limit int) (CrossProjectTestPage, error) {
 	if err := a.requireStore(); err != nil {
 		return CrossProjectTestPage{}, err
 	}
@@ -2556,7 +2571,7 @@ func (a *App) SearchTestsCrossProject(profileID, query, project string, offset i
 	if err != nil {
 		return CrossProjectTestPage{}, err
 	}
-	rows, total, err := b.SearchTestsAcrossProjects(a.ctx, sources, query, offset, crossProjectPageSize)
+	rows, total, err := b.SearchTestsAcrossProjects(a.ctx, sources, query, offset, clampCrossProjectLimit(limit))
 	if err != nil {
 		return CrossProjectTestPage{}, err
 	}
@@ -2592,7 +2607,7 @@ func (a *App) CacheExternalPreconditions(profileID string, preconditions []testr
 // profile's configured source projects for cross-project linking
 // (RND_P_4TFINT_05-322). An empty query lists all; paged from offset with the
 // total match count.
-func (a *App) SearchPreconditionsCrossProject(profileID, query, project string, offset int) (CrossProjectPreconditionPage, error) {
+func (a *App) SearchPreconditionsCrossProject(profileID, query, project string, offset, limit int) (CrossProjectPreconditionPage, error) {
 	if err := a.requireStore(); err != nil {
 		return CrossProjectPreconditionPage{}, err
 	}
@@ -2608,7 +2623,7 @@ func (a *App) SearchPreconditionsCrossProject(profileID, query, project string, 
 	if err != nil {
 		return CrossProjectPreconditionPage{}, err
 	}
-	rows, total, err := b.SearchPreconditionsAcrossProjects(a.ctx, sources, query, offset, crossProjectPageSize)
+	rows, total, err := b.SearchPreconditionsAcrossProjects(a.ctx, sources, query, offset, clampCrossProjectLimit(limit))
 	if err != nil {
 		return CrossProjectPreconditionPage{}, err
 	}
