@@ -12,8 +12,16 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// containerFetchConcurrency bounds how many per-container membership fetches run
+// at once. The shared client rate limiter (Client.do) caps the actual request
+// rate; this just lets several requests be in flight so the limiter stays fed
+// instead of the old one-at-a-time-with-a-sleep walk.
+const containerFetchConcurrency = 8
 
 // Container kinds — the three Xray issue types that group Tests. The values
 // match the Xray REST path segments (testset / testplan / testexec).
@@ -139,24 +147,51 @@ func (c *Client) ListContainers(ctx context.Context, projectKey string, onProgre
 		log.Printf("xtm: containers sub-testexec %q: %d found for %s", steType, len(subExecs), projectKey)
 	}
 
-	// Pull each container's Test memberships. Best-effort per container so a
-	// single inaccessible container can't abort the whole sync.
-	links := []ContainerLink{}
+	// Pull each container's Test memberships concurrently, paced by the shared
+	// client rate limiter. Best-effort per container so a single inaccessible
+	// container can't abort the whole sync. Results are collected per index and
+	// flattened in the original container order, so the output stays
+	// deterministic regardless of goroutine completion order.
 	total := len(all)
+	perContainer := make([][]ContainerLink, total)
+	var done int64
+	var progMu sync.Mutex // onProgress may not be concurrency-safe
+	sem := make(chan struct{}, containerFetchConcurrency)
+	var wg sync.WaitGroup
 	for i, kc := range all {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+		if ctx.Err() != nil {
+			break
 		}
-		ls, err := c.listContainerTests(ctx, kc.kind, kc.key)
-		if err != nil {
-			log.Printf("xtm: container %s members: %v", kc.key, err)
-		} else {
-			links = append(links, ls...)
-		}
-		if onProgress != nil {
-			onProgress(i+1, total)
-		}
-		time.Sleep(150 * time.Millisecond)
+		i, kc := i, kc
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if ctx.Err() != nil {
+				return
+			}
+			ls, err := c.listContainerTests(ctx, kc.kind, kc.key)
+			if err != nil {
+				log.Printf("xtm: container %s members: %v", kc.key, err)
+			} else {
+				perContainer[i] = ls
+			}
+			if onProgress != nil {
+				n := atomic.AddInt64(&done, 1)
+				progMu.Lock()
+				onProgress(int(n), total)
+				progMu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	links := []ContainerLink{}
+	for _, ls := range perContainer {
+		links = append(links, ls...)
 	}
 	return containers, links, nil
 }
@@ -230,7 +265,6 @@ func (c *Client) TestExecutionsForTest(ctx context.Context, testKey string) ([]C
 		}
 		if err := c.get(ctx, issueURL, &issueResp); err != nil {
 			log.Printf("xtm: TestExecutionsForTest %s: fetch exec %s: %v (skipping)", testKey, ref.Key, err)
-			time.Sleep(throttleContainers)
 			continue
 		}
 
@@ -241,7 +275,6 @@ func (c *Client) TestExecutionsForTest(ctx context.Context, testKey string) ([]C
 			TestKey:      testKey,
 			RunStatus:    strings.ToUpper(strings.TrimSpace(ref.Status)),
 		})
-		time.Sleep(throttleContainers)
 	}
 	return containers, links, nil
 }
@@ -369,7 +402,6 @@ func (c *Client) searchContainersByIssueType(ctx context.Context, projectKey, ki
 		if len(resp.Issues) == 0 || startAt >= resp.Total {
 			break
 		}
-		time.Sleep(throttleContainers)
 	}
 	return out, nil
 }
@@ -456,7 +488,10 @@ func environmentsFromRawFields(rawFields json.RawMessage, fieldID string) []stri
 	return parseOptionValues(fields[fieldID])
 }
 
-// throttleContainers paces container issue-search pages.
+// throttleContainers paces the paging loops that still fetch serially (bug /
+// requirement / test-search pages). Those run under the shared rate limiter too
+// now, but keep a small inter-page pause. The container membership and
+// cross-project passes rely on the limiter + bounded concurrency instead.
 const throttleContainers = 150 * time.Millisecond
 
 // listContainerTests returns the Test memberships of one container. For a Test
@@ -502,7 +537,6 @@ func (c *Client) listContainerTests(ctx context.Context, kind, containerKey stri
 		if len(links) < ravenPageLimit || added == 0 {
 			break
 		}
-		time.Sleep(throttleContainers)
 	}
 	return out, nil
 }
@@ -803,7 +837,7 @@ func (c *Client) putRaw(ctx context.Context, path, contentType string, body []by
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", contentType)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}

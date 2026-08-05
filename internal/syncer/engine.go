@@ -7,10 +7,22 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"xray-test-manager/internal/backend"
 	"xray-test-manager/internal/testrepo"
+)
+
+// Bounded concurrency for the container-sync fetch passes. The backend's shared
+// rate limiter caps the actual request rate; these bounds just let several
+// fetches be in flight so the limiter stays fed instead of a serial walk. DB
+// writes are always applied serially after each concurrent fetch phase, so the
+// local store is never written from multiple goroutines at once.
+const (
+	execFetchConcurrency    = 8 // per-execution runs + exec-plan fetches
+	crossProjectConcurrency = 8 // per-test cross-project execution discovery
 )
 
 // pageSize is the Jira search page size. Jira DC commonly caps maxResults at
@@ -537,35 +549,69 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 	// not clobbered (#219). Best-effort: log and swallow.
 	e.harvestExternalBugs(profileID, basics)
 
-	// Fetch test runs and exec-plan associations for every Test Execution. This
-	// is best-effort: a failed fetch for one execution is logged and skipped so a
-	// single bad execution cannot abort the whole container sync.
+	// Fetch test runs and exec-plan associations for every Test Execution.
+	// Best-effort: a failed fetch for one execution is logged and skipped so a
+	// single bad execution cannot abort the whole container sync. The fetches run
+	// concurrently (paced by the backend rate limiter); the store writes are then
+	// applied serially so the DB is never written from multiple goroutines.
+	type execFetch struct {
+		execKey string
+		env     []string
+		runs    []backend.TestRun
+		runsOK  bool
+		plans   []string
+		plansOK bool
+	}
+	var execs []execFetch
 	for _, c := range containers {
-		if c.Kind != backend.KindTestExec {
-			continue
+		if c.Kind == backend.KindTestExec {
+			execs = append(execs, execFetch{execKey: c.Key, env: c.Environments})
 		}
-		execKey := c.Key
-		if err := ctx.Err(); err != nil {
-			return err
+	}
+	{
+		sem := make(chan struct{}, execFetchConcurrency)
+		var wg sync.WaitGroup
+		for i := range execs {
+			if ctx.Err() != nil {
+				break
+			}
+			i := i
+			sem <- struct{}{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if ctx.Err() != nil {
+					return
+				}
+				if runs, err := e.backend.GetTestRuns(ctx, execs[i].execKey); err != nil {
+					log.Printf("xtm: get test runs for %s: %v (skipping)", execs[i].execKey, err)
+				} else {
+					execs[i].runs, execs[i].runsOK = runs, true
+				}
+				if plans, err := e.backend.ExecPlans(ctx, execs[i].execKey); err != nil {
+					log.Printf("xtm: get exec plans for %s: %v (skipping)", execs[i].execKey, err)
+				} else {
+					execs[i].plans, execs[i].plansOK = plans, true
+				}
+			}()
 		}
-
-		runs, err := e.backend.GetTestRuns(ctx, execKey)
-		if err != nil {
-			log.Printf("xtm: get test runs for %s: %v (skipping)", execKey, err)
-		} else {
+		wg.Wait()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for _, ef := range execs {
+		if ef.runsOK {
 			// The Xray Server/DC testexec/test endpoint does not return a
 			// per-run environment; fall back to the execution's environments.
-			if err := e.repo.ReplaceRunsForExec(profileID, execKey, mapRunRows(runs, execKey, c.Environments)); err != nil {
-				log.Printf("xtm: store test runs for %s: %v (skipping)", execKey, err)
+			if err := e.repo.ReplaceRunsForExec(profileID, ef.execKey, mapRunRows(ef.runs, ef.execKey, ef.env)); err != nil {
+				log.Printf("xtm: store test runs for %s: %v (skipping)", ef.execKey, err)
 			}
 		}
-
-		plans, err := e.backend.ExecPlans(ctx, execKey)
-		if err != nil {
-			log.Printf("xtm: get exec plans for %s: %v (skipping)", execKey, err)
-		} else if len(plans) > 0 {
-			if err := e.repo.ReplaceExecPlans(profileID, execKey, plans); err != nil {
-				log.Printf("xtm: store exec plans for %s: %v (skipping)", execKey, err)
+		if ef.plansOK && len(ef.plans) > 0 {
+			if err := e.repo.ReplaceExecPlans(profileID, ef.execKey, ef.plans); err != nil {
+				log.Printf("xtm: store exec plans for %s: %v (skipping)", ef.execKey, err)
 			}
 		}
 	}
@@ -580,108 +626,173 @@ func (e *Engine) syncContainers(ctx context.Context, profileID, projectKey strin
 	return nil
 }
 
-// discoverCrossProjectExecs performs a per-test cross-project execution
-// discovery pass after the main container sync. For each test key in the
-// profile, it calls the backend's TestExecutionsForTest to find Test
-// Executions in any project (not only the profile project) that include that
-// test. Newly
-// found containers and links are written additively via UpsertContainerLinks
-// so they do not overwrite the project-scoped links that syncContainers already
-// wrote.
+// discoverCrossProjectExecs performs a cross-project execution discovery pass
+// after the main container sync. For each test key in the profile it calls the
+// backend's TestExecutionsForTest to find Test Executions in any project (not
+// only the profile project) that include that test. Newly found containers and
+// links are written additively via UpsertContainers / UpsertContainerLinks so
+// they do not overwrite the project-scoped links syncContainers already wrote.
 //
-// Errors per test are logged and skipped; a failure on one test does not abort
-// the rest. This is intentionally best-effort: the caller (syncContainers) logs
-// a notice if we cannot read the initial key list, but otherwise continues.
-//
-// In demo mode, time.Sleep is skipped so the full 5000-test pass completes
-// without a 750-second delay.
+// The per-test discovery runs concurrently (bounded, paced by the backend rate
+// limiter); the store writes are then applied in one serial batch, so the DB is
+// never written from multiple goroutines and the discovered set is deduped
+// before it lands. Errors per test are logged and skipped; a failure on one
+// test does not abort the rest (best-effort).
 func (e *Engine) discoverCrossProjectExecs(ctx context.Context, profileID string, knownExecKeys map[string]bool, onProgress func(Progress)) {
 	testKeys, err := e.repo.AllTestKeys(profileID)
 	if err != nil {
 		log.Printf("xtm: cross-project discovery: list test keys: %v (skipping)", err)
 		return
 	}
-	isDemo := e.backend.IsDemo()
 
-	for _, testKey := range testKeys {
-		if ctx.Err() != nil {
-			return
-		}
-		containers, links, err := e.backend.TestExecutionsForTest(ctx, testKey)
-		if err != nil {
-			log.Printf("xtm: cross-project discovery: %s: %v (skipping)", testKey, err)
-			if !isDemo {
-				time.Sleep(throttle)
+	// Phase 1: discover each test's cross-project executions concurrently (paced
+	// by the backend rate limiter). Collect the new (not-yet-known) containers and
+	// links per test; nothing is written to the store here, so the concurrency is
+	// read-only against the backend.
+	type found struct {
+		containers []testrepo.Container
+		links      []testrepo.ContainerLink
+	}
+	results := make([]found, len(testKeys))
+	{
+		sem := make(chan struct{}, crossProjectConcurrency)
+		var wg sync.WaitGroup
+		var doneN int64
+		var progMu sync.Mutex
+		total := len(testKeys)
+		for i, testKey := range testKeys {
+			if ctx.Err() != nil {
+				break
 			}
-			continue
-		}
-
-		// Defensive: containers and links must be parallel slices (same length,
-		// same index). TestExecutionsForTest guarantees this, but guard here
-		// to prevent an out-of-bounds panic if that contract is ever relaxed.
-		if len(containers) != len(links) {
-			log.Printf("xtm: cross-project discovery: %s: container/link length mismatch (%d vs %d), skipping",
-				testKey, len(containers), len(links))
-			continue
-		}
-
-		// Filter to executions not already known from the project sync so we
-		// do not re-insert rows that ReplaceAllContainerLinks already covered.
-		var newContainers []testrepo.Container
-		var newLinks []testrepo.ContainerLink
-		for i, c := range containers {
-			if knownExecKeys[c.Key] {
-				continue
-			}
-			newContainers = append(newContainers, testrepo.Container{
-				Key:           c.Key,
-				Kind:          c.Kind,
-				Summary:       c.Summary,
-				Status:        c.Status,
-				ParentKey:     c.ParentKey,
-				ParentSummary: c.ParentSummary,
-				IssueType:     c.IssueType,
-				Labels:        c.Labels,
-				Environments:  c.Environments,
-				FixVersions:   c.FixVersions,
-				Created:       c.Created,
-				Updated:       c.Updated,
-				Resolved:      c.Resolved,
-				Description:   c.Description,
-			})
-			newLinks = append(newLinks, testrepo.ContainerLink{
-				ContainerKey: links[i].ContainerKey,
-				TestKey:      links[i].TestKey,
-				RunStatus:    links[i].RunStatus,
-			})
-		}
-
-		if len(newContainers) > 0 {
-			// Upsert the container rows first so the foreign-key side is satisfied.
-			if uErr := e.repo.UpsertContainers(profileID, newContainers); uErr != nil {
-				log.Printf("xtm: cross-project discovery: %s: upsert containers: %v (skipping)", testKey, uErr)
-			} else if lErr := e.repo.UpsertContainerLinks(profileID, newLinks); lErr != nil {
-				log.Printf("xtm: cross-project discovery: %s: upsert links: %v (skipping)", testKey, lErr)
-			} else {
-				// Also fetch and store runs for each newly discovered execution.
-				for _, ct := range newContainers {
-					if ctx.Err() != nil {
-						return
-					}
-					runs, rErr := e.backend.GetTestRuns(ctx, ct.Key)
-					if rErr != nil {
-						log.Printf("xtm: cross-project discovery: %s: get runs for %s: %v (skipping)", testKey, ct.Key, rErr)
-					} else {
-						_ = e.repo.ReplaceRunsForExec(profileID, ct.Key, mapRunRows(runs, ct.Key, ct.Environments))
-					}
-					if !isDemo {
-						time.Sleep(throttle)
-					}
+			i, testKey := i, testKey
+			sem <- struct{}{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if ctx.Err() != nil {
+					return
 				}
+				containers, links, err := e.backend.TestExecutionsForTest(ctx, testKey)
+				if err != nil {
+					log.Printf("xtm: cross-project discovery: %s: %v (skipping)", testKey, err)
+				} else if len(containers) != len(links) {
+					// Defensive: TestExecutionsForTest guarantees parallel slices;
+					// guard so a relaxed contract can't cause an out-of-bounds panic.
+					log.Printf("xtm: cross-project discovery: %s: container/link length mismatch (%d vs %d), skipping",
+						testKey, len(containers), len(links))
+				} else {
+					var nc []testrepo.Container
+					var nl []testrepo.ContainerLink
+					for j, c := range containers {
+						if knownExecKeys[c.Key] {
+							continue
+						}
+						nc = append(nc, testrepo.Container{
+							Key:           c.Key,
+							Kind:          c.Kind,
+							Summary:       c.Summary,
+							Status:        c.Status,
+							ParentKey:     c.ParentKey,
+							ParentSummary: c.ParentSummary,
+							IssueType:     c.IssueType,
+							Labels:        c.Labels,
+							Environments:  c.Environments,
+							FixVersions:   c.FixVersions,
+							Created:       c.Created,
+							Updated:       c.Updated,
+							Resolved:      c.Resolved,
+							Description:   c.Description,
+						})
+						nl = append(nl, testrepo.ContainerLink{
+							ContainerKey: links[j].ContainerKey,
+							TestKey:      links[j].TestKey,
+							RunStatus:    links[j].RunStatus,
+						})
+					}
+					results[i] = found{containers: nc, links: nl}
+				}
+				if onProgress != nil {
+					n := atomic.AddInt64(&doneN, 1)
+					progMu.Lock()
+					onProgress(Progress{Phase: "containers", Stage: "Discovering cross-project executions", Fetched: int(n), Total: total})
+					progMu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+	}
+	if ctx.Err() != nil {
+		return
+	}
+
+	// Phase 2: aggregate the discovered executions (dedupe containers by key,
+	// since several tests can find the same execution) and write once. Container
+	// rows first so the link foreign-key side is satisfied.
+	seen := map[string]bool{}
+	var allContainers []testrepo.Container
+	var allLinks []testrepo.ContainerLink
+	for _, r := range results {
+		for _, c := range r.containers {
+			if !seen[c.Key] {
+				seen[c.Key] = true
+				allContainers = append(allContainers, c)
 			}
 		}
-		if !isDemo {
-			time.Sleep(throttle)
+		allLinks = append(allLinks, r.links...)
+	}
+	if len(allContainers) == 0 {
+		return
+	}
+	if err := e.repo.UpsertContainers(profileID, allContainers); err != nil {
+		log.Printf("xtm: cross-project discovery: upsert containers: %v (skipping)", err)
+		return
+	}
+	if err := e.repo.UpsertContainerLinks(profileID, allLinks); err != nil {
+		log.Printf("xtm: cross-project discovery: upsert links: %v (skipping)", err)
+		return
+	}
+
+	// Phase 3: fetch runs for each newly discovered execution concurrently, then
+	// store them serially.
+	type runFetch struct {
+		execKey string
+		env     []string
+		runs    []backend.TestRun
+		ok      bool
+	}
+	runs := make([]runFetch, len(allContainers))
+	for i, c := range allContainers {
+		runs[i] = runFetch{execKey: c.Key, env: c.Environments}
+	}
+	{
+		sem := make(chan struct{}, crossProjectConcurrency)
+		var wg sync.WaitGroup
+		for i := range runs {
+			if ctx.Err() != nil {
+				break
+			}
+			i := i
+			sem <- struct{}{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if ctx.Err() != nil {
+					return
+				}
+				if r, err := e.backend.GetTestRuns(ctx, runs[i].execKey); err != nil {
+					log.Printf("xtm: cross-project discovery: get runs for %s: %v (skipping)", runs[i].execKey, err)
+				} else {
+					runs[i].runs, runs[i].ok = r, true
+				}
+			}()
+		}
+		wg.Wait()
+	}
+	for _, rf := range runs {
+		if rf.ok {
+			_ = e.repo.ReplaceRunsForExec(profileID, rf.execKey, mapRunRows(rf.runs, rf.execKey, rf.env))
 		}
 	}
 }

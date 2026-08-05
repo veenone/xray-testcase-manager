@@ -16,6 +16,18 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
+)
+
+// Shared client request pacing. A token-bucket limiter governs every outbound
+// HTTP call (see Client.do), which lets the sync passes run their per-item
+// fetches concurrently while staying within a safe request rate — instead of
+// the old blind 150ms sleep after each serial call. Tunable if an instance has
+// tighter or looser rate limits.
+const (
+	syncReqPerSec = 20 // sustained requests/second across all calls on this client
+	syncBurst     = 10 // allowed burst above the sustained rate
 )
 
 // Client talks to a single Jira Data Center instance.
@@ -23,6 +35,9 @@ type Client struct {
 	baseURL string
 	token   string
 	http    *http.Client
+	// limiter paces every outbound request (Client.do). Shared across goroutines
+	// so concurrent sync fetches respect one global rate.
+	limiter *rate.Limiter
 
 	// precondTypeOnce lazily resolves and caches the Precondition issue type
 	// for this instance (its name varies / may be localised), so the JQL search
@@ -192,7 +207,23 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		http:    buildHTTPClient(cfg),
+		limiter: rate.NewLimiter(syncReqPerSec, syncBurst),
 	}
+}
+
+// do sends an HTTP request after waiting for a slot from the shared rate
+// limiter, so every call (get/getBytes/put/post/delete) is paced by one global
+// token bucket. This is the single throttle point: sync passes can fire their
+// per-item requests concurrently and the limiter smooths them to a safe rate,
+// replacing the old fixed per-call sleep. A nil limiter (older construction
+// paths, tests) is a no-op so the client still works without one.
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Wait(req.Context()); err != nil {
+			return nil, err
+		}
+	}
+	return c.http.Do(req)
 }
 
 // IsDemo reports whether this client is in demo mode (no Jira network calls).
@@ -253,7 +284,7 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.http.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -279,7 +310,7 @@ func (c *Client) getBytes(ctx context.Context, path string) ([]byte, error) {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.http.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +347,7 @@ func (c *Client) delete(ctx context.Context, path string) error {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.http.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -359,7 +390,7 @@ func (c *Client) writeJSONReturning(ctx context.Context, method, path string, bo
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.http.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
