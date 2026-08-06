@@ -945,15 +945,24 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 		}
 	}
 
-	// Pass 1: project-wide bug search (best-effort).
+	// Pass 1: project-wide bug search (best-effort). Labelled so the sync bar
+	// shows this phase is running before the (longer) per-test harvest.
+	emitStage(onProgress, "Syncing bugs (project search)")
 	projectBugs, projectBugErr := e.backend.ListProjectBugs(ctx, bugProject, issueType)
 	if projectBugErr != nil {
 		log.Printf("xtm: project-wide bug search failed (continuing with link harvest only): %v", projectBugErr)
 		projectBugs = nil
 	}
 
-	// Pass 2: link-harvest (authoritative source for BugLink records).
-	harvestBugs, links, err := e.backend.ListBugs(ctx, projectKey, testKeys, issueType, nil)
+	// Pass 2: link-harvest (authoritative source for BugLink records). Report
+	// per-chunk progress (test keys processed) so the sync bar advances instead
+	// of sitting silent through the harvest of a large project (#322 follow-up).
+	harvestBugs, links, err := e.backend.ListBugs(ctx, projectKey, testKeys, issueType,
+		func(done, total int) {
+			if onProgress != nil {
+				onProgress(Progress{Phase: "bugs", Stage: "Syncing bugs", Fetched: done, Total: total})
+			}
+		})
 	if err != nil {
 		return err
 	}
