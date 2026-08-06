@@ -919,7 +919,11 @@ func (a *App) runPartialSync(profileID, stage string, fn func(*syncer.Engine, st
 	if err != nil {
 		return fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS), a.repo)
+	engine := syncer.New(
+		newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS),
+		a.repo,
+		syncer.WithCrossProjectSources(scopeCrossProjectSources(p.CrossProjectSources, p.ProjectKey)),
+	)
 
 	onProgress := func(pr syncer.Progress) {
 		runtime.EventsEmit(a.ctx, "sync:progress", pr)
@@ -1117,7 +1121,11 @@ func (a *App) runSync(profileID string, forceFull bool) error {
 	if forceFull {
 		since = ""
 	}
-	engine := syncer.New(newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS), a.repo)
+	engine := syncer.New(
+		newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS),
+		a.repo,
+		syncer.WithCrossProjectSources(scopeCrossProjectSources(p.CrossProjectSources, p.ProjectKey)),
+	)
 	started := time.Now().UTC()
 	var lastFetched int
 	syncErr := engine.Sync(a.ctx, profileID, p.ProjectKey, p.ScopeJQL, since, func(pr syncer.Progress) {

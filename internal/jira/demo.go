@@ -598,6 +598,16 @@ func demoContainersAndLinks(theme demoTheme, projectKey string) ([]Container, []
 	if projectKey == "" {
 		projectKey = "DEMO"
 	}
+	// Cross-project source project: return only the sub-task Test Execution whose
+	// members are the main demo project's tests (mirroring demoTestExecutionsForTest
+	// from the source side). Source-scoped discovery lists this project and keeps
+	// executions that include the profile's own tests; the generic containers a
+	// full listing would add here reference the source project's tests and would
+	// be filtered out anyway (and their STE-1 key would collide with the sub-exec).
+	if projectKey == demoCrossProjectKey {
+		c, l := demoCrossProjectSourceContainers()
+		return c, l, nil
+	}
 	containers := make([]Container, 0)
 	links := make([]ContainerLink, 0)
 
@@ -1018,6 +1028,40 @@ func demoTestExecutionsForTest(testKey string) ([]Container, []ContainerLink) {
 		RunStatus:    demoRunStatuses[(idx+3)%len(demoRunStatuses)],
 	}
 	return []Container{exec}, []ContainerLink{link}
+}
+
+// demoCrossProjectMemberProject is the profile project whose tests the
+// cross-project sub-task execution (XRAYINT-STE-1) runs. Source-scoped
+// discovery lists the cross-project source project (demoCrossProjectKey) and
+// keeps executions that include this project's tests, so the sub-exec returned
+// for the source must reference this project's test keys. It is fixed to the
+// canonical demo project ("DEMO"); a demo profile that uses a different project
+// key will not auto-discover the sub-exec (an accepted demo-fidelity limit --
+// the manual cross-project link pickers still cover the source project).
+const demoCrossProjectMemberProject = "DEMO"
+
+// demoCrossProjectSourceContainers returns what ListContainers(demoCrossProjectKey)
+// contributes for source-scoped cross-project discovery: the sub-task Test
+// Execution (XRAYINT-STE-1) whose members are demoCrossProjectMemberProject
+// tests selected by the same i%11 rule as demoTestExecutionsForTest. This
+// mirrors that per-test scenario from the source side, so the discovery pass
+// finds the same execution and links by searching the source project once
+// instead of walking every test. The run statuses use the identical formula so
+// the stored links match what the per-test path produced.
+func demoCrossProjectSourceContainers() ([]Container, []ContainerLink) {
+	exec := demoCrossProjectSubExec()
+	var links []ContainerLink
+	for i := 0; i < demoTestCount; i++ {
+		if !demoCrossProjectSubExecMember(i) {
+			continue
+		}
+		links = append(links, ContainerLink{
+			ContainerKey: demoCrossProjectSubExecKey,
+			TestKey:      fmt.Sprintf("%s-%d", demoCrossProjectMemberProject, i+1),
+			RunStatus:    demoRunStatuses[(i+3)%len(demoRunStatuses)],
+		})
+	}
+	return []Container{exec}, links
 }
 
 // demoCrossProjectBug is the demo defect reached only through a cross-project

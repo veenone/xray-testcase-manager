@@ -38,7 +38,13 @@ func TestFullSyncStoreSnapshot(t *testing.T) {
 		profileID  = "p1"
 		projectKey = "DEMO"
 	)
-	eng := syncer.New(xray.New(jira.NewClient("demo", "tok")), repo)
+	// Configure the cross-project source project so source-scoped discovery runs
+	// (the demo mirrors demoTestExecutionsForTest from the "XRAYINT" source side).
+	eng := syncer.New(
+		xray.New(jira.NewClient("demo", "tok")),
+		repo,
+		syncer.WithCrossProjectSources([]string{"XRAYINT"}),
+	)
 	if err := eng.Sync(context.Background(), profileID, projectKey, "", "", nil); err != nil {
 		t.Fatalf("full sync: %v", err)
 	}
