@@ -5079,6 +5079,8 @@ tr.row-checked:hover {
 .dup-tile.t-dup  b { color: #dc2626; }
 .dup-tile.t-diff { border-color: color-mix(in srgb, #b45309 45%, transparent); background: color-mix(in srgb, #b45309 8%, transparent); }
 .dup-tile.t-diff b { color: #b45309; }
+.dup-tile.t-info { border-color: color-mix(in srgb, #1d4ed8 45%, transparent); background: color-mix(in srgb, #1d4ed8 8%, transparent); }
+.dup-tile.t-info b { color: #1d4ed8; }
 .dup-tile.t-muted b { color: var(--text-muted); }
 
 .dup-list { flex: 1; min-height: 0; overflow: auto; }
@@ -5608,6 +5610,43 @@ tr.row-checked:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A missing call has no cached summary; the placeholder reads as a hint. */
+.testcalls-summary-missing {
+  font-style: italic;
+  color: #b45309;
+}
+/* A cross-project call is expected, not broken: neutral-blue, no strike. */
+.testcalls-summary-xproject {
+  font-style: italic;
+  color: #1d4ed8;
+}
+.testcalls-key-xproject {
+  color: #1d4ed8;
+}
+
+/* Legend: explains the "missing" and "cycle" badges without a hover tooltip. */
+.testcalls-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 14px 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.testcalls-legend-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.5;
+}
+.testcalls-legend-item .testcalls-badge {
+  flex: none;
+  align-self: center;
+}
 .testcalls-callees {
   list-style: none;
   margin: 6px 0 0;
@@ -5638,9 +5677,35 @@ tr.row-checked:hover {
   background: #fef3c7;
   color: #92400e;
 }
+.testcalls-badge-xproject {
+  background: #dbeafe;
+  color: #1e40af;
+}
 .testcalls-badge-cycle {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+/* Cross-project explanation pinned at the bottom of the list. */
+.testcalls-footnote {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 14px 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #1d4ed8 30%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, #1d4ed8 6%, transparent);
+}
+.testcalls-footnote .testcalls-badge {
+  flex: none;
+  align-self: center;
+}
+.testcalls-footnote p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
 }
 
 /* Grid cue: a test that calls another test in its steps (#2). */

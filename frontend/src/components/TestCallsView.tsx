@@ -72,6 +72,21 @@ function findCallCycles(links: TestCallLink[]): Set<string> {
   return inCycle;
 }
 
+// projectOf returns the Jira project key of an issue key by stripping the
+// trailing "-<number>". Project keys here contain underscores (e.g.
+// "RND_I_4SPHEE_05-27" → "RND_I_4SPHEE_05"), so match only the final segment.
+function projectOf(key: string): string {
+  return key.replace(/-\d+$/, "");
+}
+
+// isCrossProjectCall reports whether a missing call points at another project.
+// Callers are always in the profile's home project, so a called key whose
+// project prefix differs is a cross-project call (expected, not broken) rather
+// than a deleted or unsynced test in the home project.
+function isCrossProjectCall(l: TestCallLink): boolean {
+  return !l.calledExists && projectOf(l.calledKey) !== projectOf(l.callerKey);
+}
+
 // TestCallsView shows the "call test" relationships across the project: which
 // tests call which (#2 follow-up). Grouped by caller, broken calls flagged, and
 // cyclic calls highlighted. Clicking a test opens its full detail.
@@ -157,8 +172,15 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
   }, [links]);
 
   const cycles = useMemo(() => findCallCycles(links), [links]);
-  const brokenCount = useMemo(
-    () => links.filter((l) => !l.calledExists).length,
+  // Cross-project calls (target lives in another project) are expected, so
+  // split them out from genuinely missing calls (deleted or not synced) that
+  // deserve attention.
+  const crossProjectCount = useMemo(
+    () => links.filter(isCrossProjectCall).length,
+    [links],
+  );
+  const missingCount = useMemo(
+    () => links.filter((l) => !l.calledExists && !isCrossProjectCall(l)).length,
     [links],
   );
   const callerCount = callers.length;
@@ -225,15 +247,48 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
           <b>{links.length}</b>
           <span>relationships</span>
         </div>
-        <div className="dup-tile t-diff">
-          <b>{brokenCount}</b>
-          <span>broken</span>
+        <div
+          className="dup-tile t-diff"
+          title="Call steps whose target test isn't in the local cache and isn't in another project (deleted or not synced)"
+        >
+          <b>{missingCount}</b>
+          <span>missing</span>
+        </div>
+        <div
+          className="dup-tile t-info"
+          title="Call steps whose target test lives in another project (see the note at the bottom)"
+        >
+          <b>{crossProjectCount}</b>
+          <span>cross-project</span>
         </div>
         <div className="dup-tile t-dup">
           <b>{cycles.size}</b>
           <span>in a cycle</span>
         </div>
       </div>
+
+      {links.length > 0 && (missingCount > 0 || cycles.size > 0) && (
+        <div className="testcalls-legend">
+          {missingCount > 0 && (
+            <span className="testcalls-legend-item">
+              <span className="testcalls-badge testcalls-badge-broken">
+                missing
+              </span>
+              the called test isn't in your local cache. It was either deleted in
+              Jira or hasn't been synced into this profile yet.
+            </span>
+          )}
+          {cycles.size > 0 && (
+            <span className="testcalls-legend-item">
+              <span className="testcalls-badge testcalls-badge-cycle">
+                cycle
+              </span>
+              these tests call each other in a loop (A calls B, B calls A), which
+              would recurse forever if executed.
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="testcalls-main">
       <div className="testcalls-body">
@@ -294,7 +349,9 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
                   </div>
                   {!isCollapsed && (
                     <ul className="testcalls-callees">
-                      {calls.map((l) => (
+                      {calls.map((l) => {
+                        const xproject = isCrossProjectCall(l);
+                        return (
                   <li key={`${l.calledKey}-${l.stepIndex}`} className="testcalls-callee">
                     <span className="testcalls-arrow" aria-hidden="true">
                       ⮡
@@ -308,26 +365,51 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
                         <span className="mono">{l.calledKey}</span>
                       </button>
                     ) : (
-                      <span className="mono testcalls-key-broken">{l.calledKey}</span>
-                    )}
-                    <span className="testcalls-summary">
-                      {l.calledExists ? l.calledSummary : ""}
-                    </span>
-                    {!l.calledExists && (
                       <span
-                        className="testcalls-badge testcalls-badge-broken"
-                        title="The called test isn't in the local cache (deleted, never synced, or in another project)"
+                        className={`mono ${xproject ? "testcalls-key-xproject" : "testcalls-key-broken"}`}
                       >
-                        missing
+                        {l.calledKey}
                       </span>
                     )}
+                    <span
+                      className={`testcalls-summary${
+                        l.calledExists
+                          ? ""
+                          : xproject
+                            ? " testcalls-summary-xproject"
+                            : " testcalls-summary-missing"
+                      }`}
+                    >
+                      {l.calledExists
+                        ? l.calledSummary
+                        : xproject
+                          ? `in project ${projectOf(l.calledKey)}`
+                          : "not found in local cache"}
+                    </span>
+                    {!l.calledExists &&
+                      (xproject ? (
+                        <span
+                          className="testcalls-badge testcalls-badge-xproject"
+                          title="This call targets a test in another project. See the note at the bottom of the view."
+                        >
+                          cross-project
+                        </span>
+                      ) : (
+                        <span
+                          className="testcalls-badge testcalls-badge-broken"
+                          title="Not in the local cache: deleted in Jira or not synced yet. See the legend above."
+                        >
+                          missing
+                        </span>
+                      ))}
                     {cycles.has(l.calledKey) && (
                       <span className="testcalls-badge testcalls-badge-cycle" title="Part of a call cycle">
                         cycle
                       </span>
                     )}
                           </li>
-                        ))}
+                        );
+                      })}
                       </ul>
                   )}
                 </li>
@@ -346,6 +428,23 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
               }}
             />
           </div>
+          {crossProjectCount > 0 && (
+            <div className="testcalls-footnote">
+              <span className="testcalls-badge testcalls-badge-xproject">
+                cross-project
+              </span>
+              <p>
+                {crossProjectCount} call
+                {crossProjectCount === 1 ? "" : "s"} target a test in a different
+                Jira project than this profile. These calls are valid in Xray;
+                they show up here only because tests from other projects aren't
+                pulled into this profile's local cache. To browse or open the
+                called test, add its project as a cross-project source in the
+                profile settings. If a call should point at a test in this
+                project, check the key in the caller's step and re-sync.
+              </p>
+            </div>
+          )}
         </>
       )}
       </div>
