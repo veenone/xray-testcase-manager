@@ -73,6 +73,12 @@ func TestDemoStepsSeedDeterministicCallGraph(t *testing.T) {
 		{"QA-8", "QA-7"},
 		{"QA-9", "QA-10"},
 		{"DEMO-6", "DEMO-7"},
+		// Special callers seed the unresolved states: 11 calls another project
+		// (cross-project), 12 calls a non-existent test in this project (missing).
+		{"QA-11", "SHARED_LIB-42"},
+		{"DEMO-11", "SHARED_LIB-42"},
+		{"QA-12", "QA-99999"},
+		{"DEMO-12", "DEMO-99999"},
 	}
 	for _, c := range cases {
 		steps := demoStepsForKey(genericTheme, c.caller)

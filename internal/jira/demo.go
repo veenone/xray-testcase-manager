@@ -302,25 +302,47 @@ var demoCallGraph = map[int]int{
 	9: 10,
 }
 
-// demoCalledSibling returns the called Test key for a caller in the demo call
-// graph, or "" if the given key is not a seeded caller. The returned key reuses
-// the caller's project prefix so the call stays within the same project, and
-// the lookup is deterministic (same input -> same output), which is what makes
-// a SyncTestCalls re-pull stable.
-func demoCalledSibling(testKey string) string {
+// demoForeignCallProject is a project key the demo dataset never syncs, used to
+// seed a cross-project test call. Because its prefix differs from the caller's,
+// the Test Calls view classifies the call as "cross-project" (another project)
+// rather than "missing", so that state is demonstrable in demo mode.
+const demoForeignCallProject = "SHARED_LIB"
+
+// demoMissingCallNumber is a callee suffix well past demoTestCount, so the
+// called Test is never in the cache. It keeps the caller's project prefix, so
+// the Test Calls view classifies it as "missing" (deleted or not synced) rather
+// than cross-project — seeding the other unresolved state for the demo.
+const demoMissingCallNumber = 99999
+
+// demoCalledKey returns the called Test key for a caller in the demo call graph,
+// or "" if the given key is not a seeded caller. Most callees reuse the caller's
+// project prefix so the call stays within the same project, and the lookup is
+// deterministic (same input -> same output), which is what makes a SyncTestCalls
+// re-pull stable. Two special callers seed the Test Calls view's unresolved
+// states so they are demonstrable in demo mode: number 11 calls a Test in
+// another project ("cross-project"), and number 12 calls a non-existent Test in
+// this project ("missing").
+func demoCalledKey(testKey string) string {
 	dash := strings.LastIndex(testKey, "-")
 	if dash < 0 {
 		return ""
 	}
+	prefix := testKey[:dash+1]
 	num, err := strconv.Atoi(testKey[dash+1:])
 	if err != nil {
 		return ""
+	}
+	switch num {
+	case 11:
+		return demoForeignCallProject + "-42"
+	case 12:
+		return prefix + strconv.Itoa(demoMissingCallNumber)
 	}
 	callee, ok := demoCallGraph[num]
 	if !ok {
 		return ""
 	}
-	return testKey[:dash+1] + strconv.Itoa(callee)
+	return prefix + strconv.Itoa(callee)
 }
 
 // demoStepsForKey returns a deterministic step list for any test in demo mode
@@ -434,14 +456,15 @@ func demoStepsForKey(theme demoTheme, testKey string) []Step {
 
 	// Deterministic demo call graph so the Test Calls view is non-empty in
 	// demo mode and a SyncTestCalls re-pull is stable (FR-2.5). A few
-	// non-duplicate tests (numbers 6, 8, 9) get a "call test" step pointing at
-	// a SIBLING test in the SAME project. The called key reuses the caller's
-	// project prefix, so this works for any demo project key (DEMO-6 -> DEMO-7,
-	// QA-6 -> QA-7, ...). Numbers 6 and 8 both call 7 (a shared callee with two
-	// callers); 9 calls 10 (a separate caller/callee pair). This must stay
-	// deterministic: SyncTestCalls re-pulls via demoStepsForKey, and identical
-	// output on re-pull is exactly what keeps the graph from being wiped.
-	if callee := demoCalledSibling(testKey); callee != "" {
+	// non-duplicate tests get a "call test" step: numbers 6, 8, 9 point at a
+	// SIBLING test in the SAME project (6 and 8 both call 7, a shared callee; 9
+	// calls 10). Number 11 calls a test in another project (shows as
+	// "cross-project"); number 12 calls a non-existent test in this project
+	// (shows as "missing"). Same-project callees reuse the caller's prefix, so
+	// this works for any demo project key (DEMO-6 -> DEMO-7, QA-6 -> QA-7, ...).
+	// This must stay deterministic: SyncTestCalls re-pulls via demoStepsForKey,
+	// and identical output on re-pull is what keeps the graph from being wiped.
+	if callee := demoCalledKey(testKey); callee != "" {
 		return []Step{
 			{
 				ID:       testKey + "-s1",

@@ -8,6 +8,101 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-08-11
+
+Major feature release for the 1.9.0 line, finalizing the `1.9.0a` test builds. The
+headline is a **backend-agnostic core**: the local store is now a neutral hub that
+can pull from and publish to more than one test-management backend, with **Kiwi
+TCMS** as the first non-Xray target and a **migration bridge** between them. On top
+of that: **coverage groups publish to Xray as Test Sets** with drift detection,
+**cross-project linking** for preconditions / test calls / cloned steps, a new
+**Misspellings** view, **duplicate-precondition** detection, **Cucumber / Generic**
+test types, container and import refinements, and faster sync with clearer progress.
+Schema reaches v48.
+
+### Added
+
+**Backend-agnostic core + Kiwi TCMS (#50)**
+- The remote layer is now a **`Backend` interface** with a neutral hub identity, so
+  the syncer and commit engine no longer bind to Xray directly. Each backend
+  advertises **capabilities**, and the UI hides or degrades what a backend cannot do
+  (Xray keeps every existing feature unchanged).
+- **Kiwi TCMS backend (token auth):** read and write against a Kiwi instance
+  (Products / Versions / Builds / TestPlans / TestCases / TestRuns), mapped into the
+  neutral model (inline-text steps, settable status). A **migration bridge** pulls
+  from one connection and publishes to another with a capability-gap pre-flight.
+
+**Coverage: publish to Xray (#65, #67)**
+- **Publish coverage groups to Xray as Test Sets**, with **drift detection** that
+  flags when a published Test Set diverges from the local coverage group. Works on a
+  `demo` profile for simulation, so the flow can be exercised offline.
+
+**Cross-project linking (#80, #322)**
+- **Link across projects:** the precondition picker, the call-test picker, and the
+  clone-steps picker can now reach tests and preconditions in other configured
+  projects, via a per-profile **cross-project source list**. The pickers show a
+  project sidebar with a table of Key / Summary, pagination, and manual page input.
+- **Test Calls: cross-project vs missing (#86).** An unresolved call is now split
+  into **cross-project** (the target lives in another project — expected) and
+  **missing** (deleted or not synced — worth attention), each with its own badge and
+  count, a legend, and a description of cross-project calls at the bottom of the view.
+
+**New views and detections**
+- **Misspellings view (#72).** Scan every test case for spelling errors in its
+  summary, description, and step text, and jump straight to the offending test.
+- **Duplicate preconditions (#79, RND_P_4TFINT_05-323).** The Duplicates feature now
+  also detects preconditions with matching content, alongside duplicate tests.
+
+**Test types and executions**
+- **Cucumber and Generic test types (#54).** The Xray Test Type field now supports
+  Cucumber and Generic in addition to Manual / Automated, across Browse, filters,
+  bulk edit, and detail edit.
+- **Link an existing bug and add remarks on a Test Execution run (#53,
+  RND_P_4TFINT_05-296).** From a run in a Test Execution, link a bug that already
+  exists (not only raise a new one) and record a free-text remark on the run.
+
+**Requirements**
+- **Collect required custom fields on requirement create (#69).** Creating a
+  requirement now discovers and prompts for the target project's required custom
+  fields, so the create succeeds on instances that mandate them.
+- **Keyboard navigation + collapsible custom fields (#78).** Arrow keys move between
+  requirements, and the custom-fields block collapses to keep the panel compact.
+
+**Import**
+- **Imported tests land in their Test Repository folder (#57)** and the **folder
+  hierarchy is created** for any new folders in the import (RND_P_4TFINT_05-305).
+
+### Changed
+- **Faster container sync (#82).** Container sync is rate-limited and concurrent, and
+  cross-project execution discovery is scoped to the configured source projects,
+  cutting sync time on large instances.
+- **Bug sync shows a progress bar (#83).** The bug-sync phase reports item counts
+  like the other phases, instead of a static label.
+- **Containers refinements (#73, #74, #76, #77, RND_P_4TFINT_05-310, -311).** Filter
+  the container list by **label**, with filters separated from the toolbar; status
+  filters sit on one row and the run colorbar is **click-to-filter**; the execution
+  detail card height is capped; the test detail is docked with collapsible panels and
+  a shared pager; copy was humanized.
+- **Manage Profiles: explicit modes (#60).** The Manage Profiles dialog distinguishes
+  viewing, editing, and creating, so the active profile is not edited by accident.
+- **`demo-pkcs` gains the PKCS#11 key-management family (#61)**, and the plain `demo`
+  dataset seeds a **cross-project** and a **missing** test call so the Test Calls
+  view's unresolved states are demonstrable offline.
+
+### Fixed
+- **Call-test steps commit with the real Xray body (#81, RND_P_4TFINT_05-322).** A
+  call step now posts `callTestIssueKey` + `testCallStep` (verified against a live
+  Xray step response) instead of an unknown field, so committing a call step
+  (same-project or cross-project) no longer fails with "Step fields must be provided".
+  Large numeric step ids are also formatted correctly instead of in scientific
+  notation.
+- **Requirement coverage links use the correct direction (#68, #70,
+  RND_P_4TFINT_05-275).** Coverage is linked as **"tested by"** with the issue-link
+  direction resolved correctly, and the requirement sources modal was redesigned.
+- **Pending-changes modal scrolls (#71, RND_P_4TFINT_05-308).** The modal body
+  scrolls so the import actions stay visible on smaller windows.
+- Bridge-wizard cosmetic nits (#55).
+
 ## [1.8.0] - 2026-07-07
 
 Major feature release for the 1.8.0 line: a **requirements-centric suite** (richer requirement detail, create / import / link requirements, a configurable Test <-> Requirement link type, and an Epic layer in the requirement Sankey) alongside a new **Coverage module** (parameter-level coverage, cross-project functional-requirement reuse, per-version coverage with change requests, a graphical **Coverage Map**, an enriched Excel report, and a `demo-pkcs` dataset), plus preconditions, dashboard, test-calls and containers refinements. Covers Jira -265..-280; schema reaches v39. All local; no Jira admin.
@@ -365,6 +460,10 @@ with on-commit sync, bulk operations, Test Sets/Plans/Executions, Test
 Repository folders, preconditions, CSV/XLSX import & export, pytest scaffold,
 statistics dashboard, diagnostics, light/dark themes, profile management).
 
+[1.9.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.9.0
+[1.8.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.8.0
+[1.7.1]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.7.1
+[1.7.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.7.0
 [1.6.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.6.0
 [1.5.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.5.0
 [1.4.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.4.0

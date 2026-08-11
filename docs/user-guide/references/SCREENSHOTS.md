@@ -108,6 +108,7 @@ columns: date / tester / environment), **44** (Plan / Set run roll-up), **45**
 | 52 | `52-exec-fixversion-filter.png` | **Containers** → kind **Test Execution**, select one | The member table with the per-test **Fix Version** column and full-colour run-status results |
 | 53 | `53-requirement-test-detail.png` | **Requirements** → pick a requirement with covering tests → click a covering test | The covering test's read-only detail open as a right-side panel |
 | 54 | `54-profile-locked-sync.png` | Any view → click **Sync**, capture mid-sync | Tight crop of the **top bar** with the profile selector greyed out and the Sync button reading "Syncing…" |
+| 55 | `55-testcalls-crossproject.png` | On a **demo** profile: Sync, open tests **11** and **12** in Browse (loads their call steps), then open **Test Calls** | The Test Calls view showing the **missing** and **cross-project** tiles, the badge legend, a caller with a blue **cross-project** row and an amber **missing** row, and the cross-project note pinned at the bottom |
 
 **Refresh for 1.7.0a (post-alpha).** Re-shoot these because their UI changed:
 **26** (Requirement Sankey now has the **Test** column — 5 layers), **38**

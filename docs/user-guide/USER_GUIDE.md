@@ -1,6 +1,6 @@
 # Xray Test Manager — User Guide
 
-**Version:** 1.8.0 · **Platform:** Windows 10/11 (64-bit) · **Audience:** QA engineers,
+**Version:** 1.9.0 · **Platform:** Windows 10/11 (64-bit) · **Audience:** QA engineers,
 test leads, and anyone managing Xray test cases in Jira Data Center.
 
 Xray Test Manager is a lightweight Windows desktop app for managing **Xray test
@@ -16,6 +16,36 @@ you commit.
 > view and state to capture for each one. The fastest way to produce every
 > screenshot is to run the app against a **demo profile** (no Jira required —
 > see [Demo mode](#demo-mode-try-it-without-jira)).
+
+---
+
+## What's new in 1.9.0
+
+Version 1.9.0 is a major feature release. Highlights:
+
+- **Backend-agnostic core + Kiwi TCMS.** The local store is now a neutral hub
+  that can pull from and publish to more than one backend. **Kiwi TCMS** is the
+  first non-Xray target, with a **migration bridge** to move a dataset between
+  connections. Each backend advertises its capabilities and the UI hides what a
+  backend cannot do — Xray keeps every feature unchanged.
+- **Publish coverage groups to Xray.** From the Coverage module you can publish a
+  coverage group to Xray as a **Test Set**, with **drift detection** when the
+  published set diverges from the local group.
+- **Cross-project linking.** The precondition, call-test, and clone-steps pickers
+  can reach tests and preconditions in other projects you configure as
+  cross-project sources.
+- **Test Calls: cross-project vs missing.** An unresolved call is now split into
+  **cross-project** (the target lives in another project — expected) and
+  **missing** (deleted or not synced), each clearly labelled. See
+  [Calling another test](#calling-another-test-test-calls).
+- **Misspellings view.** Scan every test case for spelling errors and jump to the
+  offending test.
+- **Duplicate preconditions.** The Duplicates feature now detects preconditions
+  with matching content, not just tests.
+- **Cucumber and Generic test types**, and the ability to **link an existing bug**
+  and add **remarks** on a Test Execution run.
+- **Faster sync** (container sync is concurrent and rate-limited) with a **bug-sync
+  progress bar**, plus container, import, and Manage Profiles refinements.
 
 ---
 
@@ -366,18 +396,23 @@ test** — Xray's "test call". In the Steps header click **+ Call test**, search
 for and pick the test to call, and the step is appended as **⮡ Calls KEY**. Call
 steps reorder, delete, and commit like any other step.
 
-> The live Xray API for creating a call step is still being verified against a
-> real instance; in demo mode it works end to end.
-
 The **Test Calls** tab gives a project-wide view of these relationships:
 
 - callers are grouped with the tests they call;
 - caller rows in the Browse grid show a **⮡ calls** badge;
-- a call whose target isn't in the local cache is flagged **missing**
-  (deleted, never synced, or in another project);
+- a call whose target isn't in the local cache is classified as either
+  **cross-project** (blue — the target lives in another Jira project, which is
+  expected) or **missing** (amber — deleted in Jira or not synced yet). A legend
+  explains the badges, and a note at the bottom of the view explains the
+  cross-project calls and how to browse them (add the project as a cross-project
+  source) or fix a mistyped key (re-sync);
 - when tests call each other in a loop, every test in the cycle is flagged
   **cycle** (a cyclic call would recurse forever when executed);
 - use **Expand all / Collapse all** and the pager when there are many callers.
+
+![Figure 55: Test Calls cross-project and missing calls](images/55-testcalls-crossproject.png)
+*Figure 55 — The Test Calls view: the "missing" and "cross-project" tiles, per-row
+badges, and the cross-project explanation pinned at the bottom.*
 
 ### Custom fields
 
