@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -54,6 +55,72 @@ func (b *orderRecordingBackend) ListPreconditionsStream(
 	b.note("preconditions")
 	return b.Backend.(backend.PreconditionStreamer).
 		ListPreconditionsStream(ctx, projectKey, onProgress, onBatch)
+}
+
+// failingPreconditionBackend wraps the demo backend but fails the precondition
+// stream, so the rest of the sync succeeds and only that stage is broken.
+type failingPreconditionBackend struct {
+	backend.Backend
+}
+
+func (b *failingPreconditionBackend) ListPreconditionsStream(
+	ctx context.Context,
+	projectKey string,
+	onProgress func(done, total int),
+	onBatch func(pre []backend.Precondition, links map[string][]string) error,
+) error {
+	return errors.New("context deadline exceeded")
+}
+
+// TestSyncReportsPartialWhenPreconditionStageFails is the -336 headline: the
+// stage's error used to be logged and dropped, so the run stamped its watermark
+// and reported success while the Preconditions view sat empty.
+func TestSyncReportsPartialWhenPreconditionStageFails(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	repo := testrepo.NewRepository(st)
+
+	e := New(&failingPreconditionBackend{Backend: xray.New(jira.NewClient("demo", "tok"))}, repo)
+	syncErr := e.Sync(context.Background(), "p1", "DEMO", "", "", nil)
+	if syncErr == nil {
+		t.Fatal("sync reported clean despite the precondition stage failing")
+	}
+
+	var partial *PartialSyncError
+	if !errors.As(syncErr, &partial) {
+		t.Fatalf("got %T (%v), want a *PartialSyncError so the caller can record which stage failed", syncErr, syncErr)
+	}
+	if len(partial.StageFailures) != 1 || partial.StageFailures[0].Stage != "preconditions" {
+		t.Fatalf("got %+v, want a preconditions stage failure", partial.StageFailures)
+	}
+
+	// The rest of the sync still ran: a partial run's data is usable.
+	tests, err := repo.ListTests("p1", testrepo.Query{Limit: 5})
+	if err != nil {
+		t.Fatalf("list tests: %v", err)
+	}
+	if len(tests.Tests) == 0 {
+		t.Error("no tests persisted; a partial sync must still keep what succeeded")
+	}
+}
+
+// TestSyncIsCleanWhenPreconditionsSucceed guards against the new partial path
+// firing on a healthy sync.
+func TestSyncIsCleanWhenPreconditionsSucceed(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	repo := testrepo.NewRepository(st)
+
+	e := New(xray.New(jira.NewClient("demo", "tok")), repo)
+	if err := e.Sync(context.Background(), "p1", "DEMO", "", "", nil); err != nil {
+		t.Fatalf("want a clean sync, got %v", err)
+	}
 }
 
 // TestSyncRunsPreconditionsBeforeFolders pins the stage order. Preconditions

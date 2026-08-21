@@ -601,6 +601,17 @@
   background: #fee2e2;
   color: #b91c1c;
 }
+/* A partial sync finished but left a stage incomplete (RND_P_4TFINT_05-336):
+   warning tone, not the failure tone, because its data is still usable. */
+.run-partial {
+  background: var(--warn-soft);
+  color: var(--warn-text);
+}
+.synchist-stages {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  font-size: 12px;
+}
 .run-todo {
   background: #e0e7ff;
   color: #3730a3;
