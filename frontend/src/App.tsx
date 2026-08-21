@@ -85,6 +85,8 @@ import { AboutModal } from "./components/AboutModal";
 import { usePrompt } from "./components/usePrompt";
 import { useConfirm } from "./components/useConfirm";
 import { useNotice } from "./components/useNotice";
+import { useTour } from "./tour/useTour";
+import { TOUR_VERSION } from "./tour/steps";
 
 // applyTheme resolves the preference ("system" follows the OS) and sets the
 // data-theme attribute the CSS tokens key off (FR-12.2).
@@ -105,6 +107,9 @@ function App() {
   const [theme, setThemeState] = useState<string>("light");
   // The Coverage module is opt-in; its top-nav tab is hidden until enabled.
   const [showCoverage, setShowCoverage] = useState(false);
+  // Which onboarding tour version this user has already been through.
+  // TOUR_VERSION means "seen"; anything lower means it is still owed.
+  const [tourSeenVersion, setTourSeenVersion] = useState(TOUR_VERSION);
   const { prompt, promptUI } = usePrompt();
   const { confirm, confirmUI } = useConfirm();
   const { notice, noticeUI } = useNotice();
@@ -179,6 +184,13 @@ function App() {
     | "coverage"
     | "misspellings"
   >("browse");
+
+  // The onboarding tour (-335). Steps target Browse-only elements and the tour
+  // can be replayed from any view, so it switches to Browse before starting.
+  const { start: startTour } = useTour({
+    onBeforeStart: () => setView("browse"),
+    onFinish: () => setTourSeenVersion(TOUR_VERSION),
+  });
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -267,6 +279,7 @@ function App() {
         setThemeState(t);
         applyTheme(t);
         setShowCoverage(!!s.showCoverage);
+        setTourSeenVersion(s.tourSeenVersion ?? 0);
         if (ps.length > 0) {
           const def =
             s.defaultProfileId && ps.some((p) => p.id === s.defaultProfileId)
@@ -525,6 +538,10 @@ function App() {
       await (full ? SyncProfileFull(activeId) : SyncProfile(activeId));
       setRefreshKey((k) => k + 1);
       setDetailVersion((v) => v + 1);
+      // Start the tour on the FIRST successful sync rather than at launch:
+      // before a sync the grid is empty, so half the steps would spotlight
+      // elements with no data behind them and teach nothing (-335).
+      if (tourSeenVersion < TOUR_VERSION) startTour();
     } catch (e) {
       setSyncError(errMsg(e));
     } finally {
@@ -1044,6 +1061,7 @@ function App() {
           <span className="brand">Xray Test Manager</span>
           {isDemo && <span className="demo-chip">DEMO</span>}
           <select
+            data-tour="profile"
             className="profile-select"
             value={activeId}
             disabled={syncActive}
@@ -1098,7 +1116,7 @@ function App() {
           />
         </div>
 
-        <nav className="view-tabs topbar-zone topbar-center">
+        <nav data-tour="views" className="view-tabs topbar-zone topbar-center">
           <button
             className={`view-tab${view === "browse" ? " view-tab-active" : ""}`}
             onClick={() => setView("browse")}
@@ -1173,7 +1191,7 @@ function App() {
           </button>
         </nav>
 
-        <div className="topbar-zone topbar-right">
+        <div data-tour="pending" className="topbar-zone topbar-right">
           {pendingChanges.length > 0 && (
             <button
               className="btn-pending"
@@ -1199,68 +1217,79 @@ function App() {
             </button>
           )}
 
-          <Menu
-            label="More"
-            align="right"
-            title="Tools & diagnostics"
-            items={[
-              {
-                key: "importtests",
-                label: "Import tests…",
-                onClick: () => setShowImport(true),
-                title: "Import tests from a CSV or XLSX file",
-              },
-              {
-                key: "fullsync",
-                label: "Full resync (re-pull folders)",
-                onClick: runFullSync,
-                title:
-                  "Force a full re-sync, ignoring the incremental watermark. " +
-                  "This re-maps Test Repository folder membership.",
-              },
-              {
-                key: "history",
-                label: "Sync history",
-                onClick: () => setShowSyncHistory(true),
-              },
-              {
-                key: "diag",
-                label: "Diagnostics",
-                onClick: () => setShowDiagnostics(true),
-                title: "Logs & diagnostics",
-              },
-              { key: "td", divider: true },
-              {
-                key: "t-light",
-                label: "Theme: Light",
-                checked: theme === "light",
-                onClick: () => chooseTheme("light"),
-              },
-              {
-                key: "t-dark",
-                label: "Theme: Dark",
-                checked: theme === "dark",
-                onClick: () => chooseTheme("dark"),
-              },
-              {
-                key: "t-system",
-                label: "Theme: System",
-                checked: theme === "system",
-                onClick: () => chooseTheme("system"),
-              },
-              { key: "cov-div", divider: true },
-              {
-                key: "show-coverage",
-                label: "Show Coverage tab",
-                checked: showCoverage,
-                onClick: () => void toggleCoverage(),
-                title:
-                  "Reveal the Coverage module tab (opt-in; hidden by default)",
-              },
-            ]}
-          />
+          {/* Wrapper carries the tour target: Menu renders its own
+              button internally, so the attribute cannot go on it. */}
+          <span data-tour="more">
+            <Menu
+              label="More"
+              align="right"
+              title="Tools & diagnostics"
+              items={[
+                {
+                  key: "importtests",
+                  label: "Import tests…",
+                  onClick: () => setShowImport(true),
+                  title: "Import tests from a CSV or XLSX file",
+                },
+                {
+                  key: "fullsync",
+                  label: "Full resync (re-pull folders)",
+                  onClick: runFullSync,
+                  title:
+                    "Force a full re-sync, ignoring the incremental watermark. " +
+                    "This re-maps Test Repository folder membership.",
+                },
+                {
+                  key: "history",
+                  label: "Sync history",
+                  onClick: () => setShowSyncHistory(true),
+                },
+                {
+                  key: "tour",
+                  label: "Take the tour",
+                  onClick: startTour,
+                  title: "Replay the onboarding walkthrough",
+                },
+                {
+                  key: "diag",
+                  label: "Diagnostics",
+                  onClick: () => setShowDiagnostics(true),
+                  title: "Logs & diagnostics",
+                },
+                { key: "td", divider: true },
+                {
+                  key: "t-light",
+                  label: "Theme: Light",
+                  checked: theme === "light",
+                  onClick: () => chooseTheme("light"),
+                },
+                {
+                  key: "t-dark",
+                  label: "Theme: Dark",
+                  checked: theme === "dark",
+                  onClick: () => chooseTheme("dark"),
+                },
+                {
+                  key: "t-system",
+                  label: "Theme: System",
+                  checked: theme === "system",
+                  onClick: () => chooseTheme("system"),
+                },
+                { key: "cov-div", divider: true },
+                {
+                  key: "show-coverage",
+                  label: "Show Coverage tab",
+                  checked: showCoverage,
+                  onClick: () => void toggleCoverage(),
+                  title:
+                    "Reveal the Coverage module tab (opt-in; hidden by default)",
+                },
+              ]}
+            />
+          </span>
 
           <button
+            data-tour="sync"
             className="btn btn-primary"
             onClick={runSync}
             disabled={syncing}
