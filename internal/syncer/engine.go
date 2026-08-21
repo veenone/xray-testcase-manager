@@ -168,22 +168,33 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 		return err
 	}
 
-	// Folders sync AFTER the Tests are in the store. Folder membership stamps
-	// folder_id onto existing test_case rows, so running it before the Test pull
-	// (as it used to) left the first sync's folders empty — the rows didn't exist
-	// yet. The tree refreshes every sync; the per-folder membership walk is
+	// Stage order matters. The test pull must come first: folder membership and
+	// precondition links are both keyed by test, so either running before tests
+	// exist silently maps nothing (an earlier first-sync bug). Preconditions run
+	// ahead of the folder walk because they are by far the longest stage and
+	// were previously starved on a first sync (RND_P_4TFINT_05-336).
+	//
+	// Unlike the other best-effort stages below, a precondition failure is
+	// recorded rather than only logged. Swallowing it is what let a sync stamp
+	// its watermark and report success over an empty Preconditions view.
+	var stageFailures []testrepo.StageFailure
+	emitStage(onProgress, "Syncing preconditions")
+	if err := e.syncPreconditions(ctx, profileID, projectKey, onProgress); err != nil {
+		log.Printf("xtm: precondition sync failed: %v", err)
+		stageFailures = append(stageFailures, testrepo.StageFailure{
+			Stage:   "preconditions",
+			Message: err.Error(),
+		})
+	}
+
+	// The folder tree refreshes every sync; the per-folder membership walk is
 	// best-effort and never blocks the Test pull.
 	emitStage(onProgress, "Loading folders")
 	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
 
-	// Preconditions and containers are best-effort, like folders: a Xray REST
-	// quirk (an absent issue type, a pagination cap, a permissions gap) is
-	// logged but must never fail the whole sync — the Tests are already in.
-	emitStage(onProgress, "Syncing preconditions")
-	if err := e.syncPreconditions(ctx, profileID, projectKey, onProgress); err != nil {
-		log.Printf("xtm: precondition sync failed (continuing): %v", err)
-	}
-
+	// Requirements, bugs and containers are best-effort too: a Xray REST quirk
+	// (an absent issue type, a pagination cap, a permissions gap) is logged but
+	// must never fail the whole sync — the Tests are already in.
 	emitStage(onProgress, "Syncing requirements")
 	if err := e.syncRequirements(ctx, profileID, projectKey, onProgress); err != nil {
 		log.Printf("xtm: requirement sync failed (continuing): %v", err)
@@ -218,7 +229,26 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 	if onProgress != nil {
 		onProgress(Progress{Fetched: fetched, Total: total, Done: true})
 	}
+	if len(stageFailures) > 0 {
+		return &PartialSyncError{StageFailures: stageFailures}
+	}
 	return nil
+}
+
+// PartialSyncError reports that a sync ran to the end and its data is usable,
+// but at least one stage did not complete. It is an error so a caller cannot
+// mistake the run for clean, and typed so the caller can record which stages
+// failed rather than only that something did (RND_P_4TFINT_05-336).
+type PartialSyncError struct {
+	StageFailures []testrepo.StageFailure
+}
+
+func (e *PartialSyncError) Error() string {
+	if len(e.StageFailures) == 0 {
+		return "sync completed with a failed stage"
+	}
+	return fmt.Sprintf("sync completed with %d failed stage(s): %s: %s",
+		len(e.StageFailures), e.StageFailures[0].Stage, e.StageFailures[0].Message)
 }
 
 // syncFolders refreshes the Test Repository folder tree and maps Tests to their
@@ -451,31 +481,63 @@ func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey
 // implementation is currently a no-op pending live verification (FR-13.4),
 // but demo mode populates them.
 func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
-	preconditions, links, err := e.backend.ListPreconditions(ctx, projectKey, func(done, total int) {
+	gen := time.Now().UnixMilli()
+	progress := func(done, total int) {
 		if onProgress != nil {
 			onProgress(Progress{Phase: "preconditions", Stage: "Syncing preconditions", Fetched: done, Total: total})
 		}
-	})
-	if err != nil {
-		return fmt.Errorf("list preconditions: %w", err)
 	}
-	if len(preconditions) == 0 && len(links) == 0 {
-		return nil
+
+	// batches counts how many times persist actually ran. Zero means the
+	// instance has no Precondition issue type (ListPreconditionsStream returns
+	// nil without calling onBatch), which is benign: skip the sweep, since
+	// there was no pass to reconcile against.
+	batches := 0
+
+	// persist commits one batch: the precondition rows and their links, both
+	// stamped with this pass's generation. Nothing is deleted here; the sweep
+	// below runs only if the whole pass succeeds.
+	persist := func(pre []backend.Precondition, links map[string][]string) error {
+		batches++
+		repoPre := make([]testrepo.Precondition, len(pre))
+		for i, p := range pre {
+			repoPre[i] = testrepo.Precondition{
+				Key:         p.Key,
+				Summary:     p.Summary,
+				Type:        p.Type,
+				Description: p.Description,
+				Condition:   p.Condition,
+			}
+		}
+		if err := e.repo.UpsertPreconditions(profileID, repoPre); err != nil {
+			return err
+		}
+		return e.repo.MarkTestPreconditions(profileID, gen, links)
 	}
-	repoPre := make([]testrepo.Precondition, len(preconditions))
-	for i, p := range preconditions {
-		repoPre[i] = testrepo.Precondition{
-			Key:         p.Key,
-			Summary:     p.Summary,
-			Type:        p.Type,
-			Description: p.Description,
-			Condition:   p.Condition,
+
+	if s, ok := e.backend.(backend.PreconditionStreamer); ok {
+		if err := s.ListPreconditionsStream(ctx, projectKey, progress, persist); err != nil {
+			return fmt.Errorf("list preconditions: %w", err)
+		}
+	} else {
+		// Backends without incremental support (Kiwi) still sync, just in one
+		// shot at the end.
+		pre, links, err := e.backend.ListPreconditions(ctx, projectKey, progress)
+		if err != nil {
+			return fmt.Errorf("list preconditions: %w", err)
+		}
+		if err := persist(pre, links); err != nil {
+			return err
 		}
 	}
-	if err := e.repo.UpsertPreconditions(profileID, repoPre); err != nil {
+
+	if batches == 0 {
+		return nil
+	}
+	if _, err := e.repo.SweepTestPreconditions(profileID, gen); err != nil {
 		return err
 	}
-	return e.repo.ReplaceAllTestPreconditions(profileID, links)
+	return nil
 }
 
 // syncContainers pulls the project's Test Sets, Test Plans and Test

@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -94,52 +96,167 @@ func normalizeTypeName(s string) string {
 // onProgress (optional) is called once per precondition as its associated Tests
 // are read — the slow part of a precondition sync — so the UI can show progress.
 func (c *Client) ListPreconditions(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Precondition, map[string][]string, error) {
+	allPre := []Precondition{}
+	allLinks := map[string][]string{}
+	err := c.ListPreconditionsStream(ctx, projectKey, onProgress,
+		func(pre []Precondition, links map[string][]string) error {
+			allPre = append(allPre, pre...)
+			for tk, pks := range links {
+				allLinks[tk] = append(allLinks[tk], pks...)
+			}
+			return nil
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+	return allPre, allLinks, nil
+}
+
+// ListPreconditionsStream walks a project's Preconditions and reports them to
+// onBatch in chunks of preconditionBatchSize as they are resolved, so a caller
+// can persist incrementally. onProgress (optional) is called once per
+// precondition as its associated Tests are read, the slow part of the pass.
+//
+// A non-nil error from onBatch aborts the walk and is returned wrapped, so a
+// store failure cannot be silently absorbed. An instance with no Precondition
+// issue type returns nil having called onBatch zero times, which callers read
+// as a benign skip rather than an empty project.
+func (c *Client) ListPreconditionsStream(
+	ctx context.Context,
+	projectKey string,
+	onProgress func(done, total int),
+	onBatch func(pre []Precondition, links map[string][]string) error,
+) error {
 	if isDemoURL(c.baseURL) {
-		return demoPreconditionsAndLinks(themeFor(c.baseURL), projectKey)
+		pre, links, err := demoPreconditionsAndLinks(themeFor(c.baseURL), projectKey)
+		if err != nil {
+			return err
+		}
+		return onBatch(pre, links)
 	}
 
 	typeID, typeName, err := c.resolvePreconditionType(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("resolve precondition issue type: %w", err)
+		return fmt.Errorf("resolve precondition issue type: %w", err)
 	}
 	if typeID == "" {
 		log.Printf("xtm: no Precondition issue type on this instance — skipping precondition sync")
-		return []Precondition{}, map[string][]string{}, nil
+		return nil
 	}
 
 	preconditions, err := c.searchPreconditions(ctx, projectKey, typeID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("search preconditions: %w", err)
+		return fmt.Errorf("search preconditions: %w", err)
 	}
 
-	// test key -> set of precondition keys, built from each precondition's
-	// associated tests. Best-effort per precondition so one inaccessible
-	// precondition can't abort the whole sync.
-	links := map[string][]string{}
 	total := len(preconditions)
-	for i, p := range preconditions {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+	var done, dropped int64
+	for start := 0; start < total; start += preconditionBatchSize {
+		end := start + preconditionBatchSize
+		if end > total {
+			end = total
 		}
-		testKeys, err := c.listPreconditionTests(ctx, p.Key)
-		if err != nil {
-			log.Printf("xtm: precondition %s tests: %v", p.Key, err)
-		} else {
+		chunk := preconditions[start:end]
+
+		// Resolve this chunk's associations concurrently, paced by the shared
+		// client rate limiter. Results are collected per index so the output
+		// stays in key order regardless of goroutine completion order. Reads
+		// are best-effort per precondition, so one inaccessible precondition
+		// costs its own links and nothing else.
+		perPre := make([][]string, len(chunk))
+		var progMu sync.Mutex // onProgress may not be concurrency-safe
+		sem := make(chan struct{}, preconditionFetchConcurrency)
+		var wg sync.WaitGroup
+		for i, p := range chunk {
+			if ctx.Err() != nil {
+				break
+			}
+			sem <- struct{}{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if ctx.Err() != nil {
+					return
+				}
+				testKeys, err := c.listPreconditionTestsRetrying(ctx, p.Key)
+				if err != nil {
+					log.Printf("xtm: precondition %s tests: %v", p.Key, err)
+					atomic.AddInt64(&dropped, 1)
+				} else {
+					perPre[i] = testKeys
+				}
+				if onProgress != nil {
+					n := atomic.AddInt64(&done, 1)
+					progMu.Lock()
+					onProgress(int(n), total)
+					progMu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		// links: test key -> precondition keys, for this chunk only.
+		links := map[string][]string{}
+		for i, testKeys := range perPre {
 			for _, tk := range testKeys {
-				links[tk] = append(links[tk], p.Key)
+				links[tk] = append(links[tk], chunk[i].Key)
 			}
 		}
-		if onProgress != nil {
-			onProgress(i+1, total)
+		if err := onBatch(chunk, links); err != nil {
+			return fmt.Errorf("persist precondition batch: %w", err)
 		}
-		time.Sleep(throttlePreconditions)
 	}
-	log.Printf("xtm: preconditions: %d found (type %q) for %s", len(preconditions), typeName, projectKey)
-	return preconditions, links, nil
+	log.Printf("xtm: preconditions: %d found (type %q) for %s", total, typeName, projectKey)
+	if dropped > 0 {
+		log.Printf("xtm: preconditions: %d of %d had unreadable test links for %s", dropped, total, projectKey)
+	}
+	return nil
 }
 
-// throttlePreconditions paces the per-precondition association reads.
-const throttlePreconditions = 150 * time.Millisecond
+// preconditionBatchSize is how many preconditions are accumulated before being
+// handed to the caller's onBatch. Small enough that an interrupted sync loses
+// little, large enough that the store write is not per-item.
+const preconditionBatchSize = 200
+
+// preconditionFetchConcurrency bounds how many per-precondition association
+// reads run at once. The shared client rate limiter (Client.do) caps the actual
+// request rate at syncReqPerSec; this just keeps several requests in flight so
+// the limiter stays fed, replacing the old one-at-a-time-with-a-sleep walk that
+// spent 15 minutes asleep on a 6000-precondition project.
+const preconditionFetchConcurrency = 8
+
+// preconditionRetries is how many times a single association read is retried.
+// The live Xray instance intermittently answers 401 with a token that worked
+// moments earlier, and times out on the same endpoint; both drop that
+// precondition's links silently. This is mitigation, not a root-cause fix.
+const preconditionRetries = 3
+
+// listPreconditionTestsRetrying calls listPreconditionTests, retrying with
+// exponential backoff. Returns the last error if every attempt fails.
+func (c *Client) listPreconditionTestsRetrying(ctx context.Context, key string) ([]string, error) {
+	var lastErr error
+	backoff := 500 * time.Millisecond
+	for attempt := 0; attempt < preconditionRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+		}
+		testKeys, err := c.listPreconditionTests(ctx, key)
+		if err == nil {
+			return testKeys, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
 
 // searchPreconditions finds every Precondition issue in a project via JQL,
 // matching by issue-type id (robust to renamed/localised types), paging until
@@ -188,7 +305,6 @@ func (c *Client) searchPreconditions(ctx context.Context, projectKey, typeID str
 		if len(resp.Issues) == 0 || startAt >= resp.Total {
 			break
 		}
-		time.Sleep(throttlePreconditions)
 	}
 	return out, nil
 }
@@ -226,7 +342,6 @@ func (c *Client) listPreconditionTests(ctx context.Context, preconditionKey stri
 		if len(links) < ravenPageLimit || added == 0 {
 			break
 		}
-		time.Sleep(throttlePreconditions)
 	}
 	return keys, nil
 }
@@ -320,7 +435,6 @@ func (c *Client) testPreconditionKeys(ctx context.Context, testKey string) ([]st
 		if len(entries) < ravenPageLimit || added == 0 {
 			break
 		}
-		time.Sleep(throttlePreconditions)
 	}
 	return keys, types, nil
 }

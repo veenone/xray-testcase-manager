@@ -201,7 +201,7 @@ func TestListTestPreconditionsReturnsLinkedItems(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert preconditions: %v", err)
 	}
-	if err := repo.ReplaceAllTestPreconditions("p1", map[string][]string{
+	if err := repo.MarkTestPreconditions("p1", 1, map[string][]string{
 		"QA-1": {"QA-P-1", "QA-P-2"},
 	}); err != nil {
 		t.Fatalf("replace links: %v", err)
@@ -237,7 +237,7 @@ func TestSetTestPreconditionsQueuesPreconditionSet(t *testing.T) {
 
 func TestSetTestPreconditionsToCurrentSetIsNoop(t *testing.T) {
 	repo := seedTestWithPreconditions(t)
-	if err := repo.ReplaceAllTestPreconditions("p1", map[string][]string{
+	if err := repo.MarkTestPreconditions("p1", 1, map[string][]string{
 		"QA-1": {"QA-P-1"},
 	}); err != nil {
 		t.Fatalf("seed link: %v", err)
@@ -255,7 +255,7 @@ func TestSetTestPreconditionsToCurrentSetIsNoop(t *testing.T) {
 
 func TestDiscardPreconditionSetRestoresOriginal(t *testing.T) {
 	repo := seedTestWithPreconditions(t)
-	if err := repo.ReplaceAllTestPreconditions("p1", map[string][]string{
+	if err := repo.MarkTestPreconditions("p1", 1, map[string][]string{
 		"QA-1": {"QA-P-1"},
 	}); err != nil {
 		t.Fatalf("seed link: %v", err)
@@ -315,7 +315,7 @@ func TestBulkReplacePreconditions(t *testing.T) {
 		t.Fatalf("seed test 2: %v", err)
 	}
 	// Both tests start covering {QA-P-1, QA-P-2}.
-	if err := repo.ReplaceAllTestPreconditions("p1", map[string][]string{
+	if err := repo.MarkTestPreconditions("p1", 1, map[string][]string{
 		"QA-1": {"QA-P-1", "QA-P-2"},
 		"QA-2": {"QA-P-1", "QA-P-2"},
 	}); err != nil {
@@ -506,7 +506,7 @@ func seedTestWithPreconditions(t *testing.T) *testrepo.Repository {
 	return repo
 }
 
-func TestReplaceAllTestPreconditionsClearsStaleLinks(t *testing.T) {
+func TestSweepTestPreconditionsClearsStaleLinks(t *testing.T) {
 	repo := newRepo(t)
 	if err := repo.UpsertTests("p1", []testrepo.TestCase{
 		{Key: "QA-1", ID: "1", Summary: "Login test"},
@@ -518,15 +518,22 @@ func TestReplaceAllTestPreconditionsClearsStaleLinks(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert preconditions: %v", err)
 	}
-	if err := repo.ReplaceAllTestPreconditions("p1", map[string][]string{
+	if err := repo.MarkTestPreconditions("p1", 100, map[string][]string{
 		"QA-1": {"QA-P-1"},
 	}); err != nil {
-		t.Fatalf("first replace: %v", err)
+		t.Fatalf("mark gen 100: %v", err)
 	}
 
-	// Re-run with an empty map — links must be cleared.
-	if err := repo.ReplaceAllTestPreconditions("p1", map[string][]string{}); err != nil {
-		t.Fatalf("second replace: %v", err)
+	// A later clean pass finds no links at all, then sweeps.
+	if err := repo.MarkTestPreconditions("p1", 200, map[string][]string{}); err != nil {
+		t.Fatalf("mark gen 200: %v", err)
+	}
+	deleted, err := repo.SweepTestPreconditions("p1", 200)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("swept %d rows, want 1", deleted)
 	}
 
 	got, err := repo.ListTestPreconditions("p1", "QA-1")
@@ -534,7 +541,112 @@ func TestReplaceAllTestPreconditionsClearsStaleLinks(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 	if len(got) != 0 {
-		t.Errorf("got %d preconditions, want 0 after clearing", len(got))
+		t.Errorf("got %d preconditions, want 0 after sweep", len(got))
+	}
+}
+
+func TestMarkTestPreconditionsWithoutSweepKeepsOlderLinks(t *testing.T) {
+	// This is the -336 regression: an interrupted pass must never delete
+	// links it simply did not reach.
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-1", ID: "1", Summary: "Login test"},
+		{Key: "QA-2", ID: "2", Summary: "Logout test"},
+	}); err != nil {
+		t.Fatalf("upsert tests: %v", err)
+	}
+	if err := repo.UpsertPreconditions("p1", []testrepo.Precondition{
+		{Key: "QA-P-1", Summary: "One"},
+		{Key: "QA-P-2", Summary: "Two"},
+	}); err != nil {
+		t.Fatalf("upsert preconditions: %v", err)
+	}
+	if err := repo.MarkTestPreconditions("p1", 100, map[string][]string{
+		"QA-1": {"QA-P-1"},
+		"QA-2": {"QA-P-2"},
+	}); err != nil {
+		t.Fatalf("mark gen 100: %v", err)
+	}
+
+	// A new pass gets through only the first batch, then dies. No sweep runs.
+	if err := repo.MarkTestPreconditions("p1", 200, map[string][]string{
+		"QA-1": {"QA-P-1"},
+	}); err != nil {
+		t.Fatalf("mark gen 200: %v", err)
+	}
+
+	for _, tk := range []string{"QA-1", "QA-2"} {
+		got, err := repo.ListTestPreconditions("p1", tk)
+		if err != nil {
+			t.Fatalf("list %s: %v", tk, err)
+		}
+		if len(got) != 1 {
+			t.Errorf("%s has %d preconditions, want 1 preserved", tk, len(got))
+		}
+	}
+}
+
+func TestSweepTestPreconditionsIsProfileScoped(t *testing.T) {
+	repo := newRepo(t)
+	for _, pid := range []string{"p1", "p2"} {
+		if err := repo.UpsertTests(pid, []testrepo.TestCase{
+			{Key: "QA-1", ID: "1", Summary: "Login test"},
+		}); err != nil {
+			t.Fatalf("upsert tests %s: %v", pid, err)
+		}
+		if err := repo.UpsertPreconditions(pid, []testrepo.Precondition{
+			{Key: "QA-P-1", Summary: "One"},
+		}); err != nil {
+			t.Fatalf("upsert preconditions %s: %v", pid, err)
+		}
+		if err := repo.MarkTestPreconditions(pid, 100, map[string][]string{
+			"QA-1": {"QA-P-1"},
+		}); err != nil {
+			t.Fatalf("mark %s: %v", pid, err)
+		}
+	}
+
+	if _, err := repo.SweepTestPreconditions("p1", 200); err != nil {
+		t.Fatalf("sweep p1: %v", err)
+	}
+
+	got, err := repo.ListTestPreconditions("p2", "QA-1")
+	if err != nil {
+		t.Fatalf("list p2: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("p2 has %d preconditions, want 1 (sweep must not cross profiles)", len(got))
+	}
+}
+
+func TestMarkTestPreconditionsIsIdempotent(t *testing.T) {
+	// Batches can overlap on retry; marking the same link twice in one
+	// generation must not error or duplicate.
+	repo := newRepo(t)
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-1", ID: "1", Summary: "Login test"},
+	}); err != nil {
+		t.Fatalf("upsert tests: %v", err)
+	}
+	if err := repo.UpsertPreconditions("p1", []testrepo.Precondition{
+		{Key: "QA-P-1", Summary: "One"},
+	}); err != nil {
+		t.Fatalf("upsert preconditions: %v", err)
+	}
+	links := map[string][]string{"QA-1": {"QA-P-1"}}
+	if err := repo.MarkTestPreconditions("p1", 100, links); err != nil {
+		t.Fatalf("first mark: %v", err)
+	}
+	if err := repo.MarkTestPreconditions("p1", 100, links); err != nil {
+		t.Fatalf("second mark: %v", err)
+	}
+
+	got, err := repo.ListTestPreconditions("p1", "QA-1")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("got %d preconditions, want 1 (no duplicates)", len(got))
 	}
 }
 

@@ -18,7 +18,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 48
+const schemaVersion = 49
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS test_precondition (
 	profile_id       TEXT NOT NULL,
 	test_key         TEXT NOT NULL,
 	precondition_key TEXT NOT NULL,
+	sync_gen         INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (profile_id, test_key, precondition_key)
 );
 
@@ -199,13 +200,14 @@ CREATE TABLE IF NOT EXISTS test_custom_field (
 );
 
 CREATE TABLE IF NOT EXISTS sync_log (
-	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	profile_id  TEXT NOT NULL,
-	started_at  TEXT NOT NULL,
-	finished_at TEXT NOT NULL DEFAULT '',
-	outcome     TEXT NOT NULL DEFAULT '',
-	fetched     INTEGER NOT NULL DEFAULT 0,
-	error       TEXT NOT NULL DEFAULT ''
+	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	profile_id     TEXT NOT NULL,
+	started_at     TEXT NOT NULL,
+	finished_at    TEXT NOT NULL DEFAULT '',
+	outcome        TEXT NOT NULL DEFAULT '',
+	fetched        INTEGER NOT NULL DEFAULT 0,
+	error          TEXT NOT NULL DEFAULT '',
+	stage_failures TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS app_setting (
@@ -1310,6 +1312,30 @@ func applyMigrations(db *sql.DB) error {
 		PRIMARY KEY (profile_id, precondition_key)
 	)`); err != nil {
 		return fmt.Errorf("v48 create precondition_duplicate_ignore: %w", err)
+	}
+
+	// v49: sync_gen on test_precondition, so the precondition sync can
+	// mark-and-sweep instead of wiping the table before it rewrites it
+	// (RND_P_4TFINT_05-336). An interrupted pass must leave stale links
+	// behind rather than delete valid ones. Existing rows default to
+	// generation 0, older than any real generation, so the first sync after
+	// upgrade sweeps them normally. Applied unconditionally; tolerated when
+	// the column already exists.
+	if _, err := db.Exec(
+		`ALTER TABLE test_precondition ADD COLUMN sync_gen INTEGER NOT NULL DEFAULT 0`,
+	); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return fmt.Errorf("v49 add test_precondition.sync_gen: %w", err)
+	}
+
+	// v49: stage_failures on sync_log — a JSON array of {stage, message} for
+	// best-effort stages that errored without failing the whole sync. Until
+	// now a failed precondition stage was logged and dropped, so the sync
+	// stamped its watermark and reported success (RND_P_4TFINT_05-336).
+	// Applied unconditionally; tolerated when the column already exists.
+	if _, err := db.Exec(
+		`ALTER TABLE sync_log ADD COLUMN stage_failures TEXT NOT NULL DEFAULT ''`,
+	); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return fmt.Errorf("v49 add sync_log.stage_failures: %w", err)
 	}
 	return nil
 }

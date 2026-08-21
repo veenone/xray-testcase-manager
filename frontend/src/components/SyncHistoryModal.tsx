@@ -91,7 +91,11 @@ export function SyncHistoryModal({ profileId, refreshKey, onClose }: Props) {
               </thead>
               <tbody>
                 {pageEntries.map((e) => {
-                  const hasDetail = !!e.error;
+                  // A "partial" run has no top-level error: the sync finished
+                  // and its data is usable, but a stage did not complete, so
+                  // the detail it carries is the per-stage list.
+                  const stageFailures = e.stageFailures ?? [];
+                  const hasDetail = !!e.error || stageFailures.length > 0;
                   const isOpen = expanded.has(e.id);
                   return (
                     <Fragment key={e.id}>
@@ -109,7 +113,9 @@ export function SyncHistoryModal({ profileId, refreshKey, onClose }: Props) {
                             className={
                               e.outcome === "success"
                                 ? "run-badge run-pass"
-                                : "run-badge run-fail"
+                                : e.outcome === "partial"
+                                  ? "run-badge run-partial"
+                                  : "run-badge run-fail"
                             }
                           >
                             {e.outcome}
@@ -131,7 +137,19 @@ export function SyncHistoryModal({ profileId, refreshKey, onClose }: Props) {
                       {hasDetail && isOpen && (
                         <tr className="synchist-detail-row">
                           <td colSpan={5}>
-                            <pre className="synchist-detail">{e.error}</pre>
+                            {stageFailures.length > 0 && (
+                              <ul className="synchist-stages">
+                                {stageFailures.map((sf, i) => (
+                                  <li key={i}>
+                                    <span className="mono">{sf.stage}</span>{" "}
+                                    did not finish: {sf.message}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {e.error && (
+                              <pre className="synchist-detail">{e.error}</pre>
+                            )}
                           </td>
                         </tr>
                       )}
