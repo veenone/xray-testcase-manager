@@ -259,6 +259,17 @@ func (a *Adapter) ListPreconditions(ctx context.Context, projectKey string, onPr
 	return toPreconditions(pcs), membership, nil
 }
 
+// ListTestPreconditions implements backend.TestPreconditionReader. Xray exposes
+// the association from the test side, so one Test's Preconditions can be read
+// without walking the project.
+func (a *Adapter) ListTestPreconditions(ctx context.Context, testKey string) ([]backend.Precondition, error) {
+	pcs, err := a.c.ListTestPreconditions(ctx, testKey)
+	if err != nil {
+		return nil, err
+	}
+	return toPreconditions(pcs), nil
+}
+
 func (a *Adapter) CreatePrecondition(ctx context.Context, projectKey, summary, ptype, description string) (string, error) {
 	return a.c.CreatePrecondition(ctx, projectKey, summary, ptype, description)
 }

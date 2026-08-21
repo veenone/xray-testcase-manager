@@ -1202,9 +1202,79 @@ func (a *App) DeleteFolder(profileID, path string) error {
 	return a.repo.DeleteFolder(profileID, path)
 }
 
-// GetTestPreconditions returns the Preconditions linked to a Test.
-func (a *App) GetTestPreconditions(profileID, testKey string) ([]testrepo.Precondition, error) {
+// GetTestPreconditions returns the Preconditions linked to a Test, falling back
+// to the remote when the local cache has none (RND_P_4TFINT_05-339).
+//
+// The bulk sync is the only thing that populates precondition links, so a
+// stage that failed or was cut short leaves every Test in the profile showing
+// no preconditions at all, with no way to recover short of a full resync. This
+// mirrors GetTestSteps: serve the cache, fetch on a miss, then persist so the
+// next open is local again. forceRefresh re-pulls even when the cache is warm.
+//
+// Two cases deliberately do not fetch. A Test with an uncommitted local edit to
+// its precondition set is served from the cache, because refreshing would undo
+// the edit. A backend that cannot read one Test's preconditions directly is
+// also served from the cache rather than made to walk the whole project.
+func (a *App) GetTestPreconditions(profileID, testKey string, forceRefresh bool) ([]testrepo.Precondition, error) {
 	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	if isLocalTestKey(testKey) {
+		// Uncommitted local Test — it has no remote counterpart to ask.
+		return a.repo.ListTestPreconditions(profileID, testKey)
+	}
+
+	cached, err := a.repo.ListTestPreconditions(profileID, testKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(cached) > 0 && !forceRefresh {
+		return cached, nil
+	}
+	pending, err := a.repo.HasPendingPreconditionChange(profileID, testKey)
+	if err != nil {
+		return nil, err
+	}
+	if pending {
+		return cached, nil
+	}
+
+	b, err := a.backendFor(profileID)
+	if err != nil {
+		return cached, nil
+	}
+	reader, ok := b.(backend.TestPreconditionReader)
+	if !ok {
+		return cached, nil
+	}
+
+	remote, err := reader.ListTestPreconditions(a.ctx, testKey)
+	if err != nil {
+		if forceRefresh {
+			return nil, err
+		}
+		// An automatic refresh that fails must not blank a panel that had
+		// something in it, nor turn a routine open into an error dialog.
+		log.Printf("xtm: precondition fallback for %s: %v", testKey, err)
+		return cached, nil
+	}
+
+	preconditions := make([]testrepo.Precondition, len(remote))
+	keys := make([]string, len(remote))
+	for i, p := range remote {
+		preconditions[i] = testrepo.Precondition{
+			Key:         p.Key,
+			Summary:     p.Summary,
+			Type:        p.Type,
+			Description: p.Description,
+			Condition:   p.Condition,
+		}
+		keys[i] = p.Key
+	}
+	if err := a.repo.UpsertPreconditions(profileID, preconditions); err != nil {
+		return nil, err
+	}
+	if err := a.repo.CacheTestPreconditionLinks(profileID, testKey, keys); err != nil {
 		return nil, err
 	}
 	return a.repo.ListTestPreconditions(profileID, testKey)

@@ -251,7 +251,7 @@ export function GetTestCustomFields(arg1:string,arg2:string,arg3:boolean):Promis
 
 export function GetTestMeta(arg1:string,arg2:string):Promise<jira.TestMeta>;
 
-export function GetTestPreconditions(arg1:string,arg2:string):Promise<Array<testrepo.Precondition>>;
+export function GetTestPreconditions(arg1:string,arg2:string,arg3:boolean):Promise<Array<testrepo.Precondition>>;
 
 export function GetTestRequirements(arg1:string,arg2:string):Promise<Array<testrepo.Requirement>>;
 

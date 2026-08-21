@@ -1106,6 +1106,32 @@ var demoCrossProjectBug = Bug{
 // Tests so the board shows a mix.
 var demoExternalStatuses = []string{"Approved", "In Progress", "Draft", "Done"}
 
+// demoTestPreconditions returns the Preconditions linked to one demo Test, the
+// offline counterpart of the test-side association endpoint. The project key is
+// parsed from the issue key, then the generated link map is consulted so demo
+// mode and live Jira answer the same question the same way.
+func demoTestPreconditions(theme demoTheme, testKey string) ([]Precondition, error) {
+	projectKey := "DEMO"
+	if i := strings.LastIndex(testKey, "-"); i > 0 {
+		projectKey = testKey[:i]
+	}
+	preconditions, links, err := demoPreconditionsAndLinks(theme, projectKey)
+	if err != nil {
+		return nil, err
+	}
+	byKey := make(map[string]Precondition, len(preconditions))
+	for _, p := range preconditions {
+		byKey[p.Key] = p
+	}
+	out := []Precondition{}
+	for _, pk := range links[testKey] {
+		if p, ok := byKey[pk]; ok {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 // demoTestBasicForKey returns the deterministic basics for a Test key, used by
 // the ListTestsBasic demo path so the sync can cache cross-project (XRAYINT-*)
 // execution members offline. The project key is parsed from the issue key.

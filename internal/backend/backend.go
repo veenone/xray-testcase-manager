@@ -205,3 +205,15 @@ type Backend interface {
 	// --- capabilities ---
 	Capabilities() Capabilities
 }
+
+// TestPreconditionReader is an optional capability: reading the Preconditions
+// of one Test directly, without walking every Precondition in the project.
+//
+// It is deliberately kept off Backend. Only Xray exposes a test-side
+// association endpoint, and widening the Backend interface would force every
+// other adapter to implement a method it has no cheaper way to answer than the
+// project-wide ListPreconditions it already provides. Callers type-assert and
+// skip the fast path when the backend does not implement it.
+type TestPreconditionReader interface {
+	ListTestPreconditions(ctx context.Context, testKey string) ([]Precondition, error)
+}

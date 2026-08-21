@@ -678,6 +678,60 @@ func (r *Repository) ReplaceAllTestPreconditions(profileID string, links map[str
 	return tx.Commit()
 }
 
+// CacheTestPreconditionLinks replaces one Test's Precondition links with what
+// the remote reported. This is a cache refresh, not an edit: unlike
+// SetTestPreconditions it queues no pending change and records no audit entry,
+// so a link read back from Jira is never mistaken for a local edit awaiting
+// commit.
+//
+// The caller must have upserted the Precondition rows themselves first —
+// ListTestPreconditions joins against them, so a link with no matching
+// precondition row would read back as nothing.
+func (r *Repository) CacheTestPreconditionLinks(profileID, testKey string, precondKeys []string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(
+		`DELETE FROM test_precondition WHERE profile_id = ? AND test_key = ?`,
+		profileID, testKey,
+	); err != nil {
+		return fmt.Errorf("clear precondition links: %w", err)
+	}
+	for _, pk := range uniqueSorted(precondKeys) {
+		if _, err := tx.Exec(
+			`INSERT INTO test_precondition (profile_id, test_key, precondition_key)
+			 VALUES (?, ?, ?)`, profileID, testKey, pk,
+		); err != nil {
+			return fmt.Errorf("cache precondition link %s -> %s: %w", testKey, pk, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// HasPendingPreconditionChange reports whether a Test's Precondition set has a
+// local edit still waiting to be committed. A caller refreshing the cache from
+// the remote must check this first: an uncommitted "remove every precondition"
+// is indistinguishable from "never cached" by link count alone, and refreshing
+// over it would silently resurrect the links the user just removed.
+func (r *Repository) HasPendingPreconditionChange(profileID, testKey string) (bool, error) {
+	var one int
+	err := r.db.QueryRow(
+		`SELECT 1 FROM pending_change
+		 WHERE profile_id = ? AND entity_type = ? AND entity_key = ? LIMIT 1`,
+		profileID, entityPreconditionSet, testKey,
+	).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check pending precondition change: %w", err)
+	}
+	return true, nil
+}
+
 // ListTestPreconditions returns the Preconditions linked to a Test.
 func (r *Repository) ListTestPreconditions(profileID, testKey string) ([]Precondition, error) {
 	rows, err := r.db.Query(

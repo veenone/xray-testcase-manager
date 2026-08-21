@@ -188,6 +188,8 @@ export function TestDetail({
   const [meta, setMeta] = useState<TestMeta | null>(null);
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [allPreconditions, setAllPreconditions] = useState<Precondition[]>([]);
+  const [precondLoading, setPrecondLoading] = useState(false);
+  const [precondError, setPrecondError] = useState("");
   // Cross-project precondition picker open state (RND_P_4TFINT_05-322).
   const [showCrossPrecond, setShowCrossPrecond] = useState(false);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
@@ -308,7 +310,7 @@ export function TestDetail({
     const skipBugs = testKey.startsWith("NEW-");
     Promise.all([
       GetTest(profileId, testKey),
-      GetTestPreconditions(profileId, testKey),
+      GetTestPreconditions(profileId, testKey, false),
       GetTestContainers(profileId, testKey),
       ListAllPreconditions(profileId),
       GetTestReview(profileId, testKey),
@@ -624,6 +626,24 @@ export function TestDetail({
     applyRequirements(requirements.map((r) => r.key).filter((k) => k !== key));
   }
 
+  // refreshPreconditions re-reads the links from Xray, bypassing the cache.
+  // The sync is the only other thing that fills them in, so this is the way out
+  // when a sync dropped them (RND_P_4TFINT_05-339).
+  async function refreshPreconditions() {
+    setPrecondLoading(true);
+    setPrecondError("");
+    try {
+      const pre = await GetTestPreconditions(profileId, testKey, true);
+      setPreconditions(pre ?? []);
+      const all = await ListAllPreconditions(profileId);
+      setAllPreconditions(all ?? []);
+    } catch (e) {
+      setPrecondError(errMsg(e));
+    } finally {
+      setPrecondLoading(false);
+    }
+  }
+
   // applyPreconditions replaces the test's precondition set, then refreshes the
   // displayed list from the store (FR-13.5). Add/remove both route here.
   async function applyPreconditions(nextKeys: string[]) {
@@ -631,7 +651,7 @@ export function TestDetail({
     setSaveError("");
     try {
       await SetTestPreconditions(profileId, testKey, nextKeys);
-      const refreshed = await GetTestPreconditions(profileId, testKey);
+      const refreshed = await GetTestPreconditions(profileId, testKey, false);
       setPreconditions(refreshed ?? []);
       onEdited();
     } catch (e) {
@@ -1210,7 +1230,18 @@ export function TestDetail({
             <>
               <h4>
                 Preconditions {isDirty("preconditions") && <DirtyDot />}
+                <button
+                  className="link-btn steps-refresh"
+                  onClick={refreshPreconditions}
+                  disabled={precondLoading}
+                  title="Re-fetch preconditions from Jira"
+                >
+                  {precondLoading ? "Loading…" : "Refresh"}
+                </button>
               </h4>
+              {precondError && (
+                <p className="error-text">{precondError}</p>
+              )}
               {preconditions.length === 0 ? (
                 <p className="muted">None linked</p>
               ) : (

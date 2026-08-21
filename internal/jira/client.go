@@ -303,27 +303,37 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 // the error and leaves decoding to the caller — used where the response shape
 // varies between Xray versions and has to be sniffed (see parseStepsResponse).
 func (c *Client) getBytes(ctx context.Context, path string) ([]byte, error) {
+	body, _, err := c.getBytesStatus(ctx, path)
+	return body, err
+}
+
+// getBytesStatus is getBytes plus the HTTP status code, for the callers that
+// treat a particular status as data rather than as a failure (Xray answers 400
+// when an issue key is simply not a Test, for instance). The status is reported
+// alongside the error rather than encoded into it so the error text stays
+// byte-for-byte what getBytes has always produced.
+func (c *Client) getBytesStatus(ctx context.Context, path string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+		return nil, resp.StatusCode, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("jira: GET %s -> %s: %s", path, resp.Status, snippet(body, 1024))
+		return nil, resp.StatusCode, fmt.Errorf("jira: GET %s -> %s: %s", path, resp.Status, snippet(body, 1024))
 	}
-	return body, nil
+	return body, resp.StatusCode, nil
 }
 
 // put performs an authenticated JSON PUT.

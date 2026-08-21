@@ -1,7 +1,9 @@
 package jira
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -227,6 +229,165 @@ func (c *Client) listPreconditionTests(ctx context.Context, preconditionKey stri
 		time.Sleep(throttlePreconditions)
 	}
 	return keys, nil
+}
+
+// ListTestPreconditions returns the Preconditions linked to a single Test.
+//
+// Maps to GET /rest/raven/1.0/api/test/{key}/preconditions, verified against
+// Xray Server 8.4.0 on 2026-08-21. Note the plural path segment: the singular
+// /precondition returns 404, which is why the association was previously read
+// only from the precondition side (see UpdateTestPreconditions below).
+//
+// The endpoint returns key, rank and type but no summary or description, so
+// those are filled in with one batched issue search rather than one request per
+// precondition. Unlike the project-wide sync this does populate Type, which the
+// endpoint reports directly.
+//
+// A Jira key that is not a Test answers 400; that is treated as "no
+// preconditions" rather than an error, matching searchPreconditions. Demo URLs
+// short-circuit to generated data.
+func (c *Client) ListTestPreconditions(ctx context.Context, testKey string) ([]Precondition, error) {
+	if isDemoURL(c.baseURL) {
+		return demoTestPreconditions(themeFor(c.baseURL), testKey)
+	}
+
+	keys, types, err := c.testPreconditionKeys(ctx, testKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return []Precondition{}, nil
+	}
+
+	details, err := c.preconditionDetails(ctx, keys)
+	if err != nil {
+		// The links are the part that matters; a failed enrichment should not
+		// lose them. Fall back to key-only entries.
+		log.Printf("xtm: precondition details for %s: %v", testKey, err)
+		details = map[string]Precondition{}
+	}
+
+	out := make([]Precondition, 0, len(keys))
+	for _, k := range keys {
+		p := details[k]
+		p.Key = k
+		if t := types[k]; t != "" {
+			p.Type = t
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// testPreconditionKeys reads the Test's associated Precondition keys (and the
+// type each one reports), paging to respect Xray's per-request cap.
+func (c *Client) testPreconditionKeys(ctx context.Context, testKey string) ([]string, map[string]string, error) {
+	keys := []string{}
+	types := map[string]string{}
+	seen := map[string]bool{}
+
+	for page := 1; page <= ravenMaxPages; page++ {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		path := fmt.Sprintf("/rest/raven/1.0/api/test/%s/preconditions?page=%d&limit=%d",
+			testKey, page, ravenPageLimit)
+		body, status, err := c.getBytesStatus(ctx, path)
+		if err != nil {
+			if status == http.StatusBadRequest {
+				// Not a Test issue (or no longer one) — nothing to link. A 403
+				// or anything else is a real failure and must surface, so an
+				// unreadable test is never shown as one with no preconditions.
+				log.Printf("xtm: test preconditions rejected for %s: %v", testKey, err)
+				return []string{}, map[string]string{}, nil
+			}
+			return nil, nil, err
+		}
+		entries, err := parseTestPreconditions(body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse preconditions for %s: %w", testKey, err)
+		}
+		added := 0
+		for _, e := range entries {
+			if e.Key == "" || seen[e.Key] {
+				continue
+			}
+			seen[e.Key] = true
+			keys = append(keys, e.Key)
+			types[e.Key] = e.Type
+			added++
+		}
+		if len(entries) < ravenPageLimit || added == 0 {
+			break
+		}
+		time.Sleep(throttlePreconditions)
+	}
+	return keys, types, nil
+}
+
+// testPreconditionEntry is one row of the test-side association response.
+type testPreconditionEntry struct {
+	Key  string `json:"key"`
+	Type string `json:"type"`
+}
+
+// parseTestPreconditions decodes the association response, which is a bare JSON
+// array, tolerating a {"preconditions":[…]} wrapper like the other Xray
+// association endpoints.
+func parseTestPreconditions(body []byte) ([]testPreconditionEntry, error) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return nil, nil
+	}
+	if trimmed[0] == '[' {
+		var entries []testPreconditionEntry
+		if err := json.Unmarshal(trimmed, &entries); err != nil {
+			return nil, err
+		}
+		return entries, nil
+	}
+	var wrapped struct {
+		Preconditions []testPreconditionEntry `json:"preconditions"`
+	}
+	if err := json.Unmarshal(trimmed, &wrapped); err != nil {
+		return nil, err
+	}
+	return wrapped.Preconditions, nil
+}
+
+// preconditionDetails fetches summary and description for the given
+// Precondition keys in one search, keyed by issue key.
+func (c *Client) preconditionDetails(ctx context.Context, keys []string) (map[string]Precondition, error) {
+	quoted := make([]string, len(keys))
+	for i, k := range keys {
+		quoted[i] = `"` + k + `"`
+	}
+	q := url.Values{}
+	q.Set("jql", fmt.Sprintf("key in (%s)", strings.Join(quoted, ", ")))
+	q.Set("maxResults", strconv.Itoa(len(keys)))
+	q.Set("fields", "summary,description")
+
+	var resp struct {
+		Issues []struct {
+			Key    string `json:"key"`
+			Fields struct {
+				Summary     string `json:"summary"`
+				Description string `json:"description"`
+			} `json:"fields"`
+		} `json:"issues"`
+	}
+	if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	out := make(map[string]Precondition, len(resp.Issues))
+	for _, iss := range resp.Issues {
+		out[iss.Key] = Precondition{
+			Key:         iss.Key,
+			Summary:     iss.Fields.Summary,
+			Description: iss.Fields.Description,
+		}
+	}
+	return out, nil
 }
 
 // CreatePrecondition creates a new Precondition issue and returns its key
