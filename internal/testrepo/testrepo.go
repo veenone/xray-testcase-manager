@@ -640,42 +640,61 @@ func (r *Repository) UpsertPreconditions(profileID string, preconditions []Preco
 	return tx.Commit()
 }
 
-// ReplaceAllTestPreconditions wipes a profile's Test-to-Precondition link
-// table and rewrites it from the provided map. Used by FullSync so removed
-// links actually disappear on resync.
-func (r *Repository) ReplaceAllTestPreconditions(profileID string, links map[string][]string) error {
+// MarkTestPreconditions upserts a batch of Test-to-Precondition links, stamping
+// each with the current sync generation. Safe to call repeatedly during one
+// pass: rows already present at this generation are left alone, and rows
+// carried over from an earlier generation are re-stamped rather than
+// duplicated. Nothing is deleted here — see SweepTestPreconditions.
+func (r *Repository) MarkTestPreconditions(profileID string, gen int64, links map[string][]string) error {
+	if len(links) == 0 {
+		return nil
+	}
 	tx, err := r.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(
-		`DELETE FROM test_precondition WHERE profile_id = ?`, profileID,
-	); err != nil {
-		return fmt.Errorf("clear precondition links: %w", err)
-	}
-
-	if len(links) == 0 {
-		return tx.Commit()
-	}
-
 	stmt, err := tx.Prepare(
-		`INSERT INTO test_precondition (profile_id, test_key, precondition_key)
-		 VALUES (?, ?, ?)`)
+		`INSERT INTO test_precondition (profile_id, test_key, precondition_key, sync_gen)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(profile_id, test_key, precondition_key) DO UPDATE SET
+		   sync_gen = excluded.sync_gen`)
 	if err != nil {
-		return fmt.Errorf("prepare insert link: %w", err)
+		return fmt.Errorf("prepare mark link: %w", err)
 	}
 	defer stmt.Close()
 
 	for testKey, preKeys := range links {
 		for _, pk := range preKeys {
-			if _, err := stmt.Exec(profileID, testKey, pk); err != nil {
-				return fmt.Errorf("link %s -> %s: %w", testKey, pk, err)
+			if _, err := stmt.Exec(profileID, testKey, pk, gen); err != nil {
+				return fmt.Errorf("mark link %s -> %s: %w", testKey, pk, err)
 			}
 		}
 	}
 	return tx.Commit()
+}
+
+// SweepTestPreconditions removes a profile's Test-to-Precondition links left
+// over from an earlier sync generation, and returns how many it deleted. This
+// is what makes removed links actually disappear on resync.
+//
+// Call it ONLY after a precondition pass completed cleanly. Sweeping after a
+// partial pass would delete links the pass simply never reached, which is the
+// defect this whole mechanism exists to prevent (RND_P_4TFINT_05-336).
+func (r *Repository) SweepTestPreconditions(profileID string, gen int64) (int64, error) {
+	res, err := r.db.Exec(
+		`DELETE FROM test_precondition WHERE profile_id = ? AND sync_gen < ?`,
+		profileID, gen,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("sweep precondition links: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("sweep precondition links rows: %w", err)
+	}
+	return n, nil
 }
 
 // CacheTestPreconditionLinks replaces one Test's Precondition links with what
@@ -1300,7 +1319,7 @@ func (r *Repository) UpsertContainers(profileID string, containers []Container) 
 
 // ReplaceAllContainerLinks wipes a profile's Test-to-Container memberships and
 // rewrites them from the provided list, so memberships removed in Jira
-// actually disappear on resync (mirrors ReplaceAllTestPreconditions).
+// actually disappear on resync (mirrors the precondition link sweep).
 func (r *Repository) ReplaceAllContainerLinks(profileID string, links []ContainerLink) error {
 	tx, err := r.db.Begin()
 	if err != nil {
