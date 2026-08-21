@@ -451,33 +451,58 @@ func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey
 // implementation is currently a no-op pending live verification (FR-13.4),
 // but demo mode populates them.
 func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
-	preconditions, links, err := e.backend.ListPreconditions(ctx, projectKey, func(done, total int) {
+	gen := time.Now().UnixMilli()
+	progress := func(done, total int) {
 		if onProgress != nil {
 			onProgress(Progress{Phase: "preconditions", Stage: "Syncing preconditions", Fetched: done, Total: total})
 		}
-	})
-	if err != nil {
-		return fmt.Errorf("list preconditions: %w", err)
 	}
-	if len(preconditions) == 0 && len(links) == 0 {
-		return nil
+
+	// batches counts how many times persist actually ran. Zero means the
+	// instance has no Precondition issue type (ListPreconditionsStream returns
+	// nil without calling onBatch), which is benign: skip the sweep, since
+	// there was no pass to reconcile against.
+	batches := 0
+
+	// persist commits one batch: the precondition rows and their links, both
+	// stamped with this pass's generation. Nothing is deleted here; the sweep
+	// below runs only if the whole pass succeeds.
+	persist := func(pre []backend.Precondition, links map[string][]string) error {
+		batches++
+		repoPre := make([]testrepo.Precondition, len(pre))
+		for i, p := range pre {
+			repoPre[i] = testrepo.Precondition{
+				Key:         p.Key,
+				Summary:     p.Summary,
+				Type:        p.Type,
+				Description: p.Description,
+				Condition:   p.Condition,
+			}
+		}
+		if err := e.repo.UpsertPreconditions(profileID, repoPre); err != nil {
+			return err
+		}
+		return e.repo.MarkTestPreconditions(profileID, gen, links)
 	}
-	repoPre := make([]testrepo.Precondition, len(preconditions))
-	for i, p := range preconditions {
-		repoPre[i] = testrepo.Precondition{
-			Key:         p.Key,
-			Summary:     p.Summary,
-			Type:        p.Type,
-			Description: p.Description,
-			Condition:   p.Condition,
+
+	if s, ok := e.backend.(backend.PreconditionStreamer); ok {
+		if err := s.ListPreconditionsStream(ctx, projectKey, progress, persist); err != nil {
+			return fmt.Errorf("list preconditions: %w", err)
+		}
+	} else {
+		// Backends without incremental support (Kiwi) still sync, just in one
+		// shot at the end.
+		pre, links, err := e.backend.ListPreconditions(ctx, projectKey, progress)
+		if err != nil {
+			return fmt.Errorf("list preconditions: %w", err)
+		}
+		if err := persist(pre, links); err != nil {
+			return err
 		}
 	}
-	if err := e.repo.UpsertPreconditions(profileID, repoPre); err != nil {
-		return err
-	}
-	gen := time.Now().UnixMilli()
-	if err := e.repo.MarkTestPreconditions(profileID, gen, links); err != nil {
-		return err
+
+	if batches == 0 {
+		return nil
 	}
 	if _, err := e.repo.SweepTestPreconditions(profileID, gen); err != nil {
 		return err
