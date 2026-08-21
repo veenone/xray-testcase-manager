@@ -18,6 +18,68 @@ func newManager(t *testing.T) *settings.Manager {
 	return settings.NewManager(st)
 }
 
+// newManagerWithStore is newManager plus the store, for tests that need to
+// write a raw row behind the manager's back.
+func newManagerWithStore(t *testing.T) (*settings.Manager, *store.Store) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return settings.NewManager(st), st
+}
+
+// TestTourSeenVersionRoundTrips covers the onboarding tour's "already seen"
+// marker (RND_P_4TFINT_05-335).
+func TestTourSeenVersionRoundTrips(t *testing.T) {
+	m := newManager(t)
+
+	got, err := m.Get()
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.TourSeenVersion != 0 {
+		t.Errorf("fresh install has TourSeenVersion %d, want 0 (never seen)", got.TourSeenVersion)
+	}
+
+	if err := m.SetTourSeenVersion(1); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	got, err = m.Get()
+	if err != nil {
+		t.Fatalf("get after set: %v", err)
+	}
+	if got.TourSeenVersion != 1 {
+		t.Errorf("got TourSeenVersion %d, want 1", got.TourSeenVersion)
+	}
+}
+
+// TestTourSeenVersionIgnoresUnparsableValue checks a hand-edited or corrupted
+// row degrades to "never seen" rather than erroring the whole settings load,
+// which runs at startup and would otherwise break the app.
+func TestTourSeenVersionIgnoresUnparsableValue(t *testing.T) {
+	m, st := newManagerWithStore(t)
+	if err := m.SetTourSeenVersion(3); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if _, err := st.DB().Exec(
+		`INSERT INTO app_setting (key, value) VALUES (?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		"tour_seen_version", "not-a-number",
+	); err != nil {
+		t.Fatalf("write raw setting: %v", err)
+	}
+
+	got, err := m.Get()
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.TourSeenVersion != 0 {
+		t.Errorf("got %d, want 0 for an unparsable value", got.TourSeenVersion)
+	}
+}
+
 func TestDefaultSettingsAreEmpty(t *testing.T) {
 	m := newManager(t)
 	s, err := m.Get()

@@ -1,0 +1,72 @@
+/* Overrides for driver.js's stock styling, so the tour reads as part of the
+   app in both themes (RND_P_4TFINT_05-335). Driver's own CSS is imported first
+   in useTour.ts, so these rules win by load order without needing !important.
+
+   Token names are the ones App.css actually defines: --surface, --text,
+   --text-muted, --border, --accent. */
+
+.driver-popover {
+  background-color: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  max-width: 340px;
+}
+
+.driver-popover-title {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.driver-popover-description {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.driver-popover-progress-text {
+  color: var(--text-muted);
+}
+
+/* Driver draws the popover's arrow with border colors, so each side needs its
+   own rule or the arrow keeps the stock white against a dark panel. */
+.driver-popover-arrow-side-top {
+  border-top-color: var(--surface);
+}
+.driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--surface);
+}
+.driver-popover-arrow-side-left {
+  border-left-color: var(--surface);
+}
+.driver-popover-arrow-side-right {
+  border-right-color: var(--surface);
+}
+
+.driver-popover-navigation-btns button {
+  background-color: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  text-shadow: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.driver-popover-navigation-btns button:hover {
+  border-color: var(--accent);
+}
+
+/* driver.js sets the next button's colors inline on the element, which a plain
+   rule cannot beat. This is the only place !important is warranted. */
+.driver-popover-next-btn {
+  background-color: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+}
+
+.driver-popover-close-btn {
+  color: var(--text-muted);
+}

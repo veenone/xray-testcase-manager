@@ -16,6 +16,7 @@ export {
   ListRequirementLinkTypeDetails,
   GetCapabilities,
   SetShowCoverage,
+  SetTourSeenVersion,
   ListProfiles,
   CreateProfile,
   CreateProfileReusingToken,
@@ -511,6 +512,9 @@ export interface Settings {
   theme: string; // "light" | "dark" | "system" | "" (= light)
   requirementLinkType: string; // Jira issue-link type for Test->Requirement coverage; default "tested by"
   showCoverage: boolean; // reveal the opt-in, hidden-by-default Coverage tab
+  // Version of the onboarding tour this user has already been through, 0 when
+  // never. A later release re-offers a rewritten tour by bumping TOUR_VERSION.
+  tourSeenVersion: number;
 }
 
 // Capabilities mirrors backend.Capabilities — what the active profile's

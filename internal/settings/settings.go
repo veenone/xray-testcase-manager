@@ -20,6 +20,7 @@ const (
 	keyRequirementLinkType = "requirement_link_type"
 	keyShowCoverage        = "show_coverage"
 	keySpellcheckIgnore    = "spellcheck_ignore_words"
+	keyTourSeenVersion     = "tour_seen_version"
 )
 
 // Settings holds the global application preferences.
@@ -30,6 +31,11 @@ type Settings struct {
 	// ShowCoverage reveals the Coverage top-nav tab. The Coverage module is
 	// opt-in, so it is hidden by default until the user enables it.
 	ShowCoverage bool `json:"showCoverage"`
+	// TourSeenVersion is the version of the onboarding tour this user has
+	// already been through, 0 when they never have. Storing a version rather
+	// than a bool lets a later release re-offer a rewritten tour by bumping
+	// the frontend's TOUR_VERSION constant.
+	TourSeenVersion int `json:"tourSeenVersion"`
 }
 
 // Manager reads and writes global settings.
@@ -68,6 +74,10 @@ func (m *Manager) Get() (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
+	tourSeen, err := m.value(keyTourSeenVersion)
+	if err != nil {
+		return Settings{}, err
+	}
 	s.DefaultProfileID = def
 	s.Theme = theme
 	// An unset value means "auto-resolve": the backend picks the instance's
@@ -78,12 +88,21 @@ func (m *Manager) Get() (Settings, error) {
 	s.RequirementLinkType = rlt
 	// Default false (hidden) when unset or unparsable.
 	s.ShowCoverage, _ = strconv.ParseBool(showCov)
+	// Default 0 (never seen) when unset or unparsable. A corrupted value must
+	// not fail the whole settings load, which runs at startup.
+	s.TourSeenVersion, _ = strconv.Atoi(tourSeen)
 	return s, nil
 }
 
 // SetShowCoverage records whether the Coverage top-nav tab is shown.
 func (m *Manager) SetShowCoverage(v bool) error {
 	return m.setValue(keyShowCoverage, strconv.FormatBool(v))
+}
+
+// SetTourSeenVersion records which version of the onboarding tour the user has
+// completed or skipped, so it is not shown again until the tour changes.
+func (m *Manager) SetTourSeenVersion(v int) error {
+	return m.setValue(keyTourSeenVersion, strconv.Itoa(v))
 }
 
 // SetDefaultProfileID records which profile is auto-selected on launch.

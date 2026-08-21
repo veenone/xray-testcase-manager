@@ -437,6 +437,8 @@ export function SetTestRunStatus(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function SetTheme(arg1:string):Promise<void>;
 
+export function SetTourSeenVersion(arg1:number):Promise<void>;
+
 export function SetValueTests(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function SetVersionStatus(arg1:string,arg2:string,arg3:string):Promise<void>;
