@@ -475,7 +475,14 @@ func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey st
 	if err := e.repo.UpsertPreconditions(profileID, repoPre); err != nil {
 		return err
 	}
-	return e.repo.ReplaceAllTestPreconditions(profileID, links)
+	gen := time.Now().UnixMilli()
+	if err := e.repo.MarkTestPreconditions(profileID, gen, links); err != nil {
+		return err
+	}
+	if _, err := e.repo.SweepTestPreconditions(profileID, gen); err != nil {
+		return err
+	}
+	return nil
 }
 
 // syncContainers pulls the project's Test Sets, Test Plans and Test
