@@ -850,6 +850,10 @@ export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
 }
 
+export function SetTourSeenVersion(arg1) {
+  return window['go']['main']['App']['SetTourSeenVersion'](arg1);
+}
+
 export function SetValueTests(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetValueTests'](arg1, arg2, arg3);
 }

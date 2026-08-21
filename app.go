@@ -854,6 +854,15 @@ func (a *App) SetShowCoverage(show bool) error {
 	return a.settings.SetShowCoverage(show)
 }
 
+// SetTourSeenVersion records that the user has completed or skipped the
+// onboarding tour at the given version (RND_P_4TFINT_05-335).
+func (a *App) SetTourSeenVersion(v int) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	return a.settings.SetTourSeenVersion(v)
+}
+
 // --- Connection & sync (FR-1, FR-8) ---
 
 // TestConnection verifies a server URL and credential, returning the display
