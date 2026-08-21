@@ -24,7 +24,17 @@ function LogoMark() {
 
 // AboutModal is the Help → About dialog: app identity in a "scan panel" header,
 // then a precise technical readout of the runtime (useful for bug reports).
-export function AboutModal({ onClose }: { onClose: () => void }) {
+//
+// onTakeTour, when supplied, adds a button that closes this dialog and replays
+// the onboarding tour. About is where people look for help, so the tour is
+// offered here as well as in the More menu (RND_P_4TFINT_05-335).
+export function AboutModal({
+  onClose,
+  onTakeTour,
+}: {
+  onClose: () => void;
+  onTakeTour?: () => void;
+}) {
   const [diag, setDiag] = useState<Diagnostics | null>(null);
 
   useEffect(() => {
@@ -75,6 +85,18 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="about-actions">
+            {onTakeTour && (
+              <button
+                className="btn about-link"
+                onClick={() => {
+                  onClose();
+                  onTakeTour();
+                }}
+                title="Replay the onboarding walkthrough"
+              >
+                🧭 Take the tour
+              </button>
+            )}
             <button
               className="btn about-link"
               onClick={() => BrowserOpenURL(DOCS_URL)}

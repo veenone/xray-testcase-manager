@@ -1246,9 +1246,13 @@ function App() {
                   label: "Sync history",
                   onClick: () => setShowSyncHistory(true),
                 },
+                // Help group. The tour sat between the sync actions and
+                // Diagnostics with nothing separating it, which made it easy
+                // to miss in an eleven-item menu.
+                { key: "help-div", divider: true },
                 {
                   key: "tour",
-                  label: "Take the tour",
+                  label: "🧭 Take the tour",
                   onClick: startTour,
                   title: "Replay the onboarding walkthrough",
                 },
@@ -1763,7 +1767,12 @@ function App() {
         <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />
       )}
 
-      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+      {showAbout && (
+        <AboutModal
+          onClose={() => setShowAbout(false)}
+          onTakeTour={startTour}
+        />
+      )}
 
       {showSyncHistory && (
         <SyncHistoryModal
