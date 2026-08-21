@@ -168,22 +168,24 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 		return err
 	}
 
-	// Folders sync AFTER the Tests are in the store. Folder membership stamps
-	// folder_id onto existing test_case rows, so running it before the Test pull
-	// (as it used to) left the first sync's folders empty — the rows didn't exist
-	// yet. The tree refreshes every sync; the per-folder membership walk is
-	// best-effort and never blocks the Test pull.
-	emitStage(onProgress, "Loading folders")
-	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
-
-	// Preconditions and containers are best-effort, like folders: a Xray REST
-	// quirk (an absent issue type, a pagination cap, a permissions gap) is
-	// logged but must never fail the whole sync — the Tests are already in.
+	// Stage order matters. The test pull must come first: folder membership and
+	// precondition links are both keyed by test, so either running before tests
+	// exist silently maps nothing (an earlier first-sync bug). Preconditions run
+	// ahead of the folder walk because they are by far the longest stage and
+	// were previously starved on a first sync (RND_P_4TFINT_05-336).
 	emitStage(onProgress, "Syncing preconditions")
 	if err := e.syncPreconditions(ctx, profileID, projectKey, onProgress); err != nil {
 		log.Printf("xtm: precondition sync failed (continuing): %v", err)
 	}
 
+	// The folder tree refreshes every sync; the per-folder membership walk is
+	// best-effort and never blocks the Test pull.
+	emitStage(onProgress, "Loading folders")
+	e.syncFolders(ctx, profileID, projectKey, since == "", onProgress)
+
+	// Requirements, bugs and containers are best-effort too: a Xray REST quirk
+	// (an absent issue type, a pagination cap, a permissions gap) is logged but
+	// must never fail the whole sync — the Tests are already in.
 	emitStage(onProgress, "Syncing requirements")
 	if err := e.syncRequirements(ctx, profileID, projectKey, onProgress); err != nil {
 		log.Printf("xtm: requirement sync failed (continuing): %v", err)
