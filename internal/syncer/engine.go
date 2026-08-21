@@ -173,9 +173,18 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 	// exist silently maps nothing (an earlier first-sync bug). Preconditions run
 	// ahead of the folder walk because they are by far the longest stage and
 	// were previously starved on a first sync (RND_P_4TFINT_05-336).
+	//
+	// Unlike the other best-effort stages below, a precondition failure is
+	// recorded rather than only logged. Swallowing it is what let a sync stamp
+	// its watermark and report success over an empty Preconditions view.
+	var stageFailures []testrepo.StageFailure
 	emitStage(onProgress, "Syncing preconditions")
 	if err := e.syncPreconditions(ctx, profileID, projectKey, onProgress); err != nil {
-		log.Printf("xtm: precondition sync failed (continuing): %v", err)
+		log.Printf("xtm: precondition sync failed: %v", err)
+		stageFailures = append(stageFailures, testrepo.StageFailure{
+			Stage:   "preconditions",
+			Message: err.Error(),
+		})
 	}
 
 	// The folder tree refreshes every sync; the per-folder membership walk is
@@ -220,7 +229,26 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 	if onProgress != nil {
 		onProgress(Progress{Fetched: fetched, Total: total, Done: true})
 	}
+	if len(stageFailures) > 0 {
+		return &PartialSyncError{StageFailures: stageFailures}
+	}
 	return nil
+}
+
+// PartialSyncError reports that a sync ran to the end and its data is usable,
+// but at least one stage did not complete. It is an error so a caller cannot
+// mistake the run for clean, and typed so the caller can record which stages
+// failed rather than only that something did (RND_P_4TFINT_05-336).
+type PartialSyncError struct {
+	StageFailures []testrepo.StageFailure
+}
+
+func (e *PartialSyncError) Error() string {
+	if len(e.StageFailures) == 0 {
+		return "sync completed with a failed stage"
+	}
+	return fmt.Sprintf("sync completed with %d failed stage(s): %s: %s",
+		len(e.StageFailures), e.StageFailures[0].Stage, e.StageFailures[0].Message)
 }
 
 // syncFolders refreshes the Test Repository folder tree and maps Tests to their

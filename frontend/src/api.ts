@@ -693,14 +693,24 @@ export interface SyncState {
   testCount: number;
 }
 
+// StageFailure mirrors testrepo.StageFailure — one sync stage that errored
+// without aborting the whole run (RND_P_4TFINT_05-336).
+export interface StageFailure {
+  stage: string;
+  message: string;
+}
+
 // SyncLogEntry mirrors testrepo.SyncLogEntry — one sync run's outcome (FR-1.7).
 export interface SyncLogEntry {
   id: number;
   startedAt: string;
   finishedAt: string;
+  // "success", "partial" or "error". "partial" means the run finished and its
+  // data is usable, but at least one stage did not complete.
   outcome: string;
   fetched: number;
   error: string;
+  stageFailures: StageFailure[];
 }
 
 // SavedView mirrors testrepo.SavedView — a named browse filter (FR-11.4). The

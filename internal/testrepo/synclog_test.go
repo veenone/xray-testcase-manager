@@ -21,10 +21,10 @@ func newSyncLogRepo(t *testing.T) *testrepo.Repository {
 func TestRecordAndListSyncLog(t *testing.T) {
 	repo := newSyncLogRepo(t)
 
-	if err := repo.RecordSyncLog("p1", "2026-06-07T10:00:00Z", "2026-06-07T10:00:05Z", "success", 4812, ""); err != nil {
+	if err := repo.RecordSyncLog("p1", "2026-06-07T10:00:00Z", "2026-06-07T10:00:05Z", "success", 4812, "", nil); err != nil {
 		t.Fatalf("record success: %v", err)
 	}
-	if err := repo.RecordSyncLog("p1", "2026-06-07T11:00:00Z", "2026-06-07T11:00:01Z", "error", 0, "connection refused"); err != nil {
+	if err := repo.RecordSyncLog("p1", "2026-06-07T11:00:00Z", "2026-06-07T11:00:01Z", "error", 0, "connection refused", nil); err != nil {
 		t.Fatalf("record error: %v", err)
 	}
 
@@ -44,9 +44,55 @@ func TestRecordAndListSyncLog(t *testing.T) {
 	}
 }
 
+// TestRecordSyncLogRoundTripsStageFailures covers the new "partial" outcome:
+// a run that finished but left a stage incomplete must say which one, instead
+// of being filed as a clean success (RND_P_4TFINT_05-336).
+func TestRecordSyncLogRoundTripsStageFailures(t *testing.T) {
+	repo := newSyncLogRepo(t)
+	want := []testrepo.StageFailure{
+		{Stage: "preconditions", Message: "context deadline exceeded"},
+	}
+	if err := repo.RecordSyncLog("p1", "2026-08-20T10:00:00Z", "2026-08-20T10:05:00Z", "partial", 120, "", want); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	got, err := repo.ListSyncLog("p1", 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d entries, want 1", len(got))
+	}
+	if got[0].Outcome != "partial" {
+		t.Errorf("outcome %q, want %q", got[0].Outcome, "partial")
+	}
+	if len(got[0].StageFailures) != 1 || got[0].StageFailures[0].Stage != "preconditions" {
+		t.Fatalf("got stage failures %+v, want %+v", got[0].StageFailures, want)
+	}
+	if got[0].StageFailures[0].Message != want[0].Message {
+		t.Errorf("message %q, want %q", got[0].StageFailures[0].Message, want[0].Message)
+	}
+}
+
+// TestListSyncLogToleratesLegacyRowsWithNoStageFailures pins the upgrade path:
+// rows written before v49 carry an empty column rather than "[]".
+func TestListSyncLogToleratesLegacyRowsWithNoStageFailures(t *testing.T) {
+	repo := newSyncLogRepo(t)
+	if err := repo.RecordSyncLog("p1", "2026-08-20T10:00:00Z", "2026-08-20T10:05:00Z", "success", 120, "", nil); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	got, err := repo.ListSyncLog("p1", 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got[0].StageFailures) != 0 {
+		t.Errorf("got %+v, want no stage failures", got[0].StageFailures)
+	}
+}
+
 func TestListSyncLogIsProfileScoped(t *testing.T) {
 	repo := newSyncLogRepo(t)
-	if err := repo.RecordSyncLog("p1", "2026-06-07T10:00:00Z", "2026-06-07T10:00:05Z", "success", 1, ""); err != nil {
+	if err := repo.RecordSyncLog("p1", "2026-06-07T10:00:00Z", "2026-06-07T10:00:05Z", "success", 1, "", nil); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
