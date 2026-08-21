@@ -1,5 +1,9 @@
 # Select-All When Adding Tests (`-324`) Implementation Plan
 
+> **DELIVERED** 2026-08-21 in PR #93, re-targeted onto `main` by #94. One
+> commit, as planned. Step 6's manual demo-mode walkthrough was NOT run: the
+> change is typechecked and built but has not been clicked through.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let a user tick every test on the page, or every test matching the current folder and search, when adding tests to a Test Set / Plan / Execution, instead of clicking one row at a time.

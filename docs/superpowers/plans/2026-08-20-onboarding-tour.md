@@ -1,5 +1,17 @@
 # Onboarding Tour (`-335`) Implementation Plan
 
+> **DELIVERED** 2026-08-21 in PR #93, re-targeted onto `main` by #94. Two
+> commits rather than three: Task 3's `tour.css` shipped with Task 2 because
+> `useTour.ts` imports it and splitting would leave the tree unbuildable. The
+> theme tokens are `--surface` / `--text` / `--text-muted` / `--border` /
+> `--accent`, not the `--panel` / `--muted` this plan guessed.
+>
+> **NOT VERIFIED:** Task 2 Step 7 (the demo-mode walkthrough) and Task 3 Step 3
+> (both themes) were never run. The tour has not been stepped through in a
+> live app. All seven `data-tour` anchors are confirmed present in source and
+> matched against the step list, and driver.js's CSS is confirmed in the built
+> bundle, but nothing beyond that.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Walk a new user through XTM's core loop once, automatically after their first successful sync, and let them replay it any time from the More menu.

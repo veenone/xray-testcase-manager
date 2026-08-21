@@ -1,5 +1,12 @@
 # Precondition Sync Durability (`-336`) Implementation Plan
 
+> **DELIVERED** 2026-08-21 in PR #92, re-targeted onto `main` by #94. Five
+> commits, schema v49. Two corrections found during execution, both recorded in
+> the spec's "As built" notes: `ReplaceAllTestPreconditions` had four more
+> callers than Task 1 lists (test seeds in `testrepo_test.go`), and
+> `RecordSyncLog` is called from `app.go`, not from inside `Sync`, so Task 5
+> returns a typed `PartialSyncError` instead of threading the failures through.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the precondition sync stage durable and fast, so a new profile's first sync persists preconditions incrementally, never wipes valid links on an interrupted run, and reports honestly when it fails.
