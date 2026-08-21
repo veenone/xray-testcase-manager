@@ -10,7 +10,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // preconditionKey is the zero-padded key for the nth generated precondition, so
@@ -175,6 +177,115 @@ func TestListPreconditionsStillCollectsEverything(t *testing.T) {
 	}
 	if !sort.StringsAreSorted(keys) {
 		t.Error("collected preconditions are not in key order")
+	}
+}
+
+// TestListPreconditionsStreamFetchesConcurrently is the perf half of -336. The
+// old walk slept 150ms per precondition on top of the client's shared rate
+// limiter, which is 15 minutes of dead time on a 6000-precondition project.
+func TestListPreconditionsStreamFetchesConcurrently(t *testing.T) {
+	srv := newPreconditionServer(t, 40)
+	defer srv.Close()
+	c := newTestClient(srv)
+
+	start := time.Now()
+	err := c.ListPreconditionsStream(context.Background(), "QA", nil,
+		func(pre []Precondition, links map[string][]string) error { return nil })
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("took %v for 40 preconditions, want well under 2s (is the sleep still there?)", elapsed)
+	}
+}
+
+// TestListPreconditionsStreamPreservesOrderUnderConcurrency checks batches stay
+// in key order no matter which goroutine finishes first, so progress counts and
+// log lines stay deterministic.
+func TestListPreconditionsStreamPreservesOrderUnderConcurrency(t *testing.T) {
+	srv := newPreconditionServer(t, 250)
+	defer srv.Close()
+	c := newTestClient(srv)
+
+	var keys []string
+	err := c.ListPreconditionsStream(context.Background(), "QA", nil,
+		func(pre []Precondition, links map[string][]string) error {
+			for _, p := range pre {
+				keys = append(keys, p.Key)
+			}
+			return nil
+		})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if len(keys) != 250 {
+		t.Fatalf("got %d keys, want 250", len(keys))
+	}
+	if !sort.StringsAreSorted(keys) {
+		t.Error("precondition keys arrived out of order")
+	}
+}
+
+// TestListPreconditionTestsRetriesOn401 covers the intermittent failure noted on
+// the live instance: a single association read answers 401 with a token that
+// worked moments earlier, silently dropping that precondition's links.
+func TestListPreconditionTestsRetriesOn401(t *testing.T) {
+	var hits int32
+	srv := newPreconditionServerWithAssocHandler(t, 1, func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&hits, 1) == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"message":"Client must be authenticated to access this resource."}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"key":"QA-1"}]`))
+	})
+	defer srv.Close()
+	c := newTestClient(srv)
+
+	var got map[string][]string
+	err := c.ListPreconditionsStream(context.Background(), "QA", nil,
+		func(pre []Precondition, links map[string][]string) error {
+			got = links
+			return nil
+		})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if len(got["QA-1"]) != 1 {
+		t.Errorf("got %v, want the link recovered after the 401 retry", got)
+	}
+	if atomic.LoadInt32(&hits) < 2 {
+		t.Errorf("association endpoint hit %d times, want at least 2 (no retry happened)", hits)
+	}
+}
+
+// TestListPreconditionsStreamSurvivesUnreadableAssociation checks a precondition
+// whose links never load does not abort the pass. Its links are lost, which is
+// reported, but every other precondition still syncs.
+func TestListPreconditionsStreamSurvivesUnreadableAssociation(t *testing.T) {
+	srv := newPreconditionServerWithAssocHandler(t, 3, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, preconditionKey(2)) {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"key":"QA-1"}]`))
+	})
+	defer srv.Close()
+	c := newTestClient(srv)
+
+	var count int
+	err := c.ListPreconditionsStream(context.Background(), "QA", nil,
+		func(pre []Precondition, links map[string][]string) error {
+			count += len(pre)
+			return nil
+		})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("streamed %d preconditions, want all 3 despite one unreadable association", count)
 	}
 }
 
