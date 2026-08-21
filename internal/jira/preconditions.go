@@ -94,49 +94,102 @@ func normalizeTypeName(s string) string {
 // onProgress (optional) is called once per precondition as its associated Tests
 // are read — the slow part of a precondition sync — so the UI can show progress.
 func (c *Client) ListPreconditions(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Precondition, map[string][]string, error) {
+	allPre := []Precondition{}
+	allLinks := map[string][]string{}
+	err := c.ListPreconditionsStream(ctx, projectKey, onProgress,
+		func(pre []Precondition, links map[string][]string) error {
+			allPre = append(allPre, pre...)
+			for tk, pks := range links {
+				allLinks[tk] = append(allLinks[tk], pks...)
+			}
+			return nil
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+	return allPre, allLinks, nil
+}
+
+// ListPreconditionsStream walks a project's Preconditions and reports them to
+// onBatch in chunks of preconditionBatchSize as they are resolved, so a caller
+// can persist incrementally. onProgress (optional) is called once per
+// precondition as its associated Tests are read, the slow part of the pass.
+//
+// A non-nil error from onBatch aborts the walk and is returned wrapped, so a
+// store failure cannot be silently absorbed. An instance with no Precondition
+// issue type returns nil having called onBatch zero times, which callers read
+// as a benign skip rather than an empty project.
+func (c *Client) ListPreconditionsStream(
+	ctx context.Context,
+	projectKey string,
+	onProgress func(done, total int),
+	onBatch func(pre []Precondition, links map[string][]string) error,
+) error {
 	if isDemoURL(c.baseURL) {
-		return demoPreconditionsAndLinks(themeFor(c.baseURL), projectKey)
+		pre, links, err := demoPreconditionsAndLinks(themeFor(c.baseURL), projectKey)
+		if err != nil {
+			return err
+		}
+		return onBatch(pre, links)
 	}
 
 	typeID, typeName, err := c.resolvePreconditionType(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("resolve precondition issue type: %w", err)
+		return fmt.Errorf("resolve precondition issue type: %w", err)
 	}
 	if typeID == "" {
 		log.Printf("xtm: no Precondition issue type on this instance — skipping precondition sync")
-		return []Precondition{}, map[string][]string{}, nil
+		return nil
 	}
 
 	preconditions, err := c.searchPreconditions(ctx, projectKey, typeID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("search preconditions: %w", err)
+		return fmt.Errorf("search preconditions: %w", err)
 	}
 
-	// test key -> set of precondition keys, built from each precondition's
-	// associated tests. Best-effort per precondition so one inaccessible
-	// precondition can't abort the whole sync.
-	links := map[string][]string{}
 	total := len(preconditions)
-	for i, p := range preconditions {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+	done := 0
+	for start := 0; start < total; start += preconditionBatchSize {
+		end := start + preconditionBatchSize
+		if end > total {
+			end = total
 		}
-		testKeys, err := c.listPreconditionTests(ctx, p.Key)
-		if err != nil {
-			log.Printf("xtm: precondition %s tests: %v", p.Key, err)
-		} else {
-			for _, tk := range testKeys {
-				links[tk] = append(links[tk], p.Key)
+		chunk := preconditions[start:end]
+
+		// links: test key -> precondition keys, for this chunk only. Reads are
+		// best-effort per precondition so one inaccessible precondition cannot
+		// abort the whole sync.
+		links := map[string][]string{}
+		for _, p := range chunk {
+			if err := ctx.Err(); err != nil {
+				return err
 			}
+			testKeys, err := c.listPreconditionTests(ctx, p.Key)
+			if err != nil {
+				log.Printf("xtm: precondition %s tests: %v", p.Key, err)
+			} else {
+				for _, tk := range testKeys {
+					links[tk] = append(links[tk], p.Key)
+				}
+			}
+			done++
+			if onProgress != nil {
+				onProgress(done, total)
+			}
+			time.Sleep(throttlePreconditions)
 		}
-		if onProgress != nil {
-			onProgress(i+1, total)
+		if err := onBatch(chunk, links); err != nil {
+			return fmt.Errorf("persist precondition batch: %w", err)
 		}
-		time.Sleep(throttlePreconditions)
 	}
-	log.Printf("xtm: preconditions: %d found (type %q) for %s", len(preconditions), typeName, projectKey)
-	return preconditions, links, nil
+	log.Printf("xtm: preconditions: %d found (type %q) for %s", total, typeName, projectKey)
+	return nil
 }
+
+// preconditionBatchSize is how many preconditions are accumulated before being
+// handed to the caller's onBatch. Small enough that an interrupted sync loses
+// little, large enough that the store write is not per-item.
+const preconditionBatchSize = 200
 
 // throttlePreconditions paces the per-precondition association reads.
 const throttlePreconditions = 150 * time.Millisecond

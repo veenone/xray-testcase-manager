@@ -206,6 +206,27 @@ type Backend interface {
 	Capabilities() Capabilities
 }
 
+// PreconditionStreamer is implemented by backends that can report preconditions
+// incrementally instead of only at the end of a full pass.
+//
+// The Xray precondition pass costs one HTTP round trip per precondition, so a
+// project with thousands of them runs for minutes. Buffering the whole result
+// meant an interruption anywhere in that window persisted nothing
+// (RND_P_4TFINT_05-336). A backend that implements this lets the syncer commit
+// as it goes.
+//
+// It is deliberately NOT part of Backend: backends whose preconditions arrive
+// in one cheap call gain nothing from it, and the syncer falls back to
+// Backend.ListPreconditions when the assertion fails.
+type PreconditionStreamer interface {
+	ListPreconditionsStream(
+		ctx context.Context,
+		projectKey string,
+		onProgress func(done, total int),
+		onBatch func(pre []Precondition, links map[string][]string) error,
+	) error
+}
+
 // TestPreconditionReader is an optional capability: reading the Preconditions
 // of one Test directly, without walking every Precondition in the project.
 //

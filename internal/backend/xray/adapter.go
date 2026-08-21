@@ -259,6 +259,21 @@ func (a *Adapter) ListPreconditions(ctx context.Context, projectKey string, onPr
 	return toPreconditions(pcs), membership, nil
 }
 
+// ListPreconditionsStream satisfies backend.PreconditionStreamer by delegating
+// to the Jira client's streaming walk, translating each batch into the neutral
+// backend types.
+func (a *Adapter) ListPreconditionsStream(
+	ctx context.Context,
+	projectKey string,
+	onProgress func(done, total int),
+	onBatch func(pre []backend.Precondition, links map[string][]string) error,
+) error {
+	return a.c.ListPreconditionsStream(ctx, projectKey, onProgress,
+		func(jp []jira.Precondition, links map[string][]string) error {
+			return onBatch(toPreconditions(jp), links)
+		})
+}
+
 // ListTestPreconditions implements backend.TestPreconditionReader. Xray exposes
 // the association from the test side, so one Test's Preconditions can be read
 // without walking the project.
