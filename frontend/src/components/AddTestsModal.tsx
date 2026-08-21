@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
-import { ListTests, AllocateTests, ListFolders, errMsg } from "../api";
-import type { TestCase, Folder } from "../api";
+import {
+  ListTests,
+  ListMatchingKeys,
+  AllocateTests,
+  ListFolders,
+  errMsg,
+} from "../api";
+import type { TestCase, Folder, TestQuery } from "../api";
 import { FolderTree } from "./FolderTree";
 
 interface Props {
@@ -38,6 +44,8 @@ export function AddTestsModal({
   const [folderId, setFolderId] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  const [selectingAll, setSelectingAll] = useState(false);
+  const [selectAllError, setSelectAllError] = useState("");
 
   const PAGE_SIZE = 50;
   const existing = new Set(existingKeys);
@@ -63,23 +71,30 @@ export function AddTestsModal({
     };
   }, [profileId]);
 
+  // buildQuery is the single source of truth for what the modal is showing.
+  // The list and "select all matching" MUST use the same filters, or the
+  // banner would select a different set than the one on screen.
+  function buildQuery(limit: number, offset: number): TestQuery {
+    return {
+      search,
+      status: "",
+      folderId,
+      containerKey: "",
+      component: "",
+      execType: "",
+      review: "",
+      sortBy: "key",
+      desc: false,
+      limit,
+      offset,
+    };
+  }
+
   useEffect(() => {
     let cancelled = false;
     const handle = setTimeout(() => {
       setLoading(true);
-      ListTests(profileId, {
-        search,
-        status: "",
-        folderId,
-        containerKey: "",
-        component: "",
-        execType: "",
-        review: "",
-        sortBy: "key",
-        desc: false,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      })
+      ListTests(profileId, buildQuery(PAGE_SIZE, page * PAGE_SIZE))
         .then((p) => {
           if (cancelled) return;
           setResults(p.tests ?? []);
@@ -105,6 +120,40 @@ export function AddTestsModal({
       else next.add(key);
       return next;
     });
+  }
+
+  // Rows already in the target container are disabled, so they are not
+  // selectable and must not count toward "the whole page is selected".
+  const selectableKeys = results
+    .filter((t) => !existing.has(t.key))
+    .map((t) => t.key);
+  const allPageSelected =
+    selectableKeys.length > 0 && selectableKeys.every((k) => picked.has(k));
+  const somePageSelected = selectableKeys.some((k) => picked.has(k));
+
+  function togglePage() {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) selectableKeys.forEach((k) => next.delete(k));
+      else selectableKeys.forEach((k) => next.add(k));
+      return next;
+    });
+  }
+
+  async function selectAllMatching() {
+    if (selectingAll) return;
+    setSelectingAll(true);
+    setSelectAllError("");
+    try {
+      // limit 0 means "every match, unpaged", the same contract the Browse
+      // grid's select-all uses.
+      const keys = await ListMatchingKeys(profileId, buildQuery(0, 0));
+      setPicked(new Set((keys ?? []).filter((k) => !existing.has(k))));
+    } catch (e) {
+      setSelectAllError(errMsg(e));
+    } finally {
+      setSelectingAll(false);
+    }
   }
 
   async function add() {
@@ -153,33 +202,73 @@ export function AddTestsModal({
             {loading ? (
               <p className="muted">Searching…</p>
             ) : (
-              <ul className="add-test-list">
-                {results.map((t) => {
-                  const already = existing.has(t.key);
-                  return (
-                    <li
-                      key={t.key}
-                      className={already ? "add-test-already" : ""}
+              <>
+                <div className="add-test-selectall">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      ref={(el) => {
+                        // Indeterminate is a DOM property, not an attribute,
+                        // so React cannot set it declaratively.
+                        if (el)
+                          el.indeterminate = !allPageSelected && somePageSelected;
+                      }}
+                      disabled={selectableKeys.length === 0}
+                      onChange={togglePage}
+                    />
+                    {allPageSelected
+                      ? `Deselect all ${selectableKeys.length} on this page`
+                      : `Select all ${selectableKeys.length} on this page`}
+                  </label>
+                  <span className="muted">{picked.size} selected</span>
+                </div>
+                <ul className="add-test-list">
+                  {results.map((t) => {
+                    const already = existing.has(t.key);
+                    return (
+                      <li
+                        key={t.key}
+                        className={already ? "add-test-already" : ""}
+                      >
+                        <label>
+                          <input
+                            type="checkbox"
+                            disabled={already}
+                            checked={already || picked.has(t.key)}
+                            onChange={() => toggle(t.key)}
+                          />
+                          <span className="mono">{t.key}</span> {t.summary}
+                          {already && (
+                            <span className="muted"> · already a member</span>
+                          )}
+                        </label>
+                      </li>
+                    );
+                  })}
+                  {results.length === 0 && (
+                    <li className="muted">No tests match.</li>
+                  )}
+                </ul>
+                {allPageSelected && total > PAGE_SIZE && (
+                  <div className="select-all-banner">
+                    You've selected all {selectableKeys.length} tests on this
+                    page.{" "}
+                    <button
+                      className="link-btn"
+                      onClick={selectAllMatching}
+                      disabled={selectingAll}
                     >
-                      <label>
-                        <input
-                          type="checkbox"
-                          disabled={already}
-                          checked={already || picked.has(t.key)}
-                          onChange={() => toggle(t.key)}
-                        />
-                        <span className="mono">{t.key}</span> {t.summary}
-                        {already && (
-                          <span className="muted"> · already a member</span>
-                        )}
-                      </label>
-                    </li>
-                  );
-                })}
-                {results.length === 0 && (
-                  <li className="muted">No tests match.</li>
+                      {selectingAll
+                        ? "Selecting…"
+                        : `Select all ${total.toLocaleString()} matching this filter`}
+                    </button>
+                    {selectAllError && (
+                      <span className="error-text"> {selectAllError}</span>
+                    )}
+                  </div>
                 )}
-              </ul>
+              </>
             )}
             {total > PAGE_SIZE && (
               <div className="add-test-pager">
