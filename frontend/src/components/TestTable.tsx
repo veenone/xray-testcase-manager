@@ -530,6 +530,7 @@ export function TestTable({
     <div className="testtable">
       <div className="filters">
         <input
+          data-tour="search"
           className="search"
           placeholder="Search key, summary, description…"
           value={search}
@@ -695,7 +696,7 @@ export function TestTable({
         </div>
       )}
 
-      <div className="table-scroll">
+      <div data-tour="grid" className="table-scroll">
         <table>
           <thead>
             <tr>
