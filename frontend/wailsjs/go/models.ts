@@ -1326,6 +1326,7 @@ export namespace settings {
 	    theme: string;
 	    requirementLinkType: string;
 	    showCoverage: boolean;
+	    tourSeenVersion: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -1337,6 +1338,7 @@ export namespace settings {
 	        this.theme = source["theme"];
 	        this.requirementLinkType = source["requirementLinkType"];
 	        this.showCoverage = source["showCoverage"];
+	        this.tourSeenVersion = source["tourSeenVersion"];
 	    }
 	}
 
