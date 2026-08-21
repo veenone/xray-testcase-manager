@@ -29,7 +29,7 @@ func TestImportTestsStoresComponents(t *testing.T) {
 		"With components,\"Frontend, User Management\"\n"
 	mapping := testrepo.ImportMapping{Summary: "Summary", Components: "Components"}
 
-	if _, err := repo.ImportTests("p1", recordsOf(t, csv), mapping, false); err != nil {
+	if _, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv), mapping, false, false); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	page, err := repo.ListTests("p1", testrepo.Query{})
@@ -59,7 +59,7 @@ func TestImportTestsDryRunReportsErrorsWithoutCreating(t *testing.T) {
 	repo := newRepo(t)
 	mapping := testrepo.ImportMapping{Summary: "Summary", Description: "Description", Priority: "Priority", Labels: "Labels", Folder: "Folder"}
 
-	res, err := repo.ImportTests("p1", recordsOf(t, importCSV), mapping, true)
+	res, err := repo.ImportTests("p1", "PROJ", recordsOf(t, importCSV), mapping, true, false)
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestImportTestsCreatesPendingTests(t *testing.T) {
 	repo := newRepo(t)
 	mapping := testrepo.ImportMapping{Summary: "Summary", Description: "Description", Priority: "Priority", Labels: "Labels", Folder: "Folder"}
 
-	res, err := repo.ImportTests("p1", recordsOf(t, importCSV), mapping, false)
+	res, err := repo.ImportTests("p1", "PROJ", recordsOf(t, importCSV), mapping, false, false)
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestImportTestsGroupsMultiRowSteps(t *testing.T) {
 		Summary: "Summary", Action: "Action", Data: "Data", Expected: "Expected",
 	}
 
-	res, err := repo.ImportTests("p1", recordsOf(t, csv), mapping, false)
+	res, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv), mapping, false, false)
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestImportStepRowBeforeSummaryIsError(t *testing.T) {
 		"A test,first step\n"
 	mapping := testrepo.ImportMapping{Summary: "Summary", Action: "Action"}
 
-	res, err := repo.ImportTests("p1", recordsOf(t, csv), mapping, true)
+	res, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv), mapping, true, false)
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestImportStepRowBeforeSummaryIsError(t *testing.T) {
 
 func TestImportTestsRequiresSummaryMapping(t *testing.T) {
 	repo := newRepo(t)
-	_, err := repo.ImportTests("p1", recordsOf(t, importCSV), testrepo.ImportMapping{}, true)
+	_, err := repo.ImportTests("p1", "PROJ", recordsOf(t, importCSV), testrepo.ImportMapping{}, true, false)
 	if err == nil {
 		t.Error("importing without a Summary mapping should error")
 	}
@@ -198,7 +198,7 @@ func TestImportTestsRequiresSummaryMapping(t *testing.T) {
 func TestDiscardImportedTestRemovesIt(t *testing.T) {
 	repo := newRepo(t)
 	mapping := testrepo.ImportMapping{Summary: "Summary"}
-	if _, err := repo.ImportTests("p1", recordsOf(t, "Summary\nOne test\n"), mapping, false); err != nil {
+	if _, err := repo.ImportTests("p1", "PROJ", recordsOf(t, "Summary\nOne test\n"), mapping, false, false); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	changes, _ := repo.ListPendingChanges("p1")
@@ -222,8 +222,8 @@ func TestImportQueuesFolderPlacement(t *testing.T) {
 	repo := newRepo(t)
 	path := "/[ITS_0001477] TM_MW_INT_002 - Proxy Functional Test/HSM Resilience and Routing/Role-Aware Routing"
 	csv := "Summary,Folder\n\"Imported\",\"" + path + "\"\n"
-	if _, err := repo.ImportTests("p1", recordsOf(t, csv),
-		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false); err != nil {
+	if _, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false, false); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	pcs, err := repo.ListPendingChanges("p1")
@@ -258,8 +258,8 @@ func TestImportCreatesMissingFolderHierarchy(t *testing.T) {
 		"T1,/A/B/C\n" +
 		"T2,/A/B/D\n" +
 		"T3,/A/E\n"
-	res, err := repo.ImportTests("p1", recordsOf(t, csv),
-		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false)
+	res, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false, false)
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
@@ -314,8 +314,8 @@ func TestImportSkipsPreExistingFolders(t *testing.T) {
 	preSeedFolderCreates := len(preSeedChanges)
 
 	csv := "Summary,Folder\nT1,/A/B\n"
-	if _, err := repo.ImportTests("p1", recordsOf(t, csv),
-		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false); err != nil {
+	if _, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false, false); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 
@@ -353,8 +353,8 @@ func TestImportCreatesDeepSpacedFolderVerbatim(t *testing.T) {
 	repo := newRepo(t)
 	path := "/[ITS_0001477] TM_MW_INT_002 - Proxy Functional Test/HSM Resilience and Routing/Role-Aware Routing"
 	csv := "Summary,Folder\n\"Imported\",\"" + path + "\"\n"
-	if _, err := repo.ImportTests("p1", recordsOf(t, csv),
-		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false); err != nil {
+	if _, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false, false); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 
@@ -412,8 +412,8 @@ func TestImportCreatesDeepSpacedFolderVerbatim(t *testing.T) {
 func TestImportWithoutFolderQueuesNoPlacement(t *testing.T) {
 	repo := newRepo(t)
 	csv := "Summary,Folder\nNo folder here,\n"
-	if _, err := repo.ImportTests("p1", recordsOf(t, csv),
-		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false); err != nil {
+	if _, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv),
+		testrepo.ImportMapping{Summary: "Summary", Folder: "Folder"}, false, false); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	pcs, _ := repo.ListPendingChanges("p1")

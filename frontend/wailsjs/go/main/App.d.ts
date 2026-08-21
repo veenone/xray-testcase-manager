@@ -275,7 +275,7 @@ export function ImportProfile():Promise<profile.Profile>;
 
 export function ImportRequirements(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<testrepo.RequirementImportResult>;
 
-export function ImportTests(arg1:string,arg2:string,arg3:boolean,arg4:testrepo.ImportMapping,arg5:boolean):Promise<testrepo.ImportResult>;
+export function ImportTests(arg1:string,arg2:string,arg3:boolean,arg4:testrepo.ImportMapping,arg5:boolean,arg6:boolean):Promise<testrepo.ImportResult>;
 
 export function LinkExistingBugToRun(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

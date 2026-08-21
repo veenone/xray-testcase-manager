@@ -2153,10 +2153,25 @@ export namespace testrepo {
 	        this.rowCount = source["rowCount"];
 	    }
 	}
+	export class UnknownComponent {
+	    name: string;
+	    suggestion: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UnknownComponent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.suggestion = source["suggestion"];
+	    }
+	}
 	export class ImportResult {
 	    created: number;
 	    skipped: number;
 	    errors: ImportError[];
+	    unknownComponents: UnknownComponent[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ImportResult(source);
@@ -2167,6 +2182,7 @@ export namespace testrepo {
 	        this.created = source["created"];
 	        this.skipped = source["skipped"];
 	        this.errors = this.convertValues(source["errors"], ImportError);
+	        this.unknownComponents = this.convertValues(source["unknownComponents"], UnknownComponent);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

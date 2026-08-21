@@ -1195,10 +1195,19 @@ export interface ImportError {
   message: string;
 }
 
+// UnknownComponent mirrors testrepo.UnknownComponent — a component name in an
+// import file that the target project does not have. suggestion holds a known
+// component differing only in case, and is empty when there is no near match.
+export interface UnknownComponent {
+  name: string;
+  suggestion: string;
+}
+
 export interface ImportResult {
   created: number;
   skipped: number;
   errors: ImportError[];
+  unknownComponents: UnknownComponent[];
 }
 
 // RequirementImportRow mirrors testrepo.RequirementImportRow — one parsed file

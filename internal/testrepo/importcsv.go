@@ -55,11 +55,25 @@ type ImportError struct {
 	Message string `json:"message"`
 }
 
+// UnknownComponent is a component name used in an import file that the target
+// Jira project does not have (RND_P_4TFINT_05-340). Jira validates components
+// by name at create time, so importing one of these queues a Test that cannot
+// be committed. Suggestion holds a known component that differs only in case,
+// which is the usual cause, and is empty when there is no near match.
+type UnknownComponent struct {
+	Name       string `json:"name"`
+	Suggestion string `json:"suggestion"`
+}
+
 // ImportResult reports an import (or dry-run) outcome (FR-10.5 / 10.6).
 type ImportResult struct {
 	Created int           `json:"created"`
 	Skipped int           `json:"skipped"`
 	Errors  []ImportError `json:"errors"`
+	// UnknownComponents lists component names the project does not have. These
+	// do not skip a row: the row is otherwise valid, and the caller decides
+	// whether to drop the component or fix the file.
+	UnknownComponents []UnknownComponent `json:"unknownComponents"`
 }
 
 // testCreatePayload is the JSON stored in a test_create pending row.
@@ -177,12 +191,71 @@ func groupImportRows(records [][]string, mapping ImportMapping) (tests []testCre
 	return tests, errs, skipped, nil
 }
 
+// findUnknownComponents reports the component names used by the imported Tests
+// that are not in known, in first-seen order. Matching is exact because Jira
+// resolves components by exact name; a name that matches only when case is
+// ignored is still rejected, so it is reported with the known spelling as a
+// suggestion.
+//
+// An empty known list disables the check. The cached options are populated by
+// sync, so "no components cached" means "not synced yet" as often as it means
+// "the project has none", and flagging every component on a guess would be
+// worse than staying quiet.
+func findUnknownComponents(known []string, tests []testCreatePayload) []UnknownComponent {
+	if len(known) == 0 {
+		return []UnknownComponent{}
+	}
+	exact := make(map[string]bool, len(known))
+	folded := make(map[string]string, len(known))
+	for _, k := range known {
+		exact[k] = true
+		folded[strings.ToLower(k)] = k
+	}
+
+	out := []UnknownComponent{}
+	seen := map[string]bool{}
+	for _, t := range tests {
+		for _, name := range splitComponents(t.Components) {
+			if exact[name] || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, UnknownComponent{Name: name, Suggestion: folded[strings.ToLower(name)]})
+		}
+	}
+	return out
+}
+
+// stripComponents removes the named components from every imported Test.
+func stripComponents(tests []testCreatePayload, remove []UnknownComponent) {
+	drop := make(map[string]bool, len(remove))
+	for _, u := range remove {
+		drop[u.Name] = true
+	}
+	for i := range tests {
+		kept := []string{}
+		for _, name := range splitComponents(tests[i].Components) {
+			if !drop[name] {
+				kept = append(kept, name)
+			}
+		}
+		tests[i].Components = strings.Join(kept, ", ")
+	}
+}
+
 // ImportTests validates a CSV import against a column mapping and, unless
 // dryRun, creates a local pending Test for each valid row (FR-10.2 / 10.4 /
 // 10.5 / 10.6). Each created Test gets a temporary "NEW-N" key until commit
 // assigns the real one. Invalid rows are reported and skipped, not fatal.
-func (r *Repository) ImportTests(profileID string, records [][]string, mapping ImportMapping, dryRun bool) (ImportResult, error) {
-	result := ImportResult{Errors: []ImportError{}}
+//
+// Component names are checked against the project's cached components
+// (RND_P_4TFINT_05-340). An unknown name does not skip the row, because the row
+// is otherwise fine and Jira is the only thing that objects; it is reported so
+// the caller can offer a choice. dropUnknownComponents removes them from the
+// queued Tests, which is what makes the import committable without editing the
+// file. They are reported either way.
+func (r *Repository) ImportTests(profileID, projectKey string, records [][]string, mapping ImportMapping, dryRun, dropUnknownComponents bool) (ImportResult, error) {
+	result := ImportResult{Errors: []ImportError{}, UnknownComponents: []UnknownComponent{}}
 	tests, errs, skipped, err := groupImportRows(records, mapping)
 	if err != nil {
 		return result, err
@@ -190,6 +263,18 @@ func (r *Repository) ImportTests(profileID string, records [][]string, mapping I
 	result.Errors = errs
 	result.Skipped = skipped
 	result.Created = len(tests)
+
+	if mapping.Components != "" {
+		known, err := r.ListProjectFieldOptions(profileID, projectKey, "component")
+		if err != nil {
+			return result, err
+		}
+		result.UnknownComponents = findUnknownComponents(known, tests)
+		if dropUnknownComponents && len(result.UnknownComponents) > 0 {
+			stripComponents(tests, result.UnknownComponents)
+		}
+	}
+
 	if dryRun {
 		return result, nil
 	}

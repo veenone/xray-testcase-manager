@@ -60,6 +60,11 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Unknown components are dropped by default: a component Jira does not have
+  // fails the whole test at commit, and losing the label is easier to undo
+  // than an import that cannot be committed (RND_P_4TFINT_05-340). Nothing is
+  // dropped without the user seeing the warning first, see run() below.
+  const [dropUnknown, setDropUnknown] = useState(true);
   const { notice, noticeUI } = useNotice();
 
   function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -91,7 +96,32 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
     setBusy(true);
     setError("");
     try {
-      const r = await ImportTests(profileId, content, isXlsx, mapping, dryRun);
+      // Import can be pressed without pressing Validate first, which would
+      // drop a column's values with the user never having seen the warning.
+      // Dry-run first in that case and stop on unknown components; pressing
+      // Import again goes through, because validation is set by then.
+      if (!dryRun && !validation) {
+        const check = await ImportTests(
+          profileId,
+          content,
+          isXlsx,
+          mapping,
+          true,
+          dropUnknown,
+        );
+        if ((check.unknownComponents ?? []).length > 0) {
+          setValidation(check);
+          return;
+        }
+      }
+      const r = await ImportTests(
+        profileId,
+        content,
+        isXlsx,
+        mapping,
+        dryRun,
+        dropUnknown,
+      );
       if (dryRun) setValidation(r);
       else setResult(r);
     } catch (err) {
@@ -182,6 +212,39 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
                         <li key={i}>row {er.row}: {er.message}</li>
                       ))}
                     </ul>
+                  )}
+                  {(validation.unknownComponents ?? []).length > 0 && (
+                    <div className="import-unknown-components">
+                      <p className="warn-text">
+                        ⚠ This project has no component named{" "}
+                        {validation.unknownComponents.length === 1
+                          ? ""
+                          : "any of these:"}
+                      </p>
+                      <ul className="commit-fail-list">
+                        {validation.unknownComponents.map((uc) => (
+                          <li key={uc.name}>
+                            <span className="mono">{uc.name}</span>
+                            {uc.suggestion && (
+                              <> · did you mean <span className="mono">{uc.suggestion}</span>?</>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      <label className="import-unknown-choice">
+                        <input
+                          type="checkbox"
+                          checked={dropUnknown}
+                          onChange={(e) => setDropUnknown(e.target.checked)}
+                        />
+                        Import without these components
+                      </label>
+                      <p className="muted">
+                        {dropUnknown
+                          ? "The tests import with their other components. You can set the right one later with a bulk edit."
+                          : "The tests import as-is and will fail on commit until the component exists in Jira."}
+                      </p>
+                    </div>
                   )}
                 </div>
               )}

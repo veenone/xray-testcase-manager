@@ -24,7 +24,7 @@ func TestImportTestsPopulatesTestTypeAndBody(t *testing.T) {
 		GenericDefinition: "Generic Test Definition",
 	}
 
-	res, err := repo.ImportTests("p1", recordsOf(t, csv), mapping, false)
+	res, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv), mapping, false, false)
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestImportTestsWithoutTestTypeColumnsStillWorks(t *testing.T) {
 		"No type columns here,Just a plain row\n"
 	mapping := testrepo.ImportMapping{Summary: "Summary", Description: "Description"}
 
-	res, err := repo.ImportTests("p1", recordsOf(t, csv), mapping, false)
+	res, err := repo.ImportTests("p1", "PROJ", recordsOf(t, csv), mapping, false, false)
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}

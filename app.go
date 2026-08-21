@@ -3196,8 +3196,16 @@ func (a *App) PreviewImport(contentB64 string, isXlsx bool) (testrepo.ImportPrev
 
 // ImportTests validates an import against a column mapping and, unless dryRun,
 // creates a local pending Test per valid row (FR-10.1 / 10.2 / 10.5 / 10.6).
-func (a *App) ImportTests(profileID, contentB64 string, isXlsx bool, mapping testrepo.ImportMapping, dryRun bool) (testrepo.ImportResult, error) {
-	empty := testrepo.ImportResult{Errors: []testrepo.ImportError{}}
+//
+// Component names are checked against the project's cached components and
+// reported in the result; dropUnknownComponents removes the ones the project
+// does not have, so the import can be committed without editing the file
+// (RND_P_4TFINT_05-340).
+func (a *App) ImportTests(profileID, contentB64 string, isXlsx bool, mapping testrepo.ImportMapping, dryRun, dropUnknownComponents bool) (testrepo.ImportResult, error) {
+	empty := testrepo.ImportResult{
+		Errors:            []testrepo.ImportError{},
+		UnknownComponents: []testrepo.UnknownComponent{},
+	}
 	if err := a.requireStore(); err != nil {
 		return empty, err
 	}
@@ -3205,7 +3213,11 @@ func (a *App) ImportTests(profileID, contentB64 string, isXlsx bool, mapping tes
 	if err != nil {
 		return empty, err
 	}
-	return a.repo.ImportTests(profileID, records, mapping, dryRun)
+	p, err := a.profiles.Get(profileID)
+	if err != nil {
+		return empty, err
+	}
+	return a.repo.ImportTests(profileID, p.ProjectKey, records, mapping, dryRun, dropUnknownComponents)
 }
 
 // CreateRequirement queues a brand-new Requirement locally (temp NEW-REQ-N key)
