@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.10",
     "driver.js": "^1.8.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

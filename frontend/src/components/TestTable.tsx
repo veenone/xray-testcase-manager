@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useViewState } from "../lib/viewState";
 import {
   ListTests,
@@ -79,6 +81,30 @@ const ALL_COLUMNS: ColDef[] = [
 // offered in the Browse filter bar and the bulk-edit / detail editors.
 const EXEC_TYPE_OPTIONS = ["Manual", "Automated", "Generic", "Cucumber"];
 
+// Fixed column geometry. Row virtualization positions rows independently, so
+// they only line up with each other and the sticky header when every column
+// has a stable width (P2). `summary` grows to absorb slack; the rest are fixed,
+// and content that overflows a cell is clipped with an ellipsis. Rows are a
+// fixed height so the virtualizer's size estimate is exact.
+const SELECT_W = 40;
+const ROW_HEIGHT = 34;
+const COL_WIDTH: Record<ColKey, number> = {
+  key: 130,
+  summary: 260,
+  status: 130,
+  priority: 100,
+  labels: 200,
+  components: 200,
+  execType: 110,
+  updated: 130,
+};
+function colStyle(key: ColKey): CSSProperties {
+  return key === "summary"
+    ? { flex: "1 1 0", minWidth: COL_WIDTH.summary }
+    : { flex: `0 0 ${COL_WIDTH[key]}px`, width: COL_WIDTH[key] };
+}
+const SELECT_STYLE: CSSProperties = { flex: `0 0 ${SELECT_W}px`, width: SELECT_W };
+
 const COL_LABEL = Object.fromEntries(
   ALL_COLUMNS.map((c) => [c.key, c.label]),
 ) as Record<ColKey, string>;
@@ -123,17 +149,20 @@ function loadColumns(): ColState[] {
   }
 }
 
-// renderCell returns the table cell for one column of one Test row.
+// renderCell returns the table cell for one column of one Test row. `style`
+// carries the column's fixed width so the cell aligns as a flex item under the
+// virtualized layout (P2).
 function renderCell(
   key: ColKey,
   t: TestCase,
   hasPending: boolean,
   callsOthers: boolean,
+  style: CSSProperties,
 ) {
   switch (key) {
     case "key":
       return (
-        <td key="key" className="mono">
+        <td key="key" className="mono" style={style}>
           {hasPending && (
             <span className="row-dirty-dot" title="Pending edits">
               ●
@@ -152,13 +181,13 @@ function renderCell(
       );
     case "summary":
       return (
-        <td key="summary" className="summary-cell">
+        <td key="summary" className="summary-cell" style={style}>
           {t.summary}
         </td>
       );
     case "status":
       return (
-        <td key="status">
+        <td key="status" style={style}>
           {t.status ? (
             <span className="status-pill">{t.status}</span>
           ) : (
@@ -167,10 +196,14 @@ function renderCell(
         </td>
       );
     case "priority":
-      return <td key="priority">{t.priority || "—"}</td>;
+      return (
+        <td key="priority" style={style}>
+          {t.priority || "—"}
+        </td>
+      );
     case "labels":
       return (
-        <td key="labels" className="labels-cell">
+        <td key="labels" className="labels-cell" style={style}>
           {t.labels && t.labels.length > 0 ? (
             t.labels.map((l) => (
               <span key={l} className="label-chip">
@@ -184,7 +217,7 @@ function renderCell(
       );
     case "components":
       return (
-        <td key="components" className="labels-cell">
+        <td key="components" className="labels-cell" style={style}>
           {t.components && t.components.length > 0 ? (
             t.components.map((c) => (
               <span key={c} className="component-chip">
@@ -197,10 +230,14 @@ function renderCell(
         </td>
       );
     case "execType":
-      return <td key="execType">{t.execType || "—"}</td>;
+      return (
+        <td key="execType" style={style}>
+          {t.execType || "—"}
+        </td>
+      );
     case "updated":
       return (
-        <td key="updated" className="muted">
+        <td key="updated" className="muted" style={style}>
           {formatDate(t.updated)}
         </td>
       );
@@ -243,18 +280,13 @@ export function TestTable({
   const [page, setPage] = useState<TestPage>({ tests: [], total: 0 });
   // Keys of tests that call another test in their steps — drives the grid cue.
   const [callerKeys, setCallerKeys] = useState<Set<string>>(new Set());
-  // focusedKey drives a roving tabindex over the grid rows: exactly one row is
-  // in the tab order at a time, so the whole grid is a single tab stop and
-  // Arrow keys move focus between rows (X6).
-  const [focusedKey, setFocusedKey] = useState<string | null>(null);
-  // The one keyboard-tabbable row: the last-focused row if it's still on this
-  // page, else the open row, else the first row. Always resolves to a key that
-  // exists on the current page so the grid is reachable after paging/filtering.
-  const tabbableKey =
-    page.tests.find((t) => t.key === focusedKey)?.key ??
-    page.tests.find((t) => t.key === selectedKey)?.key ??
-    page.tests[0]?.key ??
-    null;
+  // Roving tabindex over the grid rows, tracked by index because rows are
+  // virtualized (off-screen rows aren't in the DOM). Exactly one row is in the
+  // tab order; Arrow/Home/End move focus by scrolling the target row into view
+  // and focusing it (X6).
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingFocusRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectingAll, setSelectingAll] = useState(false);
@@ -289,6 +321,60 @@ export function TestTable({
     };
   }, [profileId, refreshKey]);
   const visibleColumns = columns.filter((c) => c.visible);
+
+  // Virtualize the row body so a large page (up to 500 rows) only mounts the
+  // ~visible slice instead of every <tr> (P2). Rows are a fixed height, so a
+  // constant estimate is exact and no per-row measurement is needed.
+  const rowVirtualizer = useVirtualizer({
+    count: page.tests.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 12,
+  });
+
+  // The single keyboard-tabbable row index: the last-focused row if still on
+  // this page, else the open row, else the first row — always a valid index so
+  // the grid stays reachable by Tab after paging/filtering.
+  const selectedIndex = page.tests.findIndex((t) => t.key === selectedKey);
+  const tabbableIndex =
+    focusedIndex >= 0 && focusedIndex < page.tests.length
+      ? focusedIndex
+      : selectedIndex >= 0
+        ? selectedIndex
+        : 0;
+
+  // Total fixed width of the visible columns; the grid never shrinks below this,
+  // so columns keep their widths and the scroll container pans horizontally.
+  const gridMinWidth =
+    SELECT_W + visibleColumns.reduce((sum, c) => sum + COL_WIDTH[c.key], 0);
+
+  // Focus a row by index. The row may not be mounted when navigation asks for
+  // it, so moveFocus records the target and a post-render effect retries.
+  function focusRowByIndex(index: number): boolean {
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      `tr[data-rowindex="${index}"]`,
+    );
+    if (el) {
+      el.focus();
+      return true;
+    }
+    return false;
+  }
+  function moveFocus(target: number) {
+    if (page.tests.length === 0) return;
+    const clamped = Math.max(0, Math.min(page.tests.length - 1, target));
+    setFocusedIndex(clamped);
+    rowVirtualizer.scrollToIndex(clamped, { align: "auto" });
+    if (!focusRowByIndex(clamped)) pendingFocusRef.current = clamped;
+  }
+  useEffect(() => {
+    if (
+      pendingFocusRef.current != null &&
+      focusRowByIndex(pendingFocusRef.current)
+    ) {
+      pendingFocusRef.current = null;
+    }
+  });
 
   function toggleColumn(key: ColKey) {
     setColumns((prev) =>
@@ -708,11 +794,11 @@ export function TestTable({
         </div>
       )}
 
-      <div data-tour="grid" className="table-scroll">
-        <table>
+      <div data-tour="grid" className="table-scroll" ref={scrollRef}>
+        <table className="grid-table" style={{ minWidth: gridMinWidth }}>
           <thead>
             <tr>
-              <th className="select-col">
+              <th className="select-col" style={SELECT_STYLE}>
                 <input
                   type="checkbox"
                   checked={allOnPageSelected}
@@ -743,50 +829,62 @@ export function TestTable({
                     sortBy={sortBy}
                     desc={desc}
                     onSort={toggleSort}
+                    style={colStyle(c.key)}
                   />
                 ) : (
-                  <th key={c.key}>{COL_LABEL[c.key]}</th>
+                  <th key={c.key} style={colStyle(c.key)}>
+                    {COL_LABEL[c.key]}
+                  </th>
                 );
               })}
             </tr>
           </thead>
-          <tbody>
-            {page.tests.map((t) => {
+          <tbody
+            style={{
+              height: rowVirtualizer.getTotalSize(),
+              position: "relative",
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((vrow) => {
+              const t = page.tests[vrow.index];
               const hasPending = pendingByTestKey.has(t.key);
               const isSelected = selectedSet.has(t.key);
               const callsOthers = callerKeys.has(t.key);
               return (
                 <tr
                   key={t.key}
+                  data-rowindex={vrow.index}
                   className={
                     (t.key === selectedKey ? "row-selected " : "") +
                     (isSelected ? "row-checked" : "")
                   }
-                  tabIndex={t.key === tabbableKey ? 0 : -1}
+                  style={{ transform: `translateY(${vrow.start}px)` }}
+                  tabIndex={vrow.index === tabbableIndex ? 0 : -1}
                   aria-selected={isSelected}
                   onClick={() => onSelect(t.key)}
-                  onFocus={() => setFocusedKey(t.key)}
+                  onFocus={() => setFocusedIndex(vrow.index)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       onSelect(t.key);
                     } else if (e.key === "ArrowDown") {
                       e.preventDefault();
-                      (e.currentTarget.nextElementSibling as HTMLElement | null)?.focus();
+                      moveFocus(vrow.index + 1);
                     } else if (e.key === "ArrowUp") {
                       e.preventDefault();
-                      (e.currentTarget.previousElementSibling as HTMLElement | null)?.focus();
+                      moveFocus(vrow.index - 1);
                     } else if (e.key === "Home") {
                       e.preventDefault();
-                      (e.currentTarget.parentElement?.firstElementChild as HTMLElement | null)?.focus();
+                      moveFocus(0);
                     } else if (e.key === "End") {
                       e.preventDefault();
-                      (e.currentTarget.parentElement?.lastElementChild as HTMLElement | null)?.focus();
+                      moveFocus(page.tests.length - 1);
                     }
                   }}
                 >
                   <td
                     className="select-col"
+                    style={SELECT_STYLE}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <input
@@ -797,31 +895,26 @@ export function TestTable({
                     />
                   </td>
                   {visibleColumns.map((c) =>
-                    renderCell(c.key, t, hasPending, callsOthers),
+                    renderCell(c.key, t, hasPending, callsOthers, colStyle(c.key)),
                   )}
                 </tr>
               );
             })}
-            {!loading && page.tests.length === 0 && (
-              <tr>
-                <td
-                  colSpan={1 + visibleColumns.length}
-                  className="empty-row muted"
-                >
-                  {page.total === 0 &&
-                  debouncedSearch === "" &&
-                  status.trim() === "" &&
-                  folderId === "" &&
-                  containerKey === "" &&
-                  component === "" &&
-                  review === ""
-                    ? "No tests yet. Run a sync to pull them from Jira."
-                    : "No tests match the current filter."}
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
+        {!loading && page.tests.length === 0 && (
+          <div className="grid-empty muted">
+            {page.total === 0 &&
+            debouncedSearch === "" &&
+            status.trim() === "" &&
+            folderId === "" &&
+            containerKey === "" &&
+            component === "" &&
+            review === ""
+              ? "No tests yet. Run a sync to pull them from Jira."
+              : "No tests match the current filter."}
+          </div>
+        )}
       </div>
 
       <div className="table-footer">
@@ -909,17 +1002,20 @@ function SortHeader({
   sortBy,
   desc,
   onSort,
+  style,
 }: {
   col: SortCol;
   label: string;
   sortBy: SortCol;
   desc: boolean;
   onSort: (c: SortCol) => void;
+  style: CSSProperties;
 }) {
   const active = sortBy === col;
   return (
     <th
       className="sortable"
+      style={style}
       aria-sort={active ? (desc ? "descending" : "ascending") : "none"}
     >
       <button type="button" className="sort-btn" onClick={() => onSort(col)}>

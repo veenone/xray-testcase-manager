@@ -2587,6 +2587,59 @@ th.sortable:hover {
   outline-offset: 2px;
   border-radius: 3px;
 }
+
+/* Virtualized grid layout (P2). The row body renders only the visible slice, so
+   rows are positioned by transform and every cell is a fixed-width flex item.
+   Scoped to .grid-table so the app's other tables keep native table layout. */
+.grid-table {
+  display: block;
+  width: 100%;
+}
+.grid-table thead {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.grid-table tbody {
+  display: block;
+}
+.grid-table thead tr,
+.grid-table tbody tr {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+}
+.grid-table tbody tr {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 34px;
+}
+.grid-table thead th,
+.grid-table tbody td {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+/* The whole thead is the sticky element now, so individual header cells must not
+   also stick (the default rule for the app's other tables). */
+.grid-table thead th {
+  position: static;
+}
+/* summary renders as a plain block so its text truncates with an ellipsis. */
+.grid-table td.summary-cell {
+  display: block;
+  text-overflow: ellipsis;
+  line-height: 24px;
+}
+.grid-empty {
+  padding: 16px;
+  text-align: center;
+}
 tbody td {
   padding: 5px 10px;
   border-bottom: 1px solid var(--border-subtle);
