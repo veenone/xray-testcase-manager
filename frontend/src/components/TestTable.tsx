@@ -243,6 +243,18 @@ export function TestTable({
   const [page, setPage] = useState<TestPage>({ tests: [], total: 0 });
   // Keys of tests that call another test in their steps — drives the grid cue.
   const [callerKeys, setCallerKeys] = useState<Set<string>>(new Set());
+  // focusedKey drives a roving tabindex over the grid rows: exactly one row is
+  // in the tab order at a time, so the whole grid is a single tab stop and
+  // Arrow keys move focus between rows (X6).
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  // The one keyboard-tabbable row: the last-focused row if it's still on this
+  // page, else the open row, else the first row. Always resolves to a key that
+  // exists on the current page so the grid is reachable after paging/filtering.
+  const tabbableKey =
+    page.tests.find((t) => t.key === focusedKey)?.key ??
+    page.tests.find((t) => t.key === selectedKey)?.key ??
+    page.tests[0]?.key ??
+    null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectingAll, setSelectingAll] = useState(false);
@@ -709,6 +721,11 @@ export function TestTable({
                   }}
                   disabled={pageKeys.length === 0}
                   onChange={() => onToggleSelectPage(pageKeys)}
+                  aria-label={
+                    allOnPageSelected
+                      ? "Clear page selection"
+                      : "Select all on this page"
+                  }
                   title={
                     allOnPageSelected
                       ? "Clear page selection"
@@ -745,7 +762,28 @@ export function TestTable({
                     (t.key === selectedKey ? "row-selected " : "") +
                     (isSelected ? "row-checked" : "")
                   }
+                  tabIndex={t.key === tabbableKey ? 0 : -1}
+                  aria-selected={isSelected}
                   onClick={() => onSelect(t.key)}
+                  onFocus={() => setFocusedKey(t.key)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelect(t.key);
+                    } else if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      (e.currentTarget.nextElementSibling as HTMLElement | null)?.focus();
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      (e.currentTarget.previousElementSibling as HTMLElement | null)?.focus();
+                    } else if (e.key === "Home") {
+                      e.preventDefault();
+                      (e.currentTarget.parentElement?.firstElementChild as HTMLElement | null)?.focus();
+                    } else if (e.key === "End") {
+                      e.preventDefault();
+                      (e.currentTarget.parentElement?.lastElementChild as HTMLElement | null)?.focus();
+                    }
+                  }}
                 >
                   <td
                     className="select-col"
@@ -754,6 +792,7 @@ export function TestTable({
                     <input
                       type="checkbox"
                       checked={isSelected}
+                      aria-label={`Select ${t.key}`}
                       onChange={() => onToggleSelect(t.key)}
                     />
                   </td>
@@ -879,9 +918,16 @@ function SortHeader({
 }) {
   const active = sortBy === col;
   return (
-    <th className="sortable" onClick={() => onSort(col)}>
-      {label}
-      <span className="sort-caret">{active ? (desc ? " ▼" : " ▲") : ""}</span>
+    <th
+      className="sortable"
+      aria-sort={active ? (desc ? "descending" : "ascending") : "none"}
+    >
+      <button type="button" className="sort-btn" onClick={() => onSort(col)}>
+        {label}
+        <span className="sort-caret" aria-hidden="true">
+          {active ? (desc ? " ▼" : " ▲") : ""}
+        </span>
+      </button>
     </th>
   );
 }

@@ -2569,6 +2569,24 @@ th.sortable:hover {
 .sort-caret {
   color: var(--accent);
 }
+/* The sortable header's clickable label is a real <button> for keyboard access
+   (X5); reset it to render exactly like the surrounding header text. */
+.sort-btn {
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.sort-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
 tbody td {
   padding: 5px 10px;
   border-bottom: 1px solid var(--border-subtle);
@@ -2576,11 +2594,22 @@ tbody td {
 tbody tr {
   cursor: pointer;
 }
+/* Visible keyboard focus for roving-tabindex row navigation (X6). Inset so the
+   ring stays within the row rather than being clipped by the scroll container. */
+tbody tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 tbody tr:hover {
   background: #f0f4ff;
 }
 tr.row-selected {
   background: #e1e8ff;
+}
+/* Non-colour cue for the open row so selection isn't signalled by background
+   alone (X6 / WCAG 1.4.1). */
+tr.row-selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .mono {
   font-family: "Consolas", "SF Mono", "Menlo", monospace;
