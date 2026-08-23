@@ -9,6 +9,7 @@ import {
 import type { RequirementImportPreview, RequirementImportRow, RequirementSource } from "../api";
 import { useNotice } from "./useNotice";
 import { fileToBase64 } from "../files";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -104,10 +105,10 @@ export function ImportRequirementsModal({ profileId, onComplete, onCancel }: Pro
   const canImport = !!fileB64 && !!projectKey && newCount > 0 && !busy;
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal pending-modal" onClick={(e) => e.stopPropagation()}>
+    <>
+    <Modal onClose={onCancel} className="modal pending-modal" labelledBy="import-requirements-title">
         <div className="pending-head">
-          <h2>Import requirements (CSV or XLSX)</h2>
+          <h2 id="import-requirements-title">Import requirements (CSV or XLSX)</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -240,8 +241,8 @@ export function ImportRequirementsModal({ profileId, onComplete, onCancel }: Pro
             </button>
           )}
         </div>
-      </div>
-      {noticeUI}
-    </div>
+    </Modal>
+    {noticeUI}
+    </>
   );
 }

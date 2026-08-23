@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { AnalyzeJUnitImportNewExec, ApplyJUnitImportNewExec, errMsg } from "../api";
 import type { JUnitNewExecPreview, JUnitNewExecResult } from "../api";
 import { fileToBase64 } from "../files";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -67,8 +68,7 @@ export function JUnitNewExecModal({ profileId, onCancel, onApplied }: Props) {
   const canApply = !!preview && preview.rows.length > 0 && !!summaryTrimmed && !applying;
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy="junit-newexec-title">
         {/* Hidden file input */}
         <input
           ref={inputRef}
@@ -79,7 +79,7 @@ export function JUnitNewExecModal({ profileId, onCancel, onApplied }: Props) {
         />
 
         <div className="pending-head">
-          <h2>New execution from JUnit XML</h2>
+          <h2 id="junit-newexec-title">New execution from JUnit XML</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -245,7 +245,6 @@ export function JUnitNewExecModal({ profileId, onCancel, onApplied }: Props) {
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

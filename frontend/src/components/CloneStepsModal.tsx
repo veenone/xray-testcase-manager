@@ -3,6 +3,7 @@ import { ListTests, SearchTestsCrossProject, GetTestSteps, errMsg } from "../api
 import type { Step, StepDraft } from "../api";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { Pager } from "./Pager";
+import { Modal } from "./Modal";
 
 // A normalized source row: same-project rows carry no projectKey; cross-project
 // rows (RND_P_4TFINT_05-322) carry the owning project's key.
@@ -176,10 +177,9 @@ export function CloneStepsModal({
   const visibleResults = results.filter((t) => t.key !== excludeKey);
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal pending-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal pending-modal" labelledBy="clone-steps-title">
         <div className="pending-head">
-          <h2>Clone steps into {targetLabel}</h2>
+          <h2 id="clone-steps-title">Clone steps into {targetLabel}</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -353,7 +353,6 @@ export function CloneStepsModal({
               : `Clone ${picked.size} step${picked.size === 1 ? "" : "s"}`}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { ListSyncLog, errMsg } from "../api";
 import type { SyncLogEntry } from "../api";
 import { formatDateTimeLong, parseJiraDate } from "../dates";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -60,13 +61,9 @@ export function SyncHistoryModal({ profileId, refreshKey, onClose }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal pending-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} className="modal pending-modal" labelledBy="sync-history-title">
         <div className="pending-head">
-          <h2>Sync history</h2>
+          <h2 id="sync-history-title">Sync history</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -190,8 +187,7 @@ export function SyncHistoryModal({ profileId, refreshKey, onClose }: Props) {
             </span>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

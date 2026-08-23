@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Modal } from "./Modal";
 import { BulkEditTests, errMsg } from "../api";
 import type { BulkEdit, BulkEditResult } from "../api";
 
@@ -119,13 +120,9 @@ export function BulkEditModal({
     (field === "labels" && operation === "set");
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div
-        className="modal bulk-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy="bulk-edit-title">
         <div className="pending-head">
-          <h2>
+          <h2 id="bulk-edit-title">
             Bulk edit ({testKeys.length}{" "}
             {testKeys.length === 1 ? "test" : "tests"})
           </h2>
@@ -262,7 +259,6 @@ export function BulkEditModal({
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnalyzeJUnitImport, ApplyJUnitImport, errMsg } from "../api";
 import type { JUnitImportPreview, JUnitMatch } from "../api";
 import { fileToBase64 } from "../files";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -73,8 +74,7 @@ export function JUnitImportModal({ profileId, execKey, onCancel, onApplied }: Pr
   const skippedCount = preview?.skipped?.length ?? 0;
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy="junit-import-title">
         {/* Hidden file input — triggered on mount */}
         <input
           ref={inputRef}
@@ -85,7 +85,7 @@ export function JUnitImportModal({ profileId, execKey, onCancel, onApplied }: Pr
         />
 
         <div className="pending-head">
-          <h2>Import results (JUnit XML)</h2>
+          <h2 id="junit-import-title">Import results (JUnit XML)</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -196,7 +196,6 @@ export function JUnitImportModal({ profileId, execKey, onCancel, onApplied }: Pr
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

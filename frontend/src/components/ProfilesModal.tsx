@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Profile } from "../api";
 import { ProfileForm } from "./ProfileForm";
 import { useConfirm } from "./useConfirm";
+import { Modal } from "./Modal";
 
 interface Props {
   profiles: Profile[];
@@ -64,14 +65,14 @@ export function ProfilesModal({
 
   return (
     <>
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal profiles-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      onClose={onClose}
+      className="modal profiles-modal"
+      labelledBy="profiles-modal-title"
+    >
         <div className="profiles-modal-head">
           <div className="profiles-modal-head-text">
-            <h2>Manage Profiles</h2>
+            <h2 id="profiles-modal-title">Manage Profiles</h2>
             <span className="profiles-modal-sub">
               {creating
                 ? "A new profile won't become active until you switch to it."
@@ -283,8 +284,7 @@ export function ProfilesModal({
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
     {confirmUI}
     </>
   );

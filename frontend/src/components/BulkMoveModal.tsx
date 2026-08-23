@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Modal } from "./Modal";
 import { BulkMoveToFolder, errMsg } from "../api";
 import type { Folder, BulkEditResult } from "../api";
 
@@ -39,10 +40,9 @@ export function BulkMoveModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy="bulk-move-title">
         <div className="pending-head">
-          <h2>
+          <h2 id="bulk-move-title">
             Move to folder ({testKeys.length}{" "}
             {testKeys.length === 1 ? "test" : "tests"})
           </h2>
@@ -122,7 +122,6 @@ export function BulkMoveModal({
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

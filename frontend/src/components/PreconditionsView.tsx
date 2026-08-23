@@ -19,6 +19,7 @@ import { MarkdownField } from "./MarkdownField";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
 import { keyCompare, cmpStr, applyDir } from "../sort";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -759,10 +760,9 @@ function CreatePreconditionModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal" labelledBy="new-precond-title">
         <div className="pending-head">
-          <h2>New precondition</h2>
+          <h2 id="new-precond-title">New precondition</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -831,7 +831,6 @@ function CreatePreconditionModal({
             {busy ? "Creating…" : "Create"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

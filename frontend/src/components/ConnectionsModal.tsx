@@ -4,6 +4,7 @@ import type { Connection } from "../api";
 import { ProfileForm } from "./ProfileForm";
 import { useConfirm } from "./useConfirm";
 import { invalidateCapabilities } from "../features";
+import { Modal } from "./Modal";
 
 interface Props {
   // The active workspace (today, the active profile's id) whose connections
@@ -89,13 +90,13 @@ export function ConnectionsModal({ activeId, onClose }: Props) {
 
   return (
     <>
-      <div className="modal-overlay" onClick={onClose}>
-        <div
-          className="modal profiles-modal"
-          onClick={(e) => e.stopPropagation()}
-        >
+      <Modal
+        onClose={onClose}
+        className="modal profiles-modal"
+        labelledBy="connections-title"
+      >
           <div className="profiles-modal-head">
-            <h2>Connections</h2>
+            <h2 id="connections-title">Connections</h2>
             <button
               className="btn btn-ghost"
               onClick={onClose}
@@ -202,8 +203,7 @@ export function ConnectionsModal({ activeId, onClose }: Props) {
               )}
             </div>
           </div>
-        </div>
-      </div>
+      </Modal>
       {confirmUI}
     </>
   );

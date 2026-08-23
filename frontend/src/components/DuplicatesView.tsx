@@ -22,6 +22,7 @@ import type {
 import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
 import { PreconditionDuplicatesView } from "./PreconditionDuplicatesView";
+import { Modal } from "./Modal";
 
 type Filter = "all" | "identical" | "differ" | "excluded";
 
@@ -560,13 +561,9 @@ function StepCompareModal({
   const maxSteps = members.reduce((m, c) => Math.max(m, c.steps.length), 0);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal dup-compare-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} className="modal dup-compare-modal" labelledBy="dup-steps-compare-title">
         <div className="pending-head">
-          <h2>Compare steps — "{title}"</h2>
+          <h2 id="dup-steps-compare-title">Compare steps — "{title}"</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -641,8 +638,7 @@ function StepCompareModal({
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -669,13 +665,9 @@ function SummaryCompareModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal dup-compare-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} className="modal dup-compare-modal" labelledBy="dup-summaries-compare-title">
         <div className="pending-head">
-          <h2>Compare summaries — "{title}"</h2>
+          <h2 id="dup-summaries-compare-title">Compare summaries — "{title}"</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -731,7 +723,6 @@ function SummaryCompareModal({
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

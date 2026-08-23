@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 
+import { Modal } from "./Modal";
+
 // WebView2 (the Wails runtime on Windows) renders window.confirm() as a bare,
 // out-of-theme dialog. useConfirm is an in-app, themed replacement: an async
 // modal that resolves to true (confirmed) or false (cancelled). Used for
@@ -61,32 +63,35 @@ function ConfirmModal({
   onCancel: () => void;
 }) {
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div
-        className="modal confirm-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="alertdialog"
-        aria-modal="true"
-      >
-        <div className="pending-head">
-          <h2>{title}</h2>
-          <button className="btn btn-ghost" onClick={onCancel} title="Cancel">
-            ✕
-          </button>
-        </div>
-        {message && <div className="bulk-body confirm-message">{message}</div>}
-        <div className="pending-actions">
-          <button className="btn" onClick={onCancel} autoFocus>
-            {cancelLabel ?? "Cancel"}
-          </button>
-          <button
-            className={`btn ${danger ? "btn-danger" : "btn-primary"}`}
-            onClick={onConfirm}
-          >
-            {confirmLabel ?? "Delete"}
-          </button>
-        </div>
+    <Modal
+      onClose={onCancel}
+      className="modal confirm-modal"
+      role="alertdialog"
+      labelledBy="confirm-title"
+    >
+      <div className="pending-head">
+        <h2 id="confirm-title">{title}</h2>
+        <button
+          className="btn btn-ghost"
+          onClick={onCancel}
+          title="Cancel"
+          aria-label="Cancel"
+        >
+          ✕
+        </button>
       </div>
-    </div>
+      {message && <div className="bulk-body confirm-message">{message}</div>}
+      <div className="pending-actions">
+        <button className="btn" onClick={onCancel} autoFocus>
+          {cancelLabel ?? "Cancel"}
+        </button>
+        <button
+          className={`btn ${danger ? "btn-danger" : "btn-primary"}`}
+          onClick={onConfirm}
+        >
+          {confirmLabel ?? "Delete"}
+        </button>
+      </div>
+    </Modal>
   );
 }

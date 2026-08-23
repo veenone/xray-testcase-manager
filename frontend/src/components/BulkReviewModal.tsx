@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Modal } from "./Modal";
 import { BulkReviewTests, errMsg } from "../api";
 import type { BulkEditResult } from "../api";
 
@@ -51,10 +52,9 @@ export function BulkReviewModal({ profileId, testKeys, onComplete, onCancel }: P
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy="bulk-review-title">
         <div className="pending-head">
-          <h2>Review {testKeys.length} test{testKeys.length === 1 ? "" : "s"}</h2>
+          <h2 id="bulk-review-title">Review {testKeys.length} test{testKeys.length === 1 ? "" : "s"}</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -126,7 +126,6 @@ export function BulkReviewModal({ profileId, testKeys, onComplete, onCancel }: P
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -9,6 +9,9 @@ import {
   errMsg,
 } from "../api";
 import type { TestCase } from "../api";
+import { Pager } from "./Pager";
+import { announce } from "./LiveRegion";
+import { Modal } from "./Modal";
 
 interface Finding {
   testKey: string;
@@ -62,6 +65,11 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
   // checked holds lowercased words: checking one finding selects every finding
   // sharing that word, so a bulk action hits all occurrences across tests.
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  // A scan across 10k–50k tests can return thousands of findings; render them a
+  // page at a time so a single unbounded table never freezes the main thread
+  // (audit P1). Word-based selection still spans every page.
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
 
   // Reset when the profile changes so findings from another profile never
   // linger in the view.
@@ -84,8 +92,12 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
       const result = (await ListMisspellings(profileId)) as unknown as Finding[];
       setFindings(result ?? []);
       setScanned(true);
+      const n = result?.length ?? 0;
+      announce(n === 0 ? "No spelling issues found." : `${n} spelling issue${n === 1 ? "" : "s"} found.`);
     } catch (e) {
-      setError(errMsg(e));
+      const msg = errMsg(e);
+      setError(msg);
+      announce(`Spell check failed. ${msg}`, true);
     } finally {
       setLoading(false);
     }
@@ -113,6 +125,19 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
     });
     return arr;
   }, [findings, sortKey, sortDir]);
+
+  // Reset to the first page whenever the result set or its order changes, so the
+  // user is never stranded on a page that no longer exists.
+  useEffect(() => {
+    setPage(0);
+  }, [findings, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = useMemo(
+    () => sorted.slice(safePage * pageSize, (safePage + 1) * pageSize),
+    [sorted, safePage, pageSize],
+  );
 
   const selected = useMemo(
     () => sorted.find((f) => findingId(f) === selectedId) ?? null,
@@ -360,7 +385,7 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((f) => {
+                {paged.map((f) => {
                   const id = findingId(f);
                   const isChecked = checked.has(f.word.toLowerCase());
                   return (
@@ -420,6 +445,18 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
                 })}
               </tbody>
             </table>
+          )}
+          {findings.length > 0 && (
+            <Pager
+              page={safePage}
+              pageSize={pageSize}
+              total={sorted.length}
+              onPage={setPage}
+              onPageSize={(n) => {
+                setPageSize(n);
+                setPage(0);
+              }}
+            />
           )}
         </div>
 
@@ -743,13 +780,9 @@ function IgnoreListModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={close}>
-      <div
-        className="modal pending-modal ignore-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={close} className="modal pending-modal ignore-modal" labelledBy="ignore-list-title">
         <div className="pending-head">
-          <h2>Spellcheck ignore list</h2>
+          <h2 id="ignore-list-title">Spellcheck ignore list</h2>
           <button className="btn btn-ghost" onClick={close} title="Close">
             ✕
           </button>
@@ -832,7 +865,6 @@ function IgnoreListModal({
             Done
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

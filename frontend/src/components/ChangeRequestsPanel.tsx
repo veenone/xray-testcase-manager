@@ -10,6 +10,7 @@ import {
 } from "../api";
 import type { ChangeRequest, CRImpactResult, Version } from "../api";
 import { useConfirm } from "./useConfirm";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -82,13 +83,6 @@ export function ChangeRequestsPanel({ profileId, canonicalId, versions, onChange
       }
     })();
   }, [profileId, selectedCR]);
-
-  useEffect(() => {
-    if (!editing) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setEditing(false); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [editing]);
 
   function openCreate() {
     setEditId(null);
@@ -184,10 +178,9 @@ export function ChangeRequestsPanel({ profileId, canonicalId, versions, onChange
 
       {/* CR Form */}
       {editing && (
-        <div className="modal-overlay" onClick={() => setEditing(false)}>
-          <div className="modal cr-form-modal" onClick={(e) => e.stopPropagation()}>
+        <Modal onClose={() => setEditing(false)} className="modal cr-form-modal" labelledBy="cr-form-title">
             <div className="pending-head">
-              <h2>{editId ? "Edit Change Request" : "New Change Request"}</h2>
+              <h2 id="cr-form-title">{editId ? "Edit Change Request" : "New Change Request"}</h2>
               <button className="btn btn-ghost" onClick={() => setEditing(false)} title="Close">✕</button>
             </div>
             <div className="cov-body">
@@ -256,8 +249,7 @@ export function ChangeRequestsPanel({ profileId, canonicalId, versions, onChange
                 {editId ? "Save" : "Create"}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* CR List */}

@@ -8,6 +8,7 @@ import {
 } from "../api";
 import type { TestCase, Folder, TestQuery } from "../api";
 import { FolderTree } from "./FolderTree";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -171,10 +172,9 @@ export function AddTestsModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal pending-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal pending-modal" labelledBy="add-tests-title">
         <div className="pending-head">
-          <h2>Add tests to {targetLabel ?? containerKey}</h2>
+          <h2 id="add-tests-title">Add tests to {targetLabel ?? containerKey}</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -309,7 +309,6 @@ export function AddTestsModal({
             {busy ? "Adding…" : `Add ${picked.size} test${picked.size === 1 ? "" : "s"}`}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

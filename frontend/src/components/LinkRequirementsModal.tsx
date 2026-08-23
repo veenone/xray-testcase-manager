@@ -5,6 +5,7 @@ import {
   errMsg,
 } from "../api";
 import type { RequirementCoverage } from "../api";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -90,10 +91,13 @@ export function LinkRequirementsModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal pending-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal
+      onClose={onClose}
+      className="modal pending-modal"
+      labelledBy="link-requirements-title"
+    >
         <div className="pending-head">
-          <h2>Link requirements to {fromKey}</h2>
+          <h2 id="link-requirements-title">Link requirements to {fromKey}</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -168,7 +172,6 @@ export function LinkRequirementsModal({
               : `Link ${selected.size} requirement${selected.size === 1 ? "" : "s"}`}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

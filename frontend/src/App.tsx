@@ -48,6 +48,7 @@ import type {
   ConflictDecision,
 } from "./api";
 import { ProfileForm } from "./components/ProfileForm";
+import { Modal } from "./components/Modal";
 import { ProfilesModal } from "./components/ProfilesModal";
 import { ConnectionsModal } from "./components/ConnectionsModal";
 import { BridgeWizard } from "./components/BridgeWizard";
@@ -82,6 +83,7 @@ import { SyncHistoryModal } from "./components/SyncHistoryModal";
 import { ImportTestsModal } from "./components/ImportTestsModal";
 import { Menu } from "./components/Menu";
 import { AboutModal } from "./components/AboutModal";
+import { LiveRegion } from "./components/LiveRegion";
 import { usePrompt } from "./components/usePrompt";
 import { useConfirm } from "./components/useConfirm";
 import { useNotice } from "./components/useNotice";
@@ -1603,14 +1605,14 @@ function App() {
       )}
 
       {showForm && (
-        <div
-          className="modal-overlay"
-          onClick={() => {
+        <Modal
+          onClose={() => {
             setShowForm(false);
             setEditingProfile(null);
           }}
+          className="modal"
+          label="Profile"
         >
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <ProfileForm
               profile={editingProfile ?? undefined}
               profiles={profiles}
@@ -1620,8 +1622,7 @@ function App() {
                 setEditingProfile(null);
               }}
             />
-          </div>
-        </div>
+        </Modal>
       )}
 
       {showProfiles && (
@@ -1856,6 +1857,7 @@ function App() {
       {promptUI}
       {confirmUI}
       {noticeUI}
+      <LiveRegion />
     </div>
   );
 }

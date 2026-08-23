@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Modal } from "./Modal";
 import {
   ListContainers,
   AllocateTests,
@@ -121,10 +122,9 @@ export function BulkAllocateModal({
   const canApply = useCreateNew ? newName.trim().length > 0 : !!target;
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy="bulk-allocate-title">
         <div className="pending-head">
-          <h2>
+          <h2 id="bulk-allocate-title">
             Allocate ({testKeys.length}{" "}
             {testKeys.length === 1 ? "test" : "tests"})
           </h2>
@@ -295,7 +295,6 @@ export function BulkAllocateModal({
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

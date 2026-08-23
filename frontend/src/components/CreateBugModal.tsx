@@ -8,6 +8,7 @@ import {
   createFieldsValid,
   initCreateFieldDefaults,
 } from "./createFields";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -192,10 +193,9 @@ export function CreateBugModal({
   const canSubmit = !busy && !!summary.trim() && !extraLoading && extraValid();
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="modal" labelledBy="create-bug-title">
         <div className="pending-head">
-          <h2>Create bug for {testKey}</h2>
+          <h2 id="create-bug-title">Create bug for {testKey}</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Cancel" aria-label="Cancel">
             ✕
           </button>
@@ -252,7 +252,6 @@ export function CreateBugModal({
             {busy ? "Filing…" : "Create bug"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -5,6 +5,7 @@ import type {
   ConflictDecision,
 } from "../api";
 import { useConfirm } from "./useConfirm";
+import { Modal } from "./Modal";
 
 interface Props {
   changes: PendingChange[];
@@ -78,13 +79,15 @@ export function PendingChangesModal({
 
   return (
     <>
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal pending-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      onClose={onClose}
+      className="modal pending-modal"
+      labelledBy="pending-changes-title"
+    >
         <div className="pending-head">
-          <h2>Pending changes ({changes.length})</h2>
+          <h2 id="pending-changes-title">
+            Pending changes ({changes.length})
+          </h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -448,8 +451,7 @@ export function PendingChangesModal({
                 : `Commit ${changes.length} changes`}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
     {confirmUI}
     </>
   );

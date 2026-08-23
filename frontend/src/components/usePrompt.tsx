@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
+import { Modal } from "./Modal";
 
 // WebView2 (the Wails runtime on Windows) does not implement window.prompt() —
 // it silently returns null. usePrompt is a drop-in async replacement: an
@@ -60,10 +61,9 @@ function PromptModal({
 }) {
   const [value, setValue] = useState(defaultValue ?? "");
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal prompt-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal prompt-modal" labelledBy="prompt-modal-title">
         <div className="pending-head">
-          <h2>{title}</h2>
+          <h2 id="prompt-modal-title">{title}</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Cancel">
             ✕
           </button>
@@ -90,7 +90,6 @@ function PromptModal({
             {submitLabel ?? "OK"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

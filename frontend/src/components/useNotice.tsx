@@ -1,6 +1,9 @@
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 
+import { Modal } from "./Modal";
+import { announce } from "./LiveRegion";
+
 // WebView2 renders window.alert() as a bare, out-of-theme dialog. useNotice is
 // an in-app, themed replacement: an async modal that resolves when dismissed.
 // Pairs with useConfirm for one consistent dialog system across the app.
@@ -23,7 +26,15 @@ export function useNotice(): {
   const [state, setState] = useState<State | null>(null);
 
   const notice = useCallback(
-    (opts: NoticeOptions) => new Promise<void>((resolve) => setState({ opts, resolve })),
+    (opts: NoticeOptions) =>
+      new Promise<void>((resolve) => {
+        // Announce to assistive tech immediately — errors interrupt (assertive).
+        announce(
+          `${opts.title}${opts.message ? ". " + opts.message : ""}`,
+          opts.tone === "error",
+        );
+        setState({ opts, resolve });
+      }),
     [],
   );
 
@@ -46,30 +57,33 @@ function NoticeModal({
   onClose,
 }: NoticeOptions & { onClose: () => void }) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal confirm-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="alertdialog"
-        aria-modal="true"
-      >
-        <div className="pending-head">
-          <h2>{title}</h2>
-          <button className="btn btn-ghost" onClick={onClose} title="Close">
-            ✕
-          </button>
-        </div>
-        {message && (
-          <div className={`bulk-body confirm-message${tone === "error" ? " error-text" : ""}`}>
-            {message}
-          </div>
-        )}
-        <div className="pending-actions">
-          <button className="btn btn-primary" onClick={onClose} autoFocus>
-            OK
-          </button>
-        </div>
+    <Modal
+      onClose={onClose}
+      className="modal confirm-modal"
+      role="alertdialog"
+      labelledBy="notice-title"
+    >
+      <div className="pending-head">
+        <h2 id="notice-title">{title}</h2>
+        <button
+          className="btn btn-ghost"
+          onClick={onClose}
+          title="Close"
+          aria-label="Close"
+        >
+          ✕
+        </button>
       </div>
-    </div>
+      {message && (
+        <div className={`bulk-body confirm-message${tone === "error" ? " error-text" : ""}`}>
+          {message}
+        </div>
+      )}
+      <div className="pending-actions">
+        <button className="btn btn-primary" onClick={onClose} autoFocus>
+          OK
+        </button>
+      </div>
+    </Modal>
   );
 }

@@ -9,6 +9,7 @@ import {
   errMsg,
 } from "../api";
 import type { RequirementSource } from "../api";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -179,13 +180,13 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
       : linkTypes;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal pending-modal req-sources"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      onClose={onClose}
+      className="modal pending-modal req-sources"
+      labelledBy="req-sources-title"
+    >
         <div className="pending-head">
-          <h2>Requirement sources</h2>
+          <h2 id="req-sources-title">Requirement sources</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -373,7 +374,6 @@ export function RequirementSourcesModal({ profileId, onClose }: Props) {
             {editingSource !== null ? "Save changes" : "Add source"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

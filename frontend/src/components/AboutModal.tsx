@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { GetDiagnostics, BrowserOpenURL } from "../api";
 import type { Diagnostics } from "../api";
+import { Modal } from "./Modal";
 import appIcon from "../assets/images/appicon.png";
 
 const DOCS_URL = "https://docs.getxray.app/display/XRAY/REST+API";
@@ -30,12 +31,7 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
     GetDiagnostics()
       .then(setDiag)
       .catch(() => {});
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   const rows: Array<[string, string]> = [
     ["Version", diag?.version ? `v${diag.version}` : "…"],
@@ -46,18 +42,12 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
   ];
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="about-card"
-        role="dialog"
-        aria-label="About Xray Test Manager"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button className="about-close" onClick={onClose} title="Close" aria-label="Close">
-          ✕
-        </button>
+    <Modal onClose={onClose} className="about-card" label="About Xray Test Manager">
+      <button className="about-close" onClick={onClose} title="Close" aria-label="Close">
+        ✕
+      </button>
 
-        <header className="about-banner">
+      <header className="about-banner">
           <span className="about-banner-grid" aria-hidden="true" />
           <LogoMark />
           <div className="about-id">
@@ -97,10 +87,9 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <footer className="about-foot">
-          © 2026 Achmad Fienan Rahardianto
-        </footer>
-      </div>
-    </div>
+      <footer className="about-foot">
+        © 2026 Achmad Fienan Rahardianto
+      </footer>
+    </Modal>
   );
 }

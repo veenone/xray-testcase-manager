@@ -45,6 +45,7 @@ import { CoverageMap } from "./CoverageMap";
 import { BrowseTestsPicker } from "./CoverageTestPicker";
 import { CoverageGuide } from "./CoverageGuide";
 import { CoveragePublishPanel } from "./CoveragePublishPanel";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -838,12 +839,6 @@ function MapTestsModal({
     })();
   }, [profileId, canonicalId, valueId]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !showPicker) onClose(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose, showPicker]);
-
   function toggle(key: string) {
     setPicked((prev) => {
       const next = new Set(prev);
@@ -894,10 +889,9 @@ function MapTestsModal({
 
   return (
     <>
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="modal map-tests-modal" onClick={(e) => e.stopPropagation()}>
+      <Modal onClose={onClose} className="modal map-tests-modal" labelledBy="cov-map-tests-title">
           <div className="pending-head">
-            <h2>Map tests to "{valueLabel}"</h2>
+            <h2 id="cov-map-tests-title">Map tests to "{valueLabel}"</h2>
             <button className="btn btn-ghost" onClick={onClose} title="Close">✕</button>
           </div>
           <div className="cov-body">
@@ -931,8 +925,7 @@ function MapTestsModal({
             <button className="btn" onClick={onClose}>Cancel</button>
             <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>Save</button>
           </div>
-        </div>
-      </div>
+      </Modal>
       {showPicker && (
         <BrowseTestsPicker
           profileId={profileId}
@@ -978,12 +971,6 @@ function MembersModal({
     })();
   }, [profileId]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
-
   const shown = reqs.filter(
     (r) => !filter || r.key.toLowerCase().includes(filter.toLowerCase()) || r.summary.toLowerCase().includes(filter.toLowerCase()),
   );
@@ -1011,10 +998,9 @@ function MembersModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal members-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="modal members-modal" labelledBy="cov-members-title">
         <div className="pending-head">
-          <h2>Member requirements</h2>
+          <h2 id="cov-members-title">Member requirements</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">✕</button>
         </div>
         <div className="cov-body">
@@ -1038,7 +1024,6 @@ function MembersModal({
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>Save</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

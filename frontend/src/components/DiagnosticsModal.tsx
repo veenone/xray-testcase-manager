@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { GetDiagnostics, ReadLog, ExportDiagnostics, errMsg } from "../api";
 import type { Diagnostics } from "../api";
+import { Modal } from "./Modal";
 
 interface Props {
   onClose: () => void;
@@ -42,13 +43,9 @@ export function DiagnosticsModal({ onClose }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal pending-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} className="modal pending-modal" labelledBy="diagnostics-title">
         <div className="pending-head">
-          <h2>Diagnostics</h2>
+          <h2 id="diagnostics-title">Diagnostics</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -105,7 +102,6 @@ export function DiagnosticsModal({ onClose }: Props) {
             Export…
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

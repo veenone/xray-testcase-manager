@@ -7,6 +7,7 @@ import {
 } from "../api";
 import type { ImportMapping, ImportResult } from "../api";
 import { useNotice } from "./useNotice";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -143,10 +144,10 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
   const canRun = headers.length > 0 && mapping.summary !== "";
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal pending-modal" onClick={(e) => e.stopPropagation()}>
+    <>
+    <Modal onClose={onCancel} className="modal pending-modal" labelledBy="import-tests-title">
         <div className="pending-head">
-          <h2>Import tests (CSV or XLSX)</h2>
+          <h2 id="import-tests-title">Import tests (CSV or XLSX)</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -290,9 +291,9 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
             </button>
           )}
         </div>
-      </div>
-      {noticeUI}
-    </div>
+    </Modal>
+    {noticeUI}
+    </>
   );
 }
 

@@ -6,6 +6,7 @@ import {
   errMsg,
 } from "../api";
 import type { RequirementCoverage, BulkEditResult } from "../api";
+import { Modal } from "./Modal";
 import { SearchableSelect } from "./SearchableSelect";
 
 interface Props {
@@ -97,10 +98,9 @@ export function BulkRequirementsModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy="bulk-requirements-title">
         <div className="pending-head">
-          <h2>
+          <h2 id="bulk-requirements-title">
             Requirements ({testKeys.length}{" "}
             {testKeys.length === 1 ? "test" : "tests"})
           </h2>
@@ -257,7 +257,6 @@ export function BulkRequirementsModal({
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

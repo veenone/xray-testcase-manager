@@ -13,6 +13,7 @@ import type {
   BridgeMapping,
   BridgePublishResult,
 } from "../api";
+import { Modal } from "./Modal";
 
 interface Props {
   // The active workspace (P6.3): source/target connections are both scoped
@@ -230,10 +231,9 @@ export function BridgeWizard({ activeId, onClose, onOpenConnections }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal pending-modal bridge-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="modal pending-modal bridge-modal" labelledBy="bridge-wizard-title">
         <div className="pending-head">
-          <h2>Bridge tests to another connection</h2>
+          <h2 id="bridge-wizard-title">Bridge tests to another connection</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close" aria-label="Close">
             ✕
           </button>
@@ -522,7 +522,6 @@ export function BridgeWizard({ activeId, onClose, onOpenConnections }: Props) {
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -66,6 +66,7 @@ import { MultiAddSelect } from "./MultiAddSelect";
 import { CloneStepsModal } from "./CloneStepsModal";
 import { PickTestModal } from "./PickTestModal";
 import { PickPreconditionModal } from "./PickPreconditionModal";
+import { Modal } from "./Modal";
 import { formatDateTime } from "../dates";
 import { REVIEW_ENABLED, useCapabilities } from "../features";
 
@@ -1953,10 +1954,9 @@ function SwapModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy="bulk-swap-title">
         <div className="pending-head">
-          <h2>{title}</h2>
+          <h2 id="bulk-swap-title">{title}</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -2018,8 +2018,7 @@ function SwapModal({
             {busy ? "Applying…" : "Apply swap"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

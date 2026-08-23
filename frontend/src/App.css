@@ -22,6 +22,15 @@
   --warn-border: #e4b761;
   --warn-soft: rgba(202, 138, 4, 0.12);
   --ok-text: #1f7a52;
+  /* Previously-undefined tokens: they were referenced with hardcoded light
+     fallbacks that never re-pointed in dark mode. Now real tokens in both
+     themes (audit S1). */
+  --warning: #b7791f;
+  --warning-bg: #fef3c7;
+  --warning-text: #92400e;
+  --card-border: var(--border);
+  --accent-strong: #2b6cb0;
+  --bg-subtle: var(--surface-2);
 }
 
 :root[data-theme="dark"] {
@@ -44,6 +53,27 @@
   --warn-border: #6b5525;
   --warn-soft: rgba(224, 176, 98, 0.13);
   --ok-text: #5fd0a0;
+  /* Dark counterparts for the tokens fixed in audit S1. */
+  --warning: #e0b062;
+  --warning-bg: #2a2109;
+  --warning-text: #f0c674;
+  --card-border: var(--border);
+  --accent-strong: #6ea8fe;
+  --bg-subtle: var(--surface-2);
+}
+
+/* Visually-hidden but screen-reader-available. Used by the aria-live region
+   (audit X4) and any label that should be announced but not shown. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Application shell */

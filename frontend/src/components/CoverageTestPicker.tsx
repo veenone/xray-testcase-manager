@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ListTests, errMsg } from "../api";
 import type { TestCase } from "../api";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -66,14 +67,6 @@ export function BrowseTestsPicker({ profileId, excludeKeys, onClose, onAdd }: Pr
     };
   }, [profileId, search, page]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
-
   function toggle(key: string) {
     setPicked((prev) => {
       const next = new Set(prev);
@@ -90,10 +83,13 @@ export function BrowseTestsPicker({ profileId, excludeKeys, onClose, onAdd }: Pr
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal cov-picker-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal
+      onClose={onClose}
+      className="modal cov-picker-modal"
+      labelledBy="browse-tests-title"
+    >
         <div className="pending-head">
-          <h2>Browse tests</h2>
+          <h2 id="browse-tests-title">Browse tests</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -169,7 +165,6 @@ export function BrowseTestsPicker({ profileId, excludeKeys, onClose, onAdd }: Pr
             Add {picked.size} test{picked.size === 1 ? "" : "s"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

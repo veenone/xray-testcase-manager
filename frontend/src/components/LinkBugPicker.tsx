@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ListBugsWithTests, LinkExistingBugToRun, errMsg } from "../api";
 import type { BugWithTests } from "../api";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -58,14 +59,6 @@ export function LinkBugPicker({
     };
   }, [profileId]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const existing = useMemo(() => new Set(existingKeys), [existingKeys]);
 
   const shown = useMemo(() => {
@@ -100,10 +93,9 @@ export function LinkBugPicker({
   const freeValid = BUG_KEY_RE.test(freeKey.trim().toUpperCase());
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="modal" labelledBy="link-bug-title">
         <div className="pending-head">
-          <h2>Link bug to {testKey}</h2>
+          <h2 id="link-bug-title">Link bug to {testKey}</h2>
           <button
             className="btn btn-ghost"
             onClick={onClose}
@@ -187,7 +179,6 @@ export function LinkBugPicker({
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

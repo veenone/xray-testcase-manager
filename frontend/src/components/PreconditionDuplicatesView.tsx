@@ -11,6 +11,7 @@ import type {
   PreconditionDuplicateMember,
 } from "../api";
 import { Pager } from "./Pager";
+import { Modal } from "./Modal";
 
 type Filter = "all" | "identical" | "differ";
 
@@ -253,10 +254,9 @@ function DefinitionCompareModal({
   ];
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal dup-compare-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="modal dup-compare-modal" labelledBy="precond-dup-compare-title">
         <div className="pending-head">
-          <h2>Compare definitions — "{group.displaySummary}"</h2>
+          <h2 id="precond-dup-compare-title">Compare definitions — "{group.displaySummary}"</h2>
           <button className="btn btn-ghost" onClick={onClose} title="Close">
             ✕
           </button>
@@ -303,7 +303,6 @@ function DefinitionCompareModal({
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

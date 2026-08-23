@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ListTests, SearchTestsCrossProject, errMsg } from "../api";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { Pager } from "./Pager";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -126,10 +127,13 @@ export function PickTestModal({
   const visible = results.filter((t) => t.key !== excludeKey);
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal pending-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal
+      onClose={onCancel}
+      className="modal pending-modal"
+      labelledBy="pick-test-title"
+    >
         <div className="pending-head">
-          <h2>{heading}</h2>
+          <h2 id="pick-test-title">{heading}</h2>
           <button className="btn btn-ghost" onClick={onCancel} title="Close">
             ✕
           </button>
@@ -217,7 +221,6 @@ export function PickTestModal({
             {error && <div className="error-text">{error}</div>}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

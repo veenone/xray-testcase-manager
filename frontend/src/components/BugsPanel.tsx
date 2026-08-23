@@ -23,6 +23,7 @@ import { ContainerDetailPanel } from "./ContainerDetailPanel";
 import { usePrompt } from "./usePrompt";
 import { keyCompare, cmpStr, applyDir } from "../sort";
 import { Markdown } from "./Markdown";
+import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
@@ -1172,10 +1173,9 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
       )}
 
       {addToExecOpen && (
-        <div className="modal-overlay" onClick={() => !addToExecWorking && setAddToExecOpen(false)}>
-          <div className="modal bulk-modal" onClick={(e) => e.stopPropagation()}>
+        <Modal onClose={() => !addToExecWorking && setAddToExecOpen(false)} className="modal bulk-modal" labelledBy="add-to-exec-title">
             <div className="pending-head">
-              <h2>
+              <h2 id="add-to-exec-title">
                 Add to Test Execution ({unionTestKeys.length}{" "}
                 {unionTestKeys.length === 1 ? "test" : "tests"})
               </h2>
@@ -1283,8 +1283,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
                 {addToExecWorking ? "Working…" : "Add to Execution"}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

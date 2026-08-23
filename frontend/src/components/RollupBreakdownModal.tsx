@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { RollupMember } from "../api";
+import { Modal } from "./Modal";
 
 // Human label for the consolidated bucket, shown in the modal title/hint.
 const STATUS_TITLE: Record<string, string> = {
@@ -56,27 +57,13 @@ export function RollupBreakdownModal({
       return next;
     });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const shown = members.filter((m) => m.consolidated === status);
   const title = STATUS_TITLE[status] ?? status;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal rollup-breakdown-modal"
-        role="dialog"
-        aria-label={`${title} member tests`}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} className="modal rollup-breakdown-modal" labelledBy="rollup-breakdown-title">
         <div className="pending-head">
-          <h2>
+          <h2 id="rollup-breakdown-title">
             {title}: {shown.length} test{shown.length === 1 ? "" : "s"} in{" "}
             {containerKey}
           </h2>
@@ -150,7 +137,6 @@ export function RollupBreakdownModal({
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
