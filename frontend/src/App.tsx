@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import "./App.css";
 import {
   Health,
@@ -23,7 +24,6 @@ import {
   ResolveConflictKeepRemote,
   ResolveConflictMerge,
   RecreateDeletedTest,
-  ListPendingChanges,
   DiscardPendingChange,
   DiscardAllPendingChanges,
   CommitPendingChanges,
@@ -62,6 +62,8 @@ import { PendingChangesModal } from "./components/PendingChangesModal";
 import { BulkReviewModal } from "./components/BulkReviewModal";
 import { REVIEW_ENABLED, invalidateCapabilities, useCapabilities } from "./features";
 import { clearViewState } from "./lib/viewState";
+import { usePendingChanges } from "./queries/pending";
+import { keys } from "./queries/keys";
 import { BulkEditModal } from "./components/BulkEditModal";
 import { BulkTransitionModal } from "./components/BulkTransitionModal";
 import { BulkAllocateModal } from "./components/BulkAllocateModal";
@@ -157,7 +159,9 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [detailVersion, setDetailVersion] = useState(0);
 
-  const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
+  const queryClient = useQueryClient();
+  const pendingQuery = usePendingChanges(activeId);
+  const pendingChanges = pendingQuery.data ?? [];
   const [showPending, setShowPending] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [lastCommitResult, setLastCommitResult] = useState<CommitResult | null>(
@@ -352,21 +356,17 @@ function App() {
       else m.set(testKey, [p]);
     }
     return m;
-  }, [pendingChanges]);
+  }, [pendingQuery.data]);
 
+  // reloadPending now invalidates the pending query instead of manually
+  // refetching, so the existing ~35 call sites keep working during the
+  // migration (the strangler bridge). The query itself loads on mount and when
+  // activeId changes, so no refreshKey-driven effect is needed.
   const reloadPending = useCallback(() => {
-    if (!activeId) {
-      setPendingChanges([]);
-      return;
+    if (activeId) {
+      queryClient.invalidateQueries({ queryKey: keys.pending(activeId) });
     }
-    ListPendingChanges(activeId)
-      .then(setPendingChanges)
-      .catch((e) => console.error("list pending:", errMsg(e)));
-  }, [activeId]);
-
-  useEffect(() => {
-    reloadPending();
-  }, [reloadPending, refreshKey]);
+  }, [queryClient, activeId]);
 
   // Refresh the sync summary and folder tree when the active profile changes
   // or a sync finishes.
