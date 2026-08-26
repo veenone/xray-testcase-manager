@@ -366,9 +366,9 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
   const versionName = versions.find((v) => v.id === versionId)?.name ?? "";
 
   return (
-    <div className="cov-root">
+    <div className="cov-root" data-tour="coverage-body">
       <aside className="cov-list">
-        <div className="cov-list-head">
+        <div className="cov-list-head" data-tour="coverage-tools">
           <input
             className="cov-input"
             placeholder="New functional requirement…"

@@ -237,7 +237,7 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
   );
 
   return (
-    <div className="gap-view">
+    <div className="gap-view" data-tour="gapanalysis-body">
       <div className="gap-inner">
         <section className="gap-card gap-setup">
           <div className="gap-row">
@@ -324,7 +324,12 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
               {compareBy === "summaryFolder" &&
                 " With Summary + folder, tests that match by summary but sit in a different folder are listed on their own."}
             </p>
-            <button className="btn btn-primary" onClick={runAnalysis} disabled={busy || !canRun}>
+            <button
+              className="btn btn-primary"
+              onClick={runAnalysis}
+              disabled={busy || !canRun}
+              data-tour="gapanalysis-tools"
+            >
               {busy ? "Working…" : "Run analysis"}
             </button>
           </div>

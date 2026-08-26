@@ -1,16 +1,16 @@
-// The onboarding tour, as data (RND_P_4TFINT_05-335).
+// The onboarding tours, as data (RND_P_4TFINT_05-335).
 //
 // Every step targets a `data-tour` attribute rather than a CSS class. Classes
 // churn with styling work; a dedicated attribute is an explicit contract, so a
 // reader can see at the element that something depends on it.
 //
-// CONSTRAINT: every target must be an element that is ALWAYS MOUNTED while the
-// Browse view is showing. Conditionally rendered targets (the pending-changes
+// CONSTRAINT: every target must be an element that is ALWAYS MOUNTED while its
+// tour's view is showing. Conditionally rendered targets (the pending-changes
 // badge, an open detail panel, anything inside a modal) are the main way tours
-// break, because the step lands on nothing. That is why the local-edit and
-// commit ideas are explained from stable anchors instead of being spotlighted
-// on the widgets themselves, and why this release stays inside the core loop
-// rather than driving navigation between views.
+// break, because the step lands on nothing. The Browse tour explains the
+// local-edit and commit ideas from stable anchors instead of spotlighting the
+// widgets themselves; the per-view tours anchor on each view's own tab (always
+// mounted in the topbar) plus the shared More menu, for the same reason.
 
 export const TOUR_VERSION = 1;
 
@@ -23,7 +23,9 @@ export interface TourStep {
   side?: "top" | "bottom" | "left" | "right";
 }
 
-export const TOUR_STEPS: TourStep[] = [
+// The Browse tour: the core "sync → browse → edit → commit" loop. It is the
+// first-run tour and stays inside Browse.
+const BROWSE_STEPS: TourStep[] = [
   {
     id: "profile",
     target: "profile",
@@ -42,7 +44,7 @@ export const TOUR_STEPS: TourStep[] = [
     id: "views",
     target: "views",
     title: "The views",
-    body: "Tests, preconditions, requirements, test plans and coverage each get their own view. This tour stays in Browse.",
+    body: "Tests, preconditions, requirements, test plans and coverage each get their own view. Each one has its own quick tour — open it from the More menu while you're on that view.",
     side: "bottom",
   },
   {
@@ -74,3 +76,188 @@ export const TOUR_STEPS: TourStep[] = [
     side: "bottom",
   },
 ];
+
+// A per-view tour walks the view's own tab (an always-mounted anchor in the
+// topbar), then its main content area, then its primary control, then the
+// shared "re-run" step. `bodyTarget`/`toolsTarget` are `data-tour` values added
+// inside each view component; a step whose target isn't mounted is filtered out
+// at run time, so a view that omits one degrades gracefully.
+interface ViewTour {
+  /** view id (matches App's `view`); also the `tab-<view>` anchor. */
+  view: string;
+  title: string;
+  /** what the view is for — shown on its tab. */
+  purpose: string;
+  /** what the main content area holds — shown on `<view>-body`. */
+  body: string;
+  /** what the primary control does — shown on `<view>-tools`. */
+  tools: string;
+}
+
+function viewTour(v: ViewTour): TourStep[] {
+  return [
+    {
+      id: `${v.view}-intro`,
+      target: `tab-${v.view}`,
+      title: v.title,
+      body: v.purpose,
+      side: "bottom",
+    },
+    {
+      id: `${v.view}-body`,
+      target: `${v.view}-body`,
+      title: "The main area",
+      body: v.body,
+      side: "top",
+    },
+    {
+      id: `${v.view}-tools`,
+      target: `${v.view}-tools`,
+      title: "Your main control here",
+      body: v.tools,
+      side: "bottom",
+    },
+    {
+      id: `${v.view}-rerun`,
+      target: "more",
+      title: "Run this again",
+      body: "Re-open this view's tour any time from the More menu.",
+      side: "bottom",
+    },
+  ];
+}
+
+// The Containers view is the richest, so it gets a bespoke, more detailed tour
+// rather than the generic four-step shape. Its extra anchors (plans-type,
+// plans-pick, plans-new) live in the toolbar and are present only in Containers
+// mode — if the view is in Bugs mode when the tour runs, those steps filter out.
+const CONTAINERS_STEPS: TourStep[] = [
+  {
+    id: "plans-intro",
+    target: "tab-plans",
+    title: "Containers",
+    body: "Test Sets, Test Plans and Test Executions — the containers that group your tests. Create them and allocate tests here.",
+    side: "bottom",
+  },
+  {
+    id: "plans-mode",
+    target: "plans-tools",
+    title: "Board or bugs",
+    body: "Switch between the container board and the cross-container Bugs list.",
+    side: "bottom",
+  },
+  {
+    id: "plans-type",
+    target: "plans-type",
+    title: "Pick a container type",
+    body: "Choose whether you're working with Test Sets, Test Plans or Test Executions — each type has its own board.",
+    side: "bottom",
+  },
+  {
+    id: "plans-pick",
+    target: "plans-pick",
+    title: "Choose one to open",
+    body: "Pick a specific Set, Plan or Execution to see and manage the tests inside it. Type to filter the list.",
+    side: "bottom",
+  },
+  {
+    id: "plans-new",
+    target: "plans-new",
+    title: "Create a container",
+    body: "Add a new Set, Plan or Execution of the current type, then allocate tests into it.",
+    side: "bottom",
+  },
+  {
+    id: "plans-board",
+    target: "plans-body",
+    title: "Members and results",
+    body: "The selected container's tests show here. For Test Executions you also get consolidated pass/fail results rolled up across every run.",
+    side: "top",
+  },
+  {
+    id: "plans-rerun",
+    target: "more",
+    title: "Run this again",
+    body: "Re-open this view's tour any time from the More menu.",
+    side: "bottom",
+  },
+];
+
+// TOURS maps a view id (the same ids App uses for `view`) to its tour. Views
+// without an entry simply have no tour.
+export const TOURS: Record<string, TourStep[]> = {
+  browse: BROWSE_STEPS,
+  preconditions: viewTour({
+    view: "preconditions",
+    title: "Preconditions",
+    purpose:
+      "Reusable setup steps shared across tests. Browse and edit them here, and spot duplicate definitions to clean up.",
+    body: "The precondition list is on the left; click one to view and edit its details on the right.",
+    tools: "Filter the list by key, summary or type as you type.",
+  }),
+  requirements: viewTour({
+    view: "requirements",
+    title: "Requirements",
+    purpose:
+      "The requirements your tests cover. See each one's coverage status and link tests to it.",
+    body: "Requirements are listed on the left; select one to see its details and linked tests on the right.",
+    tools: "Filter requirements by key or summary as you type.",
+  }),
+  duplicates: viewTour({
+    view: "duplicates",
+    title: "Duplicates",
+    purpose:
+      "Finds tests with near-identical summaries or steps, so you can merge or remove the copies.",
+    body: "Duplicate groups appear here after a scan; open a group to compare and resolve the copies.",
+    tools: "Switch between finding duplicate tests and duplicate preconditions.",
+  }),
+  gapanalysis: viewTour({
+    view: "gapanalysis",
+    title: "Gap Analysis",
+    purpose:
+      "Requirements that no test covers yet — your coverage gaps, listed so you can close them.",
+    body: "Set up the analysis at the top; the uncovered requirements appear below.",
+    tools: "Run the analysis to find requirements with no covering tests.",
+  }),
+  testcalls: viewTour({
+    view: "testcalls",
+    title: "Test Calls",
+    purpose:
+      "Shows which tests call other tests in their steps, including cross-project calls and any cycles.",
+    body: "The call relationships between your tests are shown here, grouped by caller.",
+    tools: "Re-pull the latest call links to refresh the graph.",
+  }),
+  dashboard: viewTour({
+    view: "dashboard",
+    title: "Dashboard",
+    purpose:
+      "A live overview — test counts, status breakdowns, and a traceability Sankey.",
+    body: "Summary tiles and charts for the current selection fill this panel.",
+    tools: "Narrow every panel by folder, component or status here.",
+  }),
+  traceability: viewTour({
+    view: "traceability",
+    title: "Traceability",
+    purpose:
+      "Follow the thread from requirements to tests to executions across the project.",
+    body: "Sankey diagrams tracing coverage render in this panel.",
+    tools: "Switch between the Requirement, Execution and Sub-task views — and export to XLSX — here.",
+  }),
+  plans: CONTAINERS_STEPS,
+  coverage: viewTour({
+    view: "coverage",
+    title: "Coverage",
+    purpose:
+      "Map requirements to functions or components and see where coverage is reused.",
+    body: "Functional requirements are on the left; select one to map coverage and see reuse on the right.",
+    tools: "Add a new functional requirement to map from here.",
+  }),
+  misspellings: viewTour({
+    view: "misspellings",
+    title: "Spellcheck",
+    purpose:
+      "Scans summaries, descriptions and steps for spelling issues and suggests fixes you can apply in bulk.",
+    body: "Spelling findings appear here after a scan, each with suggested corrections you can apply.",
+    tools: "Start a spellcheck scan across all synced tests from here.",
+  }),
+};

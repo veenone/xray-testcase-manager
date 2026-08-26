@@ -212,13 +212,14 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
   }
 
   return (
-    <div className="testcalls">
+    <div className="testcalls" data-tour="testcalls-body">
       <div className="dup-toolbar">
         <button
           className="btn btn-primary"
           onClick={syncCalls}
           disabled={syncing}
           title="Re-pull steps for the known caller tests to refresh the call graph, without running a full sync"
+          data-tour="testcalls-tools"
         >
           {syncing ? "Syncing…" : "↻ Sync"}
         </button>
