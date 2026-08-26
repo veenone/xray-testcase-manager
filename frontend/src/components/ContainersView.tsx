@@ -817,7 +817,7 @@ export function ContainersView({
       ) : (
         <>
       <div className="board-head">
-        <label className="board-picker board-picker--secondary">
+        <label className="board-picker board-picker--secondary" data-tour="plans-type">
           <span>Type</span>
           <select
             className="app-select container-type-select"
@@ -878,7 +878,7 @@ export function ContainersView({
             </select>
           </label>
         )}
-        <label className="board-picker board-picker--primary">
+        <label className="board-picker board-picker--primary" data-tour="plans-pick">
           <span>{kindLabel}</span>
           {loading ? (
             <span className="muted">Loading…</span>
@@ -921,7 +921,7 @@ export function ContainersView({
           >
             {syncing ? "Syncing…" : "Sync"}
           </button>
-          <button className="btn btn-primary" onClick={newContainer} title={`New ${kindLabel}`}>
+          <button className="btn btn-primary" onClick={newContainer} title={`New ${kindLabel}`} data-tour="plans-new">
             + New
           </button>
           {kind === "testexec" && (

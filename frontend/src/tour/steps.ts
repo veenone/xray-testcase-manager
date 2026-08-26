@@ -127,6 +127,62 @@ function viewTour(v: ViewTour): TourStep[] {
   ];
 }
 
+// The Containers view is the richest, so it gets a bespoke, more detailed tour
+// rather than the generic four-step shape. Its extra anchors (plans-type,
+// plans-pick, plans-new) live in the toolbar and are present only in Containers
+// mode — if the view is in Bugs mode when the tour runs, those steps filter out.
+const CONTAINERS_STEPS: TourStep[] = [
+  {
+    id: "plans-intro",
+    target: "tab-plans",
+    title: "Containers",
+    body: "Test Sets, Test Plans and Test Executions — the containers that group your tests. Create them and allocate tests here.",
+    side: "bottom",
+  },
+  {
+    id: "plans-mode",
+    target: "plans-tools",
+    title: "Board or bugs",
+    body: "Switch between the container board and the cross-container Bugs list.",
+    side: "bottom",
+  },
+  {
+    id: "plans-type",
+    target: "plans-type",
+    title: "Pick a container type",
+    body: "Choose whether you're working with Test Sets, Test Plans or Test Executions — each type has its own board.",
+    side: "bottom",
+  },
+  {
+    id: "plans-pick",
+    target: "plans-pick",
+    title: "Choose one to open",
+    body: "Pick a specific Set, Plan or Execution to see and manage the tests inside it. Type to filter the list.",
+    side: "bottom",
+  },
+  {
+    id: "plans-new",
+    target: "plans-new",
+    title: "Create a container",
+    body: "Add a new Set, Plan or Execution of the current type, then allocate tests into it.",
+    side: "bottom",
+  },
+  {
+    id: "plans-board",
+    target: "plans-body",
+    title: "Members and results",
+    body: "The selected container's tests show here. For Test Executions you also get consolidated pass/fail results rolled up across every run.",
+    side: "top",
+  },
+  {
+    id: "plans-rerun",
+    target: "more",
+    title: "Run this again",
+    body: "Re-open this view's tour any time from the More menu.",
+    side: "bottom",
+  },
+];
+
 // TOURS maps a view id (the same ids App uses for `view`) to its tour. Views
 // without an entry simply have no tour.
 export const TOURS: Record<string, TourStep[]> = {
@@ -187,14 +243,7 @@ export const TOURS: Record<string, TourStep[]> = {
     body: "Sankey diagrams tracing coverage render in this panel.",
     tools: "Switch between the Requirement, Execution and Sub-task views — and export to XLSX — here.",
   }),
-  plans: viewTour({
-    view: "plans",
-    title: "Containers",
-    purpose:
-      "Test Sets, Test Plans and Test Executions — the containers that group tests. Create them and allocate tests here.",
-    body: "The container board — pick a Test Set, Plan or Execution to see and manage its members.",
-    tools: "Switch between the container board and the cross-container Bugs list.",
-  }),
+  plans: CONTAINERS_STEPS,
   coverage: viewTour({
     view: "coverage",
     title: "Coverage",
