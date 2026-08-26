@@ -1,0 +1,87 @@
+import React from "react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useTestMeta, useTestRunHistory } from "./testDetail";
+import * as api from "../api";
+
+vi.mock("../api", () => ({
+  GetTestMeta: vi.fn(),
+  GetTestRunHistory: vi.fn(),
+  errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+}));
+
+function makeWrapper() {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return function Wrapper({ children }: { children: React.ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
+}
+
+describe("useTestMeta", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the meta on success", async () => {
+    (api.GetTestMeta as ReturnType<typeof vi.fn>).mockResolvedValue({
+      created: "2026-01-01",
+    });
+    const { result } = renderHook(() => useTestMeta("p1", "PROJ-1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.created).toBe("2026-01-01");
+  });
+
+  it("does not fetch without a test key", () => {
+    const { result } = renderHook(() => useTestMeta("p1", "", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTestMeta).not.toHaveBeenCalled();
+  });
+});
+
+describe("useTestRunHistory", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the run history on success", async () => {
+    (api.GetTestRunHistory as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { execKey: "TE-1" },
+    ]);
+    const { result } = renderHook(
+      () => useTestRunHistory("p1", "PROJ-1", "0:0"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it("surfaces load failures as an error state (not silently)", async () => {
+    (api.GetTestRunHistory as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("boom"),
+    );
+    const { result } = renderHook(
+      () => useTestRunHistory("p1", "PROJ-1", "0:0"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(Error);
+  });
+
+  it("refetches when the reload bridge changes", async () => {
+    (api.GetTestRunHistory as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const { result, rerender } = renderHook(
+      ({ reload }: { reload: string }) =>
+        useTestRunHistory("p1", "PROJ-1", reload),
+      { wrapper: makeWrapper(), initialProps: { reload: "0:0" } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.GetTestRunHistory).toHaveBeenCalledTimes(1);
+    rerender({ reload: "1:0" });
+    await waitFor(() =>
+      expect(api.GetTestRunHistory).toHaveBeenCalledTimes(2),
+    );
+  });
+});

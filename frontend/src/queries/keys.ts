@@ -10,6 +10,13 @@ export const keys = {
     [profileId, "tests", params] as const,
   test: (profileId: string, key: string) =>
     [profileId, "test", key] as const,
+  // `reload` folds TestDetail's version + localReloadKey counters into the key
+  // as the migration bridge (a bump refetches). Phase 4 replaces it with
+  // targeted invalidation of [profileId, "test", key].
+  testMeta: (profileId: string, key: string, reload: string) =>
+    [profileId, "test", key, "meta", reload] as const,
+  testRunHistory: (profileId: string, key: string, reload: string) =>
+    [profileId, "test", key, "runHistory", reload] as const,
   pending: (profileId: string) => [profileId, "pending"] as const,
   folders: (profileId: string) => [profileId, "folders"] as const,
 };

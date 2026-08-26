@@ -17,7 +17,6 @@ import {
   ListStatuses,
   GetTestSteps,
   CheckJiraTestSteps,
-  GetTestMeta,
   GetTestReview,
   SetTestReview,
   GetTestCustomFields,
@@ -35,7 +34,6 @@ import {
   MoveTestToFolder,
   BrowserOpenURL,
   GetTestBugs,
-  GetTestRunHistory,
   ChangeTestType,
   errMsg,
   isDemoUrl,
@@ -69,6 +67,7 @@ import { PickPreconditionModal } from "./PickPreconditionModal";
 import { Modal } from "./Modal";
 import { formatDateTime } from "../dates";
 import { REVIEW_ENABLED, useCapabilities } from "../features";
+import { useTestMeta, useTestRunHistory } from "../queries/testDetail";
 
 const REVIEWER_KEY = "xtm.reviewer";
 
@@ -186,7 +185,6 @@ export function TestDetail({
   }
 
   const [test, setTest] = useState<TestCase | null>(null);
-  const [meta, setMeta] = useState<TestMeta | null>(null);
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [allPreconditions, setAllPreconditions] = useState<Precondition[]>([]);
   const [precondLoading, setPrecondLoading] = useState(false);
@@ -238,9 +236,6 @@ export function TestDetail({
   // panel is empty but Jira actually has steps (a load/shape problem), so the
   // user doesn't add a blank step that Xray rejects.
   const [jiraStepInfo, setJiraStepInfo] = useState<JiraStepInfo | null>(null);
-  const [runHistory, setRunHistory] = useState<TestRunEntry[] | null>(null);
-  const [runHistoryLoading, setRunHistoryLoading] = useState(false);
-  const [runHistoryError, setRunHistoryError] = useState("");
   // Sort state for the run history table. Default: updatedAt descending.
   const [runHistorySort, setRunHistorySort] = useState<{ field: string; desc: boolean }>(
     { field: "updatedAt", desc: true },
@@ -294,6 +289,19 @@ export function TestDetail({
   // Internal counter that forces the main load effect to re-run after a type
   // change so any pre-filled body is hydrated from the backend.
   const [localReloadKey, setLocalReloadKey] = useState(0);
+
+  // Isolated, read-only detail sections now come from the query cache (audit
+  // A3, Phase 2b). `reload` folds version + localReloadKey into the key as the
+  // migration bridge (a bump refetches).
+  const reload = `${version}:${localReloadKey}`;
+  const metaQuery = useTestMeta(profileId, testKey, reload);
+  const meta = metaQuery.data ?? null;
+  const runHistoryQuery = useTestRunHistory(profileId, testKey, reload);
+  const runHistory = runHistoryQuery.data ?? null;
+  const runHistoryLoading = runHistoryQuery.isFetching;
+  const runHistoryError = runHistoryQuery.error
+    ? errMsg(runHistoryQuery.error)
+    : "";
 
   // Tracks the previously-shown key so we can detect a just-committed new Test
   // (its key flips from a "NEW-N" placeholder to the real Jira key) and force a
@@ -389,31 +397,8 @@ export function TestDetail({
           .catch((e) => {
             if (!cancelled) console.error("custom fields:", errMsg(e));
           });
-        // Created / creator / last-updated-by load lazily from Jira (one issue
-        // call incl. changelog). Non-blocking — the summary still shows the
-        // synced "Updated" timestamp if this fails.
-        setMeta(null);
-        GetTestMeta(profileId, testKey)
-          .then((m) => {
-            if (!cancelled) setMeta(m);
-          })
-          .catch((e) => console.error("test meta:", errMsg(e)));
-        // Run history loads lazily from the local store — one row per
-        // execution run that included this test. Clear on key/version change
-        // so a refreshed test reloads the latest runs.
-        setRunHistory(null);
-        setRunHistoryLoading(true);
-        setRunHistoryError("");
-        GetTestRunHistory(profileId, testKey)
-          .then((rh) => {
-            if (!cancelled) setRunHistory(rh ?? []);
-          })
-          .catch((e) => {
-            if (!cancelled) setRunHistoryError(errMsg(e));
-          })
-          .finally(() => {
-            if (!cancelled) setRunHistoryLoading(false);
-          });
+        // (Test meta and run history now load via useTestMeta /
+        // useTestRunHistory queries, decoupled from this waterfall.)
       })
       .catch((e) => {
         if (!cancelled) setError(errMsg(e));
