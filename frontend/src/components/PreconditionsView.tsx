@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { usePreconditions } from "../queries/preconditions";
 import { useViewState } from "../lib/viewState";
 import {
-  ListPreconditionsWithUsage,
   ListTestsForPrecondition,
   CreatePreconditionDetailed,
   EditPreconditionField,
@@ -53,14 +53,20 @@ function cmpPre(
 // computed from the local store and queued for commit; it recomputes when the
 // profile changes or a sync / commit bumps refreshKey.
 export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
-  const [list, setList] = useState<PreconditionUsage[]>([]);
+  // The precondition list comes from the query cache (audit A3, Phase 3);
+  // refreshKey is folded in as the migration bridge (see usePreconditions).
+  const preconditionsQuery = usePreconditions(profileId, refreshKey);
+  const list = preconditionsQuery.data ?? [];
+  const loading = preconditionsQuery.isFetching;
+  const listError = preconditionsQuery.error
+    ? errMsg(preconditionsQuery.error)
+    : "";
   const [selected, setSelected] = useViewState(profileId, "preconditions", "selected", "");
   const [tests, setTests] = useState<PreconditionTest[]>([]);
   const [filter, setFilter] = useViewState(profileId, "preconditions", "filter", "");
   const [usageFilter, setUsageFilter] = useViewState<"all" | "with" | "without">(profileId, "preconditions", "usageFilter", "all");
   const [sortField, setSortField] = useViewState(profileId, "preconditions", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "preconditions", "sortDesc", true);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -153,31 +159,20 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
 
   // Load the master list whenever the profile changes or data refreshes,
   // keeping the current selection if it still exists.
+  // Auto-select the first precondition once the list loads or changes, keeping
+  // the current selection if it still exists. (The list fetch now lives in the
+  // usePreconditions query above.)
   useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    ListPreconditionsWithUsage(profileId)
-      .then((ps) => {
-        if (cancelled) return;
-        const rows = ps ?? [];
-        setList(rows);
-        setSelected((cur) => {
-          if (cur && rows.some((p) => p.key === cur)) return cur;
-          return rows.length > 0 ? rows[0].key : "";
-        });
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
+    const rows = preconditionsQuery.data;
+    if (!rows) return;
+    setSelected((cur) =>
+      cur && rows.some((p) => p.key === cur)
+        ? cur
+        : rows.length > 0
+          ? rows[0].key
+          : "",
+    );
+  }, [preconditionsQuery.data]);
 
   // Pagination of the "Used by" tests list.
   const [testsPage, setTestsPage] = useViewState(profileId, "preconditions", "testsPage", 0);
@@ -391,7 +386,10 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
       </aside>
 
       <section className="precond-detail">
-        {error && <div className="error-text">{error}</div>}
+        {/* A live list-load failure wins over a stale imperative error. */}
+        {(listError || error) && (
+          <div className="error-text">{listError || error}</div>
+        )}
 
         {!selectedPre ? (
           <p className="muted precond-detail-empty">

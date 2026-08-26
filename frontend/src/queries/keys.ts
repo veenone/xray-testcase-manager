@@ -19,4 +19,5 @@ export const keys = {
     [profileId, "test", key, "runHistory", reload] as const,
   pending: (profileId: string) => [profileId, "pending"] as const,
   folders: (profileId: string) => [profileId, "folders"] as const,
+  preconditions: (profileId: string) => [profileId, "preconditions"] as const,
 };
