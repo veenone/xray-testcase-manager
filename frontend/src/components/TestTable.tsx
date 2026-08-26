@@ -435,6 +435,7 @@ export function TestTable({
     });
     if (!name || !name.trim()) return;
     const query = JSON.stringify({ search, status, execType, review, sortBy, desc });
+    setError("");
     try {
       const v = await CreateSavedView(profileId, name.trim(), query);
       setSavedViews((prev) => [v, ...prev]);
@@ -471,6 +472,7 @@ export function TestTable({
 
   async function deleteActiveView() {
     if (!activeView) return;
+    setError("");
     try {
       await DeleteSavedView(profileId, activeView);
       setSavedViews((prev) => prev.filter((v) => v.id !== activeView));
@@ -746,8 +748,10 @@ export function TestTable({
         )}
       </div>
 
-      {(error || listError) && (
-        <div className="error-text table-error">{error || listError}</div>
+      {/* A live load failure (listError) always wins over a stale imperative
+          save/delete-view error, so a real fetch error is never masked. */}
+      {(listError || error) && (
+        <div className="error-text table-error">{listError || error}</div>
       )}
 
       {canSelectAllMatching && (
