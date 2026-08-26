@@ -190,7 +190,6 @@ function App() {
   // The onboarding tour (-335). Steps target Browse-only elements and the tour
   // can be replayed from any view, so it switches to Browse before starting.
   const { start: startTour } = useTour({
-    onBeforeStart: () => setView("browse"),
     onFinish: () => setTourSeenVersion(TOUR_VERSION),
   });
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -543,7 +542,7 @@ function App() {
       // Start the tour on the FIRST successful sync rather than at launch:
       // before a sync the grid is empty, so half the steps would spotlight
       // elements with no data behind them and teach nothing (-335).
-      if (tourSeenVersion < TOUR_VERSION) startTour();
+      if (tourSeenVersion < TOUR_VERSION) startTour("browse", () => setView("browse"));
     } catch (e) {
       setSyncError(errMsg(e));
     } finally {
@@ -1120,6 +1119,7 @@ function App() {
 
         <nav data-tour="views" className="view-tabs topbar-zone topbar-center">
           <button
+            data-tour="tab-browse"
             className={`view-tab${view === "browse" ? " view-tab-active" : ""}`}
             onClick={() => setView("browse")}
           >
@@ -1127,6 +1127,7 @@ function App() {
           </button>
           {caps.supportsPreconditionObjects && (
             <button
+              data-tour="tab-preconditions"
               className={`view-tab${view === "preconditions" ? " view-tab-active" : ""}`}
               onClick={() => setView("preconditions")}
             >
@@ -1135,6 +1136,7 @@ function App() {
           )}
           {caps.supportsRequirementObjects && (
             <button
+              data-tour="tab-requirements"
               className={`view-tab${view === "requirements" ? " view-tab-active" : ""}`}
               onClick={() => setView("requirements")}
             >
@@ -1142,36 +1144,42 @@ function App() {
             </button>
           )}
           <button
+            data-tour="tab-duplicates"
             className={`view-tab${view === "duplicates" ? " view-tab-active" : ""}`}
             onClick={() => setView("duplicates")}
           >
             Duplicates
           </button>
           <button
+            data-tour="tab-gapanalysis"
             className={`view-tab${view === "gapanalysis" ? " view-tab-active" : ""}`}
             onClick={() => setView("gapanalysis")}
           >
             Gap Analysis
           </button>
           <button
+            data-tour="tab-testcalls"
             className={`view-tab${view === "testcalls" ? " view-tab-active" : ""}`}
             onClick={() => setView("testcalls")}
           >
             Test Calls
           </button>
           <button
+            data-tour="tab-dashboard"
             className={`view-tab${view === "dashboard" ? " view-tab-active" : ""}`}
             onClick={() => setView("dashboard")}
           >
             Dashboard
           </button>
           <button
+            data-tour="tab-traceability"
             className={`view-tab${view === "traceability" ? " view-tab-active" : ""}`}
             onClick={() => setView("traceability")}
           >
             Traceability
           </button>
           <button
+            data-tour="tab-plans"
             className={`view-tab${view === "plans" ? " view-tab-active" : ""}`}
             onClick={() => setView("plans")}
           >
@@ -1179,6 +1187,7 @@ function App() {
           </button>
           {showCoverage && (
             <button
+              data-tour="tab-coverage"
               className={`view-tab${view === "coverage" ? " view-tab-active" : ""}`}
               onClick={() => setView("coverage")}
             >
@@ -1186,6 +1195,7 @@ function App() {
             </button>
           )}
           <button
+            data-tour="tab-misspellings"
             className={`view-tab${view === "misspellings" ? " view-tab-active" : ""}`}
             onClick={() => setView("misspellings")}
           >
@@ -1253,8 +1263,8 @@ function App() {
                 {
                   key: "tour",
                   label: "🧭 Take the tour",
-                  onClick: startTour,
-                  title: "Replay the onboarding walkthrough",
+                  onClick: () => startTour(view),
+                  title: "Replay this view's walkthrough",
                 },
                 {
                   key: "diag",
@@ -1770,7 +1780,7 @@ function App() {
       {showAbout && (
         <AboutModal
           onClose={() => setShowAbout(false)}
-          onTakeTour={startTour}
+          onTakeTour={() => startTour(view)}
         />
       )}
 
