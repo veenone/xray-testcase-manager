@@ -19,7 +19,7 @@ import { keys } from "./keys";
 // loads, matching the old "only replace the report on success" behaviour.
 export function useDuplicates(
   profileId: string,
-  mode: string,
+  mode: "tests" | "preconditions",
   refreshKey: number,
 ) {
   return useQuery({
