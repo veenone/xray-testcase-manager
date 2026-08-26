@@ -109,17 +109,17 @@ export function Dashboard({
   }
 
   if (loading && !stats) {
-    return <div className="dashboard muted">Loading…</div>;
+    return <div className="dashboard muted" data-tour="dashboard-body">Loading…</div>;
   }
   if (error) {
-    return <div className="dashboard error-text">{error}</div>;
+    return <div className="dashboard error-text" data-tour="dashboard-body">{error}</div>;
   }
   if (!stats) {
     return null;
   }
 
   const filterBar = (
-    <div className="dashboard-filters">
+    <div className="dashboard-filters" data-tour="dashboard-tools">
       <select
         className="dashboard-filter"
         value={folder}
@@ -177,7 +177,7 @@ export function Dashboard({
 
   if (stats.total === 0) {
     return (
-      <div className="dashboard">
+      <div className="dashboard" data-tour="dashboard-body">
         {filterBar}
         <p className="muted">
           {hasFilter
@@ -189,7 +189,7 @@ export function Dashboard({
   }
 
   return (
-    <div className="dashboard">
+    <div className="dashboard" data-tour="dashboard-body">
       <div className="dashboard-head">
         {filterBar}
         <div className="dashboard-head-actions">

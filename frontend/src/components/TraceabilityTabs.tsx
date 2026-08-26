@@ -295,14 +295,14 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   }
 
   if (statsErr) {
-    return <div className="dashboard error-text">{statsErr}</div>;
+    return <div className="dashboard error-text" data-tour="traceability-body">{statsErr}</div>;
   }
   if (!stats) {
-    return <div className="dashboard muted">Loading…</div>;
+    return <div className="dashboard muted" data-tour="traceability-body">Loading…</div>;
   }
   if (stats.total === 0) {
     return (
-      <div className="dashboard">
+      <div className="dashboard" data-tour="traceability-body">
         <p className="muted">
           No tests cached yet. Run a sync to populate traceability.
         </p>
@@ -311,8 +311,8 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   }
 
   return (
-    <div className="dashboard">
-      <div className="containers-mode trace-tabs">
+    <div className="dashboard" data-tour="traceability-body">
+      <div className="containers-mode trace-tabs" data-tour="traceability-tools">
         <button
           className={`seg-btn${tab === "req" ? " seg-btn-active" : ""}`}
           onClick={() => setTab("req")}

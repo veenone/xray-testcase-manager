@@ -787,9 +787,12 @@ export function ContainersView({
   );
 
   return (
-    <div className={`board${mode === "bugs" ? " board--bugs" : ""}${detailKey && mode !== "bugs" ? " board--with-exec-detail" : ""}`}>
+    <div
+      data-tour="plans-body"
+      className={`board${mode === "bugs" ? " board--bugs" : ""}${detailKey && mode !== "bugs" ? " board--with-exec-detail" : ""}`}
+    >
       <div className="board-exec-body">
-      <div className="containers-mode">
+      <div className="containers-mode" data-tour="plans-tools">
         <button
           className={`seg-btn${mode === "containers" ? " seg-btn-active" : ""}`}
           onClick={() => setMode("containers")}

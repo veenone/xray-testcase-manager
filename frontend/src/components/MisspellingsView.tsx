@@ -287,6 +287,7 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
       <div className="msp-toolbar">
         <button
           className="btn btn-primary"
+          data-tour="misspellings-tools"
           onClick={scan}
           disabled={loading || !profileId}
         >
@@ -339,7 +340,7 @@ export default function MisspellingsView({ profileId, onChanged }: Props) {
       )}
 
       <div className="msp-split">
-        <div className="msp-body">
+        <div className="msp-body" data-tour="misspellings-body">
           {!scanned && !loading && !error && (
             <div className="msp-empty">
               <p className="muted">

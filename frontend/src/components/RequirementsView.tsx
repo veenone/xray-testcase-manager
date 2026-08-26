@@ -346,7 +346,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   return (
     // #2: reqs-root is a flex row; NewRequirementPanel docks on the left,
     // and the reqs grid fills the remaining space on the right.
-    <div className="reqs-root">
+    <div className="reqs-root" data-tour="requirements-body">
     {showCreateReq && (
       <NewRequirementPanel
         profileId={profileId}
@@ -365,6 +365,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
           <div className="reqs-head-row">
             <input
               className="precond-search"
+              data-tour="requirements-tools"
               placeholder="Filter by key or summary…"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}

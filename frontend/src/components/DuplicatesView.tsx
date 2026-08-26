@@ -242,8 +242,8 @@ export function DuplicatesView({
   }
 
   return (
-    <div className="dup-view">
-      <div className="dup-mode-toggle dup-seg">
+    <div className="dup-view" data-tour="duplicates-body">
+      <div className="dup-mode-toggle dup-seg" data-tour="duplicates-tools">
         <button
           className={`dup-seg-btn${mode === "tests" ? " on" : ""}`}
           onClick={() => setMode("tests")}

@@ -284,11 +284,15 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
   }
 
   return (
-    <div className={`precond-view${detailKey ? " precond-with-detail" : ""}`}>
+    <div
+      className={`precond-view${detailKey ? " precond-with-detail" : ""}`}
+      data-tour="preconditions-body"
+    >
       <aside className="precond-list">
         <div className="precond-list-head">
           <input
             className="precond-search"
+            data-tour="preconditions-tools"
             placeholder="Filter preconditions…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
