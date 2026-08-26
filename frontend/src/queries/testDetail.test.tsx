@@ -70,6 +70,14 @@ describe("useTestRunHistory", () => {
     expect(result.current.error).toBeInstanceOf(Error);
   });
 
+  it("does not fetch without a test key", () => {
+    const { result } = renderHook(() => useTestRunHistory("p1", "", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTestRunHistory).not.toHaveBeenCalled();
+  });
+
   it("refetches when the reload bridge changes", async () => {
     (api.GetTestRunHistory as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     const { result, rerender } = renderHook(
