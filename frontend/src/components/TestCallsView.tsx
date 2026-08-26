@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useViewState } from "../lib/viewState";
-import { ListTestCallLinks, SyncTestCalls, EventsOn, errMsg } from "../api";
+import { SyncTestCalls, EventsOn, errMsg } from "../api";
 import type { TestCallLink, SyncProgress } from "../api";
 import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
+import { useTestCallLinks } from "../queries/testCalls";
 
 interface Props {
   profileId: string;
@@ -91,9 +92,6 @@ function isCrossProjectCall(l: TestCallLink): boolean {
 // tests call which (#2 follow-up). Grouped by caller, broken calls flagged, and
 // cyclic calls highlighted. Clicking a test opens its full detail.
 export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
-  const [links, setLinks] = useState<TestCallLink[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [detailKey, setDetailKey] = useViewState(profileId, "testcalls", "detailKey", "");
   const [detailVersion, setDetailVersion] = useState(0);
   const [page, setPage] = useViewState(profileId, "testcalls", "page", 0);
@@ -109,25 +107,13 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
   // Bumped after a partial sync to re-pull the (now refreshed) call links.
   const [reload, setReload] = useState(0);
 
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    ListTestCallLinks(profileId)
-      .then((ls) => {
-        if (!cancelled) setLinks(ls ?? []);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey, detailVersion, reload]);
+  // bridge folds the three reload counters into the query key (migration
+  // bridge — Phase 4 replaces this with targeted invalidation).
+  const bridge = `${refreshKey}:${detailVersion}:${reload}`;
+  const linksQuery = useTestCallLinks(profileId, bridge);
+  const links = linksQuery.data ?? [];
+  const loading = linksQuery.isFetching;
+  const listError = linksQuery.error ? errMsg(linksQuery.error) : "";
 
   // While a sync runs, mirror its "testcalls:progress" events into the toolbar's
   // local progress bar. This is a dedicated channel (not the global
@@ -207,8 +193,8 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
   if (loading && links.length === 0) {
     return <div className="dashboard muted">Loading call relationships…</div>;
   }
-  if (error) {
-    return <div className="dashboard error-text">{error}</div>;
+  if (listError) {
+    return <div className="dashboard error-text">{listError}</div>;
   }
 
   return (

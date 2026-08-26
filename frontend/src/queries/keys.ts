@@ -20,4 +20,6 @@ export const keys = {
   pending: (profileId: string) => [profileId, "pending"] as const,
   folders: (profileId: string) => [profileId, "folders"] as const,
   preconditions: (profileId: string) => [profileId, "preconditions"] as const,
+  requirements: (profileId: string) => [profileId, "requirements"] as const,
+  testCalls: (profileId: string) => [profileId, "testCalls"] as const,
 };

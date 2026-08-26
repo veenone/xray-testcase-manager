@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
-  ListRequirementsWithCoverage,
   ListTestsForRequirement,
   EditRequirementField,
   DeleteRequirement,
@@ -12,6 +11,7 @@ import {
   errMsg,
 } from "../api";
 import type { RequirementCoverage, RequirementTest, ReqReqLink } from "../api";
+import { useRequirements } from "../queries/requirements";
 import { RequirementSourcesModal } from "./RequirementSourcesModal";
 import { AddTestsModal } from "./AddTestsModal";
 import { LinkRequirementsModal } from "./LinkRequirementsModal";
@@ -74,14 +74,16 @@ function cmpReq(
 // requirement with their run result. Read-only; recomputes when the profile
 // changes or a sync/commit bumps refreshKey.
 export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
-  const [list, setList] = useState<RequirementCoverage[]>([]);
+  const requirementsQuery = useRequirements(profileId, refreshKey);
+  const list = requirementsQuery.data ?? [];
+  const loading = requirementsQuery.isFetching;
+  const listError = requirementsQuery.error ? errMsg(requirementsQuery.error) : "";
   const [selected, setSelected] = useViewState(profileId, "requirements", "selected", "");
   const [tests, setTests] = useState<RequirementTest[]>([]);
   const [filter, setFilter] = useViewState(profileId, "requirements", "filter", "");
   const [covFilter, setCovFilter] = useViewState(profileId, "requirements", "covFilter", "");
   const [sortField, setSortField] = useViewState(profileId, "requirements", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "requirements", "sortDesc", true);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showSources, setShowSources] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -109,32 +111,12 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   const [showLinkReqs, setShowLinkReqs] = useState(false);
 
   useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    ListRequirementsWithCoverage(profileId)
-      .then((rs) => {
-        if (cancelled) return;
-        setList(rs ?? []);
-        setSelected((cur) =>
-          cur && (rs ?? []).some((r) => r.key === cur)
-            ? cur
-            : rs && rs.length > 0
-              ? rs[0].key
-              : "",
-        );
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
+    const rows = requirementsQuery.data;
+    if (!rows) return;
+    setSelected((cur) =>
+      cur && rows.some((r) => r.key === cur) ? cur : rows.length > 0 ? rows[0].key : "",
+    );
+  }, [requirementsQuery.data]);
 
   useEffect(() => {
     if (!profileId || !selected) {
@@ -514,7 +496,9 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
       </div>
 
       <div className="reqs-detail">
-        {error && <div className="error-text">{error}</div>}
+        {(listError || error) && (
+          <div className="error-text">{listError || error}</div>
+        )}
         {!sel ? (
           <p className="muted">Select a requirement to see its coverage.</p>
         ) : (
