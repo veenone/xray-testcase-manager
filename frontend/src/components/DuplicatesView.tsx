@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useViewState } from "../lib/viewState";
 
 import {
-  ScanDuplicates,
   ScanDuplicateGroupSteps,
   ScanAllDuplicateSteps,
   ExcludeFromDuplicates,
@@ -19,6 +18,7 @@ import type {
   Step,
   SyncProgress,
 } from "../api";
+import { useDuplicates } from "../queries/duplicates";
 import { TestDetail } from "./TestDetail";
 import { Pager } from "./Pager";
 import { PreconditionDuplicatesView } from "./PreconditionDuplicatesView";
@@ -79,7 +79,9 @@ export function DuplicatesView({
     "mode",
     "tests",
   );
-  const [report, setReport] = useState<DuplicateReport | null>(null);
+  const duplicatesQuery = useDuplicates(profileId, mode, refreshKey);
+  const report = duplicatesQuery.data ?? null;
+  const listError = duplicatesQuery.error ? errMsg(duplicatesQuery.error) : "";
   const [error, setError] = useState("");
   const [filter, setFilter] = useViewState<Filter>(profileId, "duplicates", "filter", "all");
   const [expanded, setExpanded] = useViewState<Set<string>>(profileId, "duplicates", "expanded", new Set());
@@ -111,16 +113,13 @@ export function DuplicatesView({
     members: SummaryMember[];
   } | null>(null);
 
-  const load = useCallback(() => {
-    if (!profileId || mode !== "tests") return;
-    ScanDuplicates(profileId)
-      .then((r) => setReport(r as unknown as DuplicateReport))
-      .catch((e) => setError(errMsg(e)));
-  }, [profileId, mode]);
-
-  useEffect(() => {
-    load();
-  }, [load, refreshKey]);
+  // load is now a refetch of the duplicates query rather than a manual fetch;
+  // the query itself loads on mount and when the refreshKey bridge changes, so
+  // the existing call sites below (after merges/edits/step-scans) keep working
+  // during the migration.
+  const load = () => {
+    void duplicatesQuery.refetch();
+  };
 
   // While a scan-all-steps walk is running, mirror its "dup:scan-progress" events
   // into the toolbar's local progress bar. The terminal done event clears it. This
@@ -311,7 +310,9 @@ export function DuplicatesView({
         </div>
       </div>
 
-      {error && <div className="error-text dup-error">{error}</div>}
+      {(listError || error) && (
+        <div className="error-text dup-error">{listError || error}</div>
+      )}
 
       {report && (
         <div className="dup-tiles">

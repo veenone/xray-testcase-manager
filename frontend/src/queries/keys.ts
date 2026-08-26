@@ -22,4 +22,6 @@ export const keys = {
   preconditions: (profileId: string) => [profileId, "preconditions"] as const,
   requirements: (profileId: string) => [profileId, "requirements"] as const,
   testCalls: (profileId: string) => [profileId, "testCalls"] as const,
+  duplicates: (profileId: string) => [profileId, "duplicates"] as const,
+  stats: (profileId: string) => [profileId, "stats"] as const,
 };

@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
-  GetStatistics,
   ListFolders,
   ListComponents,
   ListStatuses,
   ExportDashboard,
   errMsg,
 } from "../api";
-import type { Statistics, Bucket } from "../api";
+import type { Bucket } from "../api";
 import { testrepo } from "../../wailsjs/go/models";
 import { DuplicatesCard } from "./DuplicatesCard";
+import { useStatistics } from "../queries/statistics";
 
 interface Props {
   profileId: string;
@@ -28,9 +28,6 @@ export function Dashboard({
   refreshKey,
   onOpenDuplicates,
 }: Props) {
-  const [stats, setStats] = useState<Statistics | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   // Local refresh: recompute the dashboard from the cache without a full sync (#7).
   const [nonce, setNonce] = useState(0);
   // XLSX export state (RND_P_4TFINT_05): mirror TraceabilityTabs' notice pattern.
@@ -72,25 +69,13 @@ export function Dashboard({
     };
   }, [profileId]);
 
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    GetStatistics(profileId, folder, component, status)
-      .then((s) => {
-        if (!cancelled) setStats(s);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey, nonce, folder, component, status]);
+  // bridge folds refreshKey + nonce (the manual-refresh counters) into the
+  // query key as the migration bridge (Phase 4 -> targeted invalidation).
+  const bridge = `${refreshKey}:${nonce}`;
+  const statsQuery = useStatistics(profileId, folder, component, status, bridge);
+  const stats = statsQuery.data ?? null;
+  const loading = statsQuery.isFetching;
+  const error = statsQuery.error ? errMsg(statsQuery.error) : "";
 
   // Export the dashboard to XLSX honouring the current folder/component/status
   // filters, so the workbook matches the on-screen scope.
