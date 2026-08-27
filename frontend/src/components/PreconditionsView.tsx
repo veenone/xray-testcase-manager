@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { usePreconditions } from "../queries/preconditions";
+import {
+  usePreconditions,
+  usePreconditionTests,
+} from "../queries/preconditions";
 import { useViewState } from "../lib/viewState";
 import {
-  ListTestsForPrecondition,
   CreatePreconditionDetailed,
   EditPreconditionField,
   DeletePrecondition,
   BulkAssociatePreconditions,
   errMsg,
 } from "../api";
-import type { PreconditionUsage, PreconditionTest } from "../api";
+import type { PreconditionUsage } from "../api";
 import { Menu } from "./Menu";
 import { useConfirm } from "./useConfirm";
 import { AddTestsModal } from "./AddTestsModal";
@@ -23,7 +25,6 @@ import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   onChanged: () => void;
 }
 
@@ -51,18 +52,20 @@ function cmpPre(
 // right to edit a Precondition's summary / type / description, see and manage
 // the Tests that reference it, create new ones, and delete. Everything is
 // computed from the local store and queued for commit; it recomputes when the
-// profile changes or a sync / commit bumps refreshKey.
-export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
-  // The precondition list comes from the query cache (audit A3, Phase 3);
-  // refreshKey is folded in as the migration bridge (see usePreconditions).
-  const preconditionsQuery = usePreconditions(profileId, refreshKey);
+// profile changes or a sync / commit invalidates the query cache.
+export function PreconditionsView({ profileId, onChanged }: Props) {
+  // The precondition list and the selected precondition's linked tests both
+  // come from the query cache with stable keys (Phase 4c); a mutation refreshes
+  // them via invalidateProfileData.
+  const preconditionsQuery = usePreconditions(profileId);
   const list = preconditionsQuery.data ?? [];
   const loading = preconditionsQuery.isFetching;
   const listError = preconditionsQuery.error
     ? errMsg(preconditionsQuery.error)
     : "";
   const [selected, setSelected] = useViewState(profileId, "preconditions", "selected", "");
-  const [tests, setTests] = useState<PreconditionTest[]>([]);
+  const testsQuery = usePreconditionTests(profileId, selected);
+  const tests = testsQuery.data ?? [];
   const [filter, setFilter] = useViewState(profileId, "preconditions", "filter", "");
   const [usageFilter, setUsageFilter] = useViewState<"all" | "with" | "without">(profileId, "preconditions", "usageFilter", "all");
   const [sortField, setSortField] = useViewState(profileId, "preconditions", "sortField", "key");
@@ -187,24 +190,8 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
     (testsSafePage + 1) * testsPageSize,
   );
 
-  // Load the selected Precondition's linked tests.
-  useEffect(() => {
-    if (!profileId || !selected) {
-      setTests([]);
-      return;
-    }
-    let cancelled = false;
-    ListTestsForPrecondition(profileId, selected)
-      .then((ts) => {
-        if (!cancelled) setTests(ts ?? []);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, selected, refreshKey]);
+  // (The selected Precondition's linked tests now load via usePreconditionTests
+  // above, refreshed by the same invalidation as the list.)
 
   // saveField persists an inline field edit (summary / type / description / condition).
   async function saveField(
@@ -386,9 +373,12 @@ export function PreconditionsView({ profileId, refreshKey, onChanged }: Props) {
       </aside>
 
       <section className="precond-detail">
-        {/* A live list-load failure wins over a stale imperative error. */}
-        {(listError || error) && (
-          <div className="error-text">{listError || error}</div>
+        {/* A live list/linked-tests load failure wins over a stale imperative
+            error. */}
+        {(listError || error || testsQuery.error) && (
+          <div className="error-text">
+            {listError || error || errMsg(testsQuery.error)}
+          </div>
         )}
 
         {!selectedPre ? (

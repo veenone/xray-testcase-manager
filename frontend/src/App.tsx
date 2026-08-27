@@ -1348,7 +1348,6 @@ function App() {
         <main className="content content-preconditions">
           <PreconditionsView
             profileId={activeId}
-            refreshKey={refreshKey}
             onChanged={() => {
               refreshProfileData();
               reloadPending();

@@ -49,6 +49,11 @@ export const keys = {
   folders: (profileId: string) => [profileId, "folders"] as const,
   components: (profileId: string) => [profileId, "components"] as const,
   preconditions: (profileId: string) => [profileId, "preconditions"] as const,
+  // The tests linked to one precondition (PreconditionsView's "Used by" list).
+  // Nested under the "preconditions" prefix so invalidateProfileData refreshes
+  // it along with the list.
+  preconditionTests: (profileId: string, key: string) =>
+    [profileId, "preconditions", "tests", key] as const,
   requirements: (profileId: string) => [profileId, "requirements"] as const,
   testCalls: (profileId: string) => [profileId, "testCalls"] as const,
   duplicates: (profileId: string) => [profileId, "duplicates"] as const,
