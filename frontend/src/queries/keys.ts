@@ -24,4 +24,6 @@ export const keys = {
   testCalls: (profileId: string) => [profileId, "testCalls"] as const,
   duplicates: (profileId: string) => [profileId, "duplicates"] as const,
   stats: (profileId: string) => [profileId, "stats"] as const,
+  canonicalRequirements: (profileId: string) =>
+    [profileId, "canonicalRequirements"] as const,
 };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCanonicalRequirements } from "../queries/coverage";
 import {
-  ListCanonicalRequirements,
   CreateCanonicalRequirement,
   DeleteCanonicalRequirement,
   SetCanonicalMembers,
@@ -85,7 +85,11 @@ function statusText(vc: ValueCoverage | undefined): string {
 // admin). Populate a model by importing the Excel template, then map tests to
 // parameter values to drive the coverage %.
 export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onChanged }: Props) {
-  const [canon, setCanon] = useState<CanonicalRequirement[]>([]);
+  // The canonical (functional-requirement) list comes from the query cache
+  // (audit A3, Phase 3); refreshKey is the migration bridge.
+  const canonQuery = useCanonicalRequirements(profileId, refreshKey);
+  const canon = canonQuery.data ?? [];
+  const listError = canonQuery.error ? errMsg(canonQuery.error) : "";
   const [selected, setSelected] = useState("");
   const [versions, setVersions] = useState<Version[]>([]);
   const [versionId, setVersionId] = useState("");
@@ -105,21 +109,10 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
   const [showMembers, setShowMembers] = useState(false);
   const { confirm, confirmUI } = useConfirm();
 
-  const loadList = useCallback(async () => {
-    if (!profileId) {
-      setCanon([]);
-      return;
-    }
-    try {
-      setCanon(await ListCanonicalRequirements(profileId));
-    } catch (e) {
-      setError(errMsg(e));
-    }
-  }, [profileId]);
-
-  useEffect(() => {
-    void loadList();
-  }, [loadList, refreshKey]);
+  // loadList now refetches the canonical-requirements query (the ~4 manual call
+  // sites after add/delete still work); the query auto-loads and the refreshKey
+  // bridge handles refresh, so no dedicated load effect is needed.
+  const loadList = () => canonQuery.refetch();
 
   // Load versions whenever the selected canonical changes; default to first
   // stable version, else first version.
@@ -408,7 +401,8 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
       </aside>
 
       <section className="cov-detail">
-        {error && <div className="cov-error">{error}</div>}
+        {/* A live canonical-list load failure wins over a stale imperative error. */}
+        {(listError || error) && <div className="cov-error">{listError || error}</div>}
         {notice && <div className="cov-notice">{notice}</div>}
         {!selected ? (
           <>
