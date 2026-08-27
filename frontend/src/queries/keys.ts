@@ -32,6 +32,14 @@ export const keys = {
   // profile-wide `requirements` coverage list.
   testRequirements: (profileId: string, key: string, reload: string) =>
     [profileId, "test", key, "requirements", reload] as const,
+  // This Test's linked preconditions. Test-scoped.
+  testPreconditions: (profileId: string, key: string, reload: string) =>
+    [profileId, "test", key, "preconditions", reload] as const,
+  // The profile-wide precondition pool TestDetail's picker draws from.
+  // Profile-scoped (caches across test switches); shares the
+  // [profileId, "preconditions"] prefix with the PreconditionsView list.
+  preconditionPool: (profileId: string, reload: string) =>
+    [profileId, "preconditions", "pool", reload] as const,
   // TestDetail's copy of the requirement-coverage list. Profile-scoped (not
   // test-scoped), so it caches across test switches. Shares the
   // [profileId, "requirements"] prefix with useRequirements so Phase 4 can

@@ -7,9 +7,11 @@ import {
   useTestBugs,
   useTestContainers,
   useTestMeta,
+  useTestPreconditions,
   useTestRequirements,
   useTestReview,
   useTestRunHistory,
+  useAllPreconditions,
   useRequirementCoverage,
 } from "./testDetail";
 import * as api from "../api";
@@ -19,9 +21,11 @@ vi.mock("../api", () => ({
   GetTestBugs: vi.fn(),
   GetTestContainers: vi.fn(),
   GetTestMeta: vi.fn(),
+  GetTestPreconditions: vi.fn(),
   GetTestRequirements: vi.fn(),
   GetTestReview: vi.fn(),
   GetTestRunHistory: vi.fn(),
+  ListAllPreconditions: vi.fn(),
   ListRequirementsWithCoverage: vi.fn(),
   errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
@@ -136,6 +140,65 @@ describe("useTestRequirements", () => {
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetTestRequirements).not.toHaveBeenCalled();
+  });
+});
+
+describe("useTestPreconditions", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the linked preconditions on success", async () => {
+    (api.GetTestPreconditions as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { key: "PRE-1" },
+    ]);
+    const { result } = renderHook(
+      () => useTestPreconditions("p1", "PROJ-1", "0:0"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it("uses the cached read (forceRefresh=false)", async () => {
+    (api.GetTestPreconditions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    renderHook(() => useTestPreconditions("p1", "PROJ-1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() =>
+      expect(api.GetTestPreconditions).toHaveBeenCalledWith("p1", "PROJ-1", false),
+    );
+  });
+
+  it("does not fetch without a test key", () => {
+    const { result } = renderHook(
+      () => useTestPreconditions("p1", "", "0:0"),
+      { wrapper: makeWrapper() },
+    );
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTestPreconditions).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAllPreconditions", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the precondition pool on success", async () => {
+    (api.ListAllPreconditions as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { key: "PRE-1" },
+      { key: "PRE-2" },
+    ]);
+    const { result } = renderHook(() => useAllPreconditions("p1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(2);
+  });
+
+  it("does not fetch without a profile", () => {
+    const { result } = renderHook(() => useAllPreconditions("", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.ListAllPreconditions).not.toHaveBeenCalled();
   });
 });
 

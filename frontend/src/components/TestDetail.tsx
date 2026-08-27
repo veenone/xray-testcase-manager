@@ -66,9 +66,11 @@ import {
   useTestBugs,
   useTestContainers,
   useTestMeta,
+  useTestPreconditions,
   useTestRequirements,
   useTestReview,
   useTestRunHistory,
+  useAllPreconditions,
   useRequirementCoverage,
 } from "../queries/testDetail";
 import { keys } from "../queries/keys";
@@ -188,8 +190,6 @@ export function TestDetail({
     window.addEventListener("mouseup", onUp);
   }
 
-  const [preconditions, setPreconditions] = useState<Precondition[]>([]);
-  const [allPreconditions, setAllPreconditions] = useState<Precondition[]>([]);
   const [precondLoading, setPrecondLoading] = useState(false);
   const [precondError, setPrecondError] = useState("");
   // Cross-project precondition picker open state (RND_P_4TFINT_05-322).
@@ -264,8 +264,6 @@ export function TestDetail({
       return runHistorySort.desc ? -cmp : cmp;
     });
   }
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState("");
 
   // Local editable state — initialised from the loaded Test, then driven by
@@ -317,26 +315,32 @@ export function TestDetail({
   // applyRequirements.
   const requirementsQuery = useTestRequirements(profileId, testKey, reload);
   const requirements = requirementsQuery.data ?? [];
-  // The panel is loading until the secondary Promise.all (`loading`), the test
-  // read, the review verdict, the container memberships, and the covered
-  // requirements all resolve — either finishing first must not flash empty
-  // content, a stale "none" verdict, or a misleading "no links yet". isPending
-  // is true only on first load (no data), so background refetches don't re-hide
-  // the panel.
+  // This Test's linked preconditions (Phase 2g), with optimistic patches in
+  // applyPreconditions / refreshPreconditions. The profile-wide pool the picker
+  // draws from is a separate profile-scoped query (see allPreconditions below).
+  const preconditionsQuery = useTestPreconditions(profileId, testKey, reload);
+  const preconditions = preconditionsQuery.data ?? [];
+  const allPreconditions = useAllPreconditions(profileId, reload).data ?? [];
+  // The panel is loading until the test read and every interactive/decision-
+  // relevant section resolve — the review verdict, container memberships,
+  // covered requirements, and linked preconditions. Either finishing first must
+  // not flash empty content, a stale "none" verdict, or a misleading "no links
+  // yet". isPending is true only on first load (no data), so background
+  // refetches don't re-hide the panel. (The supplementary picker pools — bugs,
+  // requirement coverage, precondition pool — are intentionally not gated.)
   const panelLoading =
-    loading ||
     testQuery.isPending ||
     reviewQuery.isPending ||
     containersQuery.isPending ||
-    requirementsQuery.isPending;
-  // A test-read failure used to reject the Promise.all and land in `error`; now
-  // that GetTest is its own query, surface its error the same way so the panel
-  // never goes silently blank on a failed load.
-  const displayError =
-    error || (testQuery.error ? errMsg(testQuery.error) : "");
+    requirementsQuery.isPending ||
+    preconditionsQuery.isPending;
+  // A test-read failure surfaces through the panel's error banner so it never
+  // goes silently blank on a failed load (the read is now its own query rather
+  // than a Promise.all whose rejection used to land in local error state).
+  const displayError = testQuery.error ? errMsg(testQuery.error) : "";
 
-  // Read-only secondary sections now come from the query cache too (Phase 2c),
-  // decoupled from the Promise.all below. `bugs` is test-scoped; the requirement
+  // Read-only secondary sections come from the query cache too (Phase 2c),
+  // decoupled from the load effect. `bugs` is test-scoped; the requirement
   // coverage list is profile-scoped and caches across test switches.
   const bugs = useTestBugs(profileId, testKey, reload).data ?? [];
   const allRequirements = useRequirementCoverage(profileId, reload).data ?? [];
@@ -355,72 +359,46 @@ export function TestDetail({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError("");
     setSaveError("");
     setPrefillNotice(null);
     const justCommitted =
       prevKeyRef.current.startsWith("NEW-") && !testKey.startsWith("NEW-");
     prevKeyRef.current = testKey;
-    Promise.all([
-      GetTestPreconditions(profileId, testKey, false),
-      ListAllPreconditions(profileId),
-    ])
-      .then(([pre, allPre]) => {
+    // The test and every panel section now load via their own queries
+    // (Phase 2b–2g) — the load Promise.all is gone. What remains here are the
+    // two lazy per-detail reads with their own inline loading/error state:
+    // steps and custom fields.
+    setStepsLoading(true);
+    setStepsError("");
+    setJiraStepInfo(null);
+    GetTestSteps(profileId, testKey, justCommitted)
+      .then((s) => {
         if (cancelled) return;
-        // The `test` + draft buffers (Phase 2b), the read-only `bugs` /
-        // requirement-coverage reads (Phase 2c), the review verdict + its note
-        // draft (Phase 2d), the container memberships (Phase 2e), and the
-        // covered requirements (Phase 2f) now load via their own queries,
-        // decoupled from this waterfall — only the two precondition reads remain.
-        setPreconditions(pre);
-        setAllPreconditions(allPre ?? []);
-        // Transitions (Xray workflow) / all-statuses (Kiwi settable status)
-        // load in their own effect below, gated on
-        // caps.supportsWorkflowTransitions.
-        // Steps load lazily: cache hit is instant, cache miss makes one
-        // Xray call. Failure renders inline next to the Steps heading
-        // rather than blocking the whole panel.
-        setStepsLoading(true);
-        setStepsError("");
-        setJiraStepInfo(null);
-        GetTestSteps(profileId, testKey, justCommitted)
-          .then((s) => {
-            if (cancelled) return;
-            setSteps(s ?? []);
-            // If nothing loaded, ask Jira whether this Test actually has steps,
-            // so we can warn instead of letting the user add a blank one.
-            if ((s ?? []).length === 0) {
-              CheckJiraTestSteps(profileId, testKey)
-                .then((info) => {
-                  if (!cancelled) setJiraStepInfo(info);
-                })
-                .catch((e) => console.error("check jira steps:", errMsg(e)));
-            }
-          })
-          .catch((e) => {
-            if (!cancelled) setStepsError(errMsg(e));
-          })
-          .finally(() => {
-            if (!cancelled) setStepsLoading(false);
-          });
-        // Custom fields load lazily too — definitions come from sync, values
-        // on first open. Failure is non-blocking.
-        GetTestCustomFields(profileId, testKey, justCommitted)
-          .then((cf) => {
-            if (!cancelled) setCustomFields(cf ?? []);
-          })
-          .catch((e) => {
-            if (!cancelled) console.error("custom fields:", errMsg(e));
-          });
-        // (Test meta and run history now load via useTestMeta /
-        // useTestRunHistory queries, decoupled from this waterfall.)
+        setSteps(s ?? []);
+        // If nothing loaded, ask Jira whether this Test actually has steps,
+        // so we can warn instead of letting the user add a blank one.
+        if ((s ?? []).length === 0) {
+          CheckJiraTestSteps(profileId, testKey)
+            .then((info) => {
+              if (!cancelled) setJiraStepInfo(info);
+            })
+            .catch((e) => console.error("check jira steps:", errMsg(e)));
+        }
       })
       .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
+        if (!cancelled) setStepsError(errMsg(e));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setStepsLoading(false);
+      });
+    // Custom fields load lazily too — definitions come from sync, values on
+    // first open. Failure is non-blocking.
+    GetTestCustomFields(profileId, testKey, justCommitted)
+      .then((cf) => {
+        if (!cancelled) setCustomFields(cf ?? []);
+      })
+      .catch((e) => {
+        if (!cancelled) console.error("custom fields:", errMsg(e));
       });
     return () => {
       cancelled = true;
@@ -698,9 +676,15 @@ export function TestDetail({
     setPrecondError("");
     try {
       const pre = await GetTestPreconditions(profileId, testKey, true);
-      setPreconditions(pre ?? []);
+      queryClient.setQueryData(
+        keys.testPreconditions(profileId, testKey, reload),
+        pre ?? [],
+      );
       const all = await ListAllPreconditions(profileId);
-      setAllPreconditions(all ?? []);
+      queryClient.setQueryData(
+        keys.preconditionPool(profileId, reload),
+        all ?? [],
+      );
     } catch (e) {
       setPrecondError(errMsg(e));
     } finally {
@@ -716,7 +700,10 @@ export function TestDetail({
     try {
       await SetTestPreconditions(profileId, testKey, nextKeys);
       const refreshed = await GetTestPreconditions(profileId, testKey, false);
-      setPreconditions(refreshed ?? []);
+      queryClient.setQueryData(
+        keys.testPreconditions(profileId, testKey, reload),
+        refreshed ?? [],
+      );
       onEdited();
     } catch (e) {
       setSaveError(`Precondition update failed: ${errMsg(e)}`);
@@ -763,7 +750,10 @@ export function TestDetail({
     try {
       await CacheExternalPreconditions(profileId, additions);
       const all = await ListAllPreconditions(profileId);
-      setAllPreconditions(all ?? []);
+      queryClient.setQueryData(
+        keys.preconditionPool(profileId, reload),
+        all ?? [],
+      );
       await applyPreconditions([
         ...preconditions.map((p) => p.key),
         ...additions.map((p) => p.key),
@@ -788,7 +778,10 @@ export function TestDetail({
     try {
       const tempKey = await CreatePrecondition(profileId, summary.trim());
       const all = await ListAllPreconditions(profileId);
-      setAllPreconditions(all ?? []);
+      queryClient.setQueryData(
+        keys.preconditionPool(profileId, reload),
+        all ?? [],
+      );
       await applyPreconditions([...preconditions.map((p) => p.key), tempKey]);
     } catch (e) {
       setSaveError(`Create precondition failed: ${errMsg(e)}`);

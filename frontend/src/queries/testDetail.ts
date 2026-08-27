@@ -4,9 +4,11 @@ import {
   GetTestBugs,
   GetTestContainers,
   GetTestMeta,
+  GetTestPreconditions,
   GetTestRequirements,
   GetTestReview,
   GetTestRunHistory,
+  ListAllPreconditions,
   ListRequirementsWithCoverage,
 } from "../api";
 import { call } from "../lib/apiCall";
@@ -90,6 +92,34 @@ export function useTestRequirements(
     queryKey: keys.testRequirements(profileId, testKey, reload),
     queryFn: () => call(() => GetTestRequirements(profileId, testKey)),
     enabled: !!profileId && !!testKey,
+  });
+}
+
+// useTestPreconditions loads the preconditions linked to this Test. The queryFn
+// uses the cached read (forceRefresh=false), matching the old panel load; the
+// "Re-fetch from Jira" button (refreshPreconditions, forceRefresh=true) stays
+// imperative and patches this key via setQueryData. applyPreconditions likewise
+// patches after SetTestPreconditions.
+export function useTestPreconditions(
+  profileId: string,
+  testKey: string,
+  reload: string,
+) {
+  return useQuery({
+    queryKey: keys.testPreconditions(profileId, testKey, reload),
+    queryFn: () => call(() => GetTestPreconditions(profileId, testKey, false)),
+    enabled: !!profileId && !!testKey,
+  });
+}
+
+// useAllPreconditions loads the profile-wide precondition pool TestDetail's
+// picker draws from. Profile-scoped (not keyed on the test), so it caches across
+// test switches; `reload` preserves the old load's refresh behaviour.
+export function useAllPreconditions(profileId: string, reload: string) {
+  return useQuery({
+    queryKey: keys.preconditionPool(profileId, reload),
+    queryFn: () => call(() => ListAllPreconditions(profileId)),
+    enabled: !!profileId,
   });
 }
 
