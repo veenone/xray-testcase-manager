@@ -55,6 +55,12 @@ export const keys = {
   preconditionTests: (profileId: string, key: string) =>
     [profileId, "preconditions", "tests", key] as const,
   requirements: (profileId: string) => [profileId, "requirements"] as const,
+  // Per-requirement detail reads for RequirementsView, nested under the
+  // "requirements" prefix so invalidateProfileData refreshes them with the list.
+  requirementTests: (profileId: string, key: string) =>
+    [profileId, "requirements", "tests", key] as const,
+  requirementLinks: (profileId: string, key: string) =>
+    [profileId, "requirements", "links", key] as const,
   testCalls: (profileId: string) => [profileId, "testCalls"] as const,
   duplicates: (profileId: string) => [profileId, "duplicates"] as const,
   stats: (profileId: string) => [profileId, "stats"] as const,

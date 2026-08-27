@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
-  ListTestsForRequirement,
   EditRequirementField,
   DeleteRequirement,
   ExportRequirementAudit,
   SyncRequirements,
   BulkAssociateRequirements,
-  GetRequirementLinks,
   errMsg,
 } from "../api";
-import type { RequirementCoverage, RequirementTest, ReqReqLink } from "../api";
-import { useRequirements } from "../queries/requirements";
+import type { RequirementCoverage } from "../api";
+import {
+  useRequirements,
+  useRequirementTests,
+  useRequirementLinks,
+} from "../queries/requirements";
 import { RequirementSourcesModal } from "./RequirementSourcesModal";
 import { AddTestsModal } from "./AddTestsModal";
 import { LinkRequirementsModal } from "./LinkRequirementsModal";
@@ -28,7 +30,6 @@ import { useConfirm } from "./useConfirm";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   onChanged?: () => void;
 }
 
@@ -72,14 +73,18 @@ function cmpReq(
 // even when the requirement lives in a different project) on the left, and a
 // detail pane on the right listing the Tests that cover the selected
 // requirement with their run result. Read-only; recomputes when the profile
-// changes or a sync/commit bumps refreshKey.
-export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
-  const requirementsQuery = useRequirements(profileId, refreshKey);
+// changes or a sync/commit invalidates the query cache.
+export function RequirementsView({ profileId, onChanged }: Props) {
+  const requirementsQuery = useRequirements(profileId);
   const list = requirementsQuery.data ?? [];
   const loading = requirementsQuery.isFetching;
   const listError = requirementsQuery.error ? errMsg(requirementsQuery.error) : "";
   const [selected, setSelected] = useViewState(profileId, "requirements", "selected", "");
-  const [tests, setTests] = useState<RequirementTest[]>([]);
+  // The selected requirement's covering tests and req-to-req links come from the
+  // query cache with stable keys (Phase 4c), refreshed by the same invalidation
+  // as the list.
+  const testsQuery = useRequirementTests(profileId, selected);
+  const tests = testsQuery.data ?? [];
   const [filter, setFilter] = useViewState(profileId, "requirements", "filter", "");
   const [covFilter, setCovFilter] = useViewState(profileId, "requirements", "covFilter", "");
   const [sortField, setSortField] = useViewState(profileId, "requirements", "sortField", "key");
@@ -107,7 +112,7 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
   // A covering test opened in a slide-over detail panel (#5).
   const [detailKey, setDetailKey] = useViewState(profileId, "requirements", "detailKey", "");
   const [detailVersion, setDetailVersion] = useState(0);
-  const [reqLinks, setReqLinks] = useState<ReqReqLink[]>([]);
+  const reqLinks = useRequirementLinks(profileId, selected).data ?? [];
   const [showLinkReqs, setShowLinkReqs] = useState(false);
 
   useEffect(() => {
@@ -118,47 +123,13 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
     );
   }, [requirementsQuery.data]);
 
-  useEffect(() => {
-    if (!profileId || !selected) {
-      setTests([]);
-      return;
-    }
-    let cancelled = false;
-    ListTestsForRequirement(profileId, selected)
-      .then((ts) => {
-        if (!cancelled) setTests(ts ?? []);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, selected, refreshKey]);
-
+  // (The selected requirement's covering tests and req-to-req links now load via
+  // useRequirementTests / useRequirementLinks above.)
   useEffect(() => {
     setEditing(false);
     setDescOpen(false);
     setDetailsOpen(true);
   }, [selected]);
-
-  useEffect(() => {
-    if (!profileId || !selected) {
-      setReqLinks([]);
-      return;
-    }
-    let cancelled = false;
-    GetRequirementLinks(profileId, selected)
-      .then((ls) => {
-        if (!cancelled) setReqLinks(ls ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setReqLinks([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, selected, refreshKey]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -496,8 +467,10 @@ export function RequirementsView({ profileId, refreshKey, onChanged }: Props) {
       </div>
 
       <div className="reqs-detail">
-        {(listError || error) && (
-          <div className="error-text">{listError || error}</div>
+        {(listError || error || testsQuery.error) && (
+          <div className="error-text">
+            {listError || error || errMsg(testsQuery.error)}
+          </div>
         )}
         {!sel ? (
           <p className="muted">Select a requirement to see its coverage.</p>

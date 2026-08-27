@@ -1,24 +1,42 @@
 import { useQuery } from "@tanstack/react-query";
-import { ListRequirementsWithCoverage } from "../api";
+import {
+  GetRequirementLinks,
+  ListRequirementsWithCoverage,
+  ListTestsForRequirement,
+} from "../api";
 import { call } from "../lib/apiCall";
 import { keys } from "./keys";
 
 // useRequirements loads the requirement coverage list for RequirementsView's
-// master list. It replaces the manual fetch effect + list/loading/error state.
-//
-// `refreshKey` is the strangler bridge: during the migration, syncs/commits
-// still bump a global counter to force a refresh, so we fold it into the query
-// key -- a bump changes the key and refetches the list. Phase 4 replaces this
-// with targeted invalidation of keys.requirements(profileId) and drops the
-// parameter.
-//
-// placeholderData keeps the previous list visible while the next one loads,
-// matching the old "only replace the list on success" behaviour.
-export function useRequirements(profileId: string, refreshKey: number) {
+// master list. The key is stable (Phase 4c): a sync/commit/mutation refreshes it
+// via invalidateProfileData. placeholderData keeps the previous list visible
+// while the next one loads.
+export function useRequirements(profileId: string) {
   return useQuery({
-    queryKey: [...keys.requirements(profileId), refreshKey],
+    queryKey: keys.requirements(profileId),
     queryFn: () => call(() => ListRequirementsWithCoverage(profileId)),
     enabled: !!profileId,
     placeholderData: (prev) => prev,
+  });
+}
+
+// useRequirementTests loads the tests covering the selected requirement. Keyed
+// under the "requirements" prefix so invalidateProfileData refreshes it with the
+// list on any mutation.
+export function useRequirementTests(profileId: string, requirementKey: string) {
+  return useQuery({
+    queryKey: keys.requirementTests(profileId, requirementKey),
+    queryFn: () => call(() => ListTestsForRequirement(profileId, requirementKey)),
+    enabled: !!profileId && !!requirementKey,
+  });
+}
+
+// useRequirementLinks loads the requirement-to-requirement links for the
+// selected requirement. Same prefix nesting as useRequirementTests.
+export function useRequirementLinks(profileId: string, requirementKey: string) {
+  return useQuery({
+    queryKey: keys.requirementLinks(profileId, requirementKey),
+    queryFn: () => call(() => GetRequirementLinks(profileId, requirementKey)),
+    enabled: !!profileId && !!requirementKey,
   });
 }

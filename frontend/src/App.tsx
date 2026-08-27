@@ -1358,7 +1358,6 @@ function App() {
         <main className="content content-requirements">
           <RequirementsView
             profileId={activeId}
-            refreshKey={refreshKey}
             onChanged={() => {
               refreshProfileData();
               reloadPending();
