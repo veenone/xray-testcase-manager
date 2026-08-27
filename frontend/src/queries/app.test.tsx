@@ -36,7 +36,7 @@ describe("useSyncState", () => {
       lastSyncedAt: "2026-01-01",
       testCount: 42,
     });
-    const { result } = renderHook(() => useSyncState("p1", 0), {
+    const { result } = renderHook(() => useSyncState("p1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -44,23 +44,11 @@ describe("useSyncState", () => {
   });
 
   it("does not fetch without a profile", () => {
-    const { result } = renderHook(() => useSyncState("", 0), {
+    const { result } = renderHook(() => useSyncState(""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetSyncState).not.toHaveBeenCalled();
-  });
-
-  it("refetches when the refreshKey bridge changes", async () => {
-    (api.GetSyncState as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    const { result, rerender } = renderHook(
-      ({ rk }: { rk: number }) => useSyncState("p1", rk),
-      { wrapper: makeWrapper(), initialProps: { rk: 0 } },
-    );
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.GetSyncState).toHaveBeenCalledTimes(1);
-    rerender({ rk: 1 });
-    await waitFor(() => expect(api.GetSyncState).toHaveBeenCalledTimes(2));
   });
 });
 
@@ -71,7 +59,7 @@ describe("useFolders", () => {
     (api.ListFolders as ReturnType<typeof vi.fn>).mockResolvedValue([
       { path: "A" },
     ]);
-    const { result } = renderHook(() => useFolders("p1", 0), {
+    const { result } = renderHook(() => useFolders("p1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -79,7 +67,7 @@ describe("useFolders", () => {
   });
 
   it("does not fetch without a profile", () => {
-    const { result } = renderHook(() => useFolders("", 0), {
+    const { result } = renderHook(() => useFolders(""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -95,7 +83,7 @@ describe("useComponents", () => {
       { key: "core" },
     ]);
     const { result } = renderHook(
-      () => useComponents("p1", "component", 0),
+      () => useComponents("p1", "component"),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -103,7 +91,7 @@ describe("useComponents", () => {
   });
 
   it("does not fetch for a non-component grouping", () => {
-    const { result } = renderHook(() => useComponents("p1", "folder", 0), {
+    const { result } = renderHook(() => useComponents("p1", "folder"), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -119,7 +107,7 @@ describe("useGroupContainers", () => {
       { key: "SET-1" },
     ]);
     const { result } = renderHook(
-      () => useGroupContainers("p1", "testset", 0),
+      () => useGroupContainers("p1", "testset"),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -129,7 +117,7 @@ describe("useGroupContainers", () => {
 
   it("does not fetch for a non-container grouping", () => {
     const { result } = renderHook(
-      () => useGroupContainers("p1", "component", 0),
+      () => useGroupContainers("p1", "component"),
       { wrapper: makeWrapper() },
     );
     expect(result.current.fetchStatus).toBe("idle");

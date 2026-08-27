@@ -160,11 +160,10 @@ function App() {
   const pendingChanges = pendingQuery.data ?? [];
   // App-shell profile-scoped loads (Phase 4b). These replace imperative fetch
   // effects; refreshKey is still the bridge (Phase 4c retires it).
-  const syncState = useSyncState(activeId, refreshKey).data ?? null;
-  const folders = useFolders(activeId, refreshKey).data ?? [];
-  const groupContainers =
-    useGroupContainers(activeId, groupBy, refreshKey).data ?? [];
-  const components = useComponents(activeId, groupBy, refreshKey).data ?? [];
+  const syncState = useSyncState(activeId).data ?? null;
+  const folders = useFolders(activeId).data ?? [];
+  const groupContainers = useGroupContainers(activeId, groupBy).data ?? [];
+  const components = useComponents(activeId, groupBy).data ?? [];
   const [showPending, setShowPending] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [lastCommitResult, setLastCommitResult] = useState<CommitResult | null>(
