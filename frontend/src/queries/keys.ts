@@ -26,4 +26,5 @@ export const keys = {
   stats: (profileId: string) => [profileId, "stats"] as const,
   canonicalRequirements: (profileId: string) =>
     [profileId, "canonicalRequirements"] as const,
+  containers: (profileId: string) => [profileId, "containers"] as const,
 };

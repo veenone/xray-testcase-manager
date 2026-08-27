@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
-  ListContainers,
   GetContainerBoard,
   ListBugsForContainer,
   SeedSampleContainers,
@@ -24,7 +23,7 @@ import {
   GetRunRollupBreakdown,
   errMsg,
 } from "../api";
-import type { Container, TestPlanBoard, Bucket, Bug, ExecMemberRun, RunRollup, RollupMember } from "../api";
+import type { TestPlanBoard, Bucket, Bug, ExecMemberRun, RunRollup, RollupMember } from "../api";
 import { RollupBreakdownModal } from "./RollupBreakdownModal";
 import { SortControl } from "./SortControl";
 import { SearchableSelect } from "./SearchableSelect";
@@ -38,6 +37,7 @@ import { CreateBugModal } from "./CreateBugModal";
 import { LinkBugPicker } from "./LinkBugPicker";
 import { TestDetail } from "./TestDetail";
 import { usePrompt } from "./usePrompt";
+import { useContainers } from "../queries/containers";
 import { useConfirm } from "./useConfirm";
 import { useNotice } from "./useNotice";
 import { useCapabilities } from "../features";
@@ -103,7 +103,9 @@ export function ContainersView({
   const [cSortDesc, setCSortDesc] = useViewState(profileId, "containers", "cSortDesc", false);
   const [rowSortField, setRowSortField] = useState("key");
   const [rowSortDesc, setRowSortDesc] = useState(false);
-  const [containers, setContainers] = useState<Container[]>([]);
+  const containersQuery = useContainers(profileId, kind, refreshKey);
+  const containers = containersQuery.data ?? [];
+  const listError = containersQuery.error ? errMsg(containersQuery.error) : "";
   const [selected, setSelected] = useViewState(profileId, "containers", "selected", "");
   const [bugFor, setBugFor] = useState<{ testKey: string; summary: string } | null>(null);
   // Test key whose Defects cell has an open LinkBugPicker (Test Execution
@@ -117,7 +119,7 @@ export function ContainersView({
   // Whether the related-bugs collapsible section in the container card is open.
   // Collapsed by default so a large bug list never hides the member table below.
   const [bugsExpanded, setBugsExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const loading = containersQuery.isFetching;
   const [error, setError] = useState("");
   const [seeding, setSeeding] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -586,29 +588,12 @@ export function ContainersView({
   }, [selected]);
 
   useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    ListContainers(profileId, kind)
-      .then((cs) => {
-        if (cancelled) return;
-        setContainers(cs ?? []);
-        setSelected((cur) => {
-          if (cur && (cs ?? []).some((c) => c.key === cur)) return cur;
-          return cs && cs.length > 0 ? cs[0].key : "";
-        });
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, kind, refreshKey]);
+    const rows = containersQuery.data;
+    if (!rows) return;
+    setSelected((cur) =>
+      cur && rows.some((c) => c.key === cur) ? cur : rows.length > 0 ? rows[0].key : "",
+    );
+  }, [containersQuery.data]);
 
   useEffect(() => {
     setBoardPage(0);
@@ -1195,7 +1180,7 @@ export function ContainersView({
         </div>
       </div>
 
-      {error && <div className="error-text">{error}</div>}
+      {(listError || error) && <div className="error-text">{listError || error}</div>}
 
       {!loading && containers.length === 0 && (
         <p className="muted">
