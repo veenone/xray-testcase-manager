@@ -62,6 +62,7 @@ import {
   useComponents,
   useGroupContainers,
 } from "./queries/app";
+import { invalidateProfileData } from "./queries/invalidate";
 import { keys } from "./queries/keys";
 import { BulkEditModal } from "./components/BulkEditModal";
 import { BulkTransitionModal } from "./components/BulkTransitionModal";
@@ -369,6 +370,16 @@ function App() {
     }
   }, [queryClient, activeId]);
 
+  // refreshProfileData is the single "refresh all profile lists" signal that
+  // mutation handlers call. During the Phase 4c transition it BOTH bumps the
+  // legacy refreshKey counter (still folded into the list/dashboard query keys)
+  // AND invalidates those families directly. Once every hook is off refreshKey,
+  // the counter bump is dropped and only the invalidation remains.
+  const refreshProfileData = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+    invalidateProfileData(queryClient, activeId);
+  }, [queryClient, activeId]);
+
   // Refresh the sync summary and folder tree when the active profile changes
   // or a sync finishes.
   // Clear folder + container + component + row selection when the profile changes.
@@ -409,7 +420,7 @@ function App() {
     if (!name || !name.trim()) return;
     try {
       await CreateFolder(activeId, parentPath, name.trim());
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       reloadPending();
     } catch (e) {
       await notice({ title: "Create folder failed", message: errMsg(e), tone: "error" });
@@ -429,7 +440,7 @@ function App() {
       if (selectedFolder === path || selectedFolder.startsWith(path + "/")) {
         setSelectedFolder("");
       }
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       reloadPending();
     } catch (e) {
       await notice({ title: "Rename failed", message: errMsg(e), tone: "error" });
@@ -442,7 +453,7 @@ function App() {
     try {
       await DeleteFolder(activeId, path);
       if (selectedFolder === path) setSelectedFolder("");
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       reloadPending();
     } catch (e) {
       await notice({ title: "Delete failed", message: errMsg(e), tone: "error" });
@@ -495,7 +506,7 @@ function App() {
     setProgress({ phase: "", fetched: 0, total: 0, done: false });
     try {
       await (full ? SyncProfileFull(activeId) : SyncProfile(activeId));
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       setDetailVersion((v) => v + 1);
       // Start the tour on the FIRST successful sync rather than at launch:
       // before a sync the grid is empty, so half the steps would spotlight
@@ -561,7 +572,7 @@ function App() {
     setSyncing(true);
     try {
       await SyncTests(activeId);
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
     } catch (e) {
       await notice({ title: "Sync failed", message: errMsg(e), tone: "error" });
     } finally {
@@ -696,7 +707,7 @@ function App() {
           : remaining[0]?.id ?? "";
       setActiveId(next);
       setSelectedKey(null);
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       reloadPending();
     }
     if (remaining.length === 0) setShowProfiles(false);
@@ -721,7 +732,7 @@ function App() {
     setShowForm(false);
     setEditingProfile(null);
     setSelectedKey(null);
-    setRefreshKey((k) => k + 1);
+    refreshProfileData();
     setDetailVersion((v) => v + 1);
     reloadPending();
   }
@@ -732,7 +743,7 @@ function App() {
   // its own local state, and re-fetching mid-edit would risk clobbering
   // a field the user is still typing in.
   function handleEdited() {
-    setRefreshKey((k) => k + 1);
+    refreshProfileData();
     reloadPending();
   }
 
@@ -759,7 +770,7 @@ function App() {
     if (!activeId) return;
     try {
       await DiscardPendingChange(activeId, id);
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       setDetailVersion((v) => v + 1);
       reloadPending();
     } catch (e) {
@@ -773,7 +784,7 @@ function App() {
     if (!activeId) return;
     try {
       await DiscardAllPendingChanges(activeId);
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       setDetailVersion((v) => v + 1);
       reloadPending();
     } catch (e) {
@@ -814,7 +825,7 @@ function App() {
       const result = await CommitPendingChanges(activeId);
       setLastCommitResult(result);
       applyCreatedRemap(result);
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       setDetailVersion((v) => v + 1);
       reloadPending();
     } catch (e) {
@@ -848,7 +859,7 @@ function App() {
       const result = await CommitPendingChangesByIDs(activeId, ids);
       setLastCommitResult(result);
       applyCreatedRemap(result);
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       setDetailVersion((v) => v + 1);
       reloadPending();
     } catch (e) {
@@ -893,7 +904,7 @@ function App() {
             }
           : prev,
       );
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       setDetailVersion((v) => v + 1);
       reloadPending();
     } catch (e) {
@@ -936,7 +947,7 @@ function App() {
             }
           : prev,
       );
-      setRefreshKey((k) => k + 1);
+      refreshProfileData();
       setDetailVersion((v) => v + 1);
       reloadPending();
     } catch (e) {
@@ -1340,7 +1351,7 @@ function App() {
             profileId={activeId}
             refreshKey={refreshKey}
             onChanged={() => {
-              setRefreshKey((k) => k + 1);
+              refreshProfileData();
               reloadPending();
             }}
           />
@@ -1351,7 +1362,7 @@ function App() {
             profileId={activeId}
             refreshKey={refreshKey}
             onChanged={() => {
-              setRefreshKey((k) => k + 1);
+              refreshProfileData();
               reloadPending();
             }}
           />
@@ -1364,7 +1375,7 @@ function App() {
             folders={folders}
             pendingByTestKey={pendingByTestKey}
             onChanged={() => {
-              setRefreshKey((k) => k + 1);
+              refreshProfileData();
               reloadPending();
             }}
           />
@@ -1374,7 +1385,7 @@ function App() {
           <GapAnalysisView
             profileId={activeId}
             onChanged={() => {
-              setRefreshKey((k) => k + 1);
+              refreshProfileData();
               reloadPending();
             }}
           />
@@ -1385,7 +1396,7 @@ function App() {
             profileId={activeId}
             refreshKey={refreshKey}
             onChanged={() => {
-              setRefreshKey((k) => k + 1);
+              refreshProfileData();
               reloadPending();
             }}
           />
@@ -1414,7 +1425,7 @@ function App() {
               setView("browse");
             }}
             onChanged={() => {
-              setRefreshKey((k) => k + 1);
+              refreshProfileData();
               reloadPending();
             }}
           />
@@ -1427,7 +1438,7 @@ function App() {
             isDemo={isDemo}
             demoVariant={demoVar}
             onChanged={() => {
-              setRefreshKey((k) => k + 1);
+              refreshProfileData();
               reloadPending();
             }}
           />
@@ -1438,7 +1449,7 @@ function App() {
             profileId={activeId}
             refreshKey={refreshKey}
             onChanged={() => {
-              setRefreshKey((k) => k + 1);
+              refreshProfileData();
               reloadPending();
             }}
           />
@@ -1655,14 +1666,14 @@ function App() {
           profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setSelectedSet(new Set());
             setShowBulkEdit(false);
           }}
           onCancel={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setShowBulkEdit(false);
@@ -1675,14 +1686,14 @@ function App() {
           profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setSelectedSet(new Set());
             setShowBulkTransition(false);
           }}
           onCancel={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setShowBulkTransition(false);
@@ -1695,14 +1706,14 @@ function App() {
           profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setSelectedSet(new Set());
             setShowBulkAllocate(false);
           }}
           onCancel={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setShowBulkAllocate(false);
@@ -1716,14 +1727,14 @@ function App() {
           testKeys={[...selectedSet]}
           folders={folders}
           onComplete={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setSelectedSet(new Set());
             setShowBulkMove(false);
           }}
           onCancel={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setShowBulkMove(false);
@@ -1754,7 +1765,7 @@ function App() {
         <ImportTestsModal
           profileId={activeId}
           onComplete={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             reloadPending();
             setShowImport(false);
           }}
@@ -1767,14 +1778,14 @@ function App() {
           profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setSelectedSet(new Set());
             setShowBulkPreconditions(false);
           }}
           onCancel={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setShowBulkPreconditions(false);
@@ -1787,7 +1798,7 @@ function App() {
           profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setSelectedSet(new Set());
@@ -1802,7 +1813,7 @@ function App() {
           profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
-            setRefreshKey((k) => k + 1);
+            refreshProfileData();
             setDetailVersion((v) => v + 1);
             reloadPending();
             setSelectedSet(new Set());
