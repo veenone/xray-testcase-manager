@@ -46,7 +46,6 @@ import type {
   Step,
   Folder,
   CustomFieldValue,
-  Review,
   JiraStepInfo,
   TestMeta,
   TestRunEntry,
@@ -67,6 +66,7 @@ import {
   useTest,
   useTestBugs,
   useTestMeta,
+  useTestReview,
   useTestRunHistory,
   useRequirementCoverage,
 } from "../queries/testDetail";
@@ -199,7 +199,6 @@ export function TestDetail({
   );
   const [containers, setContainers] = useState<ContainerMembership[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldValue[]>([]);
-  const [review, setReview] = useState<Review | null>(null);
   const [reviewer, setReviewer] = useState(
     () => localStorage.getItem(REVIEWER_KEY) ?? "",
   );
@@ -307,9 +306,16 @@ export function TestDetail({
   const queryClient = useQueryClient();
   const testQuery = useTest(profileId, testKey, reload);
   const test = testQuery.data ?? null;
-  // The panel is loading until BOTH the secondary Promise.all (`loading`) and
-  // the test read resolve — either finishing first must not flash empty content.
-  const panelLoading = loading || testQuery.isPending;
+  // The review verdict is its own query (Phase 2d), carrying an optimistic patch
+  // in setVerdict. Its `reviewNote` draft is seeded once per load below.
+  const reviewQuery = useTestReview(profileId, testKey, reload);
+  const review = reviewQuery.data ?? null;
+  // The panel is loading until the secondary Promise.all (`loading`), the test
+  // read, and the interactive review verdict all resolve — either finishing
+  // first must not flash empty content or a stale "none" verdict. isPending is
+  // true only on first load (no data), so background refetches don't re-hide it.
+  const panelLoading =
+    loading || testQuery.isPending || reviewQuery.isPending;
   // A test-read failure used to reject the Promise.all and land in `error`; now
   // that GetTest is its own query, surface its error the same way so the panel
   // never goes silently blank on a failed load.
@@ -326,6 +332,7 @@ export function TestDetail({
   // reload re-seeds, but an optimistic setQueryData (same key) does NOT — which
   // is what keeps a folder/status change from wiping the user's unsaved drafts.
   const seededRef = useRef<string>("");
+  const reviewSeededRef = useRef<string>("");
   const seedKey = `${testKey}:${reload}`;
 
   // Tracks the previously-shown key so we can detect a just-committed new Test
@@ -346,20 +353,18 @@ export function TestDetail({
       GetTestPreconditions(profileId, testKey, false),
       GetTestContainers(profileId, testKey),
       ListAllPreconditions(profileId),
-      GetTestReview(profileId, testKey),
       GetTestRequirements(profileId, testKey),
     ])
-      .then(([pre, cons, allPre, rev, reqs]) => {
+      .then(([pre, cons, allPre, reqs]) => {
         if (cancelled) return;
-        // The `test` + draft buffers (Phase 2b) and the read-only `bugs` /
-        // requirement-coverage reads (Phase 2c) now load via their own queries,
-        // decoupled from this waterfall.
+        // The `test` + draft buffers (Phase 2b), the read-only `bugs` /
+        // requirement-coverage reads (Phase 2c), and the review verdict +
+        // its note draft (Phase 2d) now load via their own queries, decoupled
+        // from this waterfall.
         setPreconditions(pre);
         setContainers(cons ?? []);
         setAllPreconditions(allPre ?? []);
-        setReview(rev);
         setRequirements(reqs ?? []);
-        setReviewNote(rev?.note ?? "");
         // Transitions (Xray workflow) / all-statuses (Kiwi settable status)
         // load in their own effect below, gated on
         // caps.supportsWorkflowTransitions.
@@ -450,6 +455,17 @@ export function TestDetail({
     setCucumberScenario(seeded.cucumberScenario ?? "");
     setGenericDefinition(seeded.genericDefinition ?? "");
   }, [testQuery.data, seedKey, profileId, testKey, reload, readOnly, queryClient]);
+
+  // Seed the review-note draft from the loaded review, once per load (its own
+  // ref, same guard rationale as the test drafts): an optimistic setVerdict
+  // patch keeps the same seedKey, so it never re-seeds and clobbers a note the
+  // user is typing — setVerdict updates the note explicitly instead.
+  useLayoutEffect(() => {
+    if (!reviewQuery.isSuccess) return;
+    if (reviewSeededRef.current === seedKey) return;
+    reviewSeededRef.current = seedKey;
+    setReviewNote(reviewQuery.data?.note ?? "");
+  }, [reviewQuery.isSuccess, reviewQuery.data, seedKey]);
 
   // Status source (P6.2b): Xray (workflow) loads the transitions available
   // from the current status; Kiwi (settable) loads every valid status once
@@ -885,7 +901,10 @@ export function TestDetail({
     try {
       await SetTestReview(profileId, testKey, verdict, who, reviewNote.trim());
       const rev = await GetTestReview(profileId, testKey);
-      setReview(rev);
+      queryClient.setQueryData(
+        keys.testReview(profileId, testKey, reload),
+        rev,
+      );
       setReviewNote(rev?.note ?? "");
       onEdited();
     } catch (e) {

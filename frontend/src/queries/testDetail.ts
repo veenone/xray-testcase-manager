@@ -3,6 +3,7 @@ import {
   GetTest,
   GetTestBugs,
   GetTestMeta,
+  GetTestReview,
   GetTestRunHistory,
   ListRequirementsWithCoverage,
 } from "../api";
@@ -56,6 +57,22 @@ export function useTestBugs(profileId: string, testKey: string, reload: string) 
     queryKey: keys.testBugs(profileId, testKey, reload),
     queryFn: () => call(() => GetTestBugs(profileId, testKey)),
     enabled: !!profileId && !!testKey && !testKey.startsWith("NEW-"),
+  });
+}
+
+// useTestReview loads this Test's review verdict. It carries an optimistic
+// update: TestDetail's setVerdict handler re-fetches after SetTestReview and
+// patches this key via queryClient.setQueryData. `reload` preserves the old
+// load's version/localReloadKey refresh.
+export function useTestReview(
+  profileId: string,
+  testKey: string,
+  reload: string,
+) {
+  return useQuery({
+    queryKey: keys.testReview(profileId, testKey, reload),
+    queryFn: () => call(() => GetTestReview(profileId, testKey)),
+    enabled: !!profileId && !!testKey,
   });
 }
 

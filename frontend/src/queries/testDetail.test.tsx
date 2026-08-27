@@ -6,6 +6,7 @@ import {
   useTest,
   useTestBugs,
   useTestMeta,
+  useTestReview,
   useTestRunHistory,
   useRequirementCoverage,
 } from "./testDetail";
@@ -15,6 +16,7 @@ vi.mock("../api", () => ({
   GetTest: vi.fn(),
   GetTestBugs: vi.fn(),
   GetTestMeta: vi.fn(),
+  GetTestReview: vi.fn(),
   GetTestRunHistory: vi.fn(),
   ListRequirementsWithCoverage: vi.fn(),
   errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
@@ -106,6 +108,39 @@ describe("useTestBugs", () => {
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetTestBugs).not.toHaveBeenCalled();
+  });
+});
+
+describe("useTestReview", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the review verdict on success", async () => {
+    (api.GetTestReview as ReturnType<typeof vi.fn>).mockResolvedValue({
+      verdict: "approved",
+      note: "looks good",
+    });
+    const { result } = renderHook(() => useTestReview("p1", "PROJ-1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.verdict).toBe("approved");
+  });
+
+  it("treats a null review (unreviewed) as success, not error", async () => {
+    (api.GetTestReview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const { result } = renderHook(() => useTestReview("p1", "PROJ-1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toBeNull();
+  });
+
+  it("does not fetch without a test key", () => {
+    const { result } = renderHook(() => useTestReview("p1", "", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTestReview).not.toHaveBeenCalled();
   });
 });
 
