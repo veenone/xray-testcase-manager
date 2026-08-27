@@ -24,6 +24,10 @@ export const keys = {
     [profileId, "test", key, "bugs", reload] as const,
   testReview: (profileId: string, key: string, reload: string) =>
     [profileId, "test", key, "review", reload] as const,
+  // This Test's container memberships (Test Sets/Plans/Executions it belongs
+  // to). Test-scoped, distinct from the profile-wide `containers` list below.
+  testContainers: (profileId: string, key: string, reload: string) =>
+    [profileId, "test", key, "containers", reload] as const,
   // TestDetail's copy of the requirement-coverage list. Profile-scoped (not
   // test-scoped), so it caches across test switches. Shares the
   // [profileId, "requirements"] prefix with useRequirements so Phase 4 can

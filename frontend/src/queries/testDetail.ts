@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   GetTest,
   GetTestBugs,
+  GetTestContainers,
   GetTestMeta,
   GetTestReview,
   GetTestRunHistory,
@@ -72,6 +73,21 @@ export function useTestReview(
   return useQuery({
     queryKey: keys.testReview(profileId, testKey, reload),
     queryFn: () => call(() => GetTestReview(profileId, testKey)),
+    enabled: !!profileId && !!testKey,
+  });
+}
+
+// useTestContainers loads the Test Sets / Plans / Executions this Test belongs
+// to. It carries an optimistic update: TestDetail's deallocateContainer handler
+// re-fetches after DeallocateTests and patches this key via setQueryData.
+export function useTestContainers(
+  profileId: string,
+  testKey: string,
+  reload: string,
+) {
+  return useQuery({
+    queryKey: keys.testContainers(profileId, testKey, reload),
+    queryFn: () => call(() => GetTestContainers(profileId, testKey)),
     enabled: !!profileId && !!testKey,
   });
 }

@@ -65,6 +65,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useTest,
   useTestBugs,
+  useTestContainers,
   useTestMeta,
   useTestReview,
   useTestRunHistory,
@@ -197,7 +198,6 @@ export function TestDetail({
   const [swapKind, setSwapKind] = useState<"precondition" | "requirement" | null>(
     null,
   );
-  const [containers, setContainers] = useState<ContainerMembership[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldValue[]>([]);
   const [reviewer, setReviewer] = useState(
     () => localStorage.getItem(REVIEWER_KEY) ?? "",
@@ -310,12 +310,20 @@ export function TestDetail({
   // in setVerdict. Its `reviewNote` draft is seeded once per load below.
   const reviewQuery = useTestReview(profileId, testKey, reload);
   const review = reviewQuery.data ?? null;
+  // This Test's container memberships (Phase 2e), with an optimistic patch in
+  // deallocateContainer.
+  const containersQuery = useTestContainers(profileId, testKey, reload);
+  const containers = containersQuery.data ?? [];
   // The panel is loading until the secondary Promise.all (`loading`), the test
-  // read, and the interactive review verdict all resolve — either finishing
-  // first must not flash empty content or a stale "none" verdict. isPending is
-  // true only on first load (no data), so background refetches don't re-hide it.
+  // read, the review verdict, and the container memberships all resolve —
+  // either finishing first must not flash empty content, a stale "none"
+  // verdict, or a misleading "belongs to no containers". isPending is true only
+  // on first load (no data), so background refetches don't re-hide the panel.
   const panelLoading =
-    loading || testQuery.isPending || reviewQuery.isPending;
+    loading ||
+    testQuery.isPending ||
+    reviewQuery.isPending ||
+    containersQuery.isPending;
   // A test-read failure used to reject the Promise.all and land in `error`; now
   // that GetTest is its own query, surface its error the same way so the panel
   // never goes silently blank on a failed load.
@@ -351,18 +359,16 @@ export function TestDetail({
     prevKeyRef.current = testKey;
     Promise.all([
       GetTestPreconditions(profileId, testKey, false),
-      GetTestContainers(profileId, testKey),
       ListAllPreconditions(profileId),
       GetTestRequirements(profileId, testKey),
     ])
-      .then(([pre, cons, allPre, reqs]) => {
+      .then(([pre, allPre, reqs]) => {
         if (cancelled) return;
         // The `test` + draft buffers (Phase 2b), the read-only `bugs` /
-        // requirement-coverage reads (Phase 2c), and the review verdict +
-        // its note draft (Phase 2d) now load via their own queries, decoupled
-        // from this waterfall.
+        // requirement-coverage reads (Phase 2c), the review verdict + its note
+        // draft (Phase 2d), and the container memberships (Phase 2e) now load
+        // via their own queries, decoupled from this waterfall.
         setPreconditions(pre);
-        setContainers(cons ?? []);
         setAllPreconditions(allPre ?? []);
         setRequirements(reqs ?? []);
         // Transitions (Xray workflow) / all-statuses (Kiwi settable status)
@@ -609,7 +615,10 @@ export function TestDetail({
     try {
       await DeallocateTests(profileId, containerKey, [testKey]);
       const cons = await GetTestContainers(profileId, testKey);
-      setContainers(cons ?? []);
+      queryClient.setQueryData(
+        keys.testContainers(profileId, testKey, reload),
+        cons ?? [],
+      );
       onEdited();
     } catch (e) {
       setSaveError(`Remove failed: ${errMsg(e)}`);

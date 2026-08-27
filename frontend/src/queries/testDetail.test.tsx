@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useTest,
   useTestBugs,
+  useTestContainers,
   useTestMeta,
   useTestReview,
   useTestRunHistory,
@@ -15,6 +16,7 @@ import * as api from "../api";
 vi.mock("../api", () => ({
   GetTest: vi.fn(),
   GetTestBugs: vi.fn(),
+  GetTestContainers: vi.fn(),
   GetTestMeta: vi.fn(),
   GetTestReview: vi.fn(),
   GetTestRunHistory: vi.fn(),
@@ -108,6 +110,30 @@ describe("useTestBugs", () => {
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetTestBugs).not.toHaveBeenCalled();
+  });
+});
+
+describe("useTestContainers", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the membership list on success", async () => {
+    (api.GetTestContainers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { key: "SET-1", kind: "testset" },
+    ]);
+    const { result } = renderHook(
+      () => useTestContainers("p1", "PROJ-1", "0:0"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it("does not fetch without a test key", () => {
+    const { result } = renderHook(() => useTestContainers("p1", "", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTestContainers).not.toHaveBeenCalled();
   });
 });
 
