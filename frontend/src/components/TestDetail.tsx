@@ -365,10 +365,14 @@ export function TestDetail({
   // commit/sync/conflict, or a type change bumped localReloadKey) refetches this
   // test's sections plus the two profile-scoped pools. A test SWITCH is skipped
   // — the new test's queries mount fresh, so invalidating would double-fetch.
+  // This is a LAYOUT effect declared BEFORE the seed layout effects below on
+  // purpose: within the commit that bumps reloadSig, the invalidation must run
+  // first so the queries are already fetchStatus === "fetching" when the seeds
+  // run — the seeds read that live fetch state to wait for the fresh data.
   const reloadTestRef = useRef<string>("");
   const reloadSigRef = useRef<string>("");
-  useEffect(() => {
-    const testId = `${profileId} ${testKey}`;
+  useLayoutEffect(() => {
+    const testId = `${profileId} ${testKey}`;
     const sameTest = reloadTestRef.current === testId;
     const sigChanged = reloadSigRef.current !== reloadSig;
     reloadTestRef.current = testId;
@@ -448,9 +452,15 @@ export function TestDetail({
     // On a reload of the SAME test, the stable key means the stale copy lingers
     // while the translation effect's invalidation refetches. Wait for that
     // refetch to settle so we seed the FRESH data (e.g. a type-change prefill),
-    // not the stale copy. A test SWITCH (different testKey) seeds immediately
-    // from whatever is cached — no wait.
-    if (seededRef.current.startsWith(`${testKey}:`) && testQuery.isFetching)
+    // not the stale copy. We must read the query's LIVE fetch state from the
+    // cache, not testQuery.isFetching (a render snapshot that is still false in
+    // this layout-effect pass, before the invalidation's re-render lands). A
+    // test SWITCH (different testKey) seeds immediately from cache — no wait.
+    if (
+      seededRef.current.startsWith(`${testKey}:`) &&
+      queryClient.getQueryState(keys.test(profileId, testKey))?.fetchStatus ===
+        "fetching"
+    )
       return;
     seededRef.current = seedKey;
     let seeded = t;
@@ -494,11 +504,13 @@ export function TestDetail({
   useLayoutEffect(() => {
     if (!reviewQuery.isSuccess) return;
     if (reviewSeededRef.current === seedKey) return;
-    // Same reload-vs-switch rule as the draft seed above: on a reload of the
-    // same test, wait for the invalidation refetch to settle before re-seeding.
+    // Same reload-vs-switch rule as the draft seed above (and the same live
+    // fetch-state read, not the isFetching snapshot): on a reload of the same
+    // test, wait for the invalidation refetch to settle before re-seeding.
     if (
       reviewSeededRef.current.startsWith(`${testKey}:`) &&
-      reviewQuery.isFetching
+      queryClient.getQueryState(keys.testReview(profileId, testKey))
+        ?.fetchStatus === "fetching"
     )
       return;
     reviewSeededRef.current = seedKey;
@@ -509,6 +521,8 @@ export function TestDetail({
     reviewQuery.data,
     seedKey,
     testKey,
+    profileId,
+    queryClient,
   ]);
 
   // Status source (P6.2b): Xray (workflow) loads the transitions available
