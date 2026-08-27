@@ -7,10 +7,14 @@ import { keys } from "./keys";
 // families is keyed [profileId, "<name>", …], so invalidating the prefix
 // refetches all of that family's active variations.
 //
-// It deliberately does NOT touch the [profileId, "test", key] detail queries
-// (those refresh via TestDetail's own signal) nor [profileId, "pending"] (that
-// is invalidated separately by reloadPending) — matching exactly what the old
-// refreshKey bump refetched.
+// It deliberately does NOT touch the per-Test detail queries
+// [profileId, "test", key, …] (those refresh via TestDetail's own signal) nor
+// [profileId, "pending"] (invalidated separately by reloadPending). Note the
+// "requirements"/"preconditions" prefixes DO also sweep the two profile-scoped
+// detail-picker pools (requirementCoverage = [profileId,"requirements","coverage"]
+// and preconditionPool = [profileId,"preconditions","pool"]); that is harmless
+// and arguably desirable — a requirement/precondition mutation should refresh
+// the pools the picker draws from.
 export function invalidateProfileData(qc: QueryClient, profileId: string) {
   if (!profileId) return;
   const families = [
