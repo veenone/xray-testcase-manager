@@ -39,7 +39,6 @@ import type {
   TestCase,
   TypeConversion,
   Precondition,
-  Requirement,
   ContainerMembership,
   PendingChange,
   Transition,
@@ -67,6 +66,7 @@ import {
   useTestBugs,
   useTestContainers,
   useTestMeta,
+  useTestRequirements,
   useTestReview,
   useTestRunHistory,
   useRequirementCoverage,
@@ -194,7 +194,6 @@ export function TestDetail({
   const [precondError, setPrecondError] = useState("");
   // Cross-project precondition picker open state (RND_P_4TFINT_05-322).
   const [showCrossPrecond, setShowCrossPrecond] = useState(false);
-  const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [swapKind, setSwapKind] = useState<"precondition" | "requirement" | null>(
     null,
   );
@@ -314,16 +313,22 @@ export function TestDetail({
   // deallocateContainer.
   const containersQuery = useTestContainers(profileId, testKey, reload);
   const containers = containersQuery.data ?? [];
+  // This Test's covered requirements (Phase 2f), with an optimistic patch in
+  // applyRequirements.
+  const requirementsQuery = useTestRequirements(profileId, testKey, reload);
+  const requirements = requirementsQuery.data ?? [];
   // The panel is loading until the secondary Promise.all (`loading`), the test
-  // read, the review verdict, and the container memberships all resolve —
-  // either finishing first must not flash empty content, a stale "none"
-  // verdict, or a misleading "belongs to no containers". isPending is true only
-  // on first load (no data), so background refetches don't re-hide the panel.
+  // read, the review verdict, the container memberships, and the covered
+  // requirements all resolve — either finishing first must not flash empty
+  // content, a stale "none" verdict, or a misleading "no links yet". isPending
+  // is true only on first load (no data), so background refetches don't re-hide
+  // the panel.
   const panelLoading =
     loading ||
     testQuery.isPending ||
     reviewQuery.isPending ||
-    containersQuery.isPending;
+    containersQuery.isPending ||
+    requirementsQuery.isPending;
   // A test-read failure used to reject the Promise.all and land in `error`; now
   // that GetTest is its own query, surface its error the same way so the panel
   // never goes silently blank on a failed load.
@@ -360,17 +365,16 @@ export function TestDetail({
     Promise.all([
       GetTestPreconditions(profileId, testKey, false),
       ListAllPreconditions(profileId),
-      GetTestRequirements(profileId, testKey),
     ])
-      .then(([pre, allPre, reqs]) => {
+      .then(([pre, allPre]) => {
         if (cancelled) return;
         // The `test` + draft buffers (Phase 2b), the read-only `bugs` /
         // requirement-coverage reads (Phase 2c), the review verdict + its note
-        // draft (Phase 2d), and the container memberships (Phase 2e) now load
-        // via their own queries, decoupled from this waterfall.
+        // draft (Phase 2d), the container memberships (Phase 2e), and the
+        // covered requirements (Phase 2f) now load via their own queries,
+        // decoupled from this waterfall — only the two precondition reads remain.
         setPreconditions(pre);
         setAllPreconditions(allPre ?? []);
-        setRequirements(reqs ?? []);
         // Transitions (Xray workflow) / all-statuses (Kiwi settable status)
         // load in their own effect below, gated on
         // caps.supportsWorkflowTransitions.
@@ -651,7 +655,10 @@ export function TestDetail({
     try {
       await SetTestRequirements(profileId, testKey, nextKeys);
       const refreshed = await GetTestRequirements(profileId, testKey);
-      setRequirements(refreshed ?? []);
+      queryClient.setQueryData(
+        keys.testRequirements(profileId, testKey, reload),
+        refreshed ?? [],
+      );
       onEdited();
     } catch (e) {
       setSaveError(`Requirement update failed: ${errMsg(e)}`);

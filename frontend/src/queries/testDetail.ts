@@ -4,6 +4,7 @@ import {
   GetTestBugs,
   GetTestContainers,
   GetTestMeta,
+  GetTestRequirements,
   GetTestReview,
   GetTestRunHistory,
   ListRequirementsWithCoverage,
@@ -73,6 +74,21 @@ export function useTestReview(
   return useQuery({
     queryKey: keys.testReview(profileId, testKey, reload),
     queryFn: () => call(() => GetTestReview(profileId, testKey)),
+    enabled: !!profileId && !!testKey,
+  });
+}
+
+// useTestRequirements loads the requirements this Test covers. It carries an
+// optimistic update: TestDetail's applyRequirements handler re-fetches after
+// SetTestRequirements and patches this key via queryClient.setQueryData.
+export function useTestRequirements(
+  profileId: string,
+  testKey: string,
+  reload: string,
+) {
+  return useQuery({
+    queryKey: keys.testRequirements(profileId, testKey, reload),
+    queryFn: () => call(() => GetTestRequirements(profileId, testKey)),
     enabled: !!profileId && !!testKey,
   });
 }

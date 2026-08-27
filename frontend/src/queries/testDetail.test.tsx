@@ -7,6 +7,7 @@ import {
   useTestBugs,
   useTestContainers,
   useTestMeta,
+  useTestRequirements,
   useTestReview,
   useTestRunHistory,
   useRequirementCoverage,
@@ -18,6 +19,7 @@ vi.mock("../api", () => ({
   GetTestBugs: vi.fn(),
   GetTestContainers: vi.fn(),
   GetTestMeta: vi.fn(),
+  GetTestRequirements: vi.fn(),
   GetTestReview: vi.fn(),
   GetTestRunHistory: vi.fn(),
   ListRequirementsWithCoverage: vi.fn(),
@@ -110,6 +112,30 @@ describe("useTestBugs", () => {
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetTestBugs).not.toHaveBeenCalled();
+  });
+});
+
+describe("useTestRequirements", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the covered requirements on success", async () => {
+    (api.GetTestRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { key: "REQ-1" },
+    ]);
+    const { result } = renderHook(
+      () => useTestRequirements("p1", "PROJ-1", "0:0"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it("does not fetch without a test key", () => {
+    const { result } = renderHook(() => useTestRequirements("p1", "", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTestRequirements).not.toHaveBeenCalled();
   });
 });
 
