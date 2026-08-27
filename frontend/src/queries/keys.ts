@@ -70,5 +70,16 @@ export const keys = {
   stats: (profileId: string) => [profileId, "stats"] as const,
   canonicalRequirements: (profileId: string) =>
     [profileId, "canonicalRequirements"] as const,
+  // CoverageView's per-selection detail bundle (model/report/gaps/reuse/stale
+  // for one canonical + version). Nested under the "canonicalRequirements"
+  // prefix so invalidateProfileData refreshes it with the list.
+  coverageDetail: (profileId: string, canonicalKey: string, versionId: string) =>
+    [
+      profileId,
+      "canonicalRequirements",
+      "detail",
+      canonicalKey,
+      versionId,
+    ] as const,
   containers: (profileId: string) => [profileId, "containers"] as const,
 };

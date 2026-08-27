@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useCanonicalRequirements } from "../queries/coverage";
+import {
+  useCanonicalRequirements,
+  useCoverageDetail,
+} from "../queries/coverage";
 import {
   CreateCanonicalRequirement,
   DeleteCanonicalRequirement,
@@ -86,20 +89,26 @@ function statusText(vc: ValueCoverage | undefined): string {
 // parameter values to drive the coverage %.
 export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onChanged }: Props) {
   // The canonical (functional-requirement) list comes from the query cache
-  // (audit A3, Phase 3); refreshKey is the migration bridge.
-  const canonQuery = useCanonicalRequirements(profileId, refreshKey);
+  // (audit A3, Phase 3); a mutation refreshes it via invalidateProfileData.
+  // (refreshKey is still threaded through to the imperative CoverageMap child,
+  // which is migrated in a follow-up slice.)
+  const canonQuery = useCanonicalRequirements(profileId);
   const canon = canonQuery.data ?? [];
   const listError = canonQuery.error ? errMsg(canonQuery.error) : "";
   const [selected, setSelected] = useState("");
   const [versions, setVersions] = useState<Version[]>([]);
   const [versionId, setVersionId] = useState("");
-  const [model, setModel] = useState<ParamModel | null>(null);
-  const [report, setReport] = useState<CoverageReport | null>(null);
-  const [gaps, setGaps] = useState<CoverageGap[]>([]);
-  const [reuse, setReuse] = useState<ReuseRow[]>([]);
-  const [stale, setStale] = useState<StaleMapping[]>([]);
+  // The per-selection coverage detail (model/report/gaps/reuse/stale) comes from
+  // the query cache with a stable key (Phase 4c), refreshed by the same
+  // invalidation as the canonical list.
+  const detailQuery = useCoverageDetail(profileId, selected, versionId);
+  const model = detailQuery.data?.model ?? null;
+  const report = detailQuery.data?.report ?? null;
+  const gaps = detailQuery.data?.gaps ?? [];
+  const reuse = detailQuery.data?.reuse ?? [];
+  const stale = detailQuery.data?.stale ?? [];
   const [tab, setTab] = useState<"guide" | "matrix" | "gaps" | "reuse" | "versions" | "map">("guide");
-  const [loading, setLoading] = useState(false);
+  const loading = detailQuery.isFetching;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -109,9 +118,9 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
   const [showMembers, setShowMembers] = useState(false);
   const { confirm, confirmUI } = useConfirm();
 
-  // loadList now refetches the canonical-requirements query (the ~4 manual call
-  // sites after add/delete still work); the query auto-loads and the refreshKey
-  // bridge handles refresh, so no dedicated load effect is needed.
+  // loadList refetches the canonical-requirements query (the ~4 manual call
+  // sites after add/delete still work); the query auto-loads and
+  // invalidateProfileData handles refresh, so no dedicated load effect is needed.
   const loadList = () => canonQuery.refetch();
 
   // Load versions whenever the selected canonical changes; default to first
@@ -139,44 +148,12 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
     void loadVersions();
   }, [loadVersions]);
 
-  const loadSelected = useCallback(async () => {
-    if (!profileId || !selected || !versionId) {
-      setModel(null);
-      setReport(null);
-      setGaps([]);
-      setReuse([]);
-      setStale([]);
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      const [m, r, g, ru, st] = await Promise.all([
-        GetParamModel(profileId, versionId),
-        GetCoverageReport(profileId, versionId),
-        ListCoverageGaps(profileId, versionId),
-        ListCanonicalReuse(profileId, selected),
-        DetectStaleCoverageMappings(profileId, versionId),
-      ]);
-      setModel(m);
-      setReport(r);
-      setGaps(g);
-      setReuse(ru);
-      setStale(st);
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [profileId, selected, versionId]);
-
-  useEffect(() => {
-    void loadSelected();
-  }, [loadSelected, refreshKey]);
+  // (The per-selection coverage detail now loads via useCoverageDetail above;
+  // reload() below refetches it.)
 
   const reload = async () => {
     await loadVersions();
-    await loadSelected();
+    await detailQuery.refetch();
     onChanged?.();
   };
 
@@ -402,7 +379,11 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
 
       <section className="cov-detail">
         {/* A live canonical-list load failure wins over a stale imperative error. */}
-        {(listError || error) && <div className="cov-error">{listError || error}</div>}
+        {(listError || error || detailQuery.error) && (
+          <div className="cov-error">
+            {listError || error || errMsg(detailQuery.error)}
+          </div>
+        )}
         {notice && <div className="cov-notice">{notice}</div>}
         {!selected ? (
           <>
