@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   GetTestPreconditions,
   GetTestRequirements,
@@ -417,7 +417,11 @@ export function TestDetail({
   // migration removed. It runs when testQuery.data arrives; the seededRef guard
   // makes optimistic setQueryData patches (folder/status/edit) NOT re-seed, so
   // they never clobber the user's unsaved drafts.
-  useEffect(() => {
+  //
+  // useLayoutEffect (not useEffect) so seeding runs before paint: the body
+  // renders under `test && !panelLoading`, and if GetTest resolves after the
+  // secondary Promise.all the drafts would otherwise flash empty for one frame.
+  useLayoutEffect(() => {
     const t = testQuery.data;
     if (!t) return;
     if (seededRef.current === seedKey) return;
