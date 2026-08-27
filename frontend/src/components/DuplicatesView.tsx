@@ -28,7 +28,6 @@ type Filter = "all" | "identical" | "differ" | "excluded";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   folders: Folder[];
   pendingByTestKey: Map<string, PendingChange[]>;
   onChanged: () => void;
@@ -65,7 +64,6 @@ function normStep(s: Step | undefined): string {
 // exclude false positives, compare steps side-by-side, and edit real duplicates.
 export function DuplicatesView({
   profileId,
-  refreshKey,
   folders,
   pendingByTestKey,
   onChanged,
@@ -79,7 +77,7 @@ export function DuplicatesView({
     "mode",
     "tests",
   );
-  const duplicatesQuery = useDuplicates(profileId, mode, refreshKey);
+  const duplicatesQuery = useDuplicates(profileId, mode);
   const report = duplicatesQuery.data ?? null;
   const listError = duplicatesQuery.error ? errMsg(duplicatesQuery.error) : "";
   const [error, setError] = useState("");
@@ -113,10 +111,9 @@ export function DuplicatesView({
     members: SummaryMember[];
   } | null>(null);
 
-  // load is now a refetch of the duplicates query rather than a manual fetch;
-  // the query itself loads on mount and when the refreshKey bridge changes, so
-  // the existing call sites below (after merges/edits/step-scans) keep working
-  // during the migration.
+  // load is a refetch of the duplicates query rather than a manual fetch; the
+  // query itself loads on mount and is refreshed by invalidateProfileData, so
+  // the existing call sites below (after merges/edits/step-scans) keep working.
   const load = () => {
     void duplicatesQuery.refetch();
   };
@@ -258,7 +255,7 @@ export function DuplicatesView({
       </div>
 
       {mode === "preconditions" ? (
-        <PreconditionDuplicatesView profileId={profileId} refreshKey={refreshKey} />
+        <PreconditionDuplicatesView profileId={profileId} />
       ) : (
         <>
       <div className="dup-toolbar">

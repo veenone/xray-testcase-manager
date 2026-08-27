@@ -63,6 +63,10 @@ export const keys = {
     [profileId, "requirements", "links", key] as const,
   testCalls: (profileId: string) => [profileId, "testCalls"] as const,
   duplicates: (profileId: string) => [profileId, "duplicates"] as const,
+  // The preconditions-mode duplicate scan. Nested under "duplicates" so
+  // invalidateProfileData refreshes it alongside the tests-mode scan.
+  preconditionDuplicates: (profileId: string) =>
+    [profileId, "duplicates", "preconditions"] as const,
   stats: (profileId: string) => [profileId, "stats"] as const,
   canonicalRequirements: (profileId: string) =>
     [profileId, "canonicalRequirements"] as const,

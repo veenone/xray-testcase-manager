@@ -1368,7 +1368,6 @@ function App() {
         <main className="content content-dashboard">
           <DuplicatesView
             profileId={activeId}
-            refreshKey={refreshKey}
             folders={folders}
             pendingByTestKey={pendingByTestKey}
             onChanged={() => {

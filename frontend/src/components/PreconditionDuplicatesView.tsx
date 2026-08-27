@@ -1,12 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useViewState } from "../lib/viewState";
-import {
-  ScanPreconditionDuplicates,
-  ExcludePreconditionFromDuplicates,
-  errMsg,
-} from "../api";
+import { ExcludePreconditionFromDuplicates, errMsg } from "../api";
+import { usePreconditionDuplicates } from "../queries/duplicates";
 import type {
-  PreconditionDuplicateReport,
   PreconditionDuplicateGroup,
   PreconditionDuplicateMember,
 } from "../api";
@@ -27,12 +23,16 @@ const VERDICT_LABEL: Record<string, string> = {
 // local — no lazy step fetch, no progress walk.
 export function PreconditionDuplicatesView({
   profileId,
-  refreshKey,
 }: {
   profileId: string;
-  refreshKey: number;
 }) {
-  const [report, setReport] = useState<PreconditionDuplicateReport | null>(null);
+  // The scan comes from the query cache with a stable key (Phase 4c); a mutation
+  // refreshes it via invalidateProfileData, and the "Scan" button / exclude
+  // action refetch it directly.
+  const dupQuery = usePreconditionDuplicates(profileId);
+  const report = dupQuery.data ?? null;
+  const loadError = dupQuery.error ? errMsg(dupQuery.error) : "";
+  // Kept for the exclude mutation's own failures.
   const [error, setError] = useState("");
   const [scanning, setScanning] = useState(false);
   const [filter, setFilter] = useViewState<Filter>(profileId, "precond-duplicates", "filter", "all");
@@ -40,17 +40,6 @@ export function PreconditionDuplicatesView({
   const [page, setPage] = useViewState(profileId, "precond-duplicates", "page", 0);
   const [pageSize, setPageSize] = useViewState(profileId, "precond-duplicates", "pageSize", 15);
   const [compare, setCompare] = useState<PreconditionDuplicateGroup | null>(null);
-
-  const load = useCallback(() => {
-    if (!profileId) return;
-    ScanPreconditionDuplicates(profileId)
-      .then((r) => setReport(r as unknown as PreconditionDuplicateReport))
-      .catch((e) => setError(errMsg(e)));
-  }, [profileId]);
-
-  useEffect(() => {
-    load();
-  }, [load, refreshKey]);
 
   function toggle(norm: string) {
     setExpanded((prev) => {
@@ -69,7 +58,7 @@ export function PreconditionDuplicatesView({
   async function exclude(key: string) {
     try {
       await ExcludePreconditionFromDuplicates(profileId, key);
-      load();
+      void dupQuery.refetch();
     } catch (e) {
       setError(errMsg(e));
     }
@@ -91,7 +80,7 @@ export function PreconditionDuplicatesView({
           onClick={() => {
             setPage(0);
             setScanning(true);
-            load();
+            void dupQuery.refetch();
             window.setTimeout(() => setScanning(false), 300);
           }}
         >
@@ -121,7 +110,9 @@ export function PreconditionDuplicatesView({
         </div>
       </div>
 
-      {error && <div className="error-text dup-error">{error}</div>}
+      {(loadError || error) && (
+        <div className="error-text dup-error">{loadError || error}</div>
+      )}
 
       {report && (
         <div className="dup-tiles">
