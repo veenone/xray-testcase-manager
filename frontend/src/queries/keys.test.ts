@@ -14,14 +14,18 @@ describe("query keys", () => {
     expect(keys.tests("p1", {})[1]).toBe("tests");
   });
 
-  it("keys the detail sub-reads by section and reload bridge", () => {
-    const m = keys.testMeta("p1", "PROJ-1", "2:0");
-    expect(m[0]).toBe("p1");
+  it("keys the detail sub-reads by section under a stable test prefix", () => {
+    // Every Test detail key shares the [profileId, "test", key] prefix, so one
+    // invalidateQueries on `test` refetches the base read plus every section.
+    const base = keys.test("p1", "PROJ-1");
+    const m = keys.testMeta("p1", "PROJ-1");
+    expect(m.slice(0, 3)).toEqual(base);
     expect(m[3]).toBe("meta");
-    expect(m[4]).toBe("2:0");
-    const rh = keys.testRunHistory("p1", "PROJ-1", "2:0");
-    expect(rh[0]).toBe("p1");
+    const rh = keys.testRunHistory("p1", "PROJ-1");
+    expect(rh.slice(0, 3)).toEqual(base);
     expect(rh[3]).toBe("runHistory");
-    expect(rh[4]).toBe("2:0");
+    // No trailing reload counter — keys are stable (Phase 4a).
+    expect(m).toHaveLength(4);
+    expect(keys.testReview("p1", "PROJ-1")).toHaveLength(4);
   });
 });

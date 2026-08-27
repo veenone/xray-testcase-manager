@@ -284,13 +284,16 @@ export function TestDetail({
   // change so any pre-filled body is hydrated from the backend.
   const [localReloadKey, setLocalReloadKey] = useState(0);
 
-  // Isolated, read-only detail sections now come from the query cache (audit
-  // A3, Phase 2b). `reload` folds version + localReloadKey into the key as the
-  // migration bridge (a bump refetches).
-  const reload = `${version}:${localReloadKey}`;
-  const metaQuery = useTestMeta(profileId, testKey, reload);
+  // The detail sections come from the query cache with STABLE keys (Phase 4a).
+  // The parent's reload signal — `version` (bumped by App after commits/syncs/
+  // conflict resolution) and `localReloadKey` (bumped locally on a type change)
+  // — is translated into a targeted invalidation below rather than folded into
+  // every key. `reloadSig` is that signal; the seed guard still keys off it so a
+  // reload re-seeds the draft buffers.
+  const reloadSig = `${version}:${localReloadKey}`;
+  const metaQuery = useTestMeta(profileId, testKey);
   const meta = metaQuery.data ?? null;
-  const runHistoryQuery = useTestRunHistory(profileId, testKey, reload);
+  const runHistoryQuery = useTestRunHistory(profileId, testKey);
   const runHistory = runHistoryQuery.data ?? null;
   const runHistoryLoading = runHistoryQuery.isFetching;
   const runHistoryError = runHistoryQuery.error
@@ -301,26 +304,26 @@ export function TestDetail({
   // decoupled from the Promise.all below. Optimistic edits (field save, folder
   // move, status transition) patch it via queryClient.setQueryData on this key.
   const queryClient = useQueryClient();
-  const testQuery = useTest(profileId, testKey, reload);
+  const testQuery = useTest(profileId, testKey);
   const test = testQuery.data ?? null;
   // The review verdict is its own query (Phase 2d), carrying an optimistic patch
   // in setVerdict. Its `reviewNote` draft is seeded once per load below.
-  const reviewQuery = useTestReview(profileId, testKey, reload);
+  const reviewQuery = useTestReview(profileId, testKey);
   const review = reviewQuery.data ?? null;
   // This Test's container memberships (Phase 2e), with an optimistic patch in
   // deallocateContainer.
-  const containersQuery = useTestContainers(profileId, testKey, reload);
+  const containersQuery = useTestContainers(profileId, testKey);
   const containers = containersQuery.data ?? [];
   // This Test's covered requirements (Phase 2f), with an optimistic patch in
   // applyRequirements.
-  const requirementsQuery = useTestRequirements(profileId, testKey, reload);
+  const requirementsQuery = useTestRequirements(profileId, testKey);
   const requirements = requirementsQuery.data ?? [];
   // This Test's linked preconditions (Phase 2g), with optimistic patches in
   // applyPreconditions / refreshPreconditions. The profile-wide pool the picker
   // draws from is a separate profile-scoped query (see allPreconditions below).
-  const preconditionsQuery = useTestPreconditions(profileId, testKey, reload);
+  const preconditionsQuery = useTestPreconditions(profileId, testKey);
   const preconditions = preconditionsQuery.data ?? [];
-  const allPreconditions = useAllPreconditions(profileId, reload).data ?? [];
+  const allPreconditions = useAllPreconditions(profileId).data ?? [];
   // The panel is loading until the test read and every interactive/decision-
   // relevant section resolve — the review verdict, container memberships,
   // covered requirements, and linked preconditions. Either finishing first must
@@ -342,20 +345,44 @@ export function TestDetail({
   // Read-only secondary sections come from the query cache too (Phase 2c),
   // decoupled from the load effect. `bugs` is test-scoped; the requirement
   // coverage list is profile-scoped and caches across test switches.
-  const bugs = useTestBugs(profileId, testKey, reload).data ?? [];
-  const allRequirements = useRequirementCoverage(profileId, reload).data ?? [];
+  const bugs = useTestBugs(profileId, testKey).data ?? [];
+  const allRequirements = useRequirementCoverage(profileId).data ?? [];
   // Guards the one-time seed of the editable draft buffers (summary, labels, …)
-  // from a freshly-loaded test. Keyed on testKey:reload so a new test or a
+  // from a freshly-loaded test. Keyed on testKey:reloadSig so a new test or a
   // reload re-seeds, but an optimistic setQueryData (same key) does NOT — which
   // is what keeps a folder/status change from wiping the user's unsaved drafts.
   const seededRef = useRef<string>("");
   const reviewSeededRef = useRef<string>("");
-  const seedKey = `${testKey}:${reload}`;
+  const seedKey = `${testKey}:${reloadSig}`;
 
   // Tracks the previously-shown key so we can detect a just-committed new Test
   // (its key flips from a "NEW-N" placeholder to the real Jira key) and force a
   // fresh pull from Jira — the local cache still holds temporary step IDs (FR-1).
   const prevKeyRef = useRef<string>("");
+
+  // Translate the parent's reload signal into a targeted invalidation (Phase
+  // 4a). A reloadSig bump on the SAME test (App bumped detailVersion after a
+  // commit/sync/conflict, or a type change bumped localReloadKey) refetches this
+  // test's sections plus the two profile-scoped pools. A test SWITCH is skipped
+  // — the new test's queries mount fresh, so invalidating would double-fetch.
+  const reloadTestRef = useRef<string>("");
+  const reloadSigRef = useRef<string>("");
+  useEffect(() => {
+    const testId = `${profileId} ${testKey}`;
+    const sameTest = reloadTestRef.current === testId;
+    const sigChanged = reloadSigRef.current !== reloadSig;
+    reloadTestRef.current = testId;
+    reloadSigRef.current = reloadSig;
+    if (sameTest && sigChanged) {
+      queryClient.invalidateQueries({ queryKey: keys.test(profileId, testKey) });
+      queryClient.invalidateQueries({
+        queryKey: keys.requirementCoverage(profileId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: keys.preconditionPool(profileId),
+      });
+    }
+  }, [profileId, testKey, reloadSig, queryClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -418,6 +445,13 @@ export function TestDetail({
     const t = testQuery.data;
     if (!t) return;
     if (seededRef.current === seedKey) return;
+    // On a reload of the SAME test, the stable key means the stale copy lingers
+    // while the translation effect's invalidation refetches. Wait for that
+    // refetch to settle so we seed the FRESH data (e.g. a type-change prefill),
+    // not the stale copy. A test SWITCH (different testKey) seeds immediately
+    // from whatever is cached — no wait.
+    if (seededRef.current.startsWith(`${testKey}:`) && testQuery.isFetching)
+      return;
     seededRef.current = seedKey;
     let seeded = t;
     // Default cucumberType to "Scenario" for Cucumber tests with no stored type,
@@ -426,7 +460,7 @@ export function TestDetail({
     if (t.execType === "Cucumber" && (t.cucumberType ?? "") === "") {
       setCucumberType("Scenario");
       seeded = { ...t, cucumberType: "Scenario" };
-      queryClient.setQueryData(keys.testDetail(profileId, testKey, reload), seeded);
+      queryClient.setQueryData(keys.test(profileId, testKey), seeded);
       if (!readOnly) {
         EditTestField(profileId, testKey, "cucumber_type", "Scenario").catch(
           (e) => console.error("default cucumberType:", errMsg(e)),
@@ -442,7 +476,16 @@ export function TestDetail({
     setExecType(seeded.execType ?? "");
     setCucumberScenario(seeded.cucumberScenario ?? "");
     setGenericDefinition(seeded.genericDefinition ?? "");
-  }, [testQuery.data, seedKey, profileId, testKey, reload, readOnly, queryClient]);
+  }, [
+    testQuery.data,
+    testQuery.isFetching,
+    seedKey,
+    profileId,
+    testKey,
+    reloadSig,
+    readOnly,
+    queryClient,
+  ]);
 
   // Seed the review-note draft from the loaded review, once per load (its own
   // ref, same guard rationale as the test drafts): an optimistic setVerdict
@@ -451,9 +494,22 @@ export function TestDetail({
   useLayoutEffect(() => {
     if (!reviewQuery.isSuccess) return;
     if (reviewSeededRef.current === seedKey) return;
+    // Same reload-vs-switch rule as the draft seed above: on a reload of the
+    // same test, wait for the invalidation refetch to settle before re-seeding.
+    if (
+      reviewSeededRef.current.startsWith(`${testKey}:`) &&
+      reviewQuery.isFetching
+    )
+      return;
     reviewSeededRef.current = seedKey;
     setReviewNote(reviewQuery.data?.note ?? "");
-  }, [reviewQuery.isSuccess, reviewQuery.data, seedKey]);
+  }, [
+    reviewQuery.isSuccess,
+    reviewQuery.isFetching,
+    reviewQuery.data,
+    seedKey,
+    testKey,
+  ]);
 
   // Status source (P6.2b): Xray (workflow) loads the transitions available
   // from the current status; Kiwi (settable) loads every valid status once
@@ -546,7 +602,7 @@ export function TestDetail({
           break;
       }
       queryClient.setQueryData(
-        keys.testDetail(profileId, testKey, reload),
+        keys.test(profileId, testKey),
         updated,
       );
       onEdited();
@@ -598,7 +654,7 @@ export function TestDetail({
       await DeallocateTests(profileId, containerKey, [testKey]);
       const cons = await GetTestContainers(profileId, testKey);
       queryClient.setQueryData(
-        keys.testContainers(profileId, testKey, reload),
+        keys.testContainers(profileId, testKey),
         cons ?? [],
       );
       onEdited();
@@ -616,7 +672,7 @@ export function TestDetail({
     try {
       await MoveTestToFolder(profileId, testKey, folderId);
       queryClient.setQueryData(
-        keys.testDetail(profileId, testKey, reload),
+        keys.test(profileId, testKey),
         (prev: TestCase | undefined) => (prev ? { ...prev, folderId } : prev),
       );
       onEdited();
@@ -634,7 +690,7 @@ export function TestDetail({
       await SetTestRequirements(profileId, testKey, nextKeys);
       const refreshed = await GetTestRequirements(profileId, testKey);
       queryClient.setQueryData(
-        keys.testRequirements(profileId, testKey, reload),
+        keys.testRequirements(profileId, testKey),
         refreshed ?? [],
       );
       onEdited();
@@ -677,12 +733,12 @@ export function TestDetail({
     try {
       const pre = await GetTestPreconditions(profileId, testKey, true);
       queryClient.setQueryData(
-        keys.testPreconditions(profileId, testKey, reload),
+        keys.testPreconditions(profileId, testKey),
         pre ?? [],
       );
       const all = await ListAllPreconditions(profileId);
       queryClient.setQueryData(
-        keys.preconditionPool(profileId, reload),
+        keys.preconditionPool(profileId),
         all ?? [],
       );
     } catch (e) {
@@ -701,7 +757,7 @@ export function TestDetail({
       await SetTestPreconditions(profileId, testKey, nextKeys);
       const refreshed = await GetTestPreconditions(profileId, testKey, false);
       queryClient.setQueryData(
-        keys.testPreconditions(profileId, testKey, reload),
+        keys.testPreconditions(profileId, testKey),
         refreshed ?? [],
       );
       onEdited();
@@ -751,7 +807,7 @@ export function TestDetail({
       await CacheExternalPreconditions(profileId, additions);
       const all = await ListAllPreconditions(profileId);
       queryClient.setQueryData(
-        keys.preconditionPool(profileId, reload),
+        keys.preconditionPool(profileId),
         all ?? [],
       );
       await applyPreconditions([
@@ -779,7 +835,7 @@ export function TestDetail({
       const tempKey = await CreatePrecondition(profileId, summary.trim());
       const all = await ListAllPreconditions(profileId);
       queryClient.setQueryData(
-        keys.preconditionPool(profileId, reload),
+        keys.preconditionPool(profileId),
         all ?? [],
       );
       await applyPreconditions([...preconditions.map((p) => p.key), tempKey]);
@@ -871,7 +927,7 @@ export function TestDetail({
     try {
       await TransitionTest(profileId, testKey, targetStatus);
       queryClient.setQueryData(
-        keys.testDetail(profileId, testKey, reload),
+        keys.test(profileId, testKey),
         (prev: TestCase | undefined) =>
           prev ? { ...prev, status: targetStatus } : prev,
       );
@@ -911,7 +967,7 @@ export function TestDetail({
       await SetTestReview(profileId, testKey, verdict, who, reviewNote.trim());
       const rev = await GetTestReview(profileId, testKey);
       queryClient.setQueryData(
-        keys.testReview(profileId, testKey, reload),
+        keys.testReview(profileId, testKey),
         rev,
       );
       setReviewNote(rev?.note ?? "");

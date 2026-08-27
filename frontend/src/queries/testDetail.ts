@@ -14,40 +14,34 @@ import {
 import { call } from "../lib/apiCall";
 import { keys } from "./keys";
 
-// Isolated, read-only sections of the Test detail panel (audit A3, Phase 2b).
-// These are lazy loads with no optimistic updates, so they migrate cleanly to
-// their own queries — decoupling them from TestDetail's main Promise.all
-// waterfall. `reload` folds TestDetail's version + localReloadKey counters into
-// the key as the migration bridge (see keys.ts).
+// The Test detail panel's per-section queries (audit A3, Phase 2b–2g). Each key
+// is stable: parent-driven reloads are handled by TestDetail invalidating the
+// [profileId, "test", key] prefix (and the two profile-scoped pools), not by a
+// counter folded into the key (Phase 4a).
 
 // useTest is the panel's primary read — the `test` itself. Unlike meta/history
 // it DOES carry optimistic updates (field edit, folder move, status
 // transition), which TestDetail applies via queryClient.setQueryData on this
-// same key. `reload` keeps the version/localReloadKey refetch behaviour of the
-// old load effect.
-export function useTest(profileId: string, testKey: string, reload: string) {
+// same key.
+export function useTest(profileId: string, testKey: string) {
   return useQuery({
-    queryKey: keys.testDetail(profileId, testKey, reload),
+    queryKey: keys.test(profileId, testKey),
     queryFn: () => call(() => GetTest(profileId, testKey)),
     enabled: !!profileId && !!testKey,
   });
 }
 
-export function useTestMeta(profileId: string, testKey: string, reload: string) {
+export function useTestMeta(profileId: string, testKey: string) {
   return useQuery({
-    queryKey: keys.testMeta(profileId, testKey, reload),
+    queryKey: keys.testMeta(profileId, testKey),
     queryFn: () => call(() => GetTestMeta(profileId, testKey)),
     enabled: !!profileId && !!testKey,
   });
 }
 
-export function useTestRunHistory(
-  profileId: string,
-  testKey: string,
-  reload: string,
-) {
+export function useTestRunHistory(profileId: string, testKey: string) {
   return useQuery({
-    queryKey: keys.testRunHistory(profileId, testKey, reload),
+    queryKey: keys.testRunHistory(profileId, testKey),
     queryFn: () => call(() => GetTestRunHistory(profileId, testKey)),
     enabled: !!profileId && !!testKey,
   });
@@ -56,9 +50,9 @@ export function useTestRunHistory(
 // useTestBugs loads the Jira bugs linked to this Test (read-only display). It is
 // disabled for not-yet-created "NEW-" tests, matching the old load's skipBugs
 // guard (a placeholder Test has no remote bugs to fetch).
-export function useTestBugs(profileId: string, testKey: string, reload: string) {
+export function useTestBugs(profileId: string, testKey: string) {
   return useQuery({
-    queryKey: keys.testBugs(profileId, testKey, reload),
+    queryKey: keys.testBugs(profileId, testKey),
     queryFn: () => call(() => GetTestBugs(profileId, testKey)),
     enabled: !!profileId && !!testKey && !testKey.startsWith("NEW-"),
   });
@@ -66,15 +60,10 @@ export function useTestBugs(profileId: string, testKey: string, reload: string) 
 
 // useTestReview loads this Test's review verdict. It carries an optimistic
 // update: TestDetail's setVerdict handler re-fetches after SetTestReview and
-// patches this key via queryClient.setQueryData. `reload` preserves the old
-// load's version/localReloadKey refresh.
-export function useTestReview(
-  profileId: string,
-  testKey: string,
-  reload: string,
-) {
+// patches this key via queryClient.setQueryData.
+export function useTestReview(profileId: string, testKey: string) {
   return useQuery({
-    queryKey: keys.testReview(profileId, testKey, reload),
+    queryKey: keys.testReview(profileId, testKey),
     queryFn: () => call(() => GetTestReview(profileId, testKey)),
     enabled: !!profileId && !!testKey,
   });
@@ -83,13 +72,9 @@ export function useTestReview(
 // useTestRequirements loads the requirements this Test covers. It carries an
 // optimistic update: TestDetail's applyRequirements handler re-fetches after
 // SetTestRequirements and patches this key via queryClient.setQueryData.
-export function useTestRequirements(
-  profileId: string,
-  testKey: string,
-  reload: string,
-) {
+export function useTestRequirements(profileId: string, testKey: string) {
   return useQuery({
-    queryKey: keys.testRequirements(profileId, testKey, reload),
+    queryKey: keys.testRequirements(profileId, testKey),
     queryFn: () => call(() => GetTestRequirements(profileId, testKey)),
     enabled: !!profileId && !!testKey,
   });
@@ -100,13 +85,9 @@ export function useTestRequirements(
 // "Re-fetch from Jira" button (refreshPreconditions, forceRefresh=true) stays
 // imperative and patches this key via setQueryData. applyPreconditions likewise
 // patches after SetTestPreconditions.
-export function useTestPreconditions(
-  profileId: string,
-  testKey: string,
-  reload: string,
-) {
+export function useTestPreconditions(profileId: string, testKey: string) {
   return useQuery({
-    queryKey: keys.testPreconditions(profileId, testKey, reload),
+    queryKey: keys.testPreconditions(profileId, testKey),
     queryFn: () => call(() => GetTestPreconditions(profileId, testKey, false)),
     enabled: !!profileId && !!testKey,
   });
@@ -114,10 +95,10 @@ export function useTestPreconditions(
 
 // useAllPreconditions loads the profile-wide precondition pool TestDetail's
 // picker draws from. Profile-scoped (not keyed on the test), so it caches across
-// test switches; `reload` preserves the old load's refresh behaviour.
-export function useAllPreconditions(profileId: string, reload: string) {
+// test switches.
+export function useAllPreconditions(profileId: string) {
   return useQuery({
-    queryKey: keys.preconditionPool(profileId, reload),
+    queryKey: keys.preconditionPool(profileId),
     queryFn: () => call(() => ListAllPreconditions(profileId)),
     enabled: !!profileId,
   });
@@ -126,13 +107,9 @@ export function useAllPreconditions(profileId: string, reload: string) {
 // useTestContainers loads the Test Sets / Plans / Executions this Test belongs
 // to. It carries an optimistic update: TestDetail's deallocateContainer handler
 // re-fetches after DeallocateTests and patches this key via setQueryData.
-export function useTestContainers(
-  profileId: string,
-  testKey: string,
-  reload: string,
-) {
+export function useTestContainers(profileId: string, testKey: string) {
   return useQuery({
-    queryKey: keys.testContainers(profileId, testKey, reload),
+    queryKey: keys.testContainers(profileId, testKey),
     queryFn: () => call(() => GetTestContainers(profileId, testKey)),
     enabled: !!profileId && !!testKey,
   });
@@ -141,10 +118,10 @@ export function useTestContainers(
 // useRequirementCoverage loads the profile-wide requirement coverage list that
 // TestDetail uses to populate its requirement picker (read-only here). It is
 // profile-scoped, so it is NOT keyed on the test key and caches across test
-// switches; `reload` preserves the old load's version/localReloadKey refresh.
-export function useRequirementCoverage(profileId: string, reload: string) {
+// switches.
+export function useRequirementCoverage(profileId: string) {
   return useQuery({
-    queryKey: keys.requirementCoverage(profileId, reload),
+    queryKey: keys.requirementCoverage(profileId),
     queryFn: () => call(() => ListRequirementsWithCoverage(profileId)),
     enabled: !!profileId,
   });

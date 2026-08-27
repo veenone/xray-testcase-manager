@@ -8,45 +8,42 @@
 export const keys = {
   tests: <T extends object>(profileId: string, params: T) =>
     [profileId, "tests", params] as const,
+  // The Test detail keys are stable (no reload counter). [profileId, "test",
+  // key] is the shared prefix, so one invalidateQueries on `test` refetches the
+  // base read plus every section below. TestDetail translates its parent-driven
+  // reload signal (version/localReloadKey) into exactly that invalidation.
   test: (profileId: string, key: string) =>
     [profileId, "test", key] as const,
-  // `reload` folds TestDetail's version + localReloadKey counters into the key
-  // as the migration bridge (a bump refetches). Phase 4 replaces it with
-  // targeted invalidation of [profileId, "test", key], which is the prefix of
-  // every key below, so one invalidation hits the base read, meta, and history.
-  testDetail: (profileId: string, key: string, reload: string) =>
-    [profileId, "test", key, reload] as const,
-  testMeta: (profileId: string, key: string, reload: string) =>
-    [profileId, "test", key, "meta", reload] as const,
-  testRunHistory: (profileId: string, key: string, reload: string) =>
-    [profileId, "test", key, "runHistory", reload] as const,
-  testBugs: (profileId: string, key: string, reload: string) =>
-    [profileId, "test", key, "bugs", reload] as const,
-  testReview: (profileId: string, key: string, reload: string) =>
-    [profileId, "test", key, "review", reload] as const,
+  testMeta: (profileId: string, key: string) =>
+    [profileId, "test", key, "meta"] as const,
+  testRunHistory: (profileId: string, key: string) =>
+    [profileId, "test", key, "runHistory"] as const,
+  testBugs: (profileId: string, key: string) =>
+    [profileId, "test", key, "bugs"] as const,
+  testReview: (profileId: string, key: string) =>
+    [profileId, "test", key, "review"] as const,
   // This Test's container memberships (Test Sets/Plans/Executions it belongs
   // to). Test-scoped, distinct from the profile-wide `containers` list below.
-  testContainers: (profileId: string, key: string, reload: string) =>
-    [profileId, "test", key, "containers", reload] as const,
+  testContainers: (profileId: string, key: string) =>
+    [profileId, "test", key, "containers"] as const,
   // This Test's covered requirements. Test-scoped, distinct from the
   // profile-wide `requirements` coverage list.
-  testRequirements: (profileId: string, key: string, reload: string) =>
-    [profileId, "test", key, "requirements", reload] as const,
+  testRequirements: (profileId: string, key: string) =>
+    [profileId, "test", key, "requirements"] as const,
   // This Test's linked preconditions. Test-scoped.
-  testPreconditions: (profileId: string, key: string, reload: string) =>
-    [profileId, "test", key, "preconditions", reload] as const,
+  testPreconditions: (profileId: string, key: string) =>
+    [profileId, "test", key, "preconditions"] as const,
   // The profile-wide precondition pool TestDetail's picker draws from.
   // Profile-scoped (caches across test switches); shares the
   // [profileId, "preconditions"] prefix with the PreconditionsView list.
-  preconditionPool: (profileId: string, reload: string) =>
-    [profileId, "preconditions", "pool", reload] as const,
+  preconditionPool: (profileId: string) =>
+    [profileId, "preconditions", "pool"] as const,
   // TestDetail's copy of the requirement-coverage list. Profile-scoped (not
   // test-scoped), so it caches across test switches. Shares the
-  // [profileId, "requirements"] prefix with useRequirements so Phase 4 can
-  // invalidate both at once; the "coverage" segment keeps it a distinct entry
-  // from that view's refreshKey-bridged key.
-  requirementCoverage: (profileId: string, reload: string) =>
-    [profileId, "requirements", "coverage", reload] as const,
+  // [profileId, "requirements"] prefix with useRequirements; the "coverage"
+  // segment keeps it a distinct entry from that view's refreshKey-bridged key.
+  requirementCoverage: (profileId: string) =>
+    [profileId, "requirements", "coverage"] as const,
   pending: (profileId: string) => [profileId, "pending"] as const,
   folders: (profileId: string) => [profileId, "folders"] as const,
   preconditions: (profileId: string) => [profileId, "preconditions"] as const,

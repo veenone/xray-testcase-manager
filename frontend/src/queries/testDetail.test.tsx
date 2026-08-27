@@ -47,7 +47,7 @@ describe("useTest", () => {
       key: "PROJ-1",
       summary: "Login works",
     });
-    const { result } = renderHook(() => useTest("p1", "PROJ-1", "0:0"), {
+    const { result } = renderHook(() => useTest("p1", "PROJ-1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -58,7 +58,7 @@ describe("useTest", () => {
     (api.GetTest as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("boom"),
     );
-    const { result } = renderHook(() => useTest("p1", "PROJ-1", "0:0"), {
+    const { result } = renderHook(() => useTest("p1", "PROJ-1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
@@ -66,25 +66,11 @@ describe("useTest", () => {
   });
 
   it("does not fetch without a test key", () => {
-    const { result } = renderHook(() => useTest("p1", "", "0:0"), {
+    const { result } = renderHook(() => useTest("p1", ""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetTest).not.toHaveBeenCalled();
-  });
-
-  it("refetches when the reload bridge changes", async () => {
-    (api.GetTest as ReturnType<typeof vi.fn>).mockResolvedValue({
-      key: "PROJ-1",
-    });
-    const { result, rerender } = renderHook(
-      ({ reload }: { reload: string }) => useTest("p1", "PROJ-1", reload),
-      { wrapper: makeWrapper(), initialProps: { reload: "0:0" } },
-    );
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.GetTest).toHaveBeenCalledTimes(1);
-    rerender({ reload: "1:0" });
-    await waitFor(() => expect(api.GetTest).toHaveBeenCalledTimes(2));
   });
 });
 
@@ -95,7 +81,7 @@ describe("useTestBugs", () => {
     (api.GetTestBugs as ReturnType<typeof vi.fn>).mockResolvedValue([
       { key: "BUG-1" },
     ]);
-    const { result } = renderHook(() => useTestBugs("p1", "PROJ-1", "0:0"), {
+    const { result } = renderHook(() => useTestBugs("p1", "PROJ-1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -103,7 +89,7 @@ describe("useTestBugs", () => {
   });
 
   it("does not fetch for a not-yet-created NEW- test", () => {
-    const { result } = renderHook(() => useTestBugs("p1", "NEW-3", "0:0"), {
+    const { result } = renderHook(() => useTestBugs("p1", "NEW-3"), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -111,7 +97,7 @@ describe("useTestBugs", () => {
   });
 
   it("does not fetch without a test key", () => {
-    const { result } = renderHook(() => useTestBugs("p1", "", "0:0"), {
+    const { result } = renderHook(() => useTestBugs("p1", ""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -127,7 +113,7 @@ describe("useTestRequirements", () => {
       { key: "REQ-1" },
     ]);
     const { result } = renderHook(
-      () => useTestRequirements("p1", "PROJ-1", "0:0"),
+      () => useTestRequirements("p1", "PROJ-1"),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -135,7 +121,7 @@ describe("useTestRequirements", () => {
   });
 
   it("does not fetch without a test key", () => {
-    const { result } = renderHook(() => useTestRequirements("p1", "", "0:0"), {
+    const { result } = renderHook(() => useTestRequirements("p1", ""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -151,7 +137,7 @@ describe("useTestPreconditions", () => {
       { key: "PRE-1" },
     ]);
     const { result } = renderHook(
-      () => useTestPreconditions("p1", "PROJ-1", "0:0"),
+      () => useTestPreconditions("p1", "PROJ-1"),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -160,7 +146,7 @@ describe("useTestPreconditions", () => {
 
   it("uses the cached read (forceRefresh=false)", async () => {
     (api.GetTestPreconditions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-    renderHook(() => useTestPreconditions("p1", "PROJ-1", "0:0"), {
+    renderHook(() => useTestPreconditions("p1", "PROJ-1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() =>
@@ -170,7 +156,7 @@ describe("useTestPreconditions", () => {
 
   it("does not fetch without a test key", () => {
     const { result } = renderHook(
-      () => useTestPreconditions("p1", "", "0:0"),
+      () => useTestPreconditions("p1", ""),
       { wrapper: makeWrapper() },
     );
     expect(result.current.fetchStatus).toBe("idle");
@@ -186,7 +172,7 @@ describe("useAllPreconditions", () => {
       { key: "PRE-1" },
       { key: "PRE-2" },
     ]);
-    const { result } = renderHook(() => useAllPreconditions("p1", "0:0"), {
+    const { result } = renderHook(() => useAllPreconditions("p1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -194,7 +180,7 @@ describe("useAllPreconditions", () => {
   });
 
   it("does not fetch without a profile", () => {
-    const { result } = renderHook(() => useAllPreconditions("", "0:0"), {
+    const { result } = renderHook(() => useAllPreconditions(""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -210,7 +196,7 @@ describe("useTestContainers", () => {
       { key: "SET-1", kind: "testset" },
     ]);
     const { result } = renderHook(
-      () => useTestContainers("p1", "PROJ-1", "0:0"),
+      () => useTestContainers("p1", "PROJ-1"),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -218,7 +204,7 @@ describe("useTestContainers", () => {
   });
 
   it("does not fetch without a test key", () => {
-    const { result } = renderHook(() => useTestContainers("p1", "", "0:0"), {
+    const { result } = renderHook(() => useTestContainers("p1", ""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -234,7 +220,7 @@ describe("useTestReview", () => {
       verdict: "approved",
       note: "looks good",
     });
-    const { result } = renderHook(() => useTestReview("p1", "PROJ-1", "0:0"), {
+    const { result } = renderHook(() => useTestReview("p1", "PROJ-1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -243,7 +229,7 @@ describe("useTestReview", () => {
 
   it("treats a null review (unreviewed) as success, not error", async () => {
     (api.GetTestReview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    const { result } = renderHook(() => useTestReview("p1", "PROJ-1", "0:0"), {
+    const { result } = renderHook(() => useTestReview("p1", "PROJ-1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -251,7 +237,7 @@ describe("useTestReview", () => {
   });
 
   it("does not fetch without a test key", () => {
-    const { result } = renderHook(() => useTestReview("p1", "", "0:0"), {
+    const { result } = renderHook(() => useTestReview("p1", ""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -266,7 +252,7 @@ describe("useRequirementCoverage", () => {
     (
       api.ListRequirementsWithCoverage as ReturnType<typeof vi.fn>
     ).mockResolvedValue([{ key: "REQ-1", covered: true }]);
-    const { result } = renderHook(() => useRequirementCoverage("p1", "0:0"), {
+    const { result } = renderHook(() => useRequirementCoverage("p1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -274,7 +260,7 @@ describe("useRequirementCoverage", () => {
   });
 
   it("does not fetch without a profile", () => {
-    const { result } = renderHook(() => useRequirementCoverage("", "0:0"), {
+    const { result } = renderHook(() => useRequirementCoverage(""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -289,7 +275,7 @@ describe("useTestMeta", () => {
     (api.GetTestMeta as ReturnType<typeof vi.fn>).mockResolvedValue({
       created: "2026-01-01",
     });
-    const { result } = renderHook(() => useTestMeta("p1", "PROJ-1", "0:0"), {
+    const { result } = renderHook(() => useTestMeta("p1", "PROJ-1"), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -297,7 +283,7 @@ describe("useTestMeta", () => {
   });
 
   it("does not fetch without a test key", () => {
-    const { result } = renderHook(() => useTestMeta("p1", "", "0:0"), {
+    const { result } = renderHook(() => useTestMeta("p1", ""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
@@ -313,7 +299,7 @@ describe("useTestRunHistory", () => {
       { execKey: "TE-1" },
     ]);
     const { result } = renderHook(
-      () => useTestRunHistory("p1", "PROJ-1", "0:0"),
+      () => useTestRunHistory("p1", "PROJ-1"),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -325,7 +311,7 @@ describe("useTestRunHistory", () => {
       new Error("boom"),
     );
     const { result } = renderHook(
-      () => useTestRunHistory("p1", "PROJ-1", "0:0"),
+      () => useTestRunHistory("p1", "PROJ-1"),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isError).toBe(true));
@@ -333,25 +319,10 @@ describe("useTestRunHistory", () => {
   });
 
   it("does not fetch without a test key", () => {
-    const { result } = renderHook(() => useTestRunHistory("p1", "", "0:0"), {
+    const { result } = renderHook(() => useTestRunHistory("p1", ""), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetTestRunHistory).not.toHaveBeenCalled();
-  });
-
-  it("refetches when the reload bridge changes", async () => {
-    (api.GetTestRunHistory as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-    const { result, rerender } = renderHook(
-      ({ reload }: { reload: string }) =>
-        useTestRunHistory("p1", "PROJ-1", reload),
-      { wrapper: makeWrapper(), initialProps: { reload: "0:0" } },
-    );
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.GetTestRunHistory).toHaveBeenCalledTimes(1);
-    rerender({ reload: "1:0" });
-    await waitFor(() =>
-      expect(api.GetTestRunHistory).toHaveBeenCalledTimes(2),
-    );
   });
 });
