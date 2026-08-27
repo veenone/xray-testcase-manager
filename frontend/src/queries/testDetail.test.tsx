@@ -2,13 +2,21 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useTest, useTestMeta, useTestRunHistory } from "./testDetail";
+import {
+  useTest,
+  useTestBugs,
+  useTestMeta,
+  useTestRunHistory,
+  useRequirementCoverage,
+} from "./testDetail";
 import * as api from "../api";
 
 vi.mock("../api", () => ({
   GetTest: vi.fn(),
+  GetTestBugs: vi.fn(),
   GetTestMeta: vi.fn(),
   GetTestRunHistory: vi.fn(),
+  ListRequirementsWithCoverage: vi.fn(),
   errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
@@ -67,6 +75,60 @@ describe("useTest", () => {
     expect(api.GetTest).toHaveBeenCalledTimes(1);
     rerender({ reload: "1:0" });
     await waitFor(() => expect(api.GetTest).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("useTestBugs", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the linked bugs on success", async () => {
+    (api.GetTestBugs as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { key: "BUG-1" },
+    ]);
+    const { result } = renderHook(() => useTestBugs("p1", "PROJ-1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it("does not fetch for a not-yet-created NEW- test", () => {
+    const { result } = renderHook(() => useTestBugs("p1", "NEW-3", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTestBugs).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch without a test key", () => {
+    const { result } = renderHook(() => useTestBugs("p1", "", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTestBugs).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRequirementCoverage", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the coverage list on success", async () => {
+    (
+      api.ListRequirementsWithCoverage as ReturnType<typeof vi.fn>
+    ).mockResolvedValue([{ key: "REQ-1", covered: true }]);
+    const { result } = renderHook(() => useRequirementCoverage("p1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it("does not fetch without a profile", () => {
+    const { result } = renderHook(() => useRequirementCoverage("", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.ListRequirementsWithCoverage).not.toHaveBeenCalled();
   });
 });
 

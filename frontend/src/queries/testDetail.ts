@@ -1,5 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { GetTest, GetTestMeta, GetTestRunHistory } from "../api";
+import {
+  GetTest,
+  GetTestBugs,
+  GetTestMeta,
+  GetTestRunHistory,
+  ListRequirementsWithCoverage,
+} from "../api";
 import { call } from "../lib/apiCall";
 import { keys } from "./keys";
 
@@ -39,5 +45,28 @@ export function useTestRunHistory(
     queryKey: keys.testRunHistory(profileId, testKey, reload),
     queryFn: () => call(() => GetTestRunHistory(profileId, testKey)),
     enabled: !!profileId && !!testKey,
+  });
+}
+
+// useTestBugs loads the Jira bugs linked to this Test (read-only display). It is
+// disabled for not-yet-created "NEW-" tests, matching the old load's skipBugs
+// guard (a placeholder Test has no remote bugs to fetch).
+export function useTestBugs(profileId: string, testKey: string, reload: string) {
+  return useQuery({
+    queryKey: keys.testBugs(profileId, testKey, reload),
+    queryFn: () => call(() => GetTestBugs(profileId, testKey)),
+    enabled: !!profileId && !!testKey && !testKey.startsWith("NEW-"),
+  });
+}
+
+// useRequirementCoverage loads the profile-wide requirement coverage list that
+// TestDetail uses to populate its requirement picker (read-only here). It is
+// profile-scoped, so it is NOT keyed on the test key and caches across test
+// switches; `reload` preserves the old load's version/localReloadKey refresh.
+export function useRequirementCoverage(profileId: string, reload: string) {
+  return useQuery({
+    queryKey: keys.requirementCoverage(profileId, reload),
+    queryFn: () => call(() => ListRequirementsWithCoverage(profileId)),
+    enabled: !!profileId,
   });
 }

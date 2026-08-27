@@ -20,6 +20,15 @@ export const keys = {
     [profileId, "test", key, "meta", reload] as const,
   testRunHistory: (profileId: string, key: string, reload: string) =>
     [profileId, "test", key, "runHistory", reload] as const,
+  testBugs: (profileId: string, key: string, reload: string) =>
+    [profileId, "test", key, "bugs", reload] as const,
+  // TestDetail's copy of the requirement-coverage list. Profile-scoped (not
+  // test-scoped), so it caches across test switches. Shares the
+  // [profileId, "requirements"] prefix with useRequirements so Phase 4 can
+  // invalidate both at once; the "coverage" segment keeps it a distinct entry
+  // from that view's refreshKey-bridged key.
+  requirementCoverage: (profileId: string, reload: string) =>
+    [profileId, "requirements", "coverage", reload] as const,
   pending: (profileId: string) => [profileId, "pending"] as const,
   folders: (profileId: string) => [profileId, "folders"] as const,
   preconditions: (profileId: string) => [profileId, "preconditions"] as const,

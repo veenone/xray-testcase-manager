@@ -3,7 +3,6 @@ import {
   GetTestPreconditions,
   GetTestRequirements,
   SetTestRequirements,
-  ListRequirementsWithCoverage,
   ListAllPreconditions,
   SetTestPreconditions,
   EditPreconditionField,
@@ -32,7 +31,6 @@ import {
   ReorderTestSteps,
   MoveTestToFolder,
   BrowserOpenURL,
-  GetTestBugs,
   ChangeTestType,
   errMsg,
   isDemoUrl,
@@ -42,7 +40,6 @@ import type {
   TypeConversion,
   Precondition,
   Requirement,
-  RequirementCoverage,
   ContainerMembership,
   PendingChange,
   Transition,
@@ -52,7 +49,6 @@ import type {
   Review,
   JiraStepInfo,
   TestMeta,
-  TestBug,
   TestRunEntry,
 } from "../api";
 
@@ -67,7 +63,13 @@ import { Modal } from "./Modal";
 import { formatDateTime } from "../dates";
 import { REVIEW_ENABLED, useCapabilities } from "../features";
 import { useQueryClient } from "@tanstack/react-query";
-import { useTest, useTestMeta, useTestRunHistory } from "../queries/testDetail";
+import {
+  useTest,
+  useTestBugs,
+  useTestMeta,
+  useTestRunHistory,
+  useRequirementCoverage,
+} from "../queries/testDetail";
 import { keys } from "../queries/keys";
 
 const REVIEWER_KEY = "xtm.reviewer";
@@ -192,10 +194,6 @@ export function TestDetail({
   // Cross-project precondition picker open state (RND_P_4TFINT_05-322).
   const [showCrossPrecond, setShowCrossPrecond] = useState(false);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
-  const [bugs, setBugs] = useState<TestBug[]>([]);
-  const [allRequirements, setAllRequirements] = useState<RequirementCoverage[]>(
-    [],
-  );
   const [swapKind, setSwapKind] = useState<"precondition" | "requirement" | null>(
     null,
   );
@@ -317,6 +315,12 @@ export function TestDetail({
   // never goes silently blank on a failed load.
   const displayError =
     error || (testQuery.error ? errMsg(testQuery.error) : "");
+
+  // Read-only secondary sections now come from the query cache too (Phase 2c),
+  // decoupled from the Promise.all below. `bugs` is test-scoped; the requirement
+  // coverage list is profile-scoped and caches across test switches.
+  const bugs = useTestBugs(profileId, testKey, reload).data ?? [];
+  const allRequirements = useRequirementCoverage(profileId, reload).data ?? [];
   // Guards the one-time seed of the editable draft buffers (summary, labels, …)
   // from a freshly-loaded test. Keyed on testKey:reload so a new test or a
   // reload re-seeds, but an optimistic setQueryData (same key) does NOT — which
@@ -338,27 +342,23 @@ export function TestDetail({
     const justCommitted =
       prevKeyRef.current.startsWith("NEW-") && !testKey.startsWith("NEW-");
     prevKeyRef.current = testKey;
-    const skipBugs = testKey.startsWith("NEW-");
     Promise.all([
       GetTestPreconditions(profileId, testKey, false),
       GetTestContainers(profileId, testKey),
       ListAllPreconditions(profileId),
       GetTestReview(profileId, testKey),
       GetTestRequirements(profileId, testKey),
-      ListRequirementsWithCoverage(profileId),
-      skipBugs ? Promise.resolve([]) : GetTestBugs(profileId, testKey),
     ])
-      .then(([pre, cons, allPre, rev, reqs, allReqs, testBugs]) => {
+      .then(([pre, cons, allPre, rev, reqs]) => {
         if (cancelled) return;
-        // The `test` itself and its editable draft buffers now load via useTest
-        // + the seed effect below, decoupled from this waterfall (Phase 2b).
+        // The `test` + draft buffers (Phase 2b) and the read-only `bugs` /
+        // requirement-coverage reads (Phase 2c) now load via their own queries,
+        // decoupled from this waterfall.
         setPreconditions(pre);
         setContainers(cons ?? []);
         setAllPreconditions(allPre ?? []);
         setReview(rev);
         setRequirements(reqs ?? []);
-        setAllRequirements(allReqs ?? []);
-        setBugs((testBugs as TestBug[]) ?? []);
         setReviewNote(rev?.note ?? "");
         // Transitions (Xray workflow) / all-statuses (Kiwi settable status)
         // load in their own effect below, gated on
