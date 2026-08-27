@@ -2,10 +2,11 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useTestMeta, useTestRunHistory } from "./testDetail";
+import { useTest, useTestMeta, useTestRunHistory } from "./testDetail";
 import * as api from "../api";
 
 vi.mock("../api", () => ({
+  GetTest: vi.fn(),
   GetTestMeta: vi.fn(),
   GetTestRunHistory: vi.fn(),
   errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
@@ -19,6 +20,55 @@ function makeWrapper() {
     return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
   };
 }
+
+describe("useTest", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the test on success", async () => {
+    (api.GetTest as ReturnType<typeof vi.fn>).mockResolvedValue({
+      key: "PROJ-1",
+      summary: "Login works",
+    });
+    const { result } = renderHook(() => useTest("p1", "PROJ-1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.summary).toBe("Login works");
+  });
+
+  it("surfaces load failures as an error state (not silently)", async () => {
+    (api.GetTest as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("boom"),
+    );
+    const { result } = renderHook(() => useTest("p1", "PROJ-1", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(Error);
+  });
+
+  it("does not fetch without a test key", () => {
+    const { result } = renderHook(() => useTest("p1", "", "0:0"), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetTest).not.toHaveBeenCalled();
+  });
+
+  it("refetches when the reload bridge changes", async () => {
+    (api.GetTest as ReturnType<typeof vi.fn>).mockResolvedValue({
+      key: "PROJ-1",
+    });
+    const { result, rerender } = renderHook(
+      ({ reload }: { reload: string }) => useTest("p1", "PROJ-1", reload),
+      { wrapper: makeWrapper(), initialProps: { reload: "0:0" } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.GetTest).toHaveBeenCalledTimes(1);
+    rerender({ reload: "1:0" });
+    await waitFor(() => expect(api.GetTest).toHaveBeenCalledTimes(2));
+  });
+});
 
 describe("useTestMeta", () => {
   beforeEach(() => vi.clearAllMocks());

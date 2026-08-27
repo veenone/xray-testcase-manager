@@ -12,7 +12,10 @@ export const keys = {
     [profileId, "test", key] as const,
   // `reload` folds TestDetail's version + localReloadKey counters into the key
   // as the migration bridge (a bump refetches). Phase 4 replaces it with
-  // targeted invalidation of [profileId, "test", key].
+  // targeted invalidation of [profileId, "test", key], which is the prefix of
+  // every key below, so one invalidation hits the base read, meta, and history.
+  testDetail: (profileId: string, key: string, reload: string) =>
+    [profileId, "test", key, reload] as const,
   testMeta: (profileId: string, key: string, reload: string) =>
     [profileId, "test", key, "meta", reload] as const,
   testRunHistory: (profileId: string, key: string, reload: string) =>

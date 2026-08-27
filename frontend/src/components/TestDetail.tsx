@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  GetTest,
   GetTestPreconditions,
   GetTestRequirements,
   SetTestRequirements,
@@ -67,7 +66,9 @@ import { PickPreconditionModal } from "./PickPreconditionModal";
 import { Modal } from "./Modal";
 import { formatDateTime } from "../dates";
 import { REVIEW_ENABLED, useCapabilities } from "../features";
-import { useTestMeta, useTestRunHistory } from "../queries/testDetail";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTest, useTestMeta, useTestRunHistory } from "../queries/testDetail";
+import { keys } from "../queries/keys";
 
 const REVIEWER_KEY = "xtm.reviewer";
 
@@ -184,7 +185,6 @@ export function TestDetail({
     window.addEventListener("mouseup", onUp);
   }
 
-  const [test, setTest] = useState<TestCase | null>(null);
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [allPreconditions, setAllPreconditions] = useState<Precondition[]>([]);
   const [precondLoading, setPrecondLoading] = useState(false);
@@ -303,6 +303,27 @@ export function TestDetail({
     ? errMsg(runHistoryQuery.error)
     : "";
 
+  // The `test` itself now lives in the query cache (audit A3, Phase 2b),
+  // decoupled from the Promise.all below. Optimistic edits (field save, folder
+  // move, status transition) patch it via queryClient.setQueryData on this key.
+  const queryClient = useQueryClient();
+  const testQuery = useTest(profileId, testKey, reload);
+  const test = testQuery.data ?? null;
+  // The panel is loading until BOTH the secondary Promise.all (`loading`) and
+  // the test read resolve — either finishing first must not flash empty content.
+  const panelLoading = loading || testQuery.isPending;
+  // A test-read failure used to reject the Promise.all and land in `error`; now
+  // that GetTest is its own query, surface its error the same way so the panel
+  // never goes silently blank on a failed load.
+  const displayError =
+    error || (testQuery.error ? errMsg(testQuery.error) : "");
+  // Guards the one-time seed of the editable draft buffers (summary, labels, …)
+  // from a freshly-loaded test. Keyed on testKey:reload so a new test or a
+  // reload re-seeds, but an optimistic setQueryData (same key) does NOT — which
+  // is what keeps a folder/status change from wiping the user's unsaved drafts.
+  const seededRef = useRef<string>("");
+  const seedKey = `${testKey}:${reload}`;
+
   // Tracks the previously-shown key so we can detect a just-committed new Test
   // (its key flips from a "NEW-N" placeholder to the real Jira key) and force a
   // fresh pull from Jira — the local cache still holds temporary step IDs (FR-1).
@@ -313,12 +334,12 @@ export function TestDetail({
     setLoading(true);
     setError("");
     setSaveError("");
+    setPrefillNotice(null);
     const justCommitted =
       prevKeyRef.current.startsWith("NEW-") && !testKey.startsWith("NEW-");
     prevKeyRef.current = testKey;
     const skipBugs = testKey.startsWith("NEW-");
     Promise.all([
-      GetTest(profileId, testKey),
       GetTestPreconditions(profileId, testKey, false),
       GetTestContainers(profileId, testKey),
       ListAllPreconditions(profileId),
@@ -327,30 +348,10 @@ export function TestDetail({
       ListRequirementsWithCoverage(profileId),
       skipBugs ? Promise.resolve([]) : GetTestBugs(profileId, testKey),
     ])
-      .then(([t, pre, cons, allPre, rev, reqs, allReqs, testBugs]) => {
+      .then(([pre, cons, allPre, rev, reqs, allReqs, testBugs]) => {
         if (cancelled) return;
-        // Fix 1: default cucumberType to "Scenario" for Cucumber tests with no
-        // stored type. We persist the default once so a commit won't omit it.
-        if (t.execType === "Cucumber" && (t.cucumberType ?? "") === "") {
-          setCucumberType("Scenario");
-          t = { ...t, cucumberType: "Scenario" };
-          if (!readOnly) {
-            EditTestField(profileId, testKey, "cucumber_type", "Scenario").catch(
-              (e) => console.error("default cucumberType:", errMsg(e)),
-            );
-          }
-        } else {
-          setCucumberType(t.cucumberType ?? "");
-        }
-        setTest(t);
-        setSummary(t.summary);
-        setDescription(t.description);
-        setPriority(t.priority);
-        setLabels((t.labels ?? []).join(" "));
-        setExecType(t.execType ?? "");
-        setCucumberScenario(t.cucumberScenario ?? "");
-        setGenericDefinition(t.genericDefinition ?? "");
-        setPrefillNotice(null);
+        // The `test` itself and its editable draft buffers now load via useTest
+        // + the seed effect below, decoupled from this waterfall (Phase 2b).
         setPreconditions(pre);
         setContainers(cons ?? []);
         setAllPreconditions(allPre ?? []);
@@ -410,6 +411,41 @@ export function TestDetail({
       cancelled = true;
     };
   }, [profileId, testKey, version, localReloadKey]);
+
+  // Seed the editable draft buffers from a freshly-loaded test, exactly once per
+  // load (see seededRef). This replaces the in-.then seeding that the useTest
+  // migration removed. It runs when testQuery.data arrives; the seededRef guard
+  // makes optimistic setQueryData patches (folder/status/edit) NOT re-seed, so
+  // they never clobber the user's unsaved drafts.
+  useEffect(() => {
+    const t = testQuery.data;
+    if (!t) return;
+    if (seededRef.current === seedKey) return;
+    seededRef.current = seedKey;
+    let seeded = t;
+    // Default cucumberType to "Scenario" for Cucumber tests with no stored type,
+    // reflecting it in the cache (matches the old setTest patch) and persisting
+    // it once when editable so a commit won't omit it.
+    if (t.execType === "Cucumber" && (t.cucumberType ?? "") === "") {
+      setCucumberType("Scenario");
+      seeded = { ...t, cucumberType: "Scenario" };
+      queryClient.setQueryData(keys.testDetail(profileId, testKey, reload), seeded);
+      if (!readOnly) {
+        EditTestField(profileId, testKey, "cucumber_type", "Scenario").catch(
+          (e) => console.error("default cucumberType:", errMsg(e)),
+        );
+      }
+    } else {
+      setCucumberType(t.cucumberType ?? "");
+    }
+    setSummary(seeded.summary);
+    setDescription(seeded.description);
+    setPriority(seeded.priority);
+    setLabels((seeded.labels ?? []).join(" "));
+    setExecType(seeded.execType ?? "");
+    setCucumberScenario(seeded.cucumberScenario ?? "");
+    setGenericDefinition(seeded.genericDefinition ?? "");
+  }, [testQuery.data, seedKey, profileId, testKey, reload, readOnly, queryClient]);
 
   // Status source (P6.2b): Xray (workflow) loads the transitions available
   // from the current status; Kiwi (settable) loads every valid status once
@@ -501,7 +537,10 @@ export function TestDetail({
           updated.genericDefinition = value;
           break;
       }
-      setTest(updated);
+      queryClient.setQueryData(
+        keys.testDetail(profileId, testKey, reload),
+        updated,
+      );
       onEdited();
     } catch (e) {
       setSaveError(`Save failed: ${errMsg(e)}`);
@@ -565,7 +604,10 @@ export function TestDetail({
     setSaveError("");
     try {
       await MoveTestToFolder(profileId, testKey, folderId);
-      setTest({ ...test, folderId });
+      queryClient.setQueryData(
+        keys.testDetail(profileId, testKey, reload),
+        (prev: TestCase | undefined) => (prev ? { ...prev, folderId } : prev),
+      );
       onEdited();
     } catch (e) {
       setSaveError(`Move failed: ${errMsg(e)}`);
@@ -799,7 +841,11 @@ export function TestDetail({
     setSaveError("");
     try {
       await TransitionTest(profileId, testKey, targetStatus);
-      setTest({ ...test, status: targetStatus });
+      queryClient.setQueryData(
+        keys.testDetail(profileId, testKey, reload),
+        (prev: TestCase | undefined) =>
+          prev ? { ...prev, status: targetStatus } : prev,
+      );
       // FR-4.4: optionally capture a comment for this transition.
       const comment = await prompt({
         title: `Comment for moving to "${targetStatus}"`,
@@ -903,10 +949,12 @@ export function TestDetail({
         </div>
       )}
 
-      {loading && <div className="muted detail-body">Loading…</div>}
-      {error && <div className="error-text detail-body">{error}</div>}
+      {panelLoading && <div className="muted detail-body">Loading…</div>}
+      {displayError && (
+        <div className="error-text detail-body">{displayError}</div>
+      )}
 
-      {test && !loading && (
+      {test && !panelLoading && (
         <div className="detail-body">
           {saveError && (
             <div className="error-text detail-save-error">{saveError}</div>
