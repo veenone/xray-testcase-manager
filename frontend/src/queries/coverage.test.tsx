@@ -2,7 +2,11 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useCanonicalRequirements, useCoverageDetail } from "./coverage";
+import {
+  useCanonicalRequirements,
+  useCoverageDetail,
+  useCoverageMapData,
+} from "./coverage";
 import * as api from "../api";
 
 vi.mock("../api", () => ({
@@ -12,6 +16,9 @@ vi.mock("../api", () => ({
   ListCoverageGaps: vi.fn(),
   ListCanonicalReuse: vi.fn(),
   DetectStaleCoverageMappings: vi.fn(),
+  GetCoverageProjectStatus: vi.fn(),
+  GetCoverageRelationSankey: vi.fn(),
+  ListCoverageProjects: vi.fn(),
   errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
@@ -91,5 +98,37 @@ describe("useCoverageDetail", () => {
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetParamModel).not.toHaveBeenCalled();
+  });
+});
+
+describe("useCoverageMapData", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("bundles the three map reads on success", async () => {
+    (api.GetCoverageProjectStatus as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { projectKey: "A" },
+    ]);
+    (api.GetCoverageRelationSankey as ReturnType<typeof vi.fn>).mockResolvedValue({
+      nodes: [{}],
+      links: [],
+    });
+    (api.ListCoverageProjects as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { projectKey: "A", role: "source" },
+    ]);
+    const { result } = renderHook(() => useCoverageMapData("p1"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.rows).toHaveLength(1);
+    expect(result.current.data?.sankey.nodes).toHaveLength(1);
+    expect(result.current.data?.projects).toHaveLength(1);
+  });
+
+  it("does not fetch without a profile", () => {
+    const { result } = renderHook(() => useCoverageMapData(""), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.GetCoverageProjectStatus).not.toHaveBeenCalled();
   });
 });

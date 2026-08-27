@@ -1,17 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   DetectStaleCoverageMappings,
+  GetCoverageProjectStatus,
+  GetCoverageRelationSankey,
   GetCoverageReport,
   GetParamModel,
   ListCanonicalReuse,
   ListCanonicalRequirements,
   ListCoverageGaps,
+  ListCoverageProjects,
 } from "../api";
 import type {
   CoverageGap,
   CoverageReport,
   ParamModel,
+  ProjectConfig,
+  ProjectCoverageRow,
   ReuseRow,
+  Sankey,
   StaleMapping,
 } from "../api";
 import { call } from "../lib/apiCall";
@@ -68,5 +74,36 @@ export function useCoverageDetail(
       };
     },
     enabled: !!profileId && !!canonicalKey && !!versionId,
+  });
+}
+
+// CoverageMapData bundles CoverageMap's three reads. `projects` seeds an
+// editable draft in the component.
+export interface CoverageMapData {
+  rows: ProjectCoverageRow[];
+  sankey: Sankey;
+  projects: ProjectConfig[];
+}
+
+// useCoverageMapData replaces CoverageMap's imperative loadAll Promise.all.
+// Keyed under the "canonicalRequirements" prefix so invalidateProfileData
+// refreshes it; placeholderData keeps the map visible while a refetch runs.
+export function useCoverageMapData(profileId: string) {
+  return useQuery({
+    queryKey: keys.coverageMap(profileId),
+    queryFn: async (): Promise<CoverageMapData> => {
+      const [rows, sankey, projects] = await Promise.all([
+        call(() => GetCoverageProjectStatus(profileId)),
+        call(() => GetCoverageRelationSankey(profileId)),
+        call(() => ListCoverageProjects(profileId)),
+      ]);
+      return {
+        rows: rows ?? [],
+        sankey: sankey ?? { nodes: [], links: [] },
+        projects: projects ?? [],
+      };
+    },
+    enabled: !!profileId,
+    placeholderData: (prev) => prev,
   });
 }

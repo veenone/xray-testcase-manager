@@ -1,19 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  GetCoverageProjectStatus,
-  GetCoverageRelationSankey,
-  ListCoverageProjects,
   SetCoverageProjects,
   SeedPKCS11Reference,
   SeedEUICCReference,
   errMsg,
 } from "../api";
-import type { ProjectConfig, ProjectCoverageRow, Sankey } from "../api";
+import type { ProjectConfig, Sankey } from "../api";
+import { useCoverageMapData } from "../queries/coverage";
 import { SankeyChart } from "./SankeyChart";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   isDemo?: boolean;
   demoVariant?: "pkcs" | "euicc" | "";
 }
@@ -26,36 +23,28 @@ const EMPTY_SANKEY: Sankey = { nodes: [], links: [] };
 // The map is built from canonical functions and their member requirements, so
 // it stays empty until a coverage model exists — a demo Sync alone does not
 // populate it (see the empty state, which offers the demo seed action).
-export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Props) {
-  const [rows, setRows] = useState<ProjectCoverageRow[]>([]);
-  const [sankey, setSankey] = useState<Sankey>(EMPTY_SANKEY);
+export function CoverageMap({ profileId, isDemo, demoVariant }: Props) {
+  // The map's three reads come from the query cache with a stable key (Phase
+  // 4c); a mutation refreshes it via invalidateProfileData, and save/seed
+  // refetch it directly.
+  const mapQuery = useCoverageMapData(profileId);
+  const rows = mapQuery.data?.rows ?? [];
+  const sankey = mapQuery.data?.sankey ?? EMPTY_SANKEY;
+  const loadError = mapQuery.error ? errMsg(mapQuery.error) : "";
   const [draftProjects, setDraftProjects] = useState<ProjectConfig[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
-  const loadAll = useCallback(async () => {
-    if (!profileId) return;
-    setError("");
-    setSaved(false);
-    try {
-      const [r, s, p] = await Promise.all([
-        GetCoverageProjectStatus(profileId),
-        GetCoverageRelationSankey(profileId),
-        ListCoverageProjects(profileId),
-      ]);
-      setRows(r ?? []);
-      setSankey(s ?? EMPTY_SANKEY);
-      setDraftProjects(p ?? []);
-    } catch (e) {
-      setError(errMsg(e));
-    }
-  }, [profileId]);
-
+  // Re-seed the editable project-config draft whenever the map data loads or
+  // refetches — matching the old loadAll, which re-seeded (and reset the "Saved"
+  // indicator) on every run.
   useEffect(() => {
-    void loadAll();
-  }, [loadAll, refreshKey]);
+    if (!mapQuery.data) return;
+    setDraftProjects(mapQuery.data.projects ?? []);
+    setSaved(false);
+  }, [mapQuery.data]);
 
   function updateDraft(idx: number, field: keyof ProjectConfig, value: string | number) {
     setDraftProjects((prev) =>
@@ -81,7 +70,7 @@ export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Prop
     try {
       await SetCoverageProjects(profileId, draftProjects);
       setSaved(true);
-      await loadAll();
+      await mapQuery.refetch();
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -102,7 +91,7 @@ export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Prop
       } else {
         await SeedPKCS11Reference(profileId);
       }
-      await loadAll();
+      await mapQuery.refetch();
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -112,7 +101,9 @@ export function CoverageMap({ profileId, refreshKey, isDemo, demoVariant }: Prop
 
   return (
     <div className="cov-map">
-      {error && <div className="cov-error">{error}</div>}
+      {(loadError || error) && (
+        <div className="cov-error">{loadError || error}</div>
+      )}
 
       {/* Per-project coverage panel */}
       <section className="cov-map-section">

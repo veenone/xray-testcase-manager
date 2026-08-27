@@ -42,7 +42,6 @@ import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   isDemo?: boolean;
   demoVariant?: "pkcs" | "euicc" | "";
   onChanged?: () => void;
@@ -77,11 +76,9 @@ function statusText(vc: ValueCoverage | undefined): string {
 // coverage matrix, a gap list, and a reuse view — all local-only (no Jira
 // admin). Populate a model by importing the Excel template, then map tests to
 // parameter values to drive the coverage %.
-export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onChanged }: Props) {
+export function CoverageView({ profileId, isDemo, demoVariant, onChanged }: Props) {
   // The canonical (functional-requirement) list comes from the query cache
   // (audit A3, Phase 3); a mutation refreshes it via invalidateProfileData.
-  // (refreshKey is still threaded through to the imperative CoverageMap child,
-  // which is migrated in a follow-up slice.)
   const canonQuery = useCanonicalRequirements(profileId);
   const canon = canonQuery.data ?? [];
   const listError = canonQuery.error ? errMsg(canonQuery.error) : "";
@@ -386,7 +383,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
               </button>
             </nav>
             {tab === "map" ? (
-              <CoverageMap profileId={profileId} refreshKey={refreshKey} isDemo={isDemo} demoVariant={demoVariant} />
+              <CoverageMap profileId={profileId} isDemo={isDemo} demoVariant={demoVariant} />
             ) : (
               <div className="cov-welcome">
                 <h2>Parameter-level coverage</h2>
@@ -513,7 +510,7 @@ export function CoverageView({ profileId, refreshKey, isDemo, demoVariant, onCha
             {tab === "guide" ? (
               <CoverageGuide />
             ) : tab === "map" ? (
-              <CoverageMap profileId={profileId} refreshKey={refreshKey} isDemo={isDemo} demoVariant={demoVariant} />
+              <CoverageMap profileId={profileId} isDemo={isDemo} demoVariant={demoVariant} />
             ) : tab === "versions" ? (
               <div className="cov-versions-tab">
                 <ChangeRequestsPanel

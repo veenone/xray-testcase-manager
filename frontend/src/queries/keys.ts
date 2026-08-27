@@ -81,5 +81,10 @@ export const keys = {
       canonicalKey,
       versionId,
     ] as const,
+  // CoverageMap's three-read bundle (project status / relation Sankey / project
+  // config). Nested under "canonicalRequirements" so invalidateProfileData
+  // refreshes it with the rest of the coverage surface.
+  coverageMap: (profileId: string) =>
+    [profileId, "canonicalRequirements", "map"] as const,
   containers: (profileId: string) => [profileId, "containers"] as const,
 };

@@ -1430,7 +1430,6 @@ function App() {
         <main className="content content-coverage">
           <CoverageView
             profileId={activeId}
-            refreshKey={refreshKey}
             isDemo={isDemo}
             demoVariant={demoVar}
             onChanged={() => {
