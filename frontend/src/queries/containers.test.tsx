@@ -65,4 +65,19 @@ describe("useContainers", () => {
       expect(api.ListContainers).toHaveBeenCalledTimes(2),
     );
   });
+
+  it("refetches when the container kind changes", async () => {
+    (api.ListContainers as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const { result, rerender } = renderHook(
+      ({ kind }: { kind: string }) => useContainers("p1", kind, 0),
+      { wrapper: makeWrapper(), initialProps: { kind: "testset" } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.ListContainers).toHaveBeenCalledTimes(1);
+    rerender({ kind: "testplan" });
+    await waitFor(() =>
+      expect(api.ListContainers).toHaveBeenCalledTimes(2),
+    );
+    expect(api.ListContainers).toHaveBeenLastCalledWith("p1", "testplan");
+  });
 });
