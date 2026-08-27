@@ -6,13 +6,9 @@ import {
   ListProfiles,
   SyncProfile,
   SyncProfileFull,
-  GetSyncState,
-  ListFolders,
   CreateFolder,
   RenameFolder,
   DeleteFolder,
-  ListContainers,
-  ListComponents,
   ExportProfile,
   ImportProfile,
   UpdateProfileToken,
@@ -38,11 +34,8 @@ import {
 import type {
   HealthInfo,
   Profile,
-  SyncState,
   SyncProgress,
   Folder,
-  Container,
-  Bucket,
   PendingChange,
   CommitResult,
   ConflictDecision,
@@ -63,6 +56,12 @@ import { BulkReviewModal } from "./components/BulkReviewModal";
 import { REVIEW_ENABLED, invalidateCapabilities, useCapabilities } from "./features";
 import { clearViewState } from "./lib/viewState";
 import { usePendingChanges } from "./queries/pending";
+import {
+  useSyncState,
+  useFolders,
+  useComponents,
+  useGroupContainers,
+} from "./queries/app";
 import { keys } from "./queries/keys";
 import { BulkEditModal } from "./components/BulkEditModal";
 import { BulkTransitionModal } from "./components/BulkTransitionModal";
@@ -128,7 +127,6 @@ function App() {
   // When set, the profile modal opens in edit mode for this profile (FR-5).
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
 
-  const [syncState, setSyncState] = useState<SyncState | null>(null);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [syncError, setSyncError] = useState("");
   // syncing drives the Sync button label/disabled state; it is released as soon
@@ -139,7 +137,6 @@ function App() {
   const syncRunningRef = useRef(false);
   const prevProfileRef = useRef<string>("");
 
-  const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>("");
 
   // Browse grouping (FR-11.6): group the grid by folder (the default tree),
@@ -148,9 +145,7 @@ function App() {
   const [groupBy, setGroupBy] = useState<
     "folder" | "testset" | "testplan" | "component"
   >("folder");
-  const [groupContainers, setGroupContainers] = useState<Container[]>([]);
   const [selectedContainer, setSelectedContainer] = useState<string>("");
-  const [components, setComponents] = useState<Bucket[]>([]);
   const [selectedComponent, setSelectedComponent] = useState<string>("");
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -162,6 +157,13 @@ function App() {
   const queryClient = useQueryClient();
   const pendingQuery = usePendingChanges(activeId);
   const pendingChanges = pendingQuery.data ?? [];
+  // App-shell profile-scoped loads (Phase 4b). These replace imperative fetch
+  // effects; refreshKey is still the bridge (Phase 4c retires it).
+  const syncState = useSyncState(activeId, refreshKey).data ?? null;
+  const folders = useFolders(activeId, refreshKey).data ?? [];
+  const groupContainers =
+    useGroupContainers(activeId, groupBy, refreshKey).data ?? [];
+  const components = useComponents(activeId, groupBy, refreshKey).data ?? [];
   const [showPending, setShowPending] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [lastCommitResult, setLastCommitResult] = useState<CommitResult | null>(
@@ -369,24 +371,6 @@ function App() {
 
   // Refresh the sync summary and folder tree when the active profile changes
   // or a sync finishes.
-  const loadProfileData = useCallback(() => {
-    if (!activeId) {
-      setSyncState(null);
-      setFolders([]);
-      return;
-    }
-    GetSyncState(activeId)
-      .then(setSyncState)
-      .catch((e) => console.error("sync state:", errMsg(e)));
-    ListFolders(activeId)
-      .then(setFolders)
-      .catch((e) => console.error("list folders:", errMsg(e)));
-  }, [activeId]);
-
-  useEffect(() => {
-    loadProfileData();
-  }, [loadProfileData, refreshKey]);
-
   // Clear folder + container + component + row selection when the profile changes.
   // Also drop the previous profile's view session state so it isn't inherited.
   useEffect(() => {
@@ -400,43 +384,17 @@ function App() {
     setSelectedSet(new Set());
   }, [activeId]);
 
-  // Load the containers backing the group-by sidebar when grouping by Test Set
-  // or Test Plan, and reset the chosen container whenever the dimension or
-  // profile changes so the grid doesn't keep filtering by a now-hidden key.
+  // The group-by sidebar lists (containers / components) now load via
+  // useGroupContainers / useComponents (Phase 4b). These effects keep only the
+  // side effect the queries can't express: resetting the chosen container /
+  // component whenever the dimension, profile, or refresh signal changes, so the
+  // grid doesn't keep filtering by a now-hidden key.
   useEffect(() => {
     setSelectedContainer("");
-    if (!activeId || (groupBy !== "testset" && groupBy !== "testplan")) {
-      setGroupContainers([]);
-      return;
-    }
-    let cancelled = false;
-    ListContainers(activeId, groupBy)
-      .then((cs) => {
-        if (!cancelled) setGroupContainers(cs ?? []);
-      })
-      .catch((e) => console.error("list containers:", errMsg(e)));
-    return () => {
-      cancelled = true;
-    };
   }, [activeId, groupBy, refreshKey]);
 
-  // Load the distinct components backing the group-by-component sidebar, and
-  // reset the chosen component when the dimension or profile changes.
   useEffect(() => {
     setSelectedComponent("");
-    if (!activeId || groupBy !== "component") {
-      setComponents([]);
-      return;
-    }
-    let cancelled = false;
-    ListComponents(activeId)
-      .then((cs) => {
-        if (!cancelled) setComponents(cs ?? []);
-      })
-      .catch((e) => console.error("list components:", errMsg(e)));
-    return () => {
-      cancelled = true;
-    };
   }, [activeId, groupBy, refreshKey]);
 
   // --- Test Repository folder management (FR-13.3) ---

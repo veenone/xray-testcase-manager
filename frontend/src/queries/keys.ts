@@ -45,7 +45,9 @@ export const keys = {
   requirementCoverage: (profileId: string) =>
     [profileId, "requirements", "coverage"] as const,
   pending: (profileId: string) => [profileId, "pending"] as const,
+  syncState: (profileId: string) => [profileId, "syncState"] as const,
   folders: (profileId: string) => [profileId, "folders"] as const,
+  components: (profileId: string) => [profileId, "components"] as const,
   preconditions: (profileId: string) => [profileId, "preconditions"] as const,
   requirements: (profileId: string) => [profileId, "requirements"] as const,
   testCalls: (profileId: string) => [profileId, "testCalls"] as const,
