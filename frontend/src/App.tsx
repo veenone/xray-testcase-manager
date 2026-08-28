@@ -1405,7 +1405,6 @@ function App() {
         <main className="content content-dashboard">
           <TraceabilityTabs
             profileId={activeId}
-            refreshKey={refreshKey}
             jiraUrl={activeProfile?.jiraUrl ?? ""}
           />
         </main>

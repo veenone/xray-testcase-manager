@@ -115,4 +115,12 @@ export const keys = {
     crossMembers: boolean,
   ) =>
     [profileId, "traceability", "subSankey", parentSel, crossMembers] as const,
+  traceabilityPlanContainers: (profileId: string) =>
+    [profileId, "traceability", "planContainers"] as const,
+  traceabilityExecContainers: (profileId: string) =>
+    [profileId, "traceability", "execContainers"] as const,
+  traceabilityExecutions: (profileId: string, planSel: readonly string[]) =>
+    [profileId, "traceability", "executions", planSel] as const,
+  traceabilityBugs: (profileId: string) =>
+    [profileId, "traceability", "bugs"] as const,
 };

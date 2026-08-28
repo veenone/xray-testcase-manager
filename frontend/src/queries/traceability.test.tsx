@@ -8,6 +8,10 @@ import {
   useRequirementSankey,
   usePlanExecSankey,
   useSubTaskSankey,
+  useTraceabilityPlanContainers,
+  useTraceabilityExecContainers,
+  useTraceabilityExecutions,
+  useTraceabilityBugs,
 } from "./traceability";
 import * as api from "../api";
 
@@ -17,6 +21,9 @@ vi.mock("../api", () => ({
   GetRequirementTraceability: vi.fn(),
   GetTraceabilitySankey: vi.fn(),
   GetSubTaskTraceability: vi.fn(),
+  ListContainers: vi.fn(),
+  GetExecutionsForPlans: vi.fn(),
+  ListBugsWithTests: vi.fn(),
   errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
@@ -123,5 +130,61 @@ describe("useSubTaskSankey", () => {
       ["PARENT-1"],
       false,
     );
+  });
+});
+
+describe("useTraceabilityPlanContainers / ExecContainers", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("loads test plans and test executions by kind", async () => {
+    (api.ListContainers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { key: "PLAN-1" },
+    ]);
+    const plans = renderHook(() => useTraceabilityPlanContainers("p1"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(plans.result.current.isSuccess).toBe(true));
+    expect(api.ListContainers).toHaveBeenCalledWith("p1", "testplan");
+
+    const execs = renderHook(() => useTraceabilityExecContainers("p1"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(execs.result.current.isSuccess).toBe(true));
+    expect(api.ListContainers).toHaveBeenCalledWith("p1", "testexec");
+  });
+});
+
+describe("useTraceabilityExecutions", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("passes the plan selection", async () => {
+    (api.GetExecutionsForPlans as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const { result } = renderHook(
+      () => useTraceabilityExecutions("p1", ["PLAN-1"]),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.GetExecutionsForPlans).toHaveBeenCalledWith("p1", ["PLAN-1"]);
+  });
+});
+
+describe("useTraceabilityBugs", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("fetches only while the cross-project toggle is on", async () => {
+    (api.ListBugsWithTests as ReturnType<typeof vi.fn>).mockResolvedValue([{}]);
+    const { result } = renderHook(() => useTraceabilityBugs("p1", true), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(1);
+  });
+
+  it("does not fetch when cross-project is off", () => {
+    const { result } = renderHook(() => useTraceabilityBugs("p1", false), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.ListBugsWithTests).not.toHaveBeenCalled();
   });
 });

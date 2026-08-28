@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
   useTraceabilityStats,
@@ -6,25 +6,24 @@ import {
   useRequirementSankey,
   usePlanExecSankey,
   useSubTaskSankey,
+  useTraceabilityPlanContainers,
+  useTraceabilityExecContainers,
+  useTraceabilityExecutions,
+  useTraceabilityBugs,
 } from "../queries/traceability";
 import {
   ExportTraceability,
-  ListContainers,
-  GetExecutionsForPlans,
   GetProfileProjectKey,
-  ListBugsWithTests,
   BrowserOpenURL,
   errMsg,
   isDemoUrl,
 } from "../api";
-import type { Container, BugWithTests } from "../api";
 import { SankeyChart } from "./SankeyChart";
 import { RequirementSankey } from "./RequirementSankey";
 import { MultiSelect } from "./MultiSelect";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   jiraUrl?: string;
 }
 
@@ -33,8 +32,8 @@ type Tab = "req" | "exec" | "subtask";
 // TraceabilityTabs is the dedicated Traceability view: three Sankeys
 // (requirement coverage, plan -> execution -> status, and sub-task
 // parent -> execution -> status) behind a tab bar, each with its own filters.
-// Computed entirely from the local store; recomputes on refreshKey.
-export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
+// Computed entirely from the local store; refreshed via invalidateProfileData.
+export function TraceabilityTabs({ profileId, jiraUrl }: Props) {
   const [tab, setTab] = useViewState<Tab>(profileId, "traceability", "tab", "exec");
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState("");
@@ -44,26 +43,21 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   const [reqSel, setReqSel] = useViewState<string[]>(profileId, "traceability", "reqSel", []);
 
   // Plan/Execution traceability + cross-project bugs.
-  const [plans, setPlans] = useState<Container[]>([]);
-  const [execs, setExecs] = useState<Container[]>([]);
   const [planSel, setPlanSel] = useViewState<string[]>(profileId, "traceability", "planSel", []);
   const [execSel, setExecSel] = useViewState<string[]>(profileId, "traceability", "execSel", []);
   const [crossProject, setCrossProject] = useViewState(profileId, "traceability", "crossProject", false);
   const [projectKey, setProjectKey] = useState("");
-  const [crossBugs, setCrossBugs] = useState<BugWithTests[]>([]);
 
   // Sub-task (parent) traceability.
-  const [parents, setParents] = useState<{ key: string; summary: string }[]>([]);
   const [parentSel, setParentSel] = useViewState<string[]>(profileId, "traceability", "parentSel", []);
   // Include cross-project members: when on, sub-task executions whose member
   // Tests live in another project (cached locally) are drawn in the flow.
   // Distinct from the Execution tab's "Cross-project only" filter above.
   const [crossMembers, setCrossMembers] = useViewState(profileId, "traceability", "crossMembers", true);
 
-  // Read-only loads now come from the query cache with stable keys (Phase 4c),
-  // refreshed by invalidateProfileData. The *err vars keep their old names so
-  // the render sites are untouched. (The plan/exec/parent option loads with
-  // their selection cascades stay imperative for a follow-up slice.)
+  // The loads come from the query cache with stable keys (Phase 4c), refreshed
+  // by invalidateProfileData. The *err vars keep their old names so the render
+  // sites are untouched.
   const statsQuery = useTraceabilityStats(profileId);
   const stats = statsQuery.data ?? null;
   const statsErr = statsQuery.error ? errMsg(statsQuery.error) : "";
@@ -77,6 +71,32 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   const subSankeyQuery = useSubTaskSankey(profileId, parentSel, crossMembers);
   const subSankey = subSankeyQuery.data ?? null;
   const subSankeyErr = subSankeyQuery.error ? errMsg(subSankeyQuery.error) : "";
+
+  // Option lists that used to be imperative cascade effects. The queries load
+  // the raw containers; the derived option sets (distinct parents, filtered
+  // cross-project bugs) and the selection resets/prune stay in the component.
+  const plans = useTraceabilityPlanContainers(profileId).data ?? [];
+  const execContainersQuery = useTraceabilityExecContainers(profileId);
+  const parents = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const c of execContainersQuery.data ?? []) {
+      if (c.parentKey && !byKey.has(c.parentKey)) {
+        byKey.set(c.parentKey, c.parentSummary ?? "");
+      }
+    }
+    return Array.from(byKey.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, summary]) => ({ key, summary }));
+  }, [execContainersQuery.data]);
+  const execsQuery = useTraceabilityExecutions(profileId, planSel);
+  const execs = execsQuery.data ?? [];
+  const bugsQuery = useTraceabilityBugs(profileId, crossProject);
+  const crossBugs = useMemo(() => {
+    const pk = projectKey.trim();
+    return (bugsQuery.data ?? []).filter(
+      (b) => pk && b.projectKey && b.projectKey !== pk,
+    );
+  }, [bugsQuery.data, projectKey]);
 
   useEffect(() => {
     if (!profileId) return;
@@ -93,83 +113,22 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
     };
   }, [profileId]);
 
-  // Test Plan options.
+  // Reset the plan/parent selections when the profile changes — the old cascade
+  // effects cleared them on (re)load of the option lists.
   useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
     setPlanSel([]);
-    ListContainers(profileId, "testplan")
-      .then((tp) => {
-        if (!cancelled) setPlans(tp ?? []);
-      })
-      .catch((e) => console.error("list plans:", errMsg(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
-
-  // Parent options: distinct parent keys of the synced sub-task executions.
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
     setParentSel([]);
-    ListContainers(profileId, "testexec")
-      .then((te) => {
-        if (cancelled) return;
-        const byKey = new Map<string, string>();
-        for (const c of te ?? []) {
-          if (c.parentKey && !byKey.has(c.parentKey)) {
-            byKey.set(c.parentKey, c.parentSummary ?? "");
-          }
-        }
-        const ps = Array.from(byKey.entries())
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, summary]) => ({ key, summary }));
-        setParents(ps);
-      })
-      .catch((e) => console.error("list executions:", errMsg(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId]);
 
-  // Execution options cascade from the selected plans; prune stale execSel.
+  // Prune the execution selection to the options that cascade from the current
+  // plan selection, once they load (as the old executions effect did).
   useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    GetExecutionsForPlans(profileId, planSel)
-      .then((te) => {
-        if (cancelled) return;
-        const opts = te ?? [];
-        setExecs(opts);
-        setExecSel((cur) => cur.filter((k) => opts.some((c) => c.key === k)));
-      })
-      .catch((e) => console.error("executions for plans:", errMsg(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey, planSel]);
-
-  // Cross-project bugs (only when the toggle is on).
-  useEffect(() => {
-    if (!profileId || !crossProject) {
-      setCrossBugs([]);
-      return;
-    }
-    let cancelled = false;
-    ListBugsWithTests(profileId)
-      .then((bs) => {
-        if (cancelled) return;
-        const pk = projectKey.trim();
-        setCrossBugs(
-          (bs ?? []).filter((b) => pk && b.projectKey && b.projectKey !== pk),
-        );
-      })
-      .catch((e) => console.error("cross-project bugs:", errMsg(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey, crossProject, projectKey]);
+    const opts = execsQuery.data;
+    if (!opts) return;
+    setExecSel((cur) => cur.filter((k) => opts.some((c) => c.key === k)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [execsQuery.data]);
 
   // (The three Sankeys now load via useRequirementSankey / usePlanExecSankey /
   // useSubTaskSankey above.)
