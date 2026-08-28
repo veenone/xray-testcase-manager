@@ -26,10 +26,9 @@ describe("useStatistics", () => {
     (api.GetStatistics as ReturnType<typeof vi.fn>).mockResolvedValue({
       total: 5,
     });
-    const { result } = renderHook(
-      () => useStatistics("p1", "", "", "", "0:0"),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStatistics("p1", "", "", ""), {
+      wrapper: makeWrapper(),
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.total).toBe(5);
   });
@@ -38,35 +37,33 @@ describe("useStatistics", () => {
     (api.GetStatistics as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("boom"),
     );
-    const { result } = renderHook(
-      () => useStatistics("p1", "", "", "", "0:0"),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStatistics("p1", "", "", ""), {
+      wrapper: makeWrapper(),
+    });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toBeInstanceOf(Error);
   });
 
   it("does not fetch without profileId", () => {
-    const { result } = renderHook(
-      () => useStatistics("", "", "", "", "0:0"),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStatistics("", "", "", ""), {
+      wrapper: makeWrapper(),
+    });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.GetStatistics).not.toHaveBeenCalled();
   });
 
-  it("refetches when the bridge changes (call-count 1 -> 2)", async () => {
+  it("re-fetches for a different filter combination (separate key)", async () => {
     (api.GetStatistics as ReturnType<typeof vi.fn>).mockResolvedValue({
       total: 0,
     });
     const { result, rerender } = renderHook(
-      ({ bridge }: { bridge: string }) =>
-        useStatistics("p1", "", "", "", bridge),
-      { wrapper: makeWrapper(), initialProps: { bridge: "0:0" } },
+      ({ folder }: { folder: string }) => useStatistics("p1", folder, "", ""),
+      { wrapper: makeWrapper(), initialProps: { folder: "" } },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(api.GetStatistics).toHaveBeenCalledTimes(1);
-    rerender({ bridge: "1:0" });
+    rerender({ folder: "A" });
     await waitFor(() => expect(api.GetStatistics).toHaveBeenCalledTimes(2));
+    expect(api.GetStatistics).toHaveBeenLastCalledWith("p1", "A", "", "");
   });
 });

@@ -1399,7 +1399,7 @@ function App() {
         </main>
       ) : view === "dashboard" ? (
         <main className="content content-dashboard">
-          <Dashboard profileId={activeId} refreshKey={refreshKey} onOpenDuplicates={() => setView("duplicates")} />
+          <Dashboard profileId={activeId} onOpenDuplicates={() => setView("duplicates")} />
         </main>
       ) : view === "traceability" ? (
         <main className="content content-dashboard">

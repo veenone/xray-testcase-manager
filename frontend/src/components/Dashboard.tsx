@@ -14,22 +14,15 @@ import { useStatistics } from "../queries/statistics";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   onOpenDuplicates?: () => void;
 }
 
 // Dashboard renders the per-profile statistics view (FR-9), computed entirely
 // from the local store. It recomputes whenever the profile changes or a sync /
-// commit bumps refreshKey, so the numbers track the cache without a Jira call.
-// Optional Folder / Component / Status filters narrow every panel to the
-// matching subset of Tests (RND_P_4TFINT_05-228).
-export function Dashboard({
-  profileId,
-  refreshKey,
-  onOpenDuplicates,
-}: Props) {
-  // Local refresh: recompute the dashboard from the cache without a full sync (#7).
-  const [nonce, setNonce] = useState(0);
+// commit invalidates the stats query, so the numbers track the cache without a
+// Jira call. Optional Folder / Component / Status filters narrow every panel to
+// the matching subset of Tests (RND_P_4TFINT_05-228).
+export function Dashboard({ profileId, onOpenDuplicates }: Props) {
   // XLSX export state (RND_P_4TFINT_05): mirror TraceabilityTabs' notice pattern.
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState("");
@@ -69,10 +62,7 @@ export function Dashboard({
     };
   }, [profileId]);
 
-  // bridge folds refreshKey + nonce (the manual-refresh counters) into the
-  // query key as the migration bridge (Phase 4 -> targeted invalidation).
-  const bridge = `${refreshKey}:${nonce}`;
-  const statsQuery = useStatistics(profileId, folder, component, status, bridge);
+  const statsQuery = useStatistics(profileId, folder, component, status);
   const stats = statsQuery.data ?? null;
   const loading = statsQuery.isFetching;
   const error = statsQuery.error ? errMsg(statsQuery.error) : "";
@@ -188,7 +178,7 @@ export function Dashboard({
           </button>
           <button
             className="btn btn-primary"
-            onClick={() => setNonce((n) => n + 1)}
+            onClick={() => void statsQuery.refetch()}
             title="Recompute the dashboard from the local cache"
           >
             ↻ Refresh
