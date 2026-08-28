@@ -357,10 +357,9 @@ function App() {
     return m;
   }, [pendingQuery.data]);
 
-  // reloadPending now invalidates the pending query instead of manually
-  // refetching, so the existing ~35 call sites keep working during the
-  // migration (the strangler bridge). The query itself loads on mount and when
-  // activeId changes, so no refreshKey-driven effect is needed.
+  // reloadPending invalidates the pending query rather than manually refetching,
+  // so the ~35 call sites stay a one-liner. The query loads on mount and on
+  // activeId change, so no dedicated load effect is needed.
   const reloadPending = useCallback(() => {
     if (activeId) {
       queryClient.invalidateQueries({ queryKey: keys.pending(activeId) });
