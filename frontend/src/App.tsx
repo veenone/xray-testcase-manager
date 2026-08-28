@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import "./App.css";
 import {
   Health,
-  ListProfiles,
   SyncProfile,
   SyncProfileFull,
   CreateFolder,
@@ -12,9 +11,6 @@ import {
   ExportProfile,
   ImportProfile,
   UpdateProfileToken,
-  GetSettings,
-  SetDefaultProfile,
-  SetTheme,
   SetShowCoverage,
   ResolveConflictOverride,
   ResolveConflictKeepRemote,
@@ -55,6 +51,7 @@ import { PendingChangesModal } from "./components/PendingChangesModal";
 import { BulkReviewModal } from "./components/BulkReviewModal";
 import { REVIEW_ENABLED, invalidateCapabilities, useCapabilities } from "./features";
 import { clearViewState } from "./lib/viewState";
+import { useProfile } from "./contexts/ProfileContext";
 import { usePendingChanges } from "./queries/pending";
 import {
   useSyncState,
@@ -92,32 +89,34 @@ import { useNotice } from "./components/useNotice";
 import { useTour } from "./tour/useTour";
 import { TOUR_VERSION } from "./tour/steps";
 
-// applyTheme resolves the preference ("system" follows the OS) and sets the
-// data-theme attribute the CSS tokens key off (FR-12.2).
-function applyTheme(theme: string) {
-  const dark =
-    theme === "dark" ||
-    (theme === "system" &&
-      window.matchMedia?.("(prefers-color-scheme: dark)").matches);
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-}
-
 function App() {
   const [health, setHealth] = useState<HealthInfo | null>(null);
 
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [activeId, setActiveId] = useState<string>("");
-  const [defaultProfileId, setDefaultProfileId] = useState<string>("");
-  const [theme, setThemeState] = useState<string>("light");
-  // The Coverage module is opt-in; its top-nav tab is hidden until enabled.
-  const [showCoverage, setShowCoverage] = useState(false);
+  // Active-workspace state now lives in ProfileContext (spec §5.1). setTheme /
+  // setDefault keep their former App-local names (chooseTheme / setDefaultFor)
+  // so existing call sites are unchanged.
+  const {
+    profiles,
+    setProfiles,
+    activeId,
+    setActiveId,
+    defaultProfileId,
+    setDefaultProfileId,
+    theme,
+    showCoverage,
+    setShowCoverage,
+    loadingProfiles,
+    activeProfile,
+    setTheme: chooseTheme,
+    setDefault: setDefaultFor,
+    reloadProfiles,
+  } = useProfile();
   // Which onboarding tour version this user has already been through.
   // TOUR_VERSION means "seen"; anything lower means it is still owed.
   const [tourSeenVersion, setTourSeenVersion] = useState(TOUR_VERSION);
   const { prompt } = usePrompt();
   const { confirm } = useConfirm();
   const { notice } = useNotice();
-  const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showProfiles, setShowProfiles] = useState(false);
   // Connections manager for the active workspace (P6.3 B6a) — add/edit/delete
@@ -272,30 +271,15 @@ function App() {
     };
   }, []);
 
-  // Load profiles once the backend reports healthy.
+  // Load profiles once the backend reports healthy. ProfileContext owns the
+  // profile/settings state; App keeps only the tour version (onboarding state)
+  // from the returned Settings.
   useEffect(() => {
     if (!health || !health.ok) return;
-    setLoadingProfiles(true);
-    Promise.all([ListProfiles(), GetSettings()])
-      .then(([ps, s]) => {
-        setProfiles(ps);
-        setDefaultProfileId(s.defaultProfileId ?? "");
-        const t = s.theme || "light";
-        setThemeState(t);
-        applyTheme(t);
-        setShowCoverage(!!s.showCoverage);
-        setTourSeenVersion(s.tourSeenVersion ?? 0);
-        if (ps.length > 0) {
-          const def =
-            s.defaultProfileId && ps.some((p) => p.id === s.defaultProfileId)
-              ? s.defaultProfileId
-              : ps[0].id;
-          setActiveId(def);
-        }
-      })
-      .catch((e) => console.error("load profiles:", errMsg(e)))
-      .finally(() => setLoadingProfiles(false));
-  }, [health]);
+    reloadProfiles().then((s) => {
+      if (s) setTourSeenVersion(s.tourSeenVersion ?? 0);
+    });
+  }, [health, reloadProfiles]);
 
   // Subscribe to sync progress events for the lifetime of the app. The Sync
   // button stays disabled for the WHOLE sync (tests + folders + preconditions +
@@ -604,17 +588,6 @@ function App() {
     return () => unsubs.forEach((u) => u && u());
   }, []);
 
-  // chooseTheme applies + persists a colour-theme preference (FR-12.2).
-  async function chooseTheme(next: string) {
-    setThemeState(next);
-    applyTheme(next);
-    try {
-      await SetTheme(next);
-    } catch (e) {
-      console.error("set theme:", errMsg(e));
-    }
-  }
-
   // toggleCoverage shows/hides the opt-in Coverage tab and persists it. Leaving
   // the Coverage view when hiding so a hidden view isn't left on screen.
   async function toggleCoverage() {
@@ -663,18 +636,6 @@ function App() {
     } catch (e) {
       await notice({ title: "Import failed", message: errMsg(e), tone: "error" });
       return null;
-    }
-  }
-
-  // setDefaultFor toggles the launch-default for a specific profile (clears it
-  // if it's already the default), used by the Manage Profiles modal.
-  async function setDefaultFor(id: string) {
-    const next = defaultProfileId === id ? "" : id;
-    try {
-      await SetDefaultProfile(next);
-      setDefaultProfileId(next);
-    } catch (e) {
-      console.error("set default profile:", errMsg(e));
     }
   }
 
@@ -953,7 +914,6 @@ function App() {
     setLastCommitResult(null);
   }
 
-  const activeProfile = profiles.find((p) => p.id === activeId);
   const isDemo = isDemoUrl(activeProfile?.jiraUrl);
   const demoVar = demoVariant(activeProfile?.jiraUrl);
   // Gates the Xray-shaped UI below to what the active profile's backend

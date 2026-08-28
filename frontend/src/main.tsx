@@ -5,6 +5,7 @@ import "./style.css";
 import App from "./App";
 import { queryClient } from "./lib/queryClient";
 import { DialogProvider } from "./contexts/DialogContext";
+import { ProfileProvider } from "./contexts/ProfileContext";
 
 const container = document.getElementById("root");
 
@@ -14,7 +15,9 @@ root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <DialogProvider>
-        <App />
+        <ProfileProvider>
+          <App />
+        </ProfileProvider>
       </DialogProvider>
     </QueryClientProvider>
   </React.StrictMode>,
