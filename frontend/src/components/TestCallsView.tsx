@@ -8,7 +8,6 @@ import { useTestCallLinks } from "../queries/testCalls";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   onChanged?: () => void;
 }
 
@@ -91,7 +90,7 @@ function isCrossProjectCall(l: TestCallLink): boolean {
 // TestCallsView shows the "call test" relationships across the project: which
 // tests call which (#2 follow-up). Grouped by caller, broken calls flagged, and
 // cyclic calls highlighted. Clicking a test opens its full detail.
-export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
+export function TestCallsView({ profileId, onChanged }: Props) {
   const [detailKey, setDetailKey] = useViewState(profileId, "testcalls", "detailKey", "");
   const [detailVersion, setDetailVersion] = useState(0);
   const [page, setPage] = useViewState(profileId, "testcalls", "page", 0);
@@ -107,9 +106,10 @@ export function TestCallsView({ profileId, refreshKey, onChanged }: Props) {
   // Bumped after a partial sync to re-pull the (now refreshed) call links.
   const [reload, setReload] = useState(0);
 
-  // bridge folds the three reload counters into the query key (migration
-  // bridge — Phase 4 replaces this with targeted invalidation).
-  const bridge = `${refreshKey}:${detailVersion}:${reload}`;
+  // The global refresh (sync/commit) now comes through invalidateProfileData
+  // (Phase 4c). `bridge` keeps only TestCallsView's own local counters — the
+  // detail-panel version and the post-partial-sync reload — folded into the key.
+  const bridge = `${detailVersion}:${reload}`;
   const linksQuery = useTestCallLinks(profileId, bridge);
   const links = linksQuery.data ?? [];
   const loading = linksQuery.isFetching;

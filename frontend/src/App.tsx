@@ -1390,7 +1390,6 @@ function App() {
         <main className="content content-dashboard">
           <TestCallsView
             profileId={activeId}
-            refreshKey={refreshKey}
             onChanged={() => {
               refreshProfileData();
               reloadPending();

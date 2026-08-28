@@ -6,11 +6,10 @@ import { keys } from "./keys";
 // useTestCallLinks loads TestCallsView's flat call-link list (audit A3
 // follow-up). It replaces the manual fetch effect + links/loading/error state.
 //
-// `bridge` is the strangler bridge: during the migration, TestCallsView still
-// folds its three reload counters (refreshKey, detailVersion, reload) into a
-// single string, so a bump to any of them changes the query key and refetches.
-// Phase 4 replaces this with targeted invalidation of keys.testCalls(profileId)
-// and drops the parameter.
+// The global refresh now comes through invalidateProfileData (which invalidates
+// keys.testCalls). `bridge` carries only TestCallsView's LOCAL counters
+// (detailVersion + reload) folded into the key, so its detail-panel edits and
+// post-partial-sync reload refetch the list without a global bump.
 //
 // placeholderData keeps the previous list visible while the next one loads,
 // matching the old "only replace the list on success" behaviour.
