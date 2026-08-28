@@ -12,7 +12,7 @@ import {
   errMsg,
   isDemoUrl,
 } from "../api";
-import type { BugWithTests, BugTest, TestRunEntry, Container, BugDetail } from "../api";
+import type { BugWithTests, TestRunEntry, Container, BugDetail } from "../api";
 import { formatDateTime } from "../dates";
 import { Pager } from "./Pager";
 import { SortControl } from "./SortControl";
