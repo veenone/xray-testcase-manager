@@ -106,6 +106,11 @@ export function useTraceabilityExecutions(
     queryKey: keys.traceabilityExecutions(profileId, planSel),
     queryFn: () => call(() => GetExecutionsForPlans(profileId, planSel)),
     enabled: !!profileId,
+    // Keep the previous executions visible while a new plan selection loads, so
+    // the dropdown count doesn't blink to 0 mid-cascade. The prune effect keys
+    // on the query data ref, which placeholderData holds stable during the
+    // refetch, so it still prunes only once the new options land.
+    placeholderData: (prev) => prev,
   });
 }
 
