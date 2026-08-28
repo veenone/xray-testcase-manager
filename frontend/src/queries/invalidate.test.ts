@@ -26,6 +26,7 @@ describe("invalidateProfileData", () => {
         "stats",
         "canonicalRequirements",
         "testCalls",
+        "traceability",
       ]),
     );
     // Every key is scoped to the profile.

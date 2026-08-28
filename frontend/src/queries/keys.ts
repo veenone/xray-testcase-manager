@@ -87,4 +87,32 @@ export const keys = {
   coverageMap: (profileId: string) =>
     [profileId, "canonicalRequirements", "map"] as const,
   containers: (profileId: string) => [profileId, "containers"] as const,
+  // TraceabilityTabs' reads, all under one prefix so invalidateProfileData
+  // refreshes the whole view.
+  traceabilityStats: (profileId: string) =>
+    [profileId, "traceability", "stats"] as const,
+  traceabilityReqOptions: (profileId: string) =>
+    [profileId, "traceability", "reqOptions"] as const,
+  requirementSankey: (profileId: string, reqSel: readonly string[]) =>
+    [profileId, "traceability", "reqSankey", reqSel] as const,
+  planExecSankey: (
+    profileId: string,
+    planSel: readonly string[],
+    execSel: readonly string[],
+    crossProject: boolean,
+  ) =>
+    [
+      profileId,
+      "traceability",
+      "sankey",
+      planSel,
+      execSel,
+      crossProject,
+    ] as const,
+  subTaskSankey: (
+    profileId: string,
+    parentSel: readonly string[],
+    crossMembers: boolean,
+  ) =>
+    [profileId, "traceability", "subSankey", parentSel, crossMembers] as const,
 };

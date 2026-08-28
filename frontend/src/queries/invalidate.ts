@@ -31,6 +31,8 @@ export function invalidateProfileData(qc: QueryClient, profileId: string) {
     keys.stats(profileId),
     keys.canonicalRequirements(profileId),
     keys.testCalls(profileId),
+    // TraceabilityTabs' reads all share the [profileId, "traceability"] prefix.
+    [profileId, "traceability"] as const,
   ];
   for (const queryKey of families) {
     qc.invalidateQueries({ queryKey });

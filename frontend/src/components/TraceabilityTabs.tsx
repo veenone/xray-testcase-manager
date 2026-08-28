@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
-  GetStatistics,
-  GetTraceabilitySankey,
-  GetRequirementTraceability,
-  GetSubTaskTraceability,
+  useTraceabilityStats,
+  useTraceabilityReqOptions,
+  useRequirementSankey,
+  usePlanExecSankey,
+  useSubTaskSankey,
+} from "../queries/traceability";
+import {
   ExportTraceability,
-  ListRequirementsWithCoverage,
   ListContainers,
   GetExecutionsForPlans,
   GetProfileProjectKey,
@@ -15,13 +17,7 @@ import {
   errMsg,
   isDemoUrl,
 } from "../api";
-import type {
-  Statistics,
-  Sankey,
-  Container,
-  RequirementCoverage,
-  BugWithTests,
-} from "../api";
+import type { Sankey, Container, BugWithTests } from "../api";
 import { SankeyChart } from "./SankeyChart";
 import { RequirementSankey } from "./RequirementSankey";
 import { MultiSelect } from "./MultiSelect";
@@ -40,21 +36,14 @@ type Tab = "req" | "exec" | "subtask";
 // Computed entirely from the local store; recomputes on refreshKey.
 export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   const [tab, setTab] = useViewState<Tab>(profileId, "traceability", "tab", "exec");
-  const [stats, setStats] = useState<Statistics | null>(null);
-  const [statsErr, setStatsErr] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState("");
   const [exportErr, setExportErr] = useState("");
 
   // Requirement traceability.
-  const [reqSankey, setReqSankey] = useState<Sankey | null>(null);
-  const [reqSankeyErr, setReqSankeyErr] = useState("");
   const [reqSel, setReqSel] = useViewState<string[]>(profileId, "traceability", "reqSel", []);
-  const [reqOptions, setReqOptions] = useState<RequirementCoverage[]>([]);
 
   // Plan/Execution traceability + cross-project bugs.
-  const [sankey, setSankey] = useState<Sankey | null>(null);
-  const [sankeyErr, setSankeyErr] = useState("");
   const [plans, setPlans] = useState<Container[]>([]);
   const [execs, setExecs] = useState<Container[]>([]);
   const [planSel, setPlanSel] = useViewState<string[]>(profileId, "traceability", "planSel", []);
@@ -64,8 +53,6 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   const [crossBugs, setCrossBugs] = useState<BugWithTests[]>([]);
 
   // Sub-task (parent) traceability.
-  const [subSankey, setSubSankey] = useState<Sankey | null>(null);
-  const [subSankeyErr, setSubSankeyErr] = useState("");
   const [parents, setParents] = useState<{ key: string; summary: string }[]>([]);
   const [parentSel, setParentSel] = useViewState<string[]>(profileId, "traceability", "parentSel", []);
   // Include cross-project members: when on, sub-task executions whose member
@@ -73,21 +60,23 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
   // Distinct from the Execution tab's "Cross-project only" filter above.
   const [crossMembers, setCrossMembers] = useViewState(profileId, "traceability", "crossMembers", true);
 
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setStatsErr("");
-    GetStatistics(profileId, "", "", "")
-      .then((s) => {
-        if (!cancelled) setStats(s);
-      })
-      .catch((e) => {
-        if (!cancelled) setStatsErr(errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
+  // Read-only loads now come from the query cache with stable keys (Phase 4c),
+  // refreshed by invalidateProfileData. The *err vars keep their old names so
+  // the render sites are untouched. (The plan/exec/parent option loads with
+  // their selection cascades stay imperative for a follow-up slice.)
+  const statsQuery = useTraceabilityStats(profileId);
+  const stats = statsQuery.data ?? null;
+  const statsErr = statsQuery.error ? errMsg(statsQuery.error) : "";
+  const reqOptions = useTraceabilityReqOptions(profileId).data ?? [];
+  const reqSankeyQuery = useRequirementSankey(profileId, reqSel);
+  const reqSankey = reqSankeyQuery.data ?? null;
+  const reqSankeyErr = reqSankeyQuery.error ? errMsg(reqSankeyQuery.error) : "";
+  const sankeyQuery = usePlanExecSankey(profileId, planSel, execSel, crossProject);
+  const sankey = sankeyQuery.data ?? null;
+  const sankeyErr = sankeyQuery.error ? errMsg(sankeyQuery.error) : "";
+  const subSankeyQuery = useSubTaskSankey(profileId, parentSel, crossMembers);
+  const subSankey = subSankeyQuery.data ?? null;
+  const subSankeyErr = subSankeyQuery.error ? errMsg(subSankeyQuery.error) : "";
 
   useEffect(() => {
     if (!profileId) return;
@@ -103,22 +92,6 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
       cancelled = true;
     };
   }, [profileId]);
-
-  // Requirement filter options.
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    ListRequirementsWithCoverage(profileId)
-      .then((rs) => {
-        if (!cancelled) setReqOptions(rs ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setReqOptions([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
 
   // Test Plan options.
   useEffect(() => {
@@ -198,62 +171,8 @@ export function TraceabilityTabs({ profileId, refreshKey, jiraUrl }: Props) {
     };
   }, [profileId, refreshKey, crossProject, projectKey]);
 
-  // Requirement Sankey.
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setReqSankeyErr("");
-    GetRequirementTraceability(profileId, reqSel)
-      .then((sk) => {
-        if (!cancelled) setReqSankey(sk);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setReqSankeyErr(errMsg(e));
-        console.error("requirement traceability:", errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey, reqSel]);
-
-  // Plan/Execution Sankey.
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setSankeyErr("");
-    GetTraceabilitySankey(profileId, planSel, execSel, crossProject)
-      .then((sk) => {
-        if (!cancelled) setSankey(sk);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setSankeyErr(errMsg(e));
-        console.error("traceability:", errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey, planSel, execSel, crossProject]);
-
-  // Sub-task (parent) Sankey.
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setSubSankeyErr("");
-    GetSubTaskTraceability(profileId, parentSel, crossMembers)
-      .then((sk) => {
-        if (!cancelled) setSubSankey(sk);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setSubSankeyErr(errMsg(e));
-        console.error("sub-task traceability:", errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey, parentSel, crossMembers]);
+  // (The three Sankeys now load via useRequirementSankey / usePlanExecSankey /
+  // useSubTaskSankey above.)
 
   // Export the active tab's diagram (Flow + Table sheets) honouring its current
   // filters. The kind selects which filter slices the backend uses.
