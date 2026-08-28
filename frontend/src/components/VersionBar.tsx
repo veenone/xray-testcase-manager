@@ -46,7 +46,7 @@ export function VersionBar({
   const [showStatus, setShowStatus] = useState(false);
   const [editStatus, setEditStatus] = useState(value ? (versions.find((v) => v.id === value)?.status ?? "planning") : "planning");
 
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
 
   const current = versions.find((v) => v.id === value);
 
@@ -168,7 +168,6 @@ export function VersionBar({
           </span>
         )}
         {error && <span className="cov-error">{error}</span>}
-        {confirmUI}
       </div>
     );
   }
@@ -290,7 +289,6 @@ export function VersionBar({
       )}
 
       {error && <div className="cov-error" style={{ marginTop: 4 }}>{error}</div>}
-      {confirmUI}
     </div>
   );
 }

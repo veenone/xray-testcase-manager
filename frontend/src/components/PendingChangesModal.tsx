@@ -42,7 +42,7 @@ export function PendingChangesModal({
   committing,
   lastResult,
 }: Props) {
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
   // Per-field resolution choice, keyed by the pending-change id. Defaults to
   // "mine" until the user picks otherwise.
   const [choices, setChoices] = useState<Record<number, "mine" | "theirs">>({});
@@ -452,7 +452,6 @@ export function PendingChangesModal({
           </button>
         </div>
     </Modal>
-    {confirmUI}
     </>
   );
 }

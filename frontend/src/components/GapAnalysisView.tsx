@@ -117,7 +117,7 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
   const [selRef, setSelRef] = useState<Set<number>>(new Set());
   const [selProj, setSelProj] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
-  const { notice, noticeUI } = useNotice();
+  const { notice } = useNotice();
 
   const canRun = !!targetFile && (refSource === "project" || !!refFile);
   const isThreeWay = refSource === "file" && threeWay;
@@ -461,7 +461,6 @@ export function GapAnalysisView({ profileId, onChanged }: Props) {
           </>
         )}
       </div>
-      {noticeUI}
     </div>
   );
 }

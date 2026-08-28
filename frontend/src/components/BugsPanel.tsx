@@ -80,7 +80,7 @@ export function BugsPanel({ profileId, jiraUrl, onOpenTest }: Props) {
   const [testFilter, setTestFilter] = useViewState<"all" | "with" | "without">(profileId, "bugs", "testFilter", "all");
   const [syncing, setSyncing] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const { prompt, promptUI } = usePrompt();
+  const { prompt } = usePrompt();
 
   // Extended bug detail (description + defect custom fields) fetched lazily
   // when a bug is selected, bypassed for NEW- keys.
@@ -509,7 +509,6 @@ export function BugsPanel({ profileId, jiraUrl, onOpenTest }: Props) {
 
   return (
     <div className={`bugs-md${sidebarDetail ? " bugs-md-with-detail" : ""}`}>
-      {promptUI}
       <div className="bugs-md-list">
         <div className="bugs-md-head">
           <span className="bugs-md-title">Bugs</span>

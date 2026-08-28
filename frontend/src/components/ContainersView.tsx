@@ -164,9 +164,9 @@ export function ContainersView({
     "cardCollapsed",
     false,
   );
-  const { prompt, promptUI } = usePrompt();
-  const { confirm, confirmUI } = useConfirm();
-  const { notice, noticeUI } = useNotice();
+  const { prompt } = usePrompt();
+  const { confirm } = useConfirm();
+  const { notice } = useNotice();
 
   // In-view read-only test detail sidebar for Test Execution member rows:
   // detailKey is session-persisted so the panel restores on returning to this
@@ -1711,9 +1711,6 @@ export function ContainersView({
         />
       )}
 
-      {promptUI}
-      {confirmUI}
-      {noticeUI}
       </div>
 
       {detailKey && mode !== "bugs" && (

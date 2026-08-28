@@ -312,8 +312,8 @@ export function TestTable({
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [activeView, setActiveView] = useState("");
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
-  const { prompt, promptUI } = usePrompt();
-  const { notice, noticeUI } = useNotice();
+  const { prompt } = usePrompt();
+  const { notice } = useNotice();
 
   const [columns, setColumns] = useState<ColState[]>(loadColumns);
   const [showColumns, setShowColumns] = useState(false);
@@ -954,8 +954,6 @@ export function TestTable({
             : `${from.toLocaleString()}–${to.toLocaleString()} of ${page.total.toLocaleString()}`}
         </span>
       </div>
-      {promptUI}
-      {noticeUI}
     </div>
   );
 }

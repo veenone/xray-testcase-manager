@@ -44,7 +44,7 @@ export function ChangeRequestsPanel({ profileId, canonicalId, versions, onChange
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
 
   const loadCRs = useCallback(async () => {
     if (!profileId || !canonicalId) {
@@ -330,7 +330,6 @@ export function ChangeRequestsPanel({ profileId, canonicalId, versions, onChange
         ))}
       </div>
 
-      {confirmUI}
     </div>
   );
 }

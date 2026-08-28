@@ -103,7 +103,7 @@ export function RequirementsView({ profileId, onChanged }: Props) {
   const [draftSprint, setDraftSprint] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
   // Collapsible description in the detail pane -- collapsed by default, resets on selection change.
   const [descOpen, setDescOpen] = useState(false);
   // Collapsible detail block (priority, components, fix versions, sprint,
@@ -827,7 +827,6 @@ export function RequirementsView({ profileId, onChanged }: Props) {
           }}
         />
       )}
-      {confirmUI}
     </div>
     </div>
   );

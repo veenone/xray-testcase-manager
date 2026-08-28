@@ -114,9 +114,9 @@ function App() {
   // Which onboarding tour version this user has already been through.
   // TOUR_VERSION means "seen"; anything lower means it is still owed.
   const [tourSeenVersion, setTourSeenVersion] = useState(TOUR_VERSION);
-  const { prompt, promptUI } = usePrompt();
-  const { confirm, confirmUI } = useConfirm();
-  const { notice, noticeUI } = useNotice();
+  const { prompt } = usePrompt();
+  const { confirm } = useConfirm();
+  const { notice } = useNotice();
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showProfiles, setShowProfiles] = useState(false);
@@ -1825,9 +1825,6 @@ function App() {
         )}
       </footer>
 
-      {promptUI}
-      {confirmUI}
-      {noticeUI}
       <LiveRegion />
     </div>
   );

@@ -66,7 +66,7 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
   // than an import that cannot be committed (RND_P_4TFINT_05-340). Nothing is
   // dropped without the user seeing the warning first, see run() below.
   const [dropUnknown, setDropUnknown] = useState(true);
-  const { notice, noticeUI } = useNotice();
+  const { notice } = useNotice();
 
   function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -292,7 +292,6 @@ export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
           )}
         </div>
     </Modal>
-    {noticeUI}
     </>
   );
 }

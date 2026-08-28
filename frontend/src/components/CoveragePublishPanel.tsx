@@ -59,7 +59,7 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
   const [result, setResult] = useState<CoveragePublishResult | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
 
   // versionIdRef tracks the version actually selected right now, independent
   // of whatever versionId a given publish() call closed over at click time.
@@ -259,7 +259,6 @@ export function CoveragePublishPanel({ profileId, versionId }: Props) {
           ))}
         </ul>
       )}
-      {confirmUI}
     </div>
   );
 }

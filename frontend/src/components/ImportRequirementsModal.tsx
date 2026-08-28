@@ -31,7 +31,7 @@ export function ImportRequirementsModal({ profileId, onComplete, onCancel }: Pro
   const [result, setResult] = useState<{ created: number; skippedExisting: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const { notice, noticeUI } = useNotice();
+  const { notice } = useNotice();
 
   useEffect(() => {
     if (!profileId) return;
@@ -242,7 +242,6 @@ export function ImportRequirementsModal({ profileId, onComplete, onCancel }: Pro
           )}
         </div>
     </Modal>
-    {noticeUI}
     </>
   );
 }

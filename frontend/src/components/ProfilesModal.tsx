@@ -42,7 +42,7 @@ export function ProfilesModal({
   // here is exactly what let people edit their live connection by accident.
   const [selectedId, setSelectedId] = useState("");
   const [creating, setCreating] = useState(false);
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
 
   // If the open profile disappears from under us (deleted), fall back to the
   // calm start state — never silently snap to the active profile instead.
@@ -285,7 +285,6 @@ export function ProfilesModal({
           </div>
         </div>
     </Modal>
-    {confirmUI}
     </>
   );
 }

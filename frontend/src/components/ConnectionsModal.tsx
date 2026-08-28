@@ -37,7 +37,7 @@ export function ConnectionsModal({ activeId, onClose }: Props) {
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [creating, setCreating] = useState(false);
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
 
   async function refresh(selectAfter?: string) {
     setLoading(true);
@@ -204,7 +204,6 @@ export function ConnectionsModal({ activeId, onClose }: Props) {
             </div>
           </div>
       </Modal>
-      {confirmUI}
     </>
   );
 }

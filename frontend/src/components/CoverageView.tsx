@@ -103,7 +103,7 @@ export function CoverageView({ profileId, isDemo, demoVariant, onChanged }: Prop
   const [newGroupName, setNewGroupName] = useState("");
   const [mapping, setMapping] = useState<{ valueId: string; label: string } | null>(null);
   const [showMembers, setShowMembers] = useState(false);
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
 
   // loadList refetches the canonical-requirements query (the ~4 manual call
   // sites after add/delete still work); the query auto-loads and
@@ -757,7 +757,6 @@ export function CoverageView({ profileId, isDemo, demoVariant, onChanged }: Prop
           }}
         />
       )}
-      {confirmUI}
     </div>
   );
 }

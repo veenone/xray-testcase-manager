@@ -77,7 +77,7 @@ export function PreconditionsView({ profileId, onChanged }: Props) {
   // precondition detail (mirrors the requirement / browse views, #4).
   const [detailKey, setDetailKey] = useViewState(profileId, "preconditions", "detailKey", "");
   const [detailVersion, setDetailVersion] = useState(0);
-  const { confirm, confirmUI } = useConfirm();
+  const { confirm } = useConfirm();
 
   // editing toggles the detail pane between read-only display and an explicit
   // edit session. Resets to false whenever the selected precondition changes so
@@ -702,7 +702,6 @@ export function PreconditionsView({ profileId, onChanged }: Props) {
           }}
         />
       )}
-      {confirmUI}
     </div>
   );
 }

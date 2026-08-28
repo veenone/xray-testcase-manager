@@ -122,8 +122,8 @@ export function TestDetail({
   onCloned,
   readOnly,
 }: Props) {
-  const { prompt, promptUI } = usePrompt();
-  const { confirm, confirmUI } = useConfirm();
+  const { prompt } = usePrompt();
+  const { confirm } = useConfirm();
   // Gates the Xray-shaped sections below (preconditions, requirements, exec
   // type, folder) to what the active profile's backend actually supports
   // (P6.2a). Status/step editing is left un-gated here — that's P6.2b.
@@ -2026,8 +2026,6 @@ export function TestDetail({
           }}
         />
       )}
-      {promptUI}
-      {confirmUI}
     </aside>
   );
 }
