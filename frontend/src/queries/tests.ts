@@ -7,20 +7,14 @@ import { keys } from "./keys";
 // useTests loads one page of the browse grid (audit A3). It replaces the manual
 // fetch effect + page/loading/error state in TestTable.
 //
-// `refreshKey` is the strangler bridge: during the migration, mutations still
-// bump a global counter to force a refresh, so we fold it into the query key —
-// a bump changes the key and refetches the page. Phase 4 replaces this with
-// targeted invalidation of keys.tests(profileId) and drops the parameter.
+// The key is stable (Phase 4c): a mutation refreshes the grid by invalidating
+// the [profileId, "tests"] prefix via invalidateProfileData.
 //
 // placeholderData keeps the previous page visible while the next one loads,
 // matching the old "only replace the grid on success" behaviour.
-export function useTests(
-  profileId: string,
-  params: TestQuery,
-  refreshKey: number,
-) {
+export function useTests(profileId: string, params: TestQuery) {
   return useQuery({
-    queryKey: [...keys.tests(profileId, params), refreshKey],
+    queryKey: keys.tests(profileId, params),
     queryFn: () => call(() => ListTests(profileId, params)),
     enabled: !!profileId,
     placeholderData: (prev) => prev,

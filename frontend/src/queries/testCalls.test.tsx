@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useTestCallLinks } from "./testCalls";
+import { useTestCallLinks, useTestCallerKeys } from "./testCalls";
 import * as api from "../api";
 
 vi.mock("../api", () => ({
@@ -62,5 +62,33 @@ describe("useTestCallLinks", () => {
     expect(api.ListTestCallLinks).toHaveBeenCalledTimes(1);
     rerender({ bridge: "1:0:0" });
     await waitFor(() => expect(api.ListTestCallLinks).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("useTestCallerKeys", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("derives the set of caller keys from the links", async () => {
+    (api.ListTestCallLinks as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { callerKey: "PROJ-1", calledKey: "PROJ-2" },
+      { callerKey: "PROJ-1", calledKey: "PROJ-3" },
+      { callerKey: "PROJ-9", calledKey: "PROJ-2" },
+    ]);
+    const { result } = renderHook(() => useTestCallerKeys("p1"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.has("PROJ-1")).toBe(true);
+    expect(result.current.data?.has("PROJ-9")).toBe(true);
+    expect(result.current.data?.has("PROJ-2")).toBe(false);
+    expect(result.current.data?.size).toBe(2);
+  });
+
+  it("does not fetch without a profile id", () => {
+    const { result } = renderHook(() => useTestCallerKeys(""), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.ListTestCallLinks).not.toHaveBeenCalled();
   });
 });

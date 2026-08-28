@@ -5,7 +5,6 @@ import { useViewState } from "../lib/viewState";
 import {
   ListMatchingKeys,
   ListStatuses,
-  ListTestCallLinks,
   ExportTests,
   CreateSavedView,
   ListSavedViews,
@@ -23,13 +22,13 @@ import type {
   SavedView,
 } from "../api";
 import { useTests } from "../queries/tests";
+import { useTestCallerKeys } from "../queries/testCalls";
 
 interface Props {
   profileId: string;
   folderId: string;
   containerKey: string;
   component: string;
-  refreshKey: number;
   selectedKey: string | null;
   pendingByTestKey: Map<string, PendingChange[]>;
   selectedSet: Set<string>;
@@ -44,6 +43,9 @@ interface Props {
 // Page-size choices for the grid pager. The backend caps a page at 500.
 const PAGE_SIZE_OPTIONS = [50, 100, 200, 500];
 const DEFAULT_PAGE_SIZE = 100;
+// Stable empty fallback so an unloaded caller-keys query doesn't mint a new Set
+// each render.
+const EMPTY_CALLER_KEYS: ReadonlySet<string> = new Set();
 
 type SortCol = "key" | "summary" | "status" | "updated";
 
@@ -248,7 +250,6 @@ export function TestTable({
   folderId,
   containerKey,
   component,
-  refreshKey,
   selectedKey,
   pendingByTestKey,
   selectedSet,
@@ -276,8 +277,8 @@ export function TestTable({
   const [pageSize, setPageSize] = useViewState(profileId, "browse", "pageSize", DEFAULT_PAGE_SIZE);
   const [pageInput, setPageInput] = useState("");
 
-  // The browse grid's page comes from the query cache (audit A3, Phase 2);
-  // refreshKey is folded in as the migration bridge (see useTests).
+  // The browse grid's page comes from the query cache (audit A3, Phase 2),
+  // refreshed by invalidateProfileData on a mutation.
   const q: TestQuery = {
     search: debouncedSearch,
     status: status.trim(),
@@ -291,12 +292,12 @@ export function TestTable({
     limit: pageSize,
     offset,
   };
-  const testsQuery = useTests(profileId, q, refreshKey);
+  const testsQuery = useTests(profileId, q);
   const page = testsQuery.data ?? { tests: [], total: 0 };
   const loading = testsQuery.isFetching;
   const listError = testsQuery.error ? errMsg(testsQuery.error) : "";
   // Keys of tests that call another test in their steps — drives the grid cue.
-  const [callerKeys, setCallerKeys] = useState<Set<string>>(new Set());
+  const callerKeys = useTestCallerKeys(profileId).data ?? EMPTY_CALLER_KEYS;
   // Roving tabindex over the grid rows, tracked by index because rows are
   // virtualized (off-screen rows aren't in the DOM). Exactly one row is in the
   // tab order; Arrow/Home/End move focus by scrolling the target row into view
@@ -320,22 +321,7 @@ export function TestTable({
     localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(columns));
   }, [columns]);
 
-  // Which tests call another test — used to badge caller rows in the grid (#2).
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    ListTestCallLinks(profileId)
-      .then((links) => {
-        if (cancelled) return;
-        setCallerKeys(new Set((links ?? []).map((l) => l.callerKey)));
-      })
-      .catch(() => {
-        if (!cancelled) setCallerKeys(new Set());
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
+  // (Caller badges now come from the useTestCallerKeys query above.)
   const visibleColumns = columns.filter((c) => c.visible);
 
   // Virtualize the row body so a large page (up to 500 rows) only mounts the

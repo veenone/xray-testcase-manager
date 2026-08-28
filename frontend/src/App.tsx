@@ -1542,7 +1542,6 @@ function App() {
                 : ""
             }
             component={groupBy === "component" ? selectedComponent : ""}
-            refreshKey={refreshKey}
             selectedKey={selectedKey}
             pendingByTestKey={pendingByTestKey}
             selectedSet={selectedSet}

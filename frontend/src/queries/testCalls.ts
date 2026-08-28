@@ -21,3 +21,17 @@ export function useTestCallLinks(profileId: string, bridge: string) {
     placeholderData: (prev) => prev,
   });
 }
+
+// useTestCallerKeys derives the set of test keys that call another test — used
+// by TestTable to badge caller rows. It nests under the testCalls key prefix, so
+// invalidateProfileData refreshes it with the call-link list.
+export function useTestCallerKeys(profileId: string) {
+  return useQuery({
+    queryKey: [...keys.testCalls(profileId), "callers"],
+    queryFn: async () => {
+      const links = await call(() => ListTestCallLinks(profileId));
+      return new Set((links ?? []).map((l) => l.callerKey));
+    },
+    enabled: !!profileId,
+  });
+}

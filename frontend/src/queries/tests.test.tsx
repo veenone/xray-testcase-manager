@@ -29,7 +29,7 @@ describe("useTests", () => {
       tests: [{ key: "PROJ-1" }],
       total: 1,
     });
-    const { result } = renderHook(() => useTests("p1", PARAMS, 0), {
+    const { result } = renderHook(() => useTests("p1", PARAMS), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -40,7 +40,7 @@ describe("useTests", () => {
     (api.ListTests as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("boom"),
     );
-    const { result } = renderHook(() => useTests("p1", PARAMS, 0), {
+    const { result } = renderHook(() => useTests("p1", PARAMS), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
@@ -48,25 +48,27 @@ describe("useTests", () => {
   });
 
   it("does not fetch without a profile id", () => {
-    const { result } = renderHook(() => useTests("", PARAMS, 0), {
+    const { result } = renderHook(() => useTests("", PARAMS), {
       wrapper: makeWrapper(),
     });
     expect(result.current.fetchStatus).toBe("idle");
     expect(api.ListTests).not.toHaveBeenCalled();
   });
 
-  it("refetches when the refreshKey bridge changes (same params, new key)", async () => {
+  it("re-fetches for a different params combination (separate key)", async () => {
     (api.ListTests as ReturnType<typeof vi.fn>).mockResolvedValue({
       tests: [],
       total: 0,
     });
     const { result, rerender } = renderHook(
-      ({ rk }: { rk: number }) => useTests("p1", PARAMS, rk),
-      { wrapper: makeWrapper(), initialProps: { rk: 0 } },
+      ({ p }: { p: never }) => useTests("p1", p),
+      { wrapper: makeWrapper(), initialProps: { p: PARAMS } },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(api.ListTests).toHaveBeenCalledTimes(1);
-    rerender({ rk: 1 });
+    rerender({
+      p: { search: "", status: "", limit: 100, offset: 100 } as never,
+    });
     await waitFor(() => expect(api.ListTests).toHaveBeenCalledTimes(2));
   });
 });
