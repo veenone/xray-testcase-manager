@@ -17,7 +17,7 @@ import {
   errMsg,
   isDemoUrl,
 } from "../api";
-import type { Sankey, Container, BugWithTests } from "../api";
+import type { Container, BugWithTests } from "../api";
 import { SankeyChart } from "./SankeyChart";
 import { RequirementSankey } from "./RequirementSankey";
 import { MultiSelect } from "./MultiSelect";
