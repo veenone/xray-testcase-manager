@@ -199,7 +199,6 @@ export function Dashboard({
       {exportNotice && <p className="muted">{exportNotice}</p>}
       <DuplicatesCard
         profileId={profileId}
-        refreshKey={refreshKey}
         onOpen={() => onOpenDuplicates?.()}
       />
       <div className="stat-tiles">

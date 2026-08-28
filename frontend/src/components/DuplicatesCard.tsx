@@ -1,34 +1,18 @@
-import { useEffect, useState } from "react";
-
-import { ScanDuplicates, errMsg } from "../api";
-import type { DuplicateReport } from "../api";
+import { errMsg } from "../api";
+import { useDuplicates } from "../queries/duplicates";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   onOpen: () => void; // navigate to the Duplicates tab
 }
 
 // DuplicatesCard summarizes duplicate detection on the dashboard (FR — duplicate
 // management), with bordered, color-coded tiles. Computed from the local cache.
-export function DuplicatesCard({ profileId, refreshKey, onOpen }: Props) {
-  const [rep, setRep] = useState<DuplicateReport | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    ScanDuplicates(profileId)
-      .then((r) => {
-        if (!cancelled) setRep(r as unknown as DuplicateReport);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
+// Shares the tests-mode scan query with DuplicatesView, so it dedupes to one
+// cache entry and refreshes via invalidateProfileData (Phase 4c).
+export function DuplicatesCard({ profileId, onOpen }: Props) {
+  const dupQuery = useDuplicates(profileId, "tests");
+  const rep = dupQuery.data ?? null;
 
   return (
     <div className="dup-card">
@@ -38,7 +22,9 @@ export function DuplicatesCard({ profileId, refreshKey, onOpen }: Props) {
           Open Duplicates →
         </button>
       </div>
-      {error && <div className="error-text">{error}</div>}
+      {dupQuery.error && (
+        <div className="error-text">{errMsg(dupQuery.error)}</div>
+      )}
       {rep && (
         <div className="dup-tiles">
           <div className="dup-tile t-grp"><b>{rep.groupCount}</b><span>duplicate groups</span></div>

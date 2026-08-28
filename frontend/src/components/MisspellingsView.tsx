@@ -25,7 +25,6 @@ interface Finding {
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   onChanged: () => void;
 }
 

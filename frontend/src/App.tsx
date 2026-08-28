@@ -1442,7 +1442,6 @@ function App() {
         <main className="content">
           <MisspellingsView
             profileId={activeId}
-            refreshKey={refreshKey}
             onChanged={() => {
               refreshProfileData();
               reloadPending();
