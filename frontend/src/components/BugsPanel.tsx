@@ -1,8 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
-  ListBugsWithTests,
-  ListTestsForBug,
   SyncBugs,
   CreateContainerAndAllocate,
   ListContainers,
@@ -21,13 +19,13 @@ import { SortControl } from "./SortControl";
 import { TestDetail } from "./TestDetail";
 import { ContainerDetailPanel } from "./ContainerDetailPanel";
 import { usePrompt } from "./usePrompt";
+import { useBugs, useBugTests } from "../queries/bugs";
 import { keyCompare, cmpStr, applyDir } from "../sort";
 import { Markdown } from "./Markdown";
 import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   jiraUrl: string;
   onOpenTest: (testKey: string) => void;
 }
@@ -50,13 +48,18 @@ function cmpBug(a: BugWithTests, b: BugWithTests, field: string): number {
 // bug, a detail pane on the right showing its full info plus the affected tests
 // enriched with their consolidated run status. Bug keys open in the browser;
 // test keys open the test detail.
-export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props) {
-  const [bugs, setBugs] = useState<BugWithTests[]>([]);
+export function BugsPanel({ profileId, jiraUrl, onOpenTest }: Props) {
+  // The bug list + the selected bug's linked tests come from the query cache
+  // with stable keys (Phase 4c); a mutation refreshes them via
+  // invalidateProfileData, and a bugs-only sync refetches the list directly.
+  const bugsQuery = useBugs(profileId);
+  const bugs = bugsQuery.data ?? [];
   const [filter, setFilter] = useViewState(profileId, "bugs", "filter", "");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useViewState(profileId, "bugs", "selected", "");
-  const [tests, setTests] = useState<BugTest[]>([]);
+  const bugTestsQuery = useBugTests(profileId, selected);
+  const tests = bugTestsQuery.data ?? [];
   // Checked bugs for the bulk "Create Test Execution" action. This is kept
   // independent of `selected` (the detail-pane row): ticking a checkbox must
   // not change which bug is shown in the detail pane, and vice versa.
@@ -78,9 +81,6 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   const [syncing, setSyncing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const { prompt, promptUI } = usePrompt();
-  // Local refresh nonce: bumped after a bugs-only sync to re-pull the list
-  // without forcing a full profile refresh.
-  const [nonce, setNonce] = useState(0);
 
   // Extended bug detail (description + defect custom fields) fetched lazily
   // when a bug is selected, bypassed for NEW- keys.
@@ -189,7 +189,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     setNotice("");
     try {
       await SyncBugs(profileId);
-      setNonce((n) => n + 1);
+      void bugsQuery.refetch();
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -311,7 +311,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
         }. It will appear in Containers.`,
       );
       setChecked(new Set());
-      setNonce((n) => n + 1);
+      void bugsQuery.refetch();
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -363,20 +363,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     }
   }
 
-  useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    ListBugsWithTests(profileId)
-      .then((bs) => {
-        if (!cancelled) setBugs(bs ?? []);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey, nonce]);
+  // (The bug list now loads via useBugs above.)
 
   const isDemo = isDemoUrl(jiraUrl);
   const canLink = !!jiraUrl && !isDemo;
@@ -430,7 +417,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
   // Reset to the first page whenever the data source, filter, or test-linkage filter changes.
   useEffect(() => {
     setPage(0);
-  }, [profileId, refreshKey, filter, testFilter, sortField, sortDesc]);
+  }, [profileId, filter, testFilter, sortField, sortDesc]);
 
   // Keep a valid selection: default to the first shown bug, and re-point when
   // the current one is filtered out.
@@ -452,24 +439,7 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
     setDetailsOpen(true);
   }, [selected]);
 
-  // Load the affected tests (with run status) for the selected bug.
-  useEffect(() => {
-    if (!profileId || !selected) {
-      setTests([]);
-      return;
-    }
-    let cancelled = false;
-    ListTestsForBug(profileId, selected)
-      .then((ts) => {
-        if (!cancelled) setTests(ts ?? []);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, selected, refreshKey]);
+  // (The affected tests for the selected bug now load via useBugTests above.)
 
   // Load extended bug detail (description + defect fields) for the selected bug.
   // Skipped for NEW- placeholder keys that have no real Jira issue yet.
@@ -611,7 +581,11 @@ export function BugsPanel({ profileId, refreshKey, jiraUrl, onOpenTest }: Props)
             </button>
           </div>
         </div>
-        {error && <div className="error-text">{error}</div>}
+        {(error || bugsQuery.error || bugTestsQuery.error) && (
+          <div className="error-text">
+            {error || errMsg(bugsQuery.error || bugTestsQuery.error)}
+          </div>
+        )}
         {notice && <p className="reqs-notice muted">{notice}</p>}
         <input
           className="search bugs-md-filter"

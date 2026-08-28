@@ -46,7 +46,6 @@ import { useCapabilities } from "../features";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   onChanged: () => void;
   // Sample-data generation is a demo aid — only offered for demo profiles so a
   // user can't seed fake containers into a real project (FR-5).
@@ -67,10 +66,9 @@ const RUN_STATUSES = ["TODO", "EXECUTING", "PASS", "FAIL", "ABORTED", "BLOCKED"]
 // ContainersView manages Test Sets / Plans / Executions (FR-13.7 + container
 // CRUD): pick a kind and a container, see its member Tests with run status, and
 // create / rename / delete. Computed from the local store; recomputes when the
-// profile changes or a sync/commit bumps refreshKey.
+// profile changes or a sync/commit invalidates the query cache.
 export function ContainersView({
   profileId,
-  refreshKey,
   onChanged,
   isDemo,
   jiraUrl,
@@ -725,7 +723,6 @@ export function ContainersView({
       {mode === "bugs" ? (
         <BugsPanel
           profileId={profileId}
-          refreshKey={refreshKey}
           jiraUrl={jiraUrl ?? ""}
           onOpenTest={onOpenTest ?? (() => {})}
         />

@@ -45,6 +45,10 @@ export const keys = {
   requirementCoverage: (profileId: string) =>
     [profileId, "requirements", "coverage"] as const,
   pending: (profileId: string) => [profileId, "pending"] as const,
+  // BugsPanel's bug list + a selected bug's linked tests.
+  bugs: (profileId: string) => [profileId, "bugs"] as const,
+  bugTests: (profileId: string, key: string) =>
+    [profileId, "bugs", "tests", key] as const,
   syncState: (profileId: string) => [profileId, "syncState"] as const,
   folders: (profileId: string) => [profileId, "folders"] as const,
   components: (profileId: string) => [profileId, "components"] as const,

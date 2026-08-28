@@ -1411,7 +1411,6 @@ function App() {
         <main className="content content-containers">
           <ContainersView
             profileId={activeId}
-            refreshKey={refreshKey}
             isDemo={isDemo}
             jiraUrl={activeProfile?.jiraUrl ?? ""}
             onOpenTest={(k) => {
