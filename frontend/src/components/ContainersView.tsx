@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useViewState } from "../lib/viewState";
 import {
-  GetContainerBoard,
-  ListBugsForContainer,
   SeedSampleContainers,
   CleanSampleData,
   CreateContainerAndAllocate,
@@ -18,12 +16,10 @@ import {
   ExportPytest,
   SyncContainers,
   BrowserOpenURL,
-  GetExecutionMembersWithRuns,
-  GetRunRollup,
   GetRunRollupBreakdown,
   errMsg,
 } from "../api";
-import type { TestPlanBoard, Bucket, Bug, ExecMemberRun, RunRollup, RollupMember } from "../api";
+import type { Bucket, Bug, ExecMemberRun, RollupMember } from "../api";
 import { RollupBreakdownModal } from "./RollupBreakdownModal";
 import { SortControl } from "./SortControl";
 import { SearchableSelect } from "./SearchableSelect";
@@ -37,7 +33,13 @@ import { CreateBugModal } from "./CreateBugModal";
 import { LinkBugPicker } from "./LinkBugPicker";
 import { TestDetail } from "./TestDetail";
 import { usePrompt } from "./usePrompt";
-import { useContainers } from "../queries/containers";
+import {
+  useContainers,
+  useContainerBoard,
+  useContainerBugs,
+  useContainerMembers,
+  useContainerRollup,
+} from "../queries/containers";
 import { useConfirm } from "./useConfirm";
 import { useNotice } from "./useNotice";
 import { useCapabilities } from "../features";
@@ -103,19 +105,27 @@ export function ContainersView({
   const [cSortDesc, setCSortDesc] = useViewState(profileId, "containers", "cSortDesc", false);
   const [rowSortField, setRowSortField] = useState("key");
   const [rowSortDesc, setRowSortDesc] = useState(false);
-  const containersQuery = useContainers(profileId, kind, refreshKey);
+  const containersQuery = useContainers(profileId, kind);
   const containers = containersQuery.data ?? [];
   const listError = containersQuery.error ? errMsg(containersQuery.error) : "";
   const [selected, setSelected] = useViewState(profileId, "containers", "selected", "");
+  // The selected container's detail reads come from the query cache with stable
+  // keys (Phase 4c), refreshed by the same invalidation as the container list.
+  const boardQuery = useContainerBoard(profileId, selected);
+  const board = boardQuery.data ?? null;
+  const relatedBugs = useContainerBugs(profileId, selected).data ?? [];
+  const membersQuery = useContainerMembers(profileId, selected, kind);
+  const memberRuns = useMemo(() => {
+    const m = new Map<string, ExecMemberRun>();
+    for (const r of membersQuery.data ?? []) m.set(r.testKey, r);
+    return m;
+  }, [membersQuery.data]);
+  const rollup = useContainerRollup(profileId, selected, kind).data ?? null;
   const [bugFor, setBugFor] = useState<{ testKey: string; summary: string } | null>(null);
   // Test key whose Defects cell has an open LinkBugPicker (Test Execution
   // member table only).
   const [linkBugFor, setLinkBugFor] = useState<string | null>(null);
   const [mode, setMode] = useViewState<"containers" | "bugs">(profileId, "containers", "mode", "containers");
-  const [board, setBoard] = useState<TestPlanBoard | null>(null);
-  // Related defects reached through the selected container's member Tests
-  // (including bugs reached only via a cross-project member, #219).
-  const [relatedBugs, setRelatedBugs] = useState<Bug[]>([]);
   // Whether the related-bugs collapsible section in the container card is open.
   // Collapsed by default so a large bug list never hides the member table below.
   const [bugsExpanded, setBugsExpanded] = useState(false);
@@ -133,8 +143,6 @@ export function ContainersView({
   const [showJUnitImport, setShowJUnitImport] = useState(false);
   const [showJUnitNewExec, setShowJUnitNewExec] = useState(false);
   const [boardPage, setBoardPage] = useState(0);
-  // Run details for the selected Test Execution's member rows (keyed by testKey).
-  const [memberRuns, setMemberRuns] = useState<Map<string, ExecMemberRun>>(new Map());
   // Active fix-version filter for the member table (Test Execution only). Empty
   // string means "All". Clicking an execution fix-version chip toggles it; a
   // second click clears the filter (single-select toggle).
@@ -143,8 +151,6 @@ export function ContainersView({
   // run colorbar or one of its count badges. Empty string means "all"; the
   // "(not run)" bucket matches members with a blank run status.
   const [memberRunFilter, setMemberRunFilter] = useState("");
-  // Run roll-up for the selected Test Plan / Test Set.
-  const [rollup, setRollup] = useState<RunRollup | null>(null);
   // Clickable roll-up breakdown: which bucket's modal is open, and the member
   // detail (lazily fetched on first badge click, cached per selected container).
   const [breakdownStatus, setBreakdownStatus] = useState<string | null>(null);
@@ -599,93 +605,16 @@ export function ContainersView({
     setBoardPage(0);
   }, [rowSortField, rowSortDesc]);
 
+  // The board / related bugs / member runs / roll-up now load via the
+  // useContainer* queries above. Reset the board's view state when the selected
+  // container changes (the old board load effect did this before fetching).
   useEffect(() => {
-    if (!profileId || !selected) {
-      setBoard(null);
-      return;
-    }
-    let cancelled = false;
-    setError("");
     setBoardPage(0);
     setSelectedRuns(new Set());
     setMemberFvFilter("");
     setMemberRunFilter("");
-    GetContainerBoard(profileId, selected)
-      .then((b) => {
-        if (!cancelled) setBoard(b);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, selected, refreshKey]);
-
-  // Load the defects reached through the selected container's member Tests. This
-  // is what surfaces a bug that reaches an execution only via a cross-project
-  // member Test (#219), which the per-test Bugs panel cannot show.
-  useEffect(() => {
-    if (!profileId || !selected) {
-      setRelatedBugs([]);
-      return;
-    }
-    let cancelled = false;
-    ListBugsForContainer(profileId, selected)
-      .then((bs) => {
-        if (!cancelled) setRelatedBugs(bs ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setRelatedBugs([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, selected, refreshKey]);
-
-  // Fetch run details for the selected Test Execution's member tests. The map
-  // is keyed by testKey so the table can look up context per row without
-  // replacing the board data that drives the editable run-result control.
-  useEffect(() => {
-    if (!profileId || !selected || kind !== "testexec") {
-      setMemberRuns(new Map());
-      return;
-    }
-    let cancelled = false;
-    GetExecutionMembersWithRuns(profileId, selected)
-      .then((runs) => {
-        if (cancelled) return;
-        const m = new Map<string, ExecMemberRun>();
-        for (const r of runs ?? []) m.set(r.testKey, r);
-        setMemberRuns(m);
-      })
-      .catch(() => {
-        if (!cancelled) setMemberRuns(new Map());
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, selected, kind, refreshKey]);
-
-  // Fetch the run roll-up for the selected Test Plan / Test Set. Not used for
-  // Test Executions (they show per-row run detail instead).
-  useEffect(() => {
-    if (!profileId || !selected || kind === "testexec") {
-      setRollup(null);
-      return;
-    }
-    let cancelled = false;
-    GetRunRollup(profileId, selected)
-      .then((r) => {
-        if (!cancelled) setRollup(r ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setRollup(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, selected, kind, refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   // Reset the cached breakdown when the selected container changes, so a stale
   // one is never shown for a different plan/set.
@@ -1180,7 +1109,11 @@ export function ContainersView({
         </div>
       </div>
 
-      {(listError || error) && <div className="error-text">{listError || error}</div>}
+      {(listError || error || boardQuery.error) && (
+        <div className="error-text">
+          {listError || error || errMsg(boardQuery.error)}
+        </div>
+      )}
 
       {!loading && containers.length === 0 && (
         <p className="muted">
