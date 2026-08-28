@@ -23,6 +23,7 @@ export function invalidateProfileData(qc: QueryClient, profileId: string) {
     [profileId, "tests"] as const,
     keys.folders(profileId),
     keys.syncState(profileId),
+    keys.syncLog(profileId),
     keys.components(profileId),
     keys.containers(profileId),
     keys.preconditions(profileId),

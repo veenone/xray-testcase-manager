@@ -4,6 +4,7 @@ import {
   ListComponents,
   ListContainers,
   ListFolders,
+  ListSyncLog,
 } from "../api";
 import { call } from "../lib/apiCall";
 import { keys } from "./keys";
@@ -21,6 +22,16 @@ export function useSyncState(profileId: string) {
     queryFn: () => call(() => GetSyncState(profileId)),
     enabled: !!profileId,
     placeholderData: (prev) => prev,
+  });
+}
+
+// useSyncLog loads a profile's recent sync runs for the Sync History modal
+// (FR-1.7). Refreshed by invalidateProfileData after a sync/commit.
+export function useSyncLog(profileId: string) {
+  return useQuery({
+    queryKey: keys.syncLog(profileId),
+    queryFn: () => call(() => ListSyncLog(profileId, 200)),
+    enabled: !!profileId,
   });
 }
 
@@ -46,9 +57,9 @@ export function useComponents(profileId: string, groupBy: string) {
 }
 
 // useGroupContainers loads the Test Sets / Plans backing the group-by sidebar.
-// Only fetched while grouping by testset/testplan. Once useContainers also drops
-// its refreshKey bridge, both key on [profileId, "containers", kind] and the
-// same kind dedupes to one entry.
+// Only fetched while grouping by testset/testplan. Shares the
+// [profileId, "containers", kind] key with the Containers view's useContainers,
+// so the same kind dedupes to one entry.
 export function useGroupContainers(profileId: string, groupBy: string) {
   return useQuery({
     queryKey: [...keys.containers(profileId), groupBy],

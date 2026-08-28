@@ -41,7 +41,7 @@ export const keys = {
   // TestDetail's copy of the requirement-coverage list. Profile-scoped (not
   // test-scoped), so it caches across test switches. Shares the
   // [profileId, "requirements"] prefix with useRequirements; the "coverage"
-  // segment keeps it a distinct entry from that view's refreshKey-bridged key.
+  // segment keeps it a distinct entry from that view's list key.
   requirementCoverage: (profileId: string) =>
     [profileId, "requirements", "coverage"] as const,
   pending: (profileId: string) => [profileId, "pending"] as const,
@@ -50,6 +50,7 @@ export const keys = {
   bugTests: (profileId: string, key: string) =>
     [profileId, "bugs", "tests", key] as const,
   syncState: (profileId: string) => [profileId, "syncState"] as const,
+  syncLog: (profileId: string) => [profileId, "syncLog"] as const,
   folders: (profileId: string) => [profileId, "folders"] as const,
   components: (profileId: string) => [profileId, "components"] as const,
   preconditions: (profileId: string) => [profileId, "preconditions"] as const,

@@ -18,6 +18,7 @@ describe("invalidateProfileData", () => {
         "tests",
         "folders",
         "syncState",
+        "syncLog",
         "components",
         "containers",
         "preconditions",

@@ -152,14 +152,12 @@ function App() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [showNewTest, setShowNewTest] = useState(false);
   const [newTestFolder, setNewTestFolder] = useState<string>("");
-  const [refreshKey, setRefreshKey] = useState(0);
   const [detailVersion, setDetailVersion] = useState(0);
 
   const queryClient = useQueryClient();
   const pendingQuery = usePendingChanges(activeId);
   const pendingChanges = pendingQuery.data ?? [];
-  // App-shell profile-scoped loads (Phase 4b). These replace imperative fetch
-  // effects; refreshKey is still the bridge (Phase 4c retires it).
+  // App-shell profile-scoped loads (Phase 4b), refreshed by invalidateProfileData.
   const syncState = useSyncState(activeId).data ?? null;
   const folders = useFolders(activeId).data ?? [];
   const groupContainers = useGroupContainers(activeId, groupBy).data ?? [];
@@ -370,12 +368,9 @@ function App() {
   }, [queryClient, activeId]);
 
   // refreshProfileData is the single "refresh all profile lists" signal that
-  // mutation handlers call. During the Phase 4c transition it BOTH bumps the
-  // legacy refreshKey counter (still folded into the list/dashboard query keys)
-  // AND invalidates those families directly. Once every hook is off refreshKey,
-  // the counter bump is dropped and only the invalidation remains.
+  // mutation handlers call: it invalidates every profile-scoped query family so
+  // the affected lists refetch (Phase 4c — the legacy refreshKey counter is gone).
   const refreshProfileData = useCallback(() => {
-    setRefreshKey((k) => k + 1);
     invalidateProfileData(queryClient, activeId);
   }, [queryClient, activeId]);
 
@@ -397,15 +392,15 @@ function App() {
   // The group-by sidebar lists (containers / components) now load via
   // useGroupContainers / useComponents (Phase 4b). These effects keep only the
   // side effect the queries can't express: resetting the chosen container /
-  // component whenever the dimension, profile, or refresh signal changes, so the
-  // grid doesn't keep filtering by a now-hidden key.
+  // component whenever the dimension or profile changes, so the grid doesn't
+  // keep filtering by a now-hidden key.
   useEffect(() => {
     setSelectedContainer("");
-  }, [activeId, groupBy, refreshKey]);
+  }, [activeId, groupBy]);
 
   useEffect(() => {
     setSelectedComponent("");
-  }, [activeId, groupBy, refreshKey]);
+  }, [activeId, groupBy]);
 
   // --- Test Repository folder management (FR-13.3) ---
 
@@ -1746,7 +1741,6 @@ function App() {
       {showSyncHistory && (
         <SyncHistoryModal
           profileId={activeId}
-          refreshKey={refreshKey}
           onClose={() => setShowSyncHistory(false)}
         />
       )}

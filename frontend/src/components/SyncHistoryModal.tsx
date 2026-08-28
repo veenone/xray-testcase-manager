@@ -1,12 +1,11 @@
 import { Fragment, useEffect, useState } from "react";
-import { ListSyncLog, errMsg } from "../api";
-import type { SyncLogEntry } from "../api";
+import { errMsg } from "../api";
+import { useSyncLog } from "../queries/app";
 import { formatDateTimeLong, parseJiraDate } from "../dates";
 import { Modal } from "./Modal";
 
 interface Props {
   profileId: string;
-  refreshKey: number;
   onClose: () => void;
 }
 
@@ -15,34 +14,21 @@ const PAGE_SIZE = 15;
 // SyncHistoryModal lists a profile's recent sync runs with success / failure
 // detail (FR-1.7). Long error messages are shown in an expandable detail row
 // rather than crammed into a column, and the list is paged (15 per page).
-export function SyncHistoryModal({ profileId, refreshKey, onClose }: Props) {
-  const [entries, setEntries] = useState<SyncLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+export function SyncHistoryModal({ profileId, onClose }: Props) {
+  // The log comes from the query cache (Phase 4c), refreshed by
+  // invalidateProfileData after a sync/commit.
+  const syncLogQuery = useSyncLog(profileId);
+  const entries = syncLogQuery.data ?? [];
+  const loading = syncLogQuery.isPending;
+  const error = syncLogQuery.error ? errMsg(syncLogQuery.error) : "";
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
+  // Reset the paging/expansion when the profile changes.
   useEffect(() => {
-    if (!profileId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError("");
     setPage(0);
     setExpanded(new Set());
-    ListSyncLog(profileId, 200)
-      .then((es) => {
-        if (!cancelled) setEntries(es ?? []);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMsg(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId, refreshKey]);
+  }, [profileId]);
 
   const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
