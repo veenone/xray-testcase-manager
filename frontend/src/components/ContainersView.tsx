@@ -609,6 +609,7 @@ export function ContainersView({
   // useContainer* queries above. Reset the board's view state when the selected
   // container changes (the old board load effect did this before fetching).
   useEffect(() => {
+    setError("");
     setBoardPage(0);
     setSelectedRuns(new Set());
     setMemberFvFilter("");
