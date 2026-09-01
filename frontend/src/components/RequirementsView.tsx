@@ -816,7 +816,6 @@ export function RequirementsView({ onChanged }: Props) {
 
       {detailKey && (
         <TestDetail
-          profileId={profileId}
           testKey={detailKey}
           version={detailVersion}
           pendingForTest={[]}

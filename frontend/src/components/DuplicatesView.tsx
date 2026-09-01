@@ -485,7 +485,6 @@ export function DuplicatesView({
 
         {selectedKey && (
           <TestDetail
-            profileId={profileId}
             testKey={selectedKey}
             version={detailVersion}
             pendingForTest={pendingByTestKey.get(selectedKey) ?? []}

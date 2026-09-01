@@ -660,7 +660,6 @@ export function PreconditionsView({ onChanged }: Props) {
 
       {detailKey && (
         <TestDetail
-          profileId={profileId}
           testKey={detailKey}
           version={detailVersion}
           pendingForTest={[]}

@@ -1347,7 +1347,7 @@ function App() {
         </main>
       ) : view === "dashboard" ? (
         <main className="content content-dashboard">
-          <Dashboard profileId={activeId} onOpenDuplicates={() => setView("duplicates")} />
+          <Dashboard onOpenDuplicates={() => setView("duplicates")} />
         </main>
       ) : view === "traceability" ? (
         <main className="content content-dashboard">
@@ -1478,7 +1478,6 @@ function App() {
             title="Drag to resize the sidebar"
           />
           <TestTable
-            profileId={activeId}
             folderId={groupBy === "folder" ? selectedFolder : ""}
             containerKey={
               groupBy === "testset" || groupBy === "testplan"
@@ -1498,7 +1497,6 @@ function App() {
           />
           {showNewTest ? (
             <NewTestPanel
-              profileId={activeId}
               folders={folders}
               initialFolderId={newTestFolder}
               onCreated={handleTestCreated}
@@ -1507,7 +1505,6 @@ function App() {
           ) : (
             selectedKey && (
               <TestDetail
-                profileId={activeId}
                 testKey={selectedKey}
                 version={detailVersion}
                 pendingForTest={pendingByTestKey.get(selectedKey) ?? []}
@@ -1686,14 +1683,12 @@ function App() {
 
       {showSyncHistory && (
         <SyncHistoryModal
-          profileId={activeId}
           onClose={() => setShowSyncHistory(false)}
         />
       )}
 
       {showImport && (
         <ImportTestsModal
-          profileId={activeId}
           onComplete={() => {
             refreshProfileData();
             reloadPending();

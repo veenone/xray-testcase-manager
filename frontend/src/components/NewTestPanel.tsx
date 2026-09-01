@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 
 import {
   CreateTest,
@@ -12,7 +13,6 @@ import { CloneStepsModal } from "./CloneStepsModal";
 import { MarkdownField } from "./MarkdownField";
 
 interface Props {
-  profileId: string;
   folders: Folder[];
   initialFolderId?: string;
   onCreated: (tempKey: string) => void;
@@ -31,12 +31,12 @@ const EXEC_TYPE_OPTIONS = ["Manual", "Automated", "Generic", "Cucumber"];
 // locally and submits one CreateTest call; the new Test then opens in the
 // normal detail panel for further editing.
 export function NewTestPanel({
-  profileId,
   folders,
   initialFolderId,
   onCreated,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("");

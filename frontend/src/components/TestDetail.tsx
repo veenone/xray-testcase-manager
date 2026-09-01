@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   GetTestPreconditions,
   GetTestRequirements,
@@ -78,7 +79,6 @@ import { keys } from "../queries/keys";
 const REVIEWER_KEY = "xtm.reviewer";
 
 interface Props {
-  profileId: string;
   testKey: string;
   version: number;
   pendingForTest: PendingChange[];
@@ -111,7 +111,6 @@ type EditableField =
 const EXEC_TYPE_OPTIONS = ["Manual", "Automated", "Generic", "Cucumber"];
 
 export function TestDetail({
-  profileId,
   testKey,
   version,
   pendingForTest,
@@ -122,6 +121,7 @@ export function TestDetail({
   onCloned,
   readOnly,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const { prompt } = usePrompt();
   const { confirm } = useConfirm();
   // Gates the Xray-shaped sections below (preconditions, requirements, exec

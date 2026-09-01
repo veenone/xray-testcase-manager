@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   PreviewImport,
   ImportTests,
@@ -10,7 +11,6 @@ import { useNotice } from "./useNotice";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   onComplete: () => void;
   onCancel: () => void;
 }
@@ -50,7 +50,8 @@ const EMPTY_MAPPING: ImportMapping = {
 // ImportTestsModal imports Tests from a CSV file (FR-10): pick a file, map
 // columns to Test fields, validate (dry run), then import as local pending
 // creates committed on the next sync.
-export function ImportTestsModal({ profileId, onComplete, onCancel }: Props) {
+export function ImportTestsModal({ onComplete, onCancel }: Props) {
+  const { activeId: profileId } = useProfile();
   const [content, setContent] = useState(""); // base64 of the file
   const [isXlsx, setIsXlsx] = useState(false);
   const [fileName, setFileName] = useState("");

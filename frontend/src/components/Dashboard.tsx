@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 import {
   ListFolders,
@@ -13,7 +14,6 @@ import { DuplicatesCard } from "./DuplicatesCard";
 import { useStatistics } from "../queries/statistics";
 
 interface Props {
-  profileId: string;
   onOpenDuplicates?: () => void;
 }
 
@@ -22,7 +22,8 @@ interface Props {
 // commit invalidates the stats query, so the numbers track the cache without a
 // Jira call. Optional Folder / Component / Status filters narrow every panel to
 // the matching subset of Tests (RND_P_4TFINT_05-228).
-export function Dashboard({ profileId, onOpenDuplicates }: Props) {
+export function Dashboard({ onOpenDuplicates }: Props) {
+  const { activeId: profileId } = useProfile();
   // XLSX export state (RND_P_4TFINT_05): mirror TraceabilityTabs' notice pattern.
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState("");

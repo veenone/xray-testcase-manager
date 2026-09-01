@@ -1121,7 +1121,6 @@ export function BugsPanel({ profileId, jiraUrl, onOpenTest }: Props) {
 
       {sidebarDetail?.kind === "test" && (
         <TestDetail
-          profileId={profileId}
           testKey={sidebarDetail.key}
           version={detailVersion}
           pendingForTest={[]}

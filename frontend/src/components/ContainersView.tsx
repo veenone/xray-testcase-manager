@@ -1715,7 +1715,6 @@ export function ContainersView({
 
       {detailKey && mode !== "bugs" && (
         <TestDetail
-          profileId={profileId}
           testKey={detailKey}
           version={detailVersion}
           pendingForTest={[]}

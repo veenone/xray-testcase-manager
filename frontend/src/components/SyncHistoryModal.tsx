@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { errMsg } from "../api";
 import { useSyncLog } from "../queries/app";
 import { formatDateTimeLong, parseJiraDate } from "../dates";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   onClose: () => void;
 }
 
@@ -14,7 +14,8 @@ const PAGE_SIZE = 15;
 // SyncHistoryModal lists a profile's recent sync runs with success / failure
 // detail (FR-1.7). Long error messages are shown in an expandable detail row
 // rather than crammed into a column, and the list is paged (15 per page).
-export function SyncHistoryModal({ profileId, onClose }: Props) {
+export function SyncHistoryModal({ onClose }: Props) {
+  const { activeId: profileId } = useProfile();
   // The log comes from the query cache (Phase 4c), refreshed by
   // invalidateProfileData after a sync/commit.
   const syncLogQuery = useSyncLog(profileId);

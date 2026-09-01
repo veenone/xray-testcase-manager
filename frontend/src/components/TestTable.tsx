@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import type { CSSProperties } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useViewState } from "../lib/viewState";
@@ -25,7 +26,6 @@ import { useTests } from "../queries/tests";
 import { useTestCallerKeys } from "../queries/testCalls";
 
 interface Props {
-  profileId: string;
   folderId: string;
   containerKey: string;
   component: string;
@@ -246,7 +246,6 @@ function renderCell(
 }
 
 export function TestTable({
-  profileId,
   folderId,
   containerKey,
   component,
@@ -260,6 +259,7 @@ export function TestTable({
   onSync,
   syncing,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   // Gates the exec-type filter to what the active profile's backend actually
   // supports (P6.2a).
   const caps = useCapabilities(profileId);

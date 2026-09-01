@@ -439,7 +439,6 @@ export function TestCallsView({ onChanged }: Props) {
 
       {detailKey && (
         <TestDetail
-          profileId={profileId}
           testKey={detailKey}
           version={detailVersion}
           pendingForTest={[]}
