@@ -7,6 +7,7 @@ import { queryClient } from "./lib/queryClient";
 import { DialogProvider } from "./contexts/DialogContext";
 import { ProfileProvider } from "./contexts/ProfileContext";
 import { SyncProvider } from "./contexts/SyncContext";
+import { SelectionProvider } from "./contexts/SelectionContext";
 
 const container = document.getElementById("root");
 
@@ -18,7 +19,9 @@ root.render(
       <DialogProvider>
         <ProfileProvider>
           <SyncProvider>
-            <App />
+            <SelectionProvider>
+              <App />
+            </SelectionProvider>
           </SyncProvider>
         </ProfileProvider>
       </DialogProvider>

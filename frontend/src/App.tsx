@@ -53,6 +53,7 @@ import { REVIEW_ENABLED, invalidateCapabilities, useCapabilities } from "./featu
 import { clearViewState } from "./lib/viewState";
 import { useProfile } from "./contexts/ProfileContext";
 import { useSync } from "./contexts/SyncContext";
+import { useSelection } from "./contexts/SelectionContext";
 import { usePendingChanges } from "./queries/pending";
 import {
   useSyncState,
@@ -158,7 +159,19 @@ function App() {
   const [selectedContainer, setSelectedContainer] = useState<string>("");
   const [selectedComponent, setSelectedComponent] = useState<string>("");
 
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // Browse selection now lives in SelectionContext (spec §5.3). The named
+  // actions keep their former App-local names (toggleSelect / toggleSelectPage)
+  // so existing call sites are unchanged; the raw setters back App's composite
+  // handlers (profile-change reset, applyCreatedRemap remap, bulk clears).
+  const {
+    selectedKey,
+    setSelectedKey,
+    selectedSet,
+    setSelectedSet,
+    toggle: toggleSelect,
+    togglePage: toggleSelectPage,
+    selectAllMatching,
+  } = useSelection();
   const [showNewTest, setShowNewTest] = useState(false);
   const [newTestFolder, setNewTestFolder] = useState<string>("");
   const [detailVersion, setDetailVersion] = useState(0);
@@ -176,7 +189,6 @@ function App() {
     null,
   );
 
-  const [selectedSet, setSelectedSet] = useState<Set<string>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [showBulkTransition, setShowBulkTransition] = useState(false);
   const [showBulkAllocate, setShowBulkAllocate] = useState(false);
@@ -422,35 +434,6 @@ function App() {
     } catch (e) {
       await notice({ title: "Delete failed", message: errMsg(e), tone: "error" });
     }
-  }
-
-  function toggleSelect(key: string) {
-    setSelectedSet((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  function toggleSelectPage(keys: string[]) {
-    setSelectedSet((prev) => {
-      const allSelected = keys.every((k) => prev.has(k));
-      const next = new Set(prev);
-      if (allSelected) {
-        for (const k of keys) next.delete(k);
-      } else {
-        for (const k of keys) next.add(k);
-      }
-      return next;
-    });
-  }
-
-  // selectAllMatching replaces the current selection with every key that
-  // matches the table's filter (FR-3.1). TestTable owns the query and the
-  // backend call; this handler just absorbs the result.
-  function selectAllMatching(keys: string[]) {
-    setSelectedSet(new Set(keys));
   }
 
   // Shared gate for the three sync entry points (SyncContext's canSync is the
