@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { Modal } from "./Modal";
 import { BulkEditTests, errMsg } from "../api";
 import type { BulkEdit, BulkEditResult } from "../api";
 
 interface Props {
-  profileId: string;
   testKeys: string[];
   onComplete: (result: BulkEditResult) => void;
   onCancel: () => void;
@@ -56,11 +56,11 @@ const FIELDS: FieldDef[] = [
 ];
 
 export function BulkEditModal({
-  profileId,
   testKeys,
   onComplete,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [field, setField] = useState("summary");
   const [operation, setOperation] = useState("set");
   const [value, setValue] = useState("");

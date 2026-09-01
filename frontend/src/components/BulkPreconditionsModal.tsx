@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   ListAllPreconditions,
   BulkAssociatePreconditions,
@@ -10,7 +11,6 @@ import { Modal } from "./Modal";
 import { SearchableSelect } from "./SearchableSelect";
 
 interface Props {
-  profileId: string;
   testKeys: string[];
   onComplete: () => void;
   onCancel: () => void;
@@ -29,11 +29,11 @@ function togglePick(prev: Set<string>, key: string): Set<string> {
 // BulkPreconditionsModal associates, disassociates, or swaps (Replace mode)
 // Preconditions across the selected Tests (FR-13.6, RND_P_4TFINT_05-231).
 export function BulkPreconditionsModal({
-  profileId,
   testKeys,
   onComplete,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [preconditions, setPreconditions] = useState<Precondition[]>([]);
   const [target, setTarget] = useState("");
   const [mode, setMode] = useState<Mode>("add");

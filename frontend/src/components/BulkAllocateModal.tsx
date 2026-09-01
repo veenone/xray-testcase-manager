@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { Modal } from "./Modal";
 import {
   ListContainers,
@@ -10,7 +11,6 @@ import {
 import type { Container } from "../api";
 
 interface Props {
-  profileId: string;
   testKeys: string[];
   onComplete: () => void;
   onCancel: () => void;
@@ -36,11 +36,11 @@ interface ApplyResult {
 // Execution (FR-3.4–3.6, add-only) — either an existing container or a new one
 // created on commit. Tests already in the chosen container are reported back.
 export function BulkAllocateModal({
-  profileId,
   testKeys,
   onComplete,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [action, setAction] = useState<"allocate" | "remove">("allocate");
   const [kind, setKind] = useState("testset");
   const [containers, setContainers] = useState<Container[]>([]);

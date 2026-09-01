@@ -1,10 +1,10 @@
 import { useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { Modal } from "./Modal";
 import { BulkReviewTests, errMsg } from "../api";
 import type { BulkEditResult } from "../api";
 
 interface Props {
-  profileId: string;
   testKeys: string[];
   onComplete: () => void;
   onCancel: () => void;
@@ -21,7 +21,8 @@ const VERDICTS: Array<{ value: string; label: string }> = [
 
 // BulkReviewModal applies one review verdict to every selected Test (bulk
 // sign-off) — the batch counterpart to the per-test Review section.
-export function BulkReviewModal({ profileId, testKeys, onComplete, onCancel }: Props) {
+export function BulkReviewModal({ testKeys, onComplete, onCancel }: Props) {
+  const { activeId: profileId } = useProfile();
   const [verdict, setVerdict] = useState("approved");
   const [reviewer, setReviewer] = useState(
     () => localStorage.getItem(REVIEWER_KEY) ?? "",

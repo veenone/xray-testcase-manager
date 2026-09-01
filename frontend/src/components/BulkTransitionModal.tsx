@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { Modal } from "./Modal";
 import {
   GetBulkTransitionOptions,
@@ -8,7 +9,6 @@ import {
 import type { BulkTransitionOptions, BulkTransitionResult } from "../api";
 
 interface Props {
-  profileId: string;
   testKeys: string[];
   onComplete: (result: BulkTransitionResult) => void;
   onCancel: () => void;
@@ -19,11 +19,11 @@ interface Props {
 // are actually reachable from the current selection — so the dropdown
 // never offers a status that would skip every Test.
 export function BulkTransitionModal({
-  profileId,
   testKeys,
   onComplete,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [options, setOptions] = useState<BulkTransitionOptions | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");

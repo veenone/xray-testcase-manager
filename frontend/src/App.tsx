@@ -1598,7 +1598,6 @@ function App() {
 
       {showBulkEdit && (
         <BulkEditModal
-          profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
             refreshProfileData();
@@ -1618,7 +1617,6 @@ function App() {
 
       {showBulkTransition && (
         <BulkTransitionModal
-          profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
             refreshProfileData();
@@ -1638,7 +1636,6 @@ function App() {
 
       {showBulkAllocate && (
         <BulkAllocateModal
-          profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
             refreshProfileData();
@@ -1658,7 +1655,6 @@ function App() {
 
       {showBulkMove && (
         <BulkMoveModal
-          profileId={activeId}
           testKeys={[...selectedSet]}
           folders={folders}
           onComplete={() => {
@@ -1709,7 +1705,6 @@ function App() {
 
       {showBulkPreconditions && (
         <BulkPreconditionsModal
-          profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
             refreshProfileData();
@@ -1729,7 +1724,6 @@ function App() {
 
       {showBulkRequirements && (
         <BulkRequirementsModal
-          profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
             refreshProfileData();
@@ -1744,7 +1738,6 @@ function App() {
 
       {REVIEW_ENABLED && showBulkReview && (
         <BulkReviewModal
-          profileId={activeId}
           testKeys={[...selectedSet]}
           onComplete={() => {
             refreshProfileData();

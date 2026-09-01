@@ -1,10 +1,10 @@
 import { useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { Modal } from "./Modal";
 import { BulkMoveToFolder, errMsg } from "../api";
 import type { Folder, BulkEditResult } from "../api";
 
 interface Props {
-  profileId: string;
   testKeys: string[];
   folders: Folder[];
   onComplete: () => void;
@@ -15,12 +15,12 @@ interface Props {
 // (FR-13.3). The folder list comes from the synced repository tree; the root
 // is offered as an empty target.
 export function BulkMoveModal({
-  profileId,
   testKeys,
   folders,
   onComplete,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [target, setTarget] = useState("");
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState("");

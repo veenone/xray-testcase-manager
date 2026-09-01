@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   ListRequirementsWithCoverage,
   BulkAssociateRequirements,
@@ -10,7 +11,6 @@ import { Modal } from "./Modal";
 import { SearchableSelect } from "./SearchableSelect";
 
 interface Props {
-  profileId: string;
   testKeys: string[];
   onComplete: () => void;
   onCancel: () => void;
@@ -29,11 +29,11 @@ function togglePick(prev: Set<string>, key: string): Set<string> {
 // BulkRequirementsModal links, unlinks, or swaps (Replace mode) a requirement
 // across the selected Tests at once (RND_P_4TFINT_05-231).
 export function BulkRequirementsModal({
-  profileId,
   testKeys,
   onComplete,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [requirements, setRequirements] = useState<RequirementCoverage[]>([]);
   const [target, setTarget] = useState("");
   const [mode, setMode] = useState<Mode>("add");
