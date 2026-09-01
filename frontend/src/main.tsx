@@ -8,6 +8,8 @@ import { DialogProvider } from "./contexts/DialogContext";
 import { ProfileProvider } from "./contexts/ProfileContext";
 import { SyncProvider } from "./contexts/SyncContext";
 import { SelectionProvider } from "./contexts/SelectionContext";
+import { NavProvider } from "./contexts/NavContext";
+import { ModalProvider } from "./contexts/ModalContext";
 
 const container = document.getElementById("root");
 
@@ -19,9 +21,13 @@ root.render(
       <DialogProvider>
         <ProfileProvider>
           <SyncProvider>
-            <SelectionProvider>
-              <App />
-            </SelectionProvider>
+            <NavProvider>
+              <SelectionProvider>
+                <ModalProvider>
+                  <App />
+                </ModalProvider>
+              </SelectionProvider>
+            </NavProvider>
           </SyncProvider>
         </ProfileProvider>
       </DialogProvider>

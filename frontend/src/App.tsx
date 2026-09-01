@@ -54,6 +54,8 @@ import { clearViewState } from "./lib/viewState";
 import { useProfile } from "./contexts/ProfileContext";
 import { useSync } from "./contexts/SyncContext";
 import { useSelection } from "./contexts/SelectionContext";
+import { useNav } from "./contexts/NavContext";
+import { useModal } from "./contexts/ModalContext";
 import { usePendingChanges } from "./queries/pending";
 import {
   useSyncState,
@@ -119,14 +121,11 @@ function App() {
   const { prompt } = usePrompt();
   const { confirm } = useConfirm();
   const { notice } = useNotice();
-  const [showForm, setShowForm] = useState(false);
-  const [showProfiles, setShowProfiles] = useState(false);
-  // Connections manager for the active workspace (P6.3 B6a) — add/edit/delete
-  // the connections (e.g. a Kiwi target) a workspace talks to, beyond its
-  // primary one. The prerequisite UI for the bridge wizard (B6b).
-  const [showConnections, setShowConnections] = useState(false);
-  const [showBridge, setShowBridge] = useState(false);
-  // When set, the profile modal opens in edit mode for this profile (FR-5).
+  // The ~16 modal-visibility booleans collapse to one reducer in ModalContext
+  // (spec §5.5); isOpen/openModal/closeModal replace the showX/setShowX pairs.
+  const { isOpen, openModal, closeModal } = useModal();
+  // editingProfile stays App-local — it's the form modal's edit target (FR-5),
+  // meaningful only while the "form" modal is open.
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
 
   // The sync/commit lifecycle + its mutual-exclusion invariant now live in
@@ -148,16 +147,26 @@ function App() {
   } = useSync();
   const prevProfileRef = useRef<string>("");
 
-  const [selectedFolder, setSelectedFolder] = useState<string>("");
-
-  // Browse grouping (FR-11.6): group the grid by folder (the default tree),
-  // Test Set, Test Plan or Component. The container dimensions filter the grid
-  // to a chosen container's members; Component filters to a chosen component.
-  const [groupBy, setGroupBy] = useState<
-    "folder" | "testset" | "testplan" | "component"
-  >("folder");
-  const [selectedContainer, setSelectedContainer] = useState<string>("");
-  const [selectedComponent, setSelectedComponent] = useState<string>("");
+  // View routing + browse grouping + the New Test panel now live in NavContext
+  // (spec §5.4). The cross-context reset effects (clearing the sidebar + bulk
+  // selection on profile / group-by change) stay in App — they coordinate Nav
+  // with SelectionContext.
+  const {
+    view,
+    setView,
+    groupBy,
+    setGroupBy,
+    selectedFolder,
+    setSelectedFolder,
+    selectedContainer,
+    setSelectedContainer,
+    selectedComponent,
+    setSelectedComponent,
+    showNewTest,
+    setShowNewTest,
+    newTestFolder,
+    setNewTestFolder,
+  } = useNav();
 
   // Browse selection now lives in SelectionContext (spec §5.3). The named
   // actions keep their former App-local names (toggleSelect / toggleSelectPage)
@@ -172,8 +181,6 @@ function App() {
     togglePage: toggleSelectPage,
     selectAllMatching,
   } = useSelection();
-  const [showNewTest, setShowNewTest] = useState(false);
-  const [newTestFolder, setNewTestFolder] = useState<string>("");
   const [detailVersion, setDetailVersion] = useState(0);
 
   const queryClient = useQueryClient();
@@ -184,42 +191,16 @@ function App() {
   const folders = useFolders(activeId).data ?? [];
   const groupContainers = useGroupContainers(activeId, groupBy).data ?? [];
   const components = useComponents(activeId, groupBy).data ?? [];
-  const [showPending, setShowPending] = useState(false);
   const [lastCommitResult, setLastCommitResult] = useState<CommitResult | null>(
     null,
   );
 
-  const [showBulkEdit, setShowBulkEdit] = useState(false);
-  const [showBulkTransition, setShowBulkTransition] = useState(false);
-  const [showBulkAllocate, setShowBulkAllocate] = useState(false);
-  const [showBulkMove, setShowBulkMove] = useState(false);
-  const [showBulkPreconditions, setShowBulkPreconditions] = useState(false);
-  const [showBulkRequirements, setShowBulkRequirements] = useState(false);
-  const [showBulkReview, setShowBulkReview] = useState(false);
-
-  const [view, setView] = useState<
-    | "browse"
-    | "preconditions"
-    | "requirements"
-    | "duplicates"
-    | "gapanalysis"
-    | "testcalls"
-    | "dashboard"
-    | "traceability"
-    | "plans"
-    | "coverage"
-    | "misspellings"
-  >("browse");
 
   // The onboarding tour (-335). Steps target Browse-only elements and the tour
   // can be replayed from any view, so it switches to Browse before starting.
   const { start: startTour } = useTour({
     onFinish: () => setTourSeenVersion(TOUR_VERSION),
   });
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [showSyncHistory, setShowSyncHistory] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [showAbout, setShowAbout] = useState(false);
 
   // Resizeable browse sidebar (FR-11): drag the divider to widen it for long
   // folder names / deep nesting; the width persists across sessions.
@@ -355,6 +336,20 @@ function App() {
   const refreshProfileData = useCallback(() => {
     invalidateProfileData(queryClient, activeId);
   }, [queryClient, activeId]);
+
+  // afterMutation is the shared "a modal finished mutating" ritual (spec §6.2):
+  // refresh the profile lists, re-seed the open detail panel, reload the pending
+  // journal, optionally drop the bulk selection, and close the active modal. It
+  // replaces the block copy-pasted into every bulk modal's onComplete/onCancel.
+  // (The import modal and the review/requirements cancels keep their own shapes
+  // — their rituals genuinely differ.)
+  function afterMutation(opts?: { clearSelection?: boolean }) {
+    refreshProfileData();
+    setDetailVersion((v) => v + 1);
+    reloadPending();
+    if (opts?.clearSelection) setSelectedSet(new Set());
+    closeModal();
+  }
 
   // Refresh the sync summary and folder tree when the active profile changes
   // or a sync finishes.
@@ -525,8 +520,8 @@ function App() {
   menuActions.current = {
     "menu:sync": runSync,
     "menu:full-sync": runFullSync,
-    "menu:new-profile": () => setShowForm(true),
-    "menu:import": () => setShowImport(true),
+    "menu:new-profile": () => openModal("form"),
+    "menu:import": () => openModal("import"),
     "menu:view-browse": () => setView("browse"),
     "menu:view-preconditions": () => setView("preconditions"),
     "menu:view-requirements": () => setView("requirements"),
@@ -537,9 +532,9 @@ function App() {
     "menu:view-gapanalysis": () => setView("gapanalysis"),
     "menu:view-testcalls": () => setView("testcalls"),
     "menu:view-coverage": () => setView("coverage"),
-    "menu:sync-history": () => setShowSyncHistory(true),
-    "menu:diagnostics": () => setShowDiagnostics(true),
-    "menu:about": () => setShowAbout(true),
+    "menu:sync-history": () => openModal("syncHistory"),
+    "menu:diagnostics": () => openModal("diagnostics"),
+    "menu:about": () => openModal("about"),
   };
   useEffect(() => {
     const unsubs = Object.keys(menuActions.current).map((event) =>
@@ -624,7 +619,7 @@ function App() {
       refreshProfileData();
       reloadPending();
     }
-    if (remaining.length === 0) setShowProfiles(false);
+    if (remaining.length === 0) closeModal();
   }
 
   // handleCreated handles both a newly-created profile and an edited one: it
@@ -643,7 +638,11 @@ function App() {
         : [...prev, p],
     );
     setActiveId(p.id);
-    setShowForm(false);
+    // handleCreated is wired to both the form modal (onCreated) and the
+    // Profiles manager (onSaved). Close only the form — the old code did
+    // setShowForm(false), a no-op when the manager (or nothing) was open, so
+    // saving from the manager must leave it open.
+    if (isOpen("form")) closeModal();
     setEditingProfile(null);
     setSelectedKey(null);
     refreshProfileData();
@@ -872,7 +871,7 @@ function App() {
   }
 
   function closePendingModal() {
-    setShowPending(false);
+    closeModal();
     setLastCommitResult(null);
   }
 
@@ -981,13 +980,13 @@ function App() {
               {
                 key: "profiles",
                 label: "Manage Profiles…",
-                onClick: () => setShowProfiles(true),
+                onClick: () => openModal("profiles"),
                 title: "Manage profiles: add, edit, set default, export, or delete",
               },
               {
                 key: "connections",
                 label: "Connections…",
-                onClick: () => setShowConnections(true),
+                onClick: () => openModal("connections"),
                 title:
                   "Manage this workspace's connections. Add a target " +
                   "(e.g. Kiwi) alongside its primary connection.",
@@ -995,7 +994,7 @@ function App() {
               {
                 key: "bridge",
                 label: "Bridge…",
-                onClick: () => setShowBridge(true),
+                onClick: () => openModal("bridge"),
                 title:
                   "Publish or migrate this workspace's tests from one connection to another",
               },
@@ -1093,7 +1092,7 @@ function App() {
           {pendingChanges.length > 0 && (
             <button
               className="btn-pending"
-              onClick={() => setShowPending(true)}
+              onClick={() => openModal("pending")}
               title="Show uncommitted edits"
             >
               <span className="pending-dot" aria-hidden="true">
@@ -1126,7 +1125,7 @@ function App() {
                 {
                   key: "importtests",
                   label: "Import tests…",
-                  onClick: () => setShowImport(true),
+                  onClick: () => openModal("import"),
                   title: "Import tests from a CSV or XLSX file",
                 },
                 {
@@ -1140,7 +1139,7 @@ function App() {
                 {
                   key: "history",
                   label: "Sync history",
-                  onClick: () => setShowSyncHistory(true),
+                  onClick: () => openModal("syncHistory"),
                 },
                 // Help group. The tour sat between the sync actions and
                 // Diagnostics with nothing separating it, which made it easy
@@ -1155,7 +1154,7 @@ function App() {
                 {
                   key: "diag",
                   label: "Diagnostics",
-                  onClick: () => setShowDiagnostics(true),
+                  onClick: () => openModal("diagnostics"),
                   title: "Logs & diagnostics",
                 },
                 { key: "td", divider: true },
@@ -1206,28 +1205,28 @@ function App() {
           <span className="bulk-count">{selectedSet.size} selected</span>
           <button
             className="btn btn-primary"
-            onClick={() => setShowBulkEdit(true)}
+            onClick={() => openModal("bulkEdit")}
           >
             Bulk edit…
           </button>
           {caps.supportsWorkflowTransitions && (
             <button
               className="btn btn-primary"
-              onClick={() => setShowBulkTransition(true)}
+              onClick={() => openModal("bulkTransition")}
             >
               Bulk transition…
             </button>
           )}
           <button
             className="btn btn-primary"
-            onClick={() => setShowBulkAllocate(true)}
+            onClick={() => openModal("bulkAllocate")}
           >
             Allocate…
           </button>
           {caps.supportsFolders && folders.length > 0 && (
             <button
               className="btn btn-primary"
-              onClick={() => setShowBulkMove(true)}
+              onClick={() => openModal("bulkMove")}
             >
               Move to folder…
             </button>
@@ -1235,7 +1234,7 @@ function App() {
           {caps.supportsPreconditionObjects && (
             <button
               className="btn btn-primary"
-              onClick={() => setShowBulkPreconditions(true)}
+              onClick={() => openModal("bulkPreconditions")}
             >
               Preconditions…
             </button>
@@ -1243,7 +1242,7 @@ function App() {
           {caps.supportsRequirementObjects && (
             <button
               className="btn btn-primary"
-              onClick={() => setShowBulkRequirements(true)}
+              onClick={() => openModal("bulkRequirements")}
             >
               Requirements…
             </button>
@@ -1251,7 +1250,7 @@ function App() {
           {REVIEW_ENABLED && (
             <button
               className="btn btn-primary"
-              onClick={() => setShowBulkReview(true)}
+              onClick={() => openModal("bulkReview")}
             >
               Review…
             </button>
@@ -1483,10 +1482,10 @@ function App() {
         </main>
       )}
 
-      {showForm && (
+      {isOpen("form") && (
         <Modal
           onClose={() => {
-            setShowForm(false);
+            closeModal();
             setEditingProfile(null);
           }}
           className="modal"
@@ -1497,19 +1496,19 @@ function App() {
               profiles={profiles}
               onCreated={handleCreated}
               onCancel={() => {
-                setShowForm(false);
+                closeModal();
                 setEditingProfile(null);
               }}
             />
         </Modal>
       )}
 
-      {showProfiles && (
+      {isOpen("profiles") && (
         <ProfilesModal
           profiles={profiles}
           activeId={activeId}
           defaultProfileId={defaultProfileId}
-          onClose={() => setShowProfiles(false)}
+          onClose={() => closeModal()}
           onSetDefault={setDefaultFor}
           onExport={exportProfile}
           onImport={importProfile}
@@ -1518,25 +1517,25 @@ function App() {
         />
       )}
 
-      {showConnections && activeId && (
+      {isOpen("connections") && activeId && (
         <ConnectionsModal
           activeId={activeId}
-          onClose={() => setShowConnections(false)}
+          onClose={() => closeModal()}
         />
       )}
 
-      {showBridge && activeId && (
+      {isOpen("bridge") && activeId && (
         <BridgeWizard
           activeId={activeId}
-          onClose={() => setShowBridge(false)}
+          onClose={() => closeModal()}
           onOpenConnections={() => {
-            setShowBridge(false);
-            setShowConnections(true);
+            closeModal();
+            openModal("connections");
           }}
         />
       )}
 
-      {showPending && (
+      {isOpen("pending") && (
         <PendingChangesModal
           changes={pendingChanges}
           onDiscard={handleDiscard}
@@ -1557,155 +1556,88 @@ function App() {
         />
       )}
 
-      {showBulkEdit && (
+      {isOpen("bulkEdit") && (
         <BulkEditModal
           testKeys={[...selectedSet]}
-          onComplete={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setSelectedSet(new Set());
-            setShowBulkEdit(false);
-          }}
-          onCancel={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setShowBulkEdit(false);
-          }}
+          onComplete={() => afterMutation({ clearSelection: true })}
+          onCancel={() => afterMutation()}
         />
       )}
 
-      {showBulkTransition && (
+      {isOpen("bulkTransition") && (
         <BulkTransitionModal
           testKeys={[...selectedSet]}
-          onComplete={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setSelectedSet(new Set());
-            setShowBulkTransition(false);
-          }}
-          onCancel={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setShowBulkTransition(false);
-          }}
+          onComplete={() => afterMutation({ clearSelection: true })}
+          onCancel={() => afterMutation()}
         />
       )}
 
-      {showBulkAllocate && (
+      {isOpen("bulkAllocate") && (
         <BulkAllocateModal
           testKeys={[...selectedSet]}
-          onComplete={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setSelectedSet(new Set());
-            setShowBulkAllocate(false);
-          }}
-          onCancel={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setShowBulkAllocate(false);
-          }}
+          onComplete={() => afterMutation({ clearSelection: true })}
+          onCancel={() => afterMutation()}
         />
       )}
 
-      {showBulkMove && (
+      {isOpen("bulkMove") && (
         <BulkMoveModal
           testKeys={[...selectedSet]}
           folders={folders}
-          onComplete={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setSelectedSet(new Set());
-            setShowBulkMove(false);
-          }}
-          onCancel={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setShowBulkMove(false);
-          }}
+          onComplete={() => afterMutation({ clearSelection: true })}
+          onCancel={() => afterMutation()}
         />
       )}
 
-      {showDiagnostics && (
-        <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />
+      {isOpen("diagnostics") && (
+        <DiagnosticsModal onClose={() => closeModal()} />
       )}
 
-      {showAbout && (
+      {isOpen("about") && (
         <AboutModal
-          onClose={() => setShowAbout(false)}
+          onClose={() => closeModal()}
           onTakeTour={() => startTour(view)}
         />
       )}
 
-      {showSyncHistory && (
+      {isOpen("syncHistory") && (
         <SyncHistoryModal
-          onClose={() => setShowSyncHistory(false)}
+          onClose={() => closeModal()}
         />
       )}
 
-      {showImport && (
+      {isOpen("import") && (
         <ImportTestsModal
           onComplete={() => {
             refreshProfileData();
             reloadPending();
-            setShowImport(false);
+            closeModal();
           }}
-          onCancel={() => setShowImport(false)}
+          onCancel={() => closeModal()}
         />
       )}
 
-      {showBulkPreconditions && (
+      {isOpen("bulkPreconditions") && (
         <BulkPreconditionsModal
           testKeys={[...selectedSet]}
-          onComplete={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setSelectedSet(new Set());
-            setShowBulkPreconditions(false);
-          }}
-          onCancel={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setShowBulkPreconditions(false);
-          }}
+          onComplete={() => afterMutation({ clearSelection: true })}
+          onCancel={() => afterMutation()}
         />
       )}
 
-      {showBulkRequirements && (
+      {isOpen("bulkRequirements") && (
         <BulkRequirementsModal
           testKeys={[...selectedSet]}
-          onComplete={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setSelectedSet(new Set());
-            setShowBulkRequirements(false);
-          }}
-          onCancel={() => setShowBulkRequirements(false)}
+          onComplete={() => afterMutation({ clearSelection: true })}
+          onCancel={() => closeModal()}
         />
       )}
 
-      {REVIEW_ENABLED && showBulkReview && (
+      {REVIEW_ENABLED && isOpen("bulkReview") && (
         <BulkReviewModal
           testKeys={[...selectedSet]}
-          onComplete={() => {
-            refreshProfileData();
-            setDetailVersion((v) => v + 1);
-            reloadPending();
-            setSelectedSet(new Set());
-            setShowBulkReview(false);
-          }}
-          onCancel={() => setShowBulkReview(false)}
+          onComplete={() => afterMutation({ clearSelection: true })}
+          onCancel={() => closeModal()}
         />
       )}
 
