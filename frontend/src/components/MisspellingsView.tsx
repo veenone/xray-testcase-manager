@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   ListMisspellings,
   ApplyCorrection,
@@ -24,7 +25,6 @@ interface Finding {
 }
 
 interface Props {
-  profileId: string;
   onChanged: () => void;
 }
 
@@ -52,7 +52,8 @@ function matchCase(original: string, suggestion: string): string {
   return suggestion;
 }
 
-export default function MisspellingsView({ profileId, onChanged }: Props) {
+export default function MisspellingsView({ onChanged }: Props) {
+  const { activeId: profileId } = useProfile();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);

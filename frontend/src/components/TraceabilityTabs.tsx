@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 import {
   useTraceabilityStats,
@@ -23,7 +24,6 @@ import { RequirementSankey } from "./RequirementSankey";
 import { MultiSelect } from "./MultiSelect";
 
 interface Props {
-  profileId: string;
   jiraUrl?: string;
 }
 
@@ -33,7 +33,8 @@ type Tab = "req" | "exec" | "subtask";
 // (requirement coverage, plan -> execution -> status, and sub-task
 // parent -> execution -> status) behind a tab bar, each with its own filters.
 // Computed entirely from the local store; refreshed via invalidateProfileData.
-export function TraceabilityTabs({ profileId, jiraUrl }: Props) {
+export function TraceabilityTabs({ jiraUrl }: Props) {
+  const { activeId: profileId } = useProfile();
   const [tab, setTab] = useViewState<Tab>(profileId, "traceability", "tab", "exec");
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState("");

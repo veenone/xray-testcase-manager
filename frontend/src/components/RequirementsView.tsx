@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 import {
   EditRequirementField,
@@ -29,7 +30,6 @@ import { keyCompare, cmpStr, applyDir } from "../sort";
 import { useConfirm } from "./useConfirm";
 
 interface Props {
-  profileId: string;
   onChanged?: () => void;
 }
 
@@ -74,7 +74,8 @@ function cmpReq(
 // detail pane on the right listing the Tests that cover the selected
 // requirement with their run result. Read-only; recomputes when the profile
 // changes or a sync/commit invalidates the query cache.
-export function RequirementsView({ profileId, onChanged }: Props) {
+export function RequirementsView({ onChanged }: Props) {
+  const { activeId: profileId } = useProfile();
   const requirementsQuery = useRequirements(profileId);
   const list = requirementsQuery.data ?? [];
   const loading = requirementsQuery.isFetching;

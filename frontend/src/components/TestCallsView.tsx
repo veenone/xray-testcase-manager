@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 import { SyncTestCalls, EventsOn, errMsg } from "../api";
 import type { TestCallLink, SyncProgress } from "../api";
@@ -7,7 +8,6 @@ import { Pager } from "./Pager";
 import { useTestCallLinks } from "../queries/testCalls";
 
 interface Props {
-  profileId: string;
   onChanged?: () => void;
 }
 
@@ -90,7 +90,8 @@ function isCrossProjectCall(l: TestCallLink): boolean {
 // TestCallsView shows the "call test" relationships across the project: which
 // tests call which (#2 follow-up). Grouped by caller, broken calls flagged, and
 // cyclic calls highlighted. Clicking a test opens its full detail.
-export function TestCallsView({ profileId, onChanged }: Props) {
+export function TestCallsView({ onChanged }: Props) {
+  const { activeId: profileId } = useProfile();
   const [detailKey, setDetailKey] = useViewState(profileId, "testcalls", "detailKey", "");
   const [detailVersion, setDetailVersion] = useState(0);
   const [page, setPage] = useViewState(profileId, "testcalls", "page", 0);

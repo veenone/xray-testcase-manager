@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 
 import {
@@ -27,7 +28,6 @@ import { Modal } from "./Modal";
 type Filter = "all" | "identical" | "differ" | "excluded";
 
 interface Props {
-  profileId: string;
   folders: Folder[];
   pendingByTestKey: Map<string, PendingChange[]>;
   onChanged: () => void;
@@ -63,11 +63,11 @@ function normStep(s: Step | undefined): string {
 // DuplicatesView is the duplicate-test management tab: scan, triage groups,
 // exclude false positives, compare steps side-by-side, and edit real duplicates.
 export function DuplicatesView({
-  profileId,
   folders,
   pendingByTestKey,
   onChanged,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   // Which entity the Duplicates tab is scanning (RND_P_4TFINT_05-323). Tests
   // keep the full step-comparison flow; Preconditions use a simpler self-
   // contained view (no object-level steps).

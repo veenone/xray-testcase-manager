@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   useCanonicalRequirements,
   useCoverageDetail,
@@ -41,7 +42,6 @@ import { CoveragePublishPanel } from "./CoveragePublishPanel";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   isDemo?: boolean;
   demoVariant?: "pkcs" | "euicc" | "";
   onChanged?: () => void;
@@ -76,7 +76,8 @@ function statusText(vc: ValueCoverage | undefined): string {
 // coverage matrix, a gap list, and a reuse view — all local-only (no Jira
 // admin). Populate a model by importing the Excel template, then map tests to
 // parameter values to drive the coverage %.
-export function CoverageView({ profileId, isDemo, demoVariant, onChanged }: Props) {
+export function CoverageView({ isDemo, demoVariant, onChanged }: Props) {
+  const { activeId: profileId } = useProfile();
   // The canonical (functional-requirement) list comes from the query cache
   // (audit A3, Phase 3); a mutation refreshes it via invalidateProfileData.
   const canonQuery = useCanonicalRequirements(profileId);

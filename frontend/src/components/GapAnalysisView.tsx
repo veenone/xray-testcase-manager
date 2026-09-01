@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 import {
   AnalyzeGap,
@@ -15,7 +16,6 @@ import { Pager } from "./Pager";
 import { fileToBase64 } from "../files";
 
 interface Props {
-  profileId: string;
   onChanged: () => void;
 }
 
@@ -106,7 +106,8 @@ function GapList({
 // uploaded file) against an uploaded target list by test summary, with optional
 // three-way diff against the project and folder-mismatch reporting. Gaps are
 // shown side by side, addable as new tests, and exportable as a CSV/Excel report.
-export function GapAnalysisView({ profileId, onChanged }: Props) {
+export function GapAnalysisView({ onChanged }: Props) {
+  const { activeId: profileId } = useProfile();
   const [refSource, setRefSource] = useViewState<"project" | "file">(profileId, "gapanalysis", "refSource", "project");
   const [templateKind, setTemplateKind] = useViewState<TemplateKind>(profileId, "gapanalysis", "templateKind", "full");
   const [compareBy, setCompareBy] = useViewState<"summary" | "summaryFolder">(profileId, "gapanalysis", "compareBy", "summary");

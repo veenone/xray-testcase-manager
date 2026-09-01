@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   usePreconditions,
   usePreconditionTests,
@@ -24,7 +25,6 @@ import { keyCompare, cmpStr, applyDir } from "../sort";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   onChanged: () => void;
 }
 
@@ -53,7 +53,8 @@ function cmpPre(
 // the Tests that reference it, create new ones, and delete. Everything is
 // computed from the local store and queued for commit; it recomputes when the
 // profile changes or a sync / commit invalidates the query cache.
-export function PreconditionsView({ profileId, onChanged }: Props) {
+export function PreconditionsView({ onChanged }: Props) {
+  const { activeId: profileId } = useProfile();
   // The precondition list and the selected precondition's linked tests both
   // come from the query cache with stable keys (Phase 4c); a mutation refreshes
   // them via invalidateProfileData.

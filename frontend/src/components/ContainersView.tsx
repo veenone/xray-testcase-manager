@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 import {
   SeedSampleContainers,
@@ -45,7 +46,6 @@ import { useNotice } from "./useNotice";
 import { useCapabilities } from "../features";
 
 interface Props {
-  profileId: string;
   onChanged: () => void;
   // Sample-data generation is a demo aid — only offered for demo profiles so a
   // user can't seed fake containers into a real project (FR-5).
@@ -68,12 +68,12 @@ const RUN_STATUSES = ["TODO", "EXECUTING", "PASS", "FAIL", "ABORTED", "BLOCKED"]
 // create / rename / delete. Computed from the local store; recomputes when the
 // profile changes or a sync/commit invalidates the query cache.
 export function ContainersView({
-  profileId,
   onChanged,
   isDemo,
   jiraUrl,
   onOpenTest,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   // Gates the Test Execution environment controls to what the active
   // profile's backend actually supports (P6.2a).
   const caps = useCapabilities(profileId);

@@ -1301,7 +1301,6 @@ function App() {
       {view === "preconditions" && caps.supportsPreconditionObjects ? (
         <main className="content content-preconditions">
           <PreconditionsView
-            profileId={activeId}
             onChanged={() => {
               refreshProfileData();
               reloadPending();
@@ -1311,7 +1310,6 @@ function App() {
       ) : view === "requirements" && caps.supportsRequirementObjects ? (
         <main className="content content-requirements">
           <RequirementsView
-            profileId={activeId}
             onChanged={() => {
               refreshProfileData();
               reloadPending();
@@ -1321,7 +1319,6 @@ function App() {
       ) : view === "duplicates" ? (
         <main className="content content-dashboard">
           <DuplicatesView
-            profileId={activeId}
             folders={folders}
             pendingByTestKey={pendingByTestKey}
             onChanged={() => {
@@ -1333,7 +1330,6 @@ function App() {
       ) : view === "gapanalysis" ? (
         <main className="content content-gapanalysis">
           <GapAnalysisView
-            profileId={activeId}
             onChanged={() => {
               refreshProfileData();
               reloadPending();
@@ -1343,7 +1339,6 @@ function App() {
       ) : view === "testcalls" ? (
         <main className="content content-dashboard">
           <TestCallsView
-            profileId={activeId}
             onChanged={() => {
               refreshProfileData();
               reloadPending();
@@ -1357,14 +1352,12 @@ function App() {
       ) : view === "traceability" ? (
         <main className="content content-dashboard">
           <TraceabilityTabs
-            profileId={activeId}
             jiraUrl={activeProfile?.jiraUrl ?? ""}
           />
         </main>
       ) : view === "plans" ? (
         <main className="content content-containers">
           <ContainersView
-            profileId={activeId}
             isDemo={isDemo}
             jiraUrl={activeProfile?.jiraUrl ?? ""}
             onOpenTest={(k) => {
@@ -1380,7 +1373,6 @@ function App() {
       ) : view === "coverage" ? (
         <main className="content content-coverage">
           <CoverageView
-            profileId={activeId}
             isDemo={isDemo}
             demoVariant={demoVar}
             onChanged={() => {
@@ -1392,7 +1384,6 @@ function App() {
       ) : view === "misspellings" ? (
         <main className="content">
           <MisspellingsView
-            profileId={activeId}
             onChanged={() => {
               refreshProfileData();
               reloadPending();
