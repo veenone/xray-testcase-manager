@@ -425,7 +425,6 @@ export function NewTestPanel({
 
       {showClone && (
         <CloneStepsModal
-          profileId={profileId}
           targetLabel="the new test"
           onCancel={() => setShowClone(false)}
           onConfirm={(_sourceKey, _stepIds, cloned) => {

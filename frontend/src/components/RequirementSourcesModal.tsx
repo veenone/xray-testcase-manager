@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   ListRequirementSources,
   SetRequirementSource,
@@ -12,7 +13,6 @@ import type { RequirementSource } from "../api";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   onClose: () => void;
 }
 
@@ -59,7 +59,8 @@ function labelForLinkType(t: LinkTypeOpt): string {
 // RequirementSourcesModal configures which projects requirements are pulled
 // from (besides those already linked to synced Tests, which come in by key
 // regardless of project). Changes take effect on the next sync.
-export function RequirementSourcesModal({ profileId, onClose }: Props) {
+export function RequirementSourcesModal({ onClose }: Props) {
+  const { activeId: profileId } = useProfile();
   const [sources, setSources] = useState<RequirementSource[]>([]);
   const [projectKey, setProjectKey] = useState("");
   const [issueTypes, setIssueTypes] = useState("Story Epic");

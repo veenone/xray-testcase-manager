@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { ListTests, errMsg } from "../api";
 import type { TestCase } from "../api";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   // Keys already selected or mapped — shown disabled in the list.
   excludeKeys: string[];
   onClose: () => void;
@@ -16,7 +16,8 @@ const PAGE_SIZE = 50;
 // BrowseTestsPicker opens a modal that lists the active profile's tests so the
 // user can pick tests visually and add them to the Coverage "Other test keys"
 // field without typing keys by hand.
-export function BrowseTestsPicker({ profileId, excludeKeys, onClose, onAdd }: Props) {
+export function BrowseTestsPicker({ excludeKeys, onClose, onAdd }: Props) {
+  const { activeId: profileId } = useProfile();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<TestCase[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());

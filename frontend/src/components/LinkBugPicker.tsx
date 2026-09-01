@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { ListBugsWithTests, LinkExistingBugToRun, errMsg } from "../api";
 import type { BugWithTests } from "../api";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   execKey: string;
   testKey: string;
   // Bug keys already linked to this row, so they can be shown as disabled
@@ -27,13 +27,13 @@ const BUG_KEY_RE = /^[A-Z][A-Z0-9]*-\d+$/;
 // since it reads the local cache), and a free-text key entry for any bug not
 // yet synced. Styled after CreateBugModal's modal-overlay dialog.
 export function LinkBugPicker({
-  profileId,
   execKey,
   testKey,
   existingKeys,
   onClose,
   onLinked,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [bugs, setBugs] = useState<BugWithTests[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   CreateRequirement,
   GetRequirementCreateFields,
@@ -20,12 +21,12 @@ import {
 } from "./createFields";
 
 interface Props {
-  profileId: string;
   onCreated: (tempKey: string) => void;
   onCancel: () => void;
 }
 
-export function NewRequirementPanel({ profileId, onCreated, onCancel }: Props) {
+export function NewRequirementPanel({ onCreated, onCancel }: Props) {
+  const { activeId: profileId } = useProfile();
   const [sources, setSources] = useState<RequirementSource[]>([]);
   const [projectKey, setProjectKey] = useState("");
   const [issueType, setIssueType] = useState("");

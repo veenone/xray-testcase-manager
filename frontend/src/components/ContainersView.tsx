@@ -722,7 +722,6 @@ export function ContainersView({
 
       {mode === "bugs" ? (
         <BugsPanel
-          profileId={profileId}
           jiraUrl={jiraUrl ?? ""}
           onOpenTest={onOpenTest ?? (() => {})}
         />
@@ -1625,7 +1624,6 @@ export function ContainersView({
 
       {showAdd && selectedContainer && (
         <AddTestsModal
-          profileId={profileId}
           containerKey={selected}
           existingKeys={(board?.rows ?? []).map((r) => r.testKey)}
           onCancel={() => setShowAdd(false)}
@@ -1638,7 +1636,6 @@ export function ContainersView({
 
       {bugFor && (
         <CreateBugModal
-          profileId={profileId}
           testKey={bugFor.testKey}
           testSummary={bugFor.summary}
           execKey={selected}
@@ -1652,7 +1649,6 @@ export function ContainersView({
 
       {linkBugFor && selected && (
         <LinkBugPicker
-          profileId={profileId}
           execKey={selected}
           testKey={linkBugFor}
           existingKeys={memberRuns.get(linkBugFor)?.defects ?? []}
@@ -1663,7 +1659,6 @@ export function ContainersView({
 
       {showJUnitImport && selected && kind === "testexec" && (
         <JUnitImportModal
-          profileId={profileId}
           execKey={selected}
           onCancel={() => setShowJUnitImport(false)}
           onApplied={(succeeded, failed) => {
@@ -1681,7 +1676,6 @@ export function ContainersView({
 
       {showJUnitNewExec && kind === "testexec" && (
         <JUnitNewExecModal
-          profileId={profileId}
           onCancel={() => setShowJUnitNewExec(false)}
           onApplied={(result) => {
             setShowJUnitNewExec(false);

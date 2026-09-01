@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 import { ExcludePreconditionFromDuplicates, errMsg } from "../api";
 import { usePreconditionDuplicates } from "../queries/duplicates";
@@ -21,11 +22,8 @@ const VERDICT_LABEL: Record<string, string> = {
 // a verdict comparing each group's definition (condition + description) text.
 // Unlike Tests there are no object-level steps, so the whole scan is instant and
 // local — no lazy step fetch, no progress walk.
-export function PreconditionDuplicatesView({
-  profileId,
-}: {
-  profileId: string;
-}) {
+export function PreconditionDuplicatesView() {
+  const { activeId: profileId } = useProfile();
   // The scan comes from the query cache with a stable key (Phase 4c); a mutation
   // refreshes it via invalidateProfileData, and the "Scan" button / exclude
   // action refetch it directly.

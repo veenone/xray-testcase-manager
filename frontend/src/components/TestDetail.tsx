@@ -1341,8 +1341,8 @@ export function TestDetail({
                 <dl className="detail-fields">
                   {customFields.map((f) => (
                     <CustomFieldRow
-                      key={f.fieldId}
                       profileId={profileId}
+                      key={f.fieldId}
                       testKey={testKey}
                       field={f}
                       pendingForTest={pendingForTest}
@@ -1384,8 +1384,8 @@ export function TestDetail({
                 <ul className="pre-list">
                   {preconditions.map((p) => (
                     <PreconditionRow
-                      key={p.key}
                       profileId={profileId}
+                      key={p.key}
                       precondition={p}
                       readOnly={readOnly}
                       onRemove={removePrecondition}
@@ -1825,8 +1825,8 @@ export function TestDetail({
                 <ol className="steps-list">
                   {steps.map((s, i) => (
                     <StepRow
-                      key={s.xrayId}
                       profileId={profileId}
+                      key={s.xrayId}
                       testKey={testKey}
                       step={s}
                       pendingForTest={pendingForTest}
@@ -1911,7 +1911,6 @@ export function TestDetail({
       )}
       {!readOnly && showCallPicker && (
         <PickTestModal
-          profileId={profileId}
           heading={`Call a test from ${testKey}`}
           excludeKey={testKey}
           onCancel={() => setShowCallPicker(false)}
@@ -1926,7 +1925,6 @@ export function TestDetail({
 
       {!readOnly && showCrossCall && (
         <PickTestModal
-          profileId={profileId}
           heading={`Call a test from another project`}
           excludeKey={testKey}
           crossProjectOnly
@@ -1943,7 +1941,6 @@ export function TestDetail({
 
       {!readOnly && showCrossClone && (
         <CloneStepsModal
-          profileId={profileId}
           targetLabel={testKey}
           excludeKey={testKey}
           crossProjectOnly
@@ -1965,7 +1962,6 @@ export function TestDetail({
 
       {!readOnly && showCrossPrecond && (
         <PickPreconditionModal
-          profileId={profileId}
           excludeKeys={preconditions.map((p) => p.key)}
           sourceProjects={crossProjectSourceList}
           onCancel={() => setShowCrossPrecond(false)}
@@ -1975,7 +1971,6 @@ export function TestDetail({
 
       {!readOnly && showCloneSteps && (
         <CloneStepsModal
-          profileId={profileId}
           targetLabel={testKey}
           excludeKey={testKey}
           onCancel={() => setShowCloneSteps(false)}

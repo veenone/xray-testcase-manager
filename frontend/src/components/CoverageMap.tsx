@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   SetCoverageProjects,
   SeedPKCS11Reference,
@@ -10,7 +11,6 @@ import { useCoverageMapData } from "../queries/coverage";
 import { SankeyChart } from "./SankeyChart";
 
 interface Props {
-  profileId: string;
   isDemo?: boolean;
   demoVariant?: "pkcs" | "euicc" | "";
 }
@@ -23,7 +23,8 @@ const EMPTY_SANKEY: Sankey = { nodes: [], links: [] };
 // The map is built from canonical functions and their member requirements, so
 // it stays empty until a coverage model exists — a demo Sync alone does not
 // populate it (see the empty state, which offers the demo seed action).
-export function CoverageMap({ profileId, isDemo, demoVariant }: Props) {
+export function CoverageMap({ isDemo, demoVariant }: Props) {
+  const { activeId: profileId } = useProfile();
   // The map's three reads come from the query cache with a stable key (Phase
   // 4c); a mutation refreshes it via invalidateProfileData, and save/seed
   // refetch it directly.

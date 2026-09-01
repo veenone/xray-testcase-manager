@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   ListRequirementsWithCoverage,
   SetRequirementLinks,
@@ -8,7 +9,6 @@ import type { RequirementCoverage } from "../api";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   /** The requirement whose outbound "requires" links are being edited. */
   fromKey: string;
   /** Currently linked target keys (pre-selected in the modal). */
@@ -23,12 +23,12 @@ const PAGE_SIZE = 50;
 // requirement "requires", replacing the current set and queuing the change for
 // commit. Layout mirrors AddTestsModal.
 export function LinkRequirementsModal({
-  profileId,
   fromKey,
   currentLinkedKeys,
   onClose,
   onDone,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [all, setAll] = useState<RequirementCoverage[]>([]);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<Set<string>>(

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { GetContainerBoard, errMsg, isDemoUrl, BrowserOpenURL } from "../api";
 import type { TestPlanBoard } from "../api";
 import { Markdown } from "./Markdown";
 
 
 interface Props {
-  profileId: string;
   containerKey: string;
   kind: "plan" | "exec";
   jiraUrl?: string;
@@ -15,7 +15,8 @@ interface Props {
 // ContainerDetailPanel renders a read-only detail panel for a Test Plan or
 // Test Execution in the right sidebar of the Bugs view. It fetches the board
 // for the container and shows a run-status histogram and the members table.
-export function ContainerDetailPanel({ profileId, containerKey, kind, jiraUrl, onClose }: Props) {
+export function ContainerDetailPanel({ containerKey, kind, jiraUrl, onClose }: Props) {
+  const { activeId: profileId } = useProfile();
   const [board, setBoard] = useState<TestPlanBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

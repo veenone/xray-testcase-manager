@@ -463,8 +463,8 @@ export default function MisspellingsView({ onChanged }: Props) {
 
         {selected && (
           <MisspellingDrawer
-            key={findingId(selected)}
             profileId={profileId}
+            key={findingId(selected)}
             finding={selected}
             onClose={() => setSelectedId(null)}
             onApply={applyReplacement}

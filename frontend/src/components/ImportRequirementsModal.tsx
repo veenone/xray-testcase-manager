@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   AnalyzeRequirementImport,
   ExportRequirementImportTemplate,
@@ -12,7 +13,6 @@ import { fileToBase64 } from "../files";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   onComplete: () => void;
   onCancel: () => void;
 }
@@ -20,7 +20,8 @@ interface Props {
 // ImportRequirementsModal lets users upload a CSV/XLSX of requirements, preview
 // which are new vs already existing (matched by summary), and import only the
 // new ones as local pending creates committed to Jira on the next sync.
-export function ImportRequirementsModal({ profileId, onComplete, onCancel }: Props) {
+export function ImportRequirementsModal({ onComplete, onCancel }: Props) {
+  const { activeId: profileId } = useProfile();
   const [sources, setSources] = useState<RequirementSource[]>([]);
   const [projectKey, setProjectKey] = useState("");
   const [issueType, setIssueType] = useState("");

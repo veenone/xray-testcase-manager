@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   ListChangeRequests,
   CreateChangeRequest,
@@ -13,7 +14,6 @@ import { useConfirm } from "./useConfirm";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   canonicalId: string;
   versions: Version[];
   onChanged: () => void;
@@ -30,7 +30,8 @@ const EMPTY_FORM = {
 
 // ChangeRequestsPanel lists change requests for a canonical requirement,
 // supports create/edit/delete, and shows the per-member impact + decisions.
-export function ChangeRequestsPanel({ profileId, canonicalId, versions, onChanged }: Props) {
+export function ChangeRequestsPanel({ canonicalId, versions, onChanged }: Props) {
+  const { activeId: profileId } = useProfile();
   const [crs, setCrs] = useState<ChangeRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

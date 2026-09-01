@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { useViewState } from "../lib/viewState";
 import {
   SyncBugs,
@@ -25,7 +26,6 @@ import { Markdown } from "./Markdown";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   jiraUrl: string;
   onOpenTest: (testKey: string) => void;
 }
@@ -48,7 +48,8 @@ function cmpBug(a: BugWithTests, b: BugWithTests, field: string): number {
 // bug, a detail pane on the right showing its full info plus the affected tests
 // enriched with their consolidated run status. Bug keys open in the browser;
 // test keys open the test detail.
-export function BugsPanel({ profileId, jiraUrl, onOpenTest }: Props) {
+export function BugsPanel({ jiraUrl, onOpenTest }: Props) {
+  const { activeId: profileId } = useProfile();
   // The bug list + the selected bug's linked tests come from the query cache
   // with stable keys (Phase 4c); a mutation refreshes them via
   // invalidateProfileData, and a bugs-only sync refetches the list directly.
@@ -1136,7 +1137,6 @@ export function BugsPanel({ profileId, jiraUrl, onOpenTest }: Props) {
       )}
       {(sidebarDetail?.kind === "plan" || sidebarDetail?.kind === "exec") && (
         <ContainerDetailPanel
-          profileId={profileId}
           containerKey={sidebarDetail.key}
           kind={sidebarDetail.kind}
           jiraUrl={jiraUrl}

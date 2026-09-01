@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { CreateBugForTest, GetBugCreateFields, errMsg } from "../api";
 import type { BugCreateField } from "../api";
 import { MultiSelect } from "./MultiSelect";
@@ -11,7 +12,6 @@ import {
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   testKey: string;
   testSummary: string;
   execKey: string;
@@ -26,13 +26,13 @@ const PRIORITIES = ["Highest", "High", "Medium", "Low", "Lowest"];
 // Required fields beyond summary/priority/labels/description are fetched from
 // GetBugCreateFields (createmeta-driven) and rendered dynamically.
 export function CreateBugModal({
-  profileId,
   testKey,
   testSummary,
   execKey,
   onClose,
   onCreated,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [summary, setSummary] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [labels, setLabels] = useState("");

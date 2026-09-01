@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { ListTests, SearchTestsCrossProject, errMsg } from "../api";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { Pager } from "./Pager";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   heading: string;
   // Test key to exclude from the list (e.g. the test being edited).
   excludeKey?: string;
@@ -34,7 +34,6 @@ interface PickRow {
 // of cloned steps. A toggle widens the search to tests in OTHER projects
 // (RND_P_4TFINT_05-322).
 export function PickTestModal({
-  profileId,
   heading,
   excludeKey,
   crossProjectOnly,
@@ -42,6 +41,7 @@ export function PickTestModal({
   onPick,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<PickRow[]>([]);
   const [page, setPage] = useState(0);

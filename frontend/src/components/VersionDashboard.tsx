@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { GetVersionDistribution, GetCRAdoption, errMsg } from "../api";
 import type { VersionShare, CRShare } from "../api";
 
 interface Props {
-  profileId: string;
   canonicalId: string;
 }
 
 // VersionDashboard shows the member-count distribution across versions
 // and the CR adoption (can/cannot/pending tallies per change request).
-export function VersionDashboard({ profileId, canonicalId }: Props) {
+export function VersionDashboard({ canonicalId }: Props) {
+  const { activeId: profileId } = useProfile();
   const [dist, setDist] = useState<VersionShare[]>([]);
   const [crAdoption, setCrAdoption] = useState<CRShare[]>([]);
   const [error, setError] = useState("");

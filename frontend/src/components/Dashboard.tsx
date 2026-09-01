@@ -189,7 +189,6 @@ export function Dashboard({ onOpenDuplicates }: Props) {
       {exportErr && <p className="error-text">{exportErr}</p>}
       {exportNotice && <p className="muted">{exportNotice}</p>}
       <DuplicatesCard
-        profileId={profileId}
         onOpen={() => onOpenDuplicates?.()}
       />
       <div className="stat-tiles">

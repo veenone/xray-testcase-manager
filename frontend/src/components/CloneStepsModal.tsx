@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { ListTests, SearchTestsCrossProject, GetTestSteps, errMsg } from "../api";
 import type { Step, StepDraft } from "../api";
 import { ProjectSidebar } from "./ProjectSidebar";
@@ -14,7 +15,6 @@ interface SourceRow {
 }
 
 interface Props {
-  profileId: string;
   // Shown in the heading, e.g. "DEMO-1" or "the new test".
   targetLabel: string;
   // Test key to exclude from the source list (the test being edited), if any.
@@ -43,7 +43,6 @@ const PAGE_SIZE = 50;
 // default, or a selective subset). Used by the detail panel (clone onto the
 // open test) and the New Test panel (seed the draft).
 export function CloneStepsModal({
-  profileId,
   targetLabel,
   excludeKey,
   crossProjectOnly,
@@ -51,6 +50,7 @@ export function CloneStepsModal({
   onConfirm,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   // Stage 1 — source search.
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<SourceRow[]>([]);

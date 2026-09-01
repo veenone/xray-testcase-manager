@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { SearchPreconditionsCrossProject, errMsg } from "../api";
 import type { Precondition } from "../api";
 import { ProjectSidebar } from "./ProjectSidebar";
@@ -6,7 +7,6 @@ import { Pager } from "./Pager";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   // Keys already linked, shown disabled.
   excludeKeys?: string[];
   // Configured source project keys, for the left project filter sidebar.
@@ -25,12 +25,12 @@ const PAGE_SIZE = 50;
 // modal: a browsable, paginated, multi-select checkbox list. The chosen
 // preconditions are returned in full so the caller can cache them for display.
 export function PickPreconditionModal({
-  profileId,
   excludeKeys,
   sourceProjects,
   onPick,
   onCancel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<Precondition[]>([]);
   const [total, setTotal] = useState(0);

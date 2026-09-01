@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   CreateVersion,
   CloneVersion,
@@ -14,7 +15,6 @@ interface VersionBarProps {
   versions: Version[];
   value: string;
   onChange: (id: string) => void;
-  profileId: string;
   canonicalId: string;
   onChanged: () => void;
 }
@@ -25,10 +25,10 @@ export function VersionBar({
   versions,
   value,
   onChange,
-  profileId,
   canonicalId,
   onChanged,
 }: VersionBarProps) {
+  const { activeId: profileId } = useProfile();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 

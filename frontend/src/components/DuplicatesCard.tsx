@@ -1,8 +1,8 @@
 import { errMsg } from "../api";
+import { useProfile } from "../contexts/ProfileContext";
 import { useDuplicates } from "../queries/duplicates";
 
 interface Props {
-  profileId: string;
   onOpen: () => void; // navigate to the Duplicates tab
 }
 
@@ -10,7 +10,8 @@ interface Props {
 // management), with bordered, color-coded tiles. Computed from the local cache.
 // Shares the tests-mode scan query with DuplicatesView, so it dedupes to one
 // cache entry and refreshes via invalidateProfileData (Phase 4c).
-export function DuplicatesCard({ profileId, onOpen }: Props) {
+export function DuplicatesCard({ onOpen }: Props) {
+  const { activeId: profileId } = useProfile();
   const dupQuery = useDuplicates(profileId, "tests");
   const rep = dupQuery.data ?? null;
 

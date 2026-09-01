@@ -686,7 +686,6 @@ export function PreconditionsView({ onChanged }: Props) {
 
       {showAdd && selectedPre && (
         <AddTestsModal
-          profileId={profileId}
           containerKey={selected}
           targetLabel={selectedPre.key}
           existingKeys={tests.map((t) => t.key)}

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { AnalyzeJUnitImport, ApplyJUnitImport, errMsg } from "../api";
 import type { JUnitImportPreview, JUnitMatch } from "../api";
 import { fileToBase64 } from "../files";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   execKey: string;
   onCancel: () => void;
   onApplied: (succeeded: number, failed: number) => void;
@@ -13,7 +13,8 @@ interface Props {
 
 // JUnitImportModal reads a JUnit XML file, calls AnalyzeJUnitImport to preview
 // which testcases match execution members, then applies with ApplyJUnitImport.
-export function JUnitImportModal({ profileId, execKey, onCancel, onApplied }: Props) {
+export function JUnitImportModal({ execKey, onCancel, onApplied }: Props) {
+  const { activeId: profileId } = useProfile();
   const [preview, setPreview] = useState<JUnitImportPreview | null>(null);
   const [analyzeError, setAnalyzeError] = useState("");
   const [applying, setApplying] = useState(false);

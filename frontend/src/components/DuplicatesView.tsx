@@ -255,7 +255,7 @@ export function DuplicatesView({
       </div>
 
       {mode === "preconditions" ? (
-        <PreconditionDuplicatesView profileId={profileId} />
+        <PreconditionDuplicatesView />
       ) : (
         <>
       <div className="dup-toolbar">

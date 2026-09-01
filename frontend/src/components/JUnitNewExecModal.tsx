@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { AnalyzeJUnitImportNewExec, ApplyJUnitImportNewExec, errMsg } from "../api";
 import type { JUnitNewExecPreview, JUnitNewExecResult } from "../api";
 import { fileToBase64 } from "../files";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   onCancel: () => void;
   onApplied: (result: JUnitNewExecResult) => void;
 }
@@ -13,7 +13,8 @@ interface Props {
 // JUnitNewExecModal creates a brand-new Test Execution from a JUnit XML report.
 // Flow: (1) params step — enter execution summary, toggle create-missing, pick
 // a file; (2) preview step — review the row table and skipped list; (3) apply.
-export function JUnitNewExecModal({ profileId, onCancel, onApplied }: Props) {
+export function JUnitNewExecModal({ onCancel, onApplied }: Props) {
+  const { activeId: profileId } = useProfile();
   const [summary, setSummary] = useState("");
   const [createMissing, setCreateMissing] = useState(true);
   const [preview, setPreview] = useState<JUnitNewExecPreview | null>(null);

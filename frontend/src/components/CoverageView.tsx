@@ -384,7 +384,7 @@ export function CoverageView({ isDemo, demoVariant, onChanged }: Props) {
               </button>
             </nav>
             {tab === "map" ? (
-              <CoverageMap profileId={profileId} isDemo={isDemo} demoVariant={demoVariant} />
+              <CoverageMap isDemo={isDemo} demoVariant={demoVariant} />
             ) : (
               <div className="cov-welcome">
                 <h2>Parameter-level coverage</h2>
@@ -456,7 +456,6 @@ export function CoverageView({ isDemo, demoVariant, onChanged }: Props) {
               versions={versions}
               value={versionId}
               onChange={setVersionId}
-              profileId={profileId}
               canonicalId={selected}
               onChanged={() => void reload()}
             />
@@ -467,7 +466,7 @@ export function CoverageView({ isDemo, demoVariant, onChanged }: Props) {
               </div>
             )}
 
-            <CoveragePublishPanel profileId={profileId} versionId={versionId} />
+            <CoveragePublishPanel versionId={versionId} />
 
             <nav className="cov-tabs">
               <button
@@ -511,17 +510,15 @@ export function CoverageView({ isDemo, demoVariant, onChanged }: Props) {
             {tab === "guide" ? (
               <CoverageGuide />
             ) : tab === "map" ? (
-              <CoverageMap profileId={profileId} isDemo={isDemo} demoVariant={demoVariant} />
+              <CoverageMap isDemo={isDemo} demoVariant={demoVariant} />
             ) : tab === "versions" ? (
               <div className="cov-versions-tab">
                 <ChangeRequestsPanel
-                  profileId={profileId}
                   canonicalId={selected}
                   versions={versions}
                   onChanged={() => void reload()}
                 />
                 <VersionDashboard
-                  profileId={profileId}
                   canonicalId={selected}
                 />
                 <div className="cov-member-locks">
@@ -890,7 +887,6 @@ function MapTestsModal({
       </Modal>
       {showPicker && (
         <BrowseTestsPicker
-          profileId={profileId}
           excludeKeys={pickerExcludeKeys}
           onClose={handleClosePicker}
           onAdd={handlePickerAdd}

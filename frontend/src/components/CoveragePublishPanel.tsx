@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import { GetCoveragePublishStatus, PublishCoverageGroups, errMsg } from "../api";
 import type {
   CoveragePublishGroupStatus,
@@ -9,7 +10,6 @@ import { useCapabilities } from "../features";
 import { useConfirm } from "./useConfirm";
 
 interface Props {
-  profileId: string;
   versionId: string;
 }
 
@@ -45,7 +45,8 @@ const STATE_BADGE_CLASS: Record<CoveragePublishState, string> = {
 // already large: this keeps the publish/drift concern (its own fetch, its
 // own busy-state, its own honest-limit copy) self-contained and easy to gate
 // or remove as a unit.
-export function CoveragePublishPanel({ profileId, versionId }: Props) {
+export function CoveragePublishPanel({ versionId }: Props) {
+  const { activeId: profileId } = useProfile();
   const caps = useCapabilities(profileId);
   // Mirrors the compound backend guard in app_coverage_publish.go exactly
   // (SupportsContainers && KindTestSet in ContainerKinds) so this never

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useProfile } from "../contexts/ProfileContext";
 import {
   ListTests,
   ListMatchingKeys,
@@ -11,7 +12,6 @@ import { FolderTree } from "./FolderTree";
 import { Modal } from "./Modal";
 
 interface Props {
-  profileId: string;
   containerKey: string;
   existingKeys: string[];
   onDone: () => void;
@@ -27,7 +27,6 @@ interface Props {
 // container (Test Set / Plan / Execution) — the container-side counterpart to
 // allocating from the browse grid. Already-member tests are shown disabled.
 export function AddTestsModal({
-  profileId,
   containerKey,
   existingKeys,
   onDone,
@@ -35,6 +34,7 @@ export function AddTestsModal({
   onAdd,
   targetLabel,
 }: Props) {
+  const { activeId: profileId } = useProfile();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<TestCase[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());

@@ -303,7 +303,6 @@ export function RequirementsView({ onChanged }: Props) {
     <div className="reqs-root" data-tour="requirements-body">
     {showCreateReq && (
       <NewRequirementPanel
-        profileId={profileId}
         onCreated={(tempKey) => {
           setShowCreateReq(false);
           setSelected(tempKey);
@@ -766,14 +765,12 @@ export function RequirementsView({ onChanged }: Props) {
 
       {showSources && (
         <RequirementSourcesModal
-          profileId={profileId}
           onClose={() => setShowSources(false)}
         />
       )}
 
       {showLinkReqs && sel && (
         <LinkRequirementsModal
-          profileId={profileId}
           fromKey={sel.key}
           currentLinkedKeys={reqLinks.map((l) => l.toKey)}
           onClose={() => setShowLinkReqs(false)}
@@ -786,7 +783,6 @@ export function RequirementsView({ onChanged }: Props) {
 
       {showAdd && sel && (
         <AddTestsModal
-          profileId={profileId}
           containerKey={selected}
           targetLabel={sel.key}
           existingKeys={tests.map((t) => t.key)}
@@ -805,7 +801,6 @@ export function RequirementsView({ onChanged }: Props) {
 
       {showImportReqs && (
         <ImportRequirementsModal
-          profileId={profileId}
           onComplete={() => {
             setShowImportReqs(false);
             onChanged?.();
