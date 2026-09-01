@@ -124,16 +124,20 @@ go test ./internal/syncer/...   # one package
 go test ./internal/testrepo/ -run TestImportTests   # one test by name
 gofmt -w .                      # format
 
-# Frontend (usually run via wails; Vite has no separate test suite)
+# Frontend (usually run via wails)
 cd frontend; npm run build      # tsc typecheck + vite build
+cd frontend; npx vitest run     # Vitest unit tests (query hooks + contexts)
+cd frontend; npx tsc --noEmit   # typecheck only
 ```
 
 Prerequisites: Go 1.25+, Node.js, and the Wails CLI
 (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
 
-Most behavior is verified by Go unit tests against the store and the demo
-client — there is no frontend test runner. When changing backend logic, add or
-update the `_test.go` beside it.
+Most backend behavior is verified by Go unit tests against the store and the
+demo client. When changing backend logic, add or update the `_test.go` beside
+it. The frontend has a Vitest suite (`frontend/src/**/*.test.ts{,x}`) covering
+the TanStack Query hooks and the React contexts (`src/contexts/`); when changing
+that logic, add or update the `.test.tsx` beside it.
 
 ## Releasing
 
