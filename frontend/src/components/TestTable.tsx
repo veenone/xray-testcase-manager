@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSelection } from "../contexts/SelectionContext";
 import { useProfile } from "../contexts/ProfileContext";
 import type { CSSProperties } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -29,13 +30,7 @@ interface Props {
   folderId: string;
   containerKey: string;
   component: string;
-  selectedKey: string | null;
   pendingByTestKey: Map<string, PendingChange[]>;
-  selectedSet: Set<string>;
-  onSelect: (key: string) => void;
-  onToggleSelect: (key: string) => void;
-  onToggleSelectPage: (keys: string[]) => void;
-  onSelectAllMatching: (keys: string[]) => void;
   onSync?: () => void;
   syncing?: boolean;
 }
@@ -249,17 +244,21 @@ export function TestTable({
   folderId,
   containerKey,
   component,
-  selectedKey,
   pendingByTestKey,
-  selectedSet,
-  onSelect,
-  onToggleSelect,
-  onToggleSelectPage,
-  onSelectAllMatching,
   onSync,
   syncing,
 }: Props) {
   const { activeId: profileId } = useProfile();
+  // Browse selection comes from SelectionContext; the aliases keep the existing
+  // onSelect / onToggleSelect / … call sites in this component unchanged.
+  const {
+    selectedKey,
+    selectedSet,
+    setSelectedKey: onSelect,
+    toggle: onToggleSelect,
+    togglePage: onToggleSelectPage,
+    selectAllMatching: onSelectAllMatching,
+  } = useSelection();
   // Gates the exec-type filter to what the active profile's backend actually
   // supports (P6.2a).
   const caps = useCapabilities(profileId);

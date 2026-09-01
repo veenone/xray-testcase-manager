@@ -168,19 +168,12 @@ function App() {
     setNewTestFolder,
   } = useNav();
 
-  // Browse selection now lives in SelectionContext (spec §5.3). The named
-  // actions keep their former App-local names (toggleSelect / toggleSelectPage)
-  // so existing call sites are unchanged; the raw setters back App's composite
-  // handlers (profile-change reset, applyCreatedRemap remap, bulk clears).
-  const {
-    selectedKey,
-    setSelectedKey,
-    selectedSet,
-    setSelectedSet,
-    toggle: toggleSelect,
-    togglePage: toggleSelectPage,
-    selectAllMatching,
-  } = useSelection();
+  // Browse selection lives in SelectionContext (spec §5.3); TestTable now reads
+  // the toggle actions directly from it. App keeps the value + raw setters for
+  // its composite handlers (profile-change reset, applyCreatedRemap remap, the
+  // bulk modals' testKeys snapshot + onComplete clears, the open detail row).
+  const { selectedKey, setSelectedKey, selectedSet, setSelectedSet } =
+    useSelection();
   const [detailVersion, setDetailVersion] = useState(0);
 
   const queryClient = useQueryClient();
@@ -1448,13 +1441,7 @@ function App() {
                 : ""
             }
             component={groupBy === "component" ? selectedComponent : ""}
-            selectedKey={selectedKey}
             pendingByTestKey={pendingByTestKey}
-            selectedSet={selectedSet}
-            onSelect={setSelectedKey}
-            onToggleSelect={toggleSelect}
-            onToggleSelectPage={toggleSelectPage}
-            onSelectAllMatching={selectAllMatching}
             onSync={syncTests}
             syncing={pulling}
           />
