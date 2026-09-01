@@ -52,6 +52,7 @@ import { BulkReviewModal } from "./components/BulkReviewModal";
 import { REVIEW_ENABLED, invalidateCapabilities, useCapabilities } from "./features";
 import { clearViewState } from "./lib/viewState";
 import { useProfile } from "./contexts/ProfileContext";
+import { useSync } from "./contexts/SyncContext";
 import { usePendingChanges } from "./queries/pending";
 import {
   useSyncState,
@@ -127,14 +128,23 @@ function App() {
   // When set, the profile modal opens in edit mode for this profile (FR-5).
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
 
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
-  const [syncError, setSyncError] = useState("");
-  // syncing drives the Sync button label/disabled state; it is released as soon
-  // as the Test pull finishes (testsDone) so the button doesn't look stuck while
-  // the best-effort tail work runs. syncRunningRef tracks the whole backend Sync
-  // call, so a concurrent sync can't be started while the tail is still going.
-  const [syncing, setSyncing] = useState(false);
-  const syncRunningRef = useRef(false);
+  // The sync/commit lifecycle + its mutual-exclusion invariant now live in
+  // SyncContext (spec §5.2). `pulling` is the old early-release `syncing` flag
+  // (Sync button); status/can* replace the syncRunningRef + committing guards.
+  const {
+    status: syncStatus,
+    pulling,
+    progress,
+    syncError,
+    canSync,
+    canCommit,
+    canSwitchProfile,
+    beginSync,
+    failSync,
+    endSync,
+    beginCommit,
+    endCommit,
+  } = useSync();
   const prevProfileRef = useRef<string>("");
 
   const [selectedFolder, setSelectedFolder] = useState<string>("");
@@ -162,7 +172,6 @@ function App() {
   const groupContainers = useGroupContainers(activeId, groupBy).data ?? [];
   const components = useComponents(activeId, groupBy).data ?? [];
   const [showPending, setShowPending] = useState(false);
-  const [committing, setCommitting] = useState(false);
   const [lastCommitResult, setLastCommitResult] = useState<CommitResult | null>(
     null,
   );
@@ -281,31 +290,9 @@ function App() {
     });
   }, [health, reloadProfiles]);
 
-  // Subscribe to sync progress events for the lifetime of the app. The Sync
-  // button stays disabled for the WHOLE sync (tests + folders + preconditions +
-  // containers + custom fields); the engine emits a terminal Progress{done:true}
-  // when everything is finished, which clears the syncing state here directly
-  // (not only in the SyncProfile promise's finally) so the button never sticks.
-  // Each non-terminal event carries a stage label shown in the status bar.
-  useEffect(() => {
-    return EventsOn("sync:progress", (p: SyncProgress) => {
-      if (p.done) {
-        setProgress(null);
-        setSyncing(false);
-      } else {
-        setProgress(p);
-      }
-    });
-  }, []);
-
-  // The Spellcheck scan reports on its own channel, but its bar shares the
-  // bottom status bar so it looks like every other sync. It never touches the
-  // syncing state, so the Sync button stays enabled during a scan.
-  useEffect(() => {
-    return EventsOn("spellcheck:progress", (p: SyncProgress) => {
-      setProgress(p.done ? null : p);
-    });
-  }, []);
+  // The sync:progress and spellcheck:progress subscriptions moved into
+  // SyncProvider (spec §5.2); the reducer there owns the button-release and
+  // status-bar behaviour they used to drive.
 
   // Pending changes grouped by parent Test key — drives the dirty markers
   // in the grid and the per-field dot in the detail panel. test_step rows
@@ -466,21 +453,32 @@ function App() {
     setSelectedSet(new Set(keys));
   }
 
-  async function doSync(full: boolean) {
-    if (!activeId || syncRunningRef.current) return;
-    if (committing) {
-      await notice({
-        title: "Commit in progress",
-        message:
-          "A commit is still running. Please wait for it to finish before syncing.",
-        tone: "info",
-      });
-      return;
+  // Shared gate for the three sync entry points (SyncContext's canSync is the
+  // single source of truth now). Returns false — with a "commit in progress"
+  // notice when a commit is what's blocking — if a sync may not start. A sync
+  // already running is a silent no-op, matching the pre-refactor behaviour.
+  async function ensureCanSync(): Promise<boolean> {
+    if (!activeId) return false;
+    if (!canSync) {
+      if (syncStatus === "committing") {
+        await notice({
+          title: "Commit in progress",
+          message:
+            "A commit is still running. Please wait for it to finish before syncing.",
+          tone: "info",
+        });
+      }
+      return false;
     }
-    syncRunningRef.current = true;
-    setSyncing(true);
-    setSyncError("");
-    setProgress({ phase: "", fetched: 0, total: 0, done: false });
+    return true;
+  }
+
+  async function doSync(full: boolean) {
+    if (!(await ensureCanSync())) return;
+    beginSync({
+      initialProgress: { phase: "", fetched: 0, total: 0, done: false },
+      clearError: true,
+    });
     try {
       await (full ? SyncProfileFull(activeId) : SyncProfile(activeId));
       refreshProfileData();
@@ -490,11 +488,9 @@ function App() {
       // elements with no data behind them and teach nothing (-335).
       if (tourSeenVersion < TOUR_VERSION) startTour("browse", () => setView("browse"));
     } catch (e) {
-      setSyncError(errMsg(e));
+      failSync(errMsg(e));
     } finally {
-      syncRunningRef.current = false;
-      setSyncing(false);
-      setProgress(null);
+      endSync();
     }
   }
 
@@ -506,16 +502,7 @@ function App() {
   // the Test Repository folder membership (skipped on routine resyncs) is
   // refreshed. It can be slow on large projects, so confirm first.
   async function runFullSync() {
-    if (!activeId || syncRunningRef.current) return;
-    if (committing) {
-      await notice({
-        title: "Commit in progress",
-        message:
-          "A commit is still running. Please wait for it to finish before syncing.",
-        tone: "info",
-      });
-      return;
-    }
+    if (!(await ensureCanSync())) return;
     if (
       !(await confirm({
         title: "Full resync",
@@ -533,28 +520,18 @@ function App() {
 
   // syncTests does a targeted pull of test cases and folder membership, giving
   // the Browse view a quick refresh without running the full sync pipeline
-  // (RND_P_4TFINT_05-260).
+  // (RND_P_4TFINT_05-260). Unlike doSync it shows no initial bar and leaves any
+  // prior error banner in place (it reports failures via a toast instead).
   async function syncTests() {
-    if (!activeId || syncRunningRef.current) return;
-    if (committing) {
-      await notice({
-        title: "Commit in progress",
-        message:
-          "A commit is still running. Please wait for it to finish before syncing.",
-        tone: "info",
-      });
-      return;
-    }
-    syncRunningRef.current = true;
-    setSyncing(true);
+    if (!(await ensureCanSync())) return;
+    beginSync();
     try {
       await SyncTests(activeId);
       refreshProfileData();
     } catch (e) {
       await notice({ title: "Sync failed", message: errMsg(e), tone: "error" });
     } finally {
-      syncRunningRef.current = false;
-      setSyncing(false);
+      endSync();
     }
   }
 
@@ -759,21 +736,31 @@ function App() {
     });
   }
 
+  // Shared gate for the two commit entry points. Returns false — with a "sync
+  // in progress" notice when a sync is what's blocking — if a commit may not
+  // start. A commit already running is a silent no-op.
+  async function ensureCanCommit(): Promise<boolean> {
+    if (!activeId) return false;
+    if (!canCommit) {
+      if (syncStatus === "syncing") {
+        await notice({
+          title: "Sync in progress",
+          message:
+            "A sync is still running. Please wait for it to finish before committing.",
+          tone: "info",
+        });
+      }
+      return false;
+    }
+    return true;
+  }
+
   // Called when the user clicks "Commit" in the pending modal. Pushes all
   // pending changes to Jira; per-Test results land in lastCommitResult.
   // Committed pending rows are deleted by the backend; failures stay.
   async function handleCommit() {
-    if (!activeId || committing) return;
-    if (syncing || syncRunningRef.current) {
-      await notice({
-        title: "Sync in progress",
-        message:
-          "A sync is still running. Please wait for it to finish before committing.",
-        tone: "info",
-      });
-      return;
-    }
-    setCommitting(true);
+    if (!(await ensureCanCommit())) return;
+    beginCommit();
     setLastCommitResult(null);
     try {
       const result = await CommitPendingChanges(activeId);
@@ -789,7 +776,7 @@ function App() {
         failed: [{ testKey: "", error: errMsg(e) }],
       });
     } finally {
-      setCommitting(false);
+      endCommit();
     }
   }
 
@@ -797,17 +784,9 @@ function App() {
   // commit) — the per-item Commit button in the modal. Same result handling as
   // a full commit; only the chosen item leaves the list on success.
   async function handleCommitIds(ids: number[]) {
-    if (!activeId || committing || ids.length === 0) return;
-    if (syncing || syncRunningRef.current) {
-      await notice({
-        title: "Sync in progress",
-        message:
-          "A sync is still running. Please wait for it to finish before committing.",
-        tone: "info",
-      });
-      return;
-    }
-    setCommitting(true);
+    if (ids.length === 0) return;
+    if (!(await ensureCanCommit())) return;
+    beginCommit();
     setLastCommitResult(null);
     try {
       const result = await CommitPendingChangesByIDs(activeId, ids);
@@ -823,7 +802,7 @@ function App() {
         failed: [{ testKey: "", error: errMsg(e) }],
       });
     } finally {
-      setCommitting(false);
+      endCommit();
     }
   }
 
@@ -925,8 +904,10 @@ function App() {
   // per-view refresh is emitting progress. Both a full pull and a partial sync
   // write to the store keyed by the active profile, so switching profiles while
   // either runs would race the in-flight writes and land stale progress events
-  // on the newly-selected profile. Used to lock the profile switcher.
-  const syncActive = syncing || syncRunningRef.current || progress !== null;
+  // on the newly-selected profile. SyncContext.canSwitchProfile is the single
+  // source of truth for locking the profile switcher (false during a sync + its
+  // tail, and during a spellcheck scan; a commit does not lock it).
+  const syncActive = !canSwitchProfile;
 
   if (!health) {
     return <div className="centered muted">Loading…</div>;
@@ -1230,9 +1211,9 @@ function App() {
             data-tour="sync"
             className="btn btn-primary"
             onClick={runSync}
-            disabled={syncing}
+            disabled={pulling}
           >
-            {syncing ? "Syncing…" : "Sync"}
+            {pulling ? "Syncing…" : "Sync"}
           </button>
         </div>
       </header>
@@ -1493,7 +1474,7 @@ function App() {
             onToggleSelectPage={toggleSelectPage}
             onSelectAllMatching={selectAllMatching}
             onSync={syncTests}
-            syncing={syncing}
+            syncing={pulling}
           />
           {showNewTest ? (
             <NewTestPanel
@@ -1588,7 +1569,7 @@ function App() {
           onResolveMerge={resolveConflictMerge}
           onResolveRecreate={resolveConflictRecreate}
           onClose={closePendingModal}
-          committing={committing}
+          committing={syncStatus === "committing"}
           lastResult={lastCommitResult}
         />
       )}

@@ -1,4 +1,4 @@
-import type { SyncProgress, CommitResult } from "../api";
+import type { SyncProgress } from "../api";
 
 // syncMachine — the pure reducer behind SyncContext (spec §5.2). It models the
 // sync/commit lifecycle as one state machine so the mutual-exclusion invariant
@@ -29,12 +29,12 @@ import type { SyncProgress, CommitResult } from "../api";
 // Transition table (any action not listed for a status leaves state unchanged):
 //
 //   idle       SYNC_START        -> syncing   (pulling=true, progress=initial, syncError cleared iff clearError)
-//   idle       COMMIT_START      -> committing (lastCommitResult=null)
+//   idle       COMMIT_START      -> committing
 //   syncing    SYNC_PROGRESS done-> syncing   (pulling=false, progress=null)   // tail begins
 //   syncing    SYNC_PROGRESS      -> syncing   (progress=p)
 //   syncing    SYNC_ERROR         -> syncing   (syncError=msg)
 //   syncing    SYNC_END           -> idle      (pulling=false, progress=null)
-//   committing COMMIT_END         -> idle      (lastCommitResult=result)
+//   committing COMMIT_END         -> idle
 //   *          SPELLCHECK_PROGRESS-> *         (progress only; status untouched)
 //
 // SYNC_START / COMMIT_START are ignored unless status==='idle' — the reducer is
@@ -50,7 +50,6 @@ export interface SyncMachineState {
   pulling: boolean;
   progress: SyncProgress | null;
   syncError: string;
-  lastCommitResult: CommitResult | null;
 }
 
 export const initialSyncState: SyncMachineState = {
@@ -58,7 +57,6 @@ export const initialSyncState: SyncMachineState = {
   pulling: false,
   progress: null,
   syncError: "",
-  lastCommitResult: null,
 };
 
 export type SyncAction =
@@ -76,7 +74,7 @@ export type SyncAction =
   // The sync's finally — return to idle regardless of how it ended.
   | { type: "SYNC_END" }
   | { type: "COMMIT_START" }
-  | { type: "COMMIT_END"; result: CommitResult }
+  | { type: "COMMIT_END" }
   // A frame from the spellcheck:progress channel — shares the bar, never the
   // sync lifecycle.
   | { type: "SPELLCHECK_PROGRESS"; progress: SyncProgress };
@@ -115,11 +113,11 @@ export function syncReducer(
 
     case "COMMIT_START":
       if (state.status !== "idle") return state;
-      return { ...state, status: "committing", lastCommitResult: null };
+      return { ...state, status: "committing" };
 
     case "COMMIT_END":
       if (state.status !== "committing") return state;
-      return { ...state, status: "idle", lastCommitResult: action.result };
+      return { ...state, status: "idle" };
 
     case "SPELLCHECK_PROGRESS":
       // Shares the status bar; independent of the sync/commit lifecycle.

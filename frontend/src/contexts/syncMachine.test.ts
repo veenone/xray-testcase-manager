@@ -7,7 +7,7 @@ import {
   canSwitchProfile,
 } from "./syncMachine";
 import type { SyncMachineState, SyncAction } from "./syncMachine";
-import type { SyncProgress, CommitResult } from "../api";
+import type { SyncProgress } from "../api";
 
 const frame = (over: Partial<SyncProgress> = {}): SyncProgress => ({
   phase: "tests",
@@ -15,12 +15,6 @@ const frame = (over: Partial<SyncProgress> = {}): SyncProgress => ({
   total: 10,
   done: false,
   ...over,
-});
-
-const commitResult = (): CommitResult => ({
-  succeeded: ["T-1"],
-  conflicted: [],
-  failed: [],
 });
 
 // Build a state by replaying actions from the initial state — keeps tests
@@ -145,18 +139,23 @@ describe("syncReducer — SYNC lifecycle", () => {
 });
 
 describe("syncReducer — COMMIT lifecycle", () => {
-  it("COMMIT_START from idle enters committing and resets lastCommitResult", () => {
-    const seeded = { ...initialSyncState, lastCommitResult: commitResult() };
-    const s = syncReducer(seeded, { type: "COMMIT_START" });
+  it("COMMIT_START from idle enters committing", () => {
+    const s = syncReducer(initialSyncState, { type: "COMMIT_START" });
     expect(s.status).toBe("committing");
-    expect(s.lastCommitResult).toBeNull();
   });
 
-  it("COMMIT_END returns to idle carrying the result", () => {
-    const result = commitResult();
-    const s = syncReducer(COMMITTING, { type: "COMMIT_END", result });
+  it("COMMIT_END returns to idle", () => {
+    const s = syncReducer(COMMITTING, { type: "COMMIT_END" });
     expect(s.status).toBe("idle");
-    expect(s.lastCommitResult).toBe(result);
+  });
+
+  it("COMMIT_END does not disturb the sync display fields", () => {
+    // lastCommitResult now lives in App state, not the machine; a commit must
+    // not touch the sync bar/error fields either.
+    const s = syncReducer(COMMITTING, { type: "COMMIT_END" });
+    expect(s.progress).toBeNull();
+    expect(s.syncError).toBe("");
+    expect(s.pulling).toBe(false);
   });
 });
 
@@ -189,9 +188,7 @@ describe("syncReducer — mutual exclusion invariant", () => {
   });
 
   it("ignores COMMIT_END when not committing", () => {
-    expect(
-      syncReducer(SYNCING, { type: "COMMIT_END", result: commitResult() }),
-    ).toBe(SYNCING);
+    expect(syncReducer(SYNCING, { type: "COMMIT_END" })).toBe(SYNCING);
   });
 });
 
