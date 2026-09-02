@@ -86,7 +86,7 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
   }
 
   return (
-    <Modal onClose={onCancel} className="modal bulk-modal" labelledBy={TITLE_ID}>
+    <Modal onClose={onCancel} className="modal bulk-modal rename-modal" labelledBy={TITLE_ID}>
       <div className="pending-head">
         <h2 id={TITLE_ID}>
           Rename summaries ({testKeys.length}{" "}
@@ -97,7 +97,7 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
         </button>
       </div>
 
-      <div className="rename-body">
+      <div className="bulk-body">
         <fieldset className="rename-mode">
           <legend>What to add</legend>
           {(["prefix", "suffix", "both"] as Mode[]).map((m) => (
@@ -183,7 +183,8 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
         {affixIsBlank && <p className="muted">This is only spaces.</p>}
         {counts.unchanged > 0 && typed && (
           <p className="muted">
-            {counts.unchanged} tests already have this. They stay as they are.
+            {counts.unchanged} {counts.unchanged === 1 ? "test" : "tests"} already
+            {counts.unchanged === 1 ? " has" : " have"} this. They stay as they are.
           </p>
         )}
         {/* When the affix alone is near the limit every row fails, and a list of
@@ -227,6 +228,9 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
       </div>
 
       <div className="pending-actions">
+        <p className="muted pending-footnote-inline">
+          Renames queue pending changes; commit them from the Pending list.
+        </p>
         <button
           className="btn"
           onClick={() => (result ? onComplete(result) : onCancel())}
@@ -236,7 +240,9 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
         </button>
         {!result && (
           <button className="btn btn-primary" onClick={apply} disabled={!canApply}>
-            {busy ? "Renaming…" : `Rename ${counts.changed} tests`}
+            {busy
+              ? "Renaming…"
+              : `Rename ${counts.changed} ${counts.changed === 1 ? "test" : "tests"}`}
           </button>
         )}
       </div>

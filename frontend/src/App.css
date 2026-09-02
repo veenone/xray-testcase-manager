@@ -7680,6 +7680,12 @@ tr.row-checked:hover {
 }
 
 /* Bulk rename modal (-354). */
+/* .bulk-modal is min(560px, 92vw), a width chosen for a three-field form. This
+   dialog holds a key column plus two summaries that run to 255 characters, so
+   at 560px both wrapped to two lines and the arrow stranded on the first. */
+.rename-modal {
+  width: min(920px, 94vw);
+}
 .rename-mode {
   display: flex;
   align-items: center;
@@ -7705,7 +7711,6 @@ tr.row-checked:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
 }
 .rename-field > span {
   min-width: 54px;
@@ -7713,7 +7718,7 @@ tr.row-checked:hover {
   font-size: 12px;
 }
 .rename-counts {
-  margin: 10px 0 6px;
+  margin: 0;
   font-size: 13px;
 }
 .rename-list {
@@ -7734,15 +7739,31 @@ tr.row-checked:hover {
 .rename-key {
   min-width: 108px;
 }
+/* Both text columns share the row's free space and may wrap. Without
+   min-width: 0 a flex item refuses to shrink below its min-content width, so a
+   long unbroken summary would force .rename-list to scroll sideways. */
+.rename-before,
+.rename-after {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .rename-before,
 .rename-arrow {
   color: var(--text-muted);
 }
+.rename-arrow {
+  flex: 0 0 auto;
+}
+/* The list draws its own bottom edge; the last row should not double it. */
+.rename-row:last-child {
+  border-bottom: 0;
+}
 .rename-result {
-  margin-top: 10px;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  /* 4px matches .detail-input and .bulk-row select; 5px matched nothing. */
+  border-radius: 4px;
 }
 /* Unchanged rows stay legible but recede; too-long rows are the only ones
    that need to catch the eye, since they are the ones being dropped. */
