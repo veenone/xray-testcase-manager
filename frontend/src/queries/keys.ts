@@ -12,6 +12,11 @@ export const keys = {
   // key] is the shared prefix, so one invalidateQueries on `test` refetches the
   // base read plus every section below. TestDetail translates its parent-driven
   // reload signal (version/localReloadKey) into exactly that invalidation.
+  // Current summaries for an explicit key list, for the bulk-rename preview
+  // (-354). The keys are sorted into the cache key so the same selection made
+  // in a different order reuses one entry.
+  testSummaries: (profileId: string, testKeys: string[]) =>
+    [profileId, "testSummaries", [...testKeys].sort().join(",")] as const,
   test: (profileId: string, key: string) =>
     [profileId, "test", key] as const,
   testMeta: (profileId: string, key: string) =>

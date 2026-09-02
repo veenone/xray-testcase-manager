@@ -7678,3 +7678,77 @@ tr.row-checked:hover {
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* Bulk rename modal (-354). */
+.rename-mode {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+.rename-mode legend {
+  float: left;
+  margin-right: 10px;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.rename-mode label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.rename-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.rename-field > span {
+  min-width: 54px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.rename-counts {
+  margin: 10px 0 6px;
+  font-size: 13px;
+}
+.rename-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 42vh;
+  overflow: auto;
+  font-size: 13px;
+}
+.rename-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.rename-key {
+  min-width: 108px;
+}
+.rename-before,
+.rename-arrow {
+  color: var(--text-muted);
+}
+.rename-result {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+/* Unchanged rows stay legible but recede; too-long rows are the only ones
+   that need to catch the eye, since they are the ones being dropped. */
+.rename-unchanged .rename-after {
+  color: var(--text-muted);
+}
+.rename-too-long .rename-after {
+  color: var(--warn-text);
+}
