@@ -7755,6 +7755,21 @@ tr.row-checked:hover {
 .rename-arrow {
   flex: 0 0 auto;
 }
+/* The inserted text, marked so the change is visible without diffing two
+   near-identical strings. <mark> carries its own UA background, so both colours
+   are set explicitly. This also makes a whitespace-only affix visible, which is
+   the one mistake a flat string cannot show. */
+.rename-add {
+  background: var(--accent-soft);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+/* A dropped row's mark should read as warning, not as the accent used for
+   changes that will actually apply. */
+.rename-too-long .rename-add {
+  background: var(--warn-soft);
+}
 /* The list draws its own bottom edge; the last row should not double it. */
 .rename-row:last-child {
   border-bottom: 0;

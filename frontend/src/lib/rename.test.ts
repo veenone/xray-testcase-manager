@@ -124,6 +124,47 @@ describe("computeRenames", () => {
   });
 });
 
+describe("the affix split", () => {
+  // The preview marks addedPrefix / addedSuffix so the reader can see the
+  // change without diffing two strings. If the split ever stops reproducing
+  // `after`, the preview would show something the apply does not send.
+  const cases: [string, { prefix: string; suffix: string }, string][] = [
+    ["prefix only", { prefix: "[A] ", suffix: "" }, "Login works"],
+    ["suffix only", { prefix: "", suffix: " (v2)" }, "Login works"],
+    ["both", { prefix: "[A] ", suffix: " [B]" }, "Login works"],
+    ["prefix already present", { prefix: "[A] ", suffix: " [B]" }, "[A] Login works"],
+    ["nothing to add", { prefix: "[A] ", suffix: "" }, "[A] Login works"],
+    ["no affix at all", { prefix: "", suffix: "" }, "Login works"],
+    ["too long", { prefix: "x".repeat(300), suffix: "" }, "Login works"],
+  ];
+
+  it.each(cases)("%s: the split reproduces after", (_name, opts, summary) => {
+    const r = computeRenames([t("QA-1", summary)], opts)[0];
+    expect(r.addedPrefix + r.body + r.addedSuffix).toBe(r.after);
+  });
+
+  it("marks only the affix that is actually added", () => {
+    const r = computeRenames([t("QA-1", "[A] Login works")], {
+      prefix: "[A] ",
+      suffix: " [B]",
+    })[0];
+    // The prefix is already there, so only the suffix is new.
+    expect(r.addedPrefix).toBe("");
+    expect(r.addedSuffix).toBe(" [B]");
+    expect(r.body).toBe("[A] Login works");
+  });
+
+  it("marks nothing when the row is unchanged", () => {
+    const r = computeRenames([t("QA-1", "Login works")], {
+      prefix: "",
+      suffix: "",
+    })[0];
+    expect(r.addedPrefix).toBe("");
+    expect(r.addedSuffix).toBe("");
+    expect(r.body).toBe("Login works");
+  });
+});
+
 describe("renameCounts", () => {
   it("tallies each state", () => {
     const rows = computeRenames(

@@ -161,7 +161,15 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
                   <span className="rename-arrow" aria-hidden="true">
                     →
                   </span>
-                  <span className="rename-after">{r.after}</span>
+                  <span className="rename-after">
+                    {r.addedPrefix && (
+                      <mark className="rename-add">{r.addedPrefix}</mark>
+                    )}
+                    {r.body}
+                    {r.addedSuffix && (
+                      <mark className="rename-add">{r.addedSuffix}</mark>
+                    )}
+                  </span>
                   {r.reason && <span className="muted"> · {r.reason}</span>}
                 </li>
               ))}

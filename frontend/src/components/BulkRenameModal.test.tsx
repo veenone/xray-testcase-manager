@@ -46,9 +46,17 @@ describe("BulkRenameModal", () => {
 
     await userEvent.type(screen.getByRole("textbox", { name: /prefix/i }), "[[SMOKE] ");
 
-    await waitFor(() =>
-      expect(screen.getByText("[SMOKE] Login works")).toBeInTheDocument(),
-    );
+    // The after column splits into <mark>affix</mark> + untouched body, so the
+    // whole string no longer lives in one node. Assert the mark instead: that
+    // the inserted text is visibly marked is the point of the preview.
+    await waitFor(() => {
+      const marks = document.querySelectorAll("mark.rename-add");
+      expect(marks.length).toBeGreaterThan(0);
+      expect([...marks].map((m) => m.textContent)).toContain("[SMOKE] ");
+    });
+    // And the row still reads as the full new summary end to end.
+    const row = document.querySelector(".rename-row.rename-changed");
+    expect(row?.textContent).toContain("[SMOKE] Login works");
   });
 
   it("sends only the rows that actually change, with the value the preview used", async () => {

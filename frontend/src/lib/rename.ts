@@ -19,6 +19,15 @@ export interface RenameRow {
   state: RenameState;
   /** Why the row is unchanged or too long, shown in the preview. */
   reason?: string;
+  /**
+   * `after` split into the text this rename inserts and the text it did not
+   * touch, so the preview can mark the change instead of asking the reader to
+   * diff two near-identical strings by eye. Concatenating these three always
+   * reproduces `after` exactly, which is what the tests assert.
+   */
+  addedPrefix: string;
+  body: string;
+  addedSuffix: string;
 }
 
 export interface RenameInput {
@@ -52,7 +61,15 @@ export function computeRenames(
     const before = t.summary;
 
     if (prefix === "" && suffix === "") {
-      return { key: t.key, before, after: before, state: "unchanged" };
+      return {
+        key: t.key,
+        before,
+        after: before,
+        state: "unchanged",
+        addedPrefix: "",
+        body: before,
+        addedSuffix: "",
+      };
     }
 
     const hasPrefix = prefix !== "" && before.startsWith(prefix);
@@ -71,6 +88,9 @@ export function computeRenames(
         after: before,
         state: "unchanged",
         reason: `already has this ${parts.join(" and ")}`,
+        addedPrefix: "",
+        body: before,
+        addedSuffix: "",
       };
     }
 
@@ -88,10 +108,21 @@ export function computeRenames(
         reason: wasAlreadyOver
           ? `already over ${SUMMARY_MAX} characters`
           : `over ${SUMMARY_MAX} characters`,
+        addedPrefix: addPrefix,
+        body: before,
+        addedSuffix: addSuffix,
       };
     }
 
-    return { key: t.key, before, after, state: "changed" };
+    return {
+      key: t.key,
+      before,
+      after,
+      state: "changed",
+      addedPrefix: addPrefix,
+      body: before,
+      addedSuffix: addSuffix,
+    };
   });
 }
 
