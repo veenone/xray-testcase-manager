@@ -10,9 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-02-bulk-summary-rename-design.md`
 
+**Negative cases N1 to N8 are in the spec's "Negative cases" section.** N1 (parameter ceiling) is Task 1, N2 (stale preview) is Tasks 2 and 4, N3, N4, N5, N6 and N7 are Tasks 3 and 4. N8 is a recorded limit with no code.
+
 ## Global Constraints
 
 - `SUMMARY_MAX = 255`. Jira's issue-summary limit; a computed summary longer than this is excluded from the apply.
+- `summaryChunkSize = 5000`. This driver rejects an `IN (...)` clause above **32,765** parameters with `SQL logic error: too many SQL variables`, probed directly. A select-all on a 50k project exceeds that, so every key-list read chunks. See spec N1.
+- Every rename carries `ExpectedBefore`, the summary the preview was computed from, and is applied only when the stored summary still matches. A sync can run while the modal is open (`canSync` is `status === "idle"` and knows nothing about modals), and applying from stale data would revert a synced change and queue that reversion for Jira. See spec N2.
 - `PREVIEW_LIMIT = 200`. Maximum preview rows rendered. Counts are always computed across the whole selection, never across the truncated list.
 - Affix matching is **exact and case-sensitive**. `[SMOKE]` and `[smoke]` are different prefixes.
 - **No automatic separator.** The affix is concatenated literally.
@@ -50,6 +54,7 @@ Create `internal/testrepo/summaries_test.go`:
 package testrepo_test
 
 import (
+	"fmt"
 	"testing"
 
 	"xray-test-manager/internal/testrepo"
@@ -114,6 +119,29 @@ func TestListTestSummariesIsProfileScoped(t *testing.T) {
 	}
 }
 
+func TestListTestSummariesChunksPastTheParameterLimit(t *testing.T) {
+	// This driver rejects an IN (...) clause above 32,765 parameters with
+	// "too many SQL variables". A select-all on a 50k project exceeds that, so
+	// the read must chunk. Without chunking this test fails outright rather
+	// than returning a wrong answer (spec N1).
+	repo := seedSummaryTests(t)
+
+	keys := make([]string, 0, 40000)
+	for i := 0; i < 40000; i++ {
+		keys = append(keys, fmt.Sprintf("QA-MISSING-%d", i))
+	}
+	// One real key at the far end, so a chunking bug that drops the tail shows.
+	keys = append(keys, "QA-2")
+
+	got, err := repo.ListTestSummaries("p1", keys)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 1 || got[0].Key != "QA-2" {
+		t.Fatalf("got %+v, want only QA-2", got)
+	}
+}
+
 func TestListTestSummariesEmptyInput(t *testing.T) {
 	repo := seedSummaryTests(t)
 
@@ -146,6 +174,11 @@ type TestSummary struct {
 	Summary string `json:"summary"`
 }
 
+// summaryChunkSize bounds how many keys go into one IN (...) clause. The driver
+// rejects a statement with more than 32,765 parameters, and a select-all on a
+// 50k-test project produces far more keys than that.
+const summaryChunkSize = 5000
+
 // ListTestSummaries returns the current summary for each requested key, in the
 // order requested. Keys the profile does not have are omitted rather than
 // erroring: a Test can disappear between selection and use, and that should
@@ -156,35 +189,48 @@ func (r *Repository) ListTestSummaries(profileID string, testKeys []string) ([]T
 		return out, nil
 	}
 
-	placeholders := make([]string, len(testKeys))
-	args := make([]any, 0, len(testKeys)+1)
-	args = append(args, profileID)
-	for i, k := range testKeys {
-		placeholders[i] = "?"
-		args = append(args, k)
-	}
-
-	rows, err := r.db.Query(
-		fmt.Sprintf(
-			`SELECT jira_key, summary FROM test_case
-			 WHERE profile_id = ? AND jira_key IN (%s)`,
-			strings.Join(placeholders, ", "),
-		), args...)
-	if err != nil {
-		return nil, fmt.Errorf("list test summaries: %w", err)
-	}
-	defer rows.Close()
-
 	found := make(map[string]string, len(testKeys))
-	for rows.Next() {
-		var k, s string
-		if err := rows.Scan(&k, &s); err != nil {
+
+	// Chunked because this driver rejects an IN (...) clause above 32,765
+	// parameters ("too many SQL variables"), and a select-all on a 50k project
+	// goes well past that (RND_P_4TFINT_05-354, spec N1).
+	for start := 0; start < len(testKeys); start += summaryChunkSize {
+		end := start + summaryChunkSize
+		if end > len(testKeys) {
+			end = len(testKeys)
+		}
+		chunk := testKeys[start:end]
+
+		placeholders := make([]string, len(chunk))
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, profileID)
+		for i, k := range chunk {
+			placeholders[i] = "?"
+			args = append(args, k)
+		}
+
+		rows, err := r.db.Query(
+			fmt.Sprintf(
+				`SELECT jira_key, summary FROM test_case
+				 WHERE profile_id = ? AND jira_key IN (%s)`,
+				strings.Join(placeholders, ", "),
+			), args...)
+		if err != nil {
+			return nil, fmt.Errorf("list test summaries: %w", err)
+		}
+		for rows.Next() {
+			var k, sum string
+			if err := rows.Scan(&k, &sum); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			found[k] = sum
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
 			return nil, err
 		}
-		found[k] = s
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		rows.Close()
 	}
 
 	// Re-emit in request order so the preview matches the user's selection
@@ -247,7 +293,7 @@ failing the whole call."
 **Interfaces:**
 - Consumes: `newRepo(t)` from `internal/testrepo/testrepo_test.go:13`.
 - Produces:
-  - `type testrepo.TestRename struct { Key string \`json:"key"\`; Summary string \`json:"summary"\` }`
+  - `type testrepo.TestRename struct { Key, Summary, ExpectedBefore string }` with json tags `key`, `summary`, `expectedBefore`
   - `func (r *Repository) BulkRenameTests(profileID string, renames []TestRename) (BulkEditResult, error)`
   - `func (a *App) BulkRenameTests(profileID string, renames []testrepo.TestRename) (testrepo.BulkEditResult, error)`
 
@@ -260,6 +306,7 @@ package testrepo_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"xray-test-manager/internal/testrepo"
@@ -281,8 +328,8 @@ func TestBulkRenameTestsQueuesSummaryEdits(t *testing.T) {
 	repo := seedRenameTests(t)
 
 	res, err := repo.BulkRenameTests("p1", []testrepo.TestRename{
-		{Key: "QA-1", Summary: "[SMOKE] Login works"},
-		{Key: "QA-2", Summary: "[SMOKE] Logout works"},
+		{Key: "QA-1", Summary: "[SMOKE] Login works", ExpectedBefore: "Login works"},
+		{Key: "QA-2", Summary: "[SMOKE] Logout works", ExpectedBefore: "Logout works"},
 	})
 	if err != nil {
 		t.Fatalf("bulk rename: %v", err)
@@ -319,8 +366,8 @@ func TestBulkRenameTestsReportsUnknownKeyWithoutStoppingSiblings(t *testing.T) {
 	repo := seedRenameTests(t)
 
 	res, err := repo.BulkRenameTests("p1", []testrepo.TestRename{
-		{Key: "QA-1", Summary: "[SMOKE] Login works"},
-		{Key: "QA-GONE", Summary: "[SMOKE] Nothing"},
+		{Key: "QA-1", Summary: "[SMOKE] Login works", ExpectedBefore: "Login works"},
+		{Key: "QA-GONE", Summary: "[SMOKE] Nothing", ExpectedBefore: "Nothing"},
 	})
 	if err != nil {
 		t.Fatalf("bulk rename: %v", err)
@@ -330,6 +377,45 @@ func TestBulkRenameTestsReportsUnknownKeyWithoutStoppingSiblings(t *testing.T) {
 	}
 	if len(res.Failed) != 1 || res.Failed[0].TestKey != "QA-GONE" {
 		t.Errorf("failed %+v, want just QA-GONE", res.Failed)
+	}
+}
+
+func TestBulkRenameTestsRejectsAStalePreview(t *testing.T) {
+	// A sync can rewrite test_case.summary while the rename modal is open.
+	// Applying a rename computed from the old value would revert what the sync
+	// just pulled and queue that reversion for Jira (spec N2).
+	repo := seedRenameTests(t)
+
+	// Stand in for the sync: the stored summary moves on.
+	if err := repo.UpsertTests("p1", []testrepo.TestCase{
+		{Key: "QA-1", ID: "1", Summary: "Login works, revised upstream"},
+	}); err != nil {
+		t.Fatalf("simulate sync: %v", err)
+	}
+
+	res, err := repo.BulkRenameTests("p1", []testrepo.TestRename{
+		{Key: "QA-1", Summary: "[SMOKE] Login works", ExpectedBefore: "Login works"},
+	})
+	if err != nil {
+		t.Fatalf("bulk rename: %v", err)
+	}
+	if len(res.Succeeded) != 0 {
+		t.Fatalf("succeeded %v, want the stale rename rejected", res.Succeeded)
+	}
+	if len(res.Failed) != 1 {
+		t.Fatalf("failed %+v, want one rejection", res.Failed)
+	}
+	if !strings.Contains(res.Failed[0].Error, "changed") {
+		t.Errorf("reason = %q, want it to say the summary changed", res.Failed[0].Error)
+	}
+
+	// The synced value must survive untouched.
+	got, err := repo.ListTestSummaries("p1", []string{"QA-1"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if got[0].Summary != "Login works, revised upstream" {
+		t.Errorf("summary = %q, want the synced value intact", got[0].Summary)
 	}
 }
 
@@ -358,7 +444,7 @@ func TestBulkRenameTestsToTheSameSummaryQueuesNothing(t *testing.T) {
 	repo := seedRenameTests(t)
 
 	if _, err := repo.BulkRenameTests("p1", []testrepo.TestRename{
-		{Key: "QA-1", Summary: "Login works"},
+		{Key: "QA-1", Summary: "Login works", ExpectedBefore: "Login works"},
 	}); err != nil {
 		t.Fatalf("bulk rename: %v", err)
 	}
@@ -392,6 +478,12 @@ In `internal/testrepo/testrepo.go`, beside `BulkEditTests`, add:
 type TestRename struct {
 	Key     string `json:"key"`
 	Summary string `json:"summary"`
+	// ExpectedBefore is the summary the caller's preview was computed from.
+	// A sync can rewrite test_case.summary while the rename modal is open, and
+	// applying from stale data would revert the synced value and queue that
+	// reversion for Jira. Same optimistic-concurrency shape as the commit
+	// path's base_version check (spec N2).
+	ExpectedBefore string `json:"expectedBefore"`
 }
 
 // BulkRenameTests applies a precomputed summary to each Test, queueing each as
@@ -404,6 +496,32 @@ type TestRename struct {
 func (r *Repository) BulkRenameTests(profileID string, renames []TestRename) (BulkEditResult, error) {
 	result := BulkEditResult{Succeeded: []string{}, Failed: []BulkFailure{}}
 	for _, rn := range renames {
+		var current string
+		err := r.db.QueryRow(
+			`SELECT summary FROM test_case WHERE profile_id = ? AND jira_key = ?`,
+			profileID, rn.Key,
+		).Scan(&current)
+		if errors.Is(err, sql.ErrNoRows) {
+			result.Failed = append(result.Failed, BulkFailure{
+				TestKey: rn.Key,
+				Error:   "test not found",
+			})
+			continue
+		}
+		if err != nil {
+			result.Failed = append(result.Failed, BulkFailure{TestKey: rn.Key, Error: err.Error()})
+			continue
+		}
+		// Reject a rename computed from a summary that has since moved. This
+		// is the whole point of ExpectedBefore; without it a sync during the
+		// open modal silently reverts what it just pulled.
+		if current != rn.ExpectedBefore {
+			result.Failed = append(result.Failed, BulkFailure{
+				TestKey: rn.Key,
+				Error:   "summary changed since the preview was taken",
+			})
+			continue
+		}
 		if err := r.EditTestField(profileID, rn.Key, "summary", rn.Summary); err != nil {
 			result.Failed = append(result.Failed, BulkFailure{
 				TestKey: rn.Key,
@@ -417,7 +535,7 @@ func (r *Repository) BulkRenameTests(profileID string, renames []TestRename) (Bu
 }
 ```
 
-Check `BulkFailure`'s field names against its definition near `BulkEditResult` in the same file and match them exactly rather than trusting the names above.
+Check `BulkFailure`'s field names against its definition near `BulkEditResult` in the same file and match them exactly rather than trusting the names above. This body uses `database/sql` and `errors`; confirm both are already imported in the file before adding them.
 
 - [ ] **Step 4: Bind it**
 
@@ -614,6 +732,13 @@ describe("computeRenames", () => {
     expect(rows[0].state).toBe("changed");
   });
 
+  it("blames the summary, not the affix, when it was already over the limit", () => {
+    const before = "x".repeat(SUMMARY_MAX + 10);
+    const rows = computeRenames([t("QA-1", before)], { prefix: "p", suffix: "" });
+    expect(rows[0].state).toBe("too-long");
+    expect(rows[0].reason).toMatch(/already over/i);
+  });
+
   it("returns nothing for an empty test list", () => {
     expect(computeRenames([], { prefix: "x", suffix: "" })).toEqual([]);
   });
@@ -732,12 +857,17 @@ export function computeRenames(
     const after = addPrefix + before + addSuffix;
 
     if (charLength(after).length > SUMMARY_MAX) {
+      // A legacy or imported summary can already be over the limit. Blaming the
+      // affix there would send the user to shorten the wrong thing (spec N4).
+      const wasAlreadyOver = charLength(before).length > SUMMARY_MAX;
       return {
         key: t.key,
         before,
         after,
         state: "too-long" as const,
-        reason: `over ${SUMMARY_MAX} characters`,
+        reason: wasAlreadyOver
+          ? `already over ${SUMMARY_MAX} characters`
+          : `over ${SUMMARY_MAX} characters`,
       };
     }
 
@@ -899,8 +1029,31 @@ describe("BulkRenameModal", () => {
     await waitFor(() => expect(bulkRename).toHaveBeenCalledTimes(1));
     // QA-2 already carries the prefix, so it must not be in the payload.
     expect(bulkRename).toHaveBeenCalledWith("p1", [
-      { key: "QA-1", summary: "[SMOKE] Login works" },
+      {
+        key: "QA-1",
+        summary: "[SMOKE] Login works",
+        expectedBefore: "Login works",
+      },
     ]);
+  });
+
+  it("stays open and lists failures when some rows are rejected", async () => {
+    bulkRename.mockResolvedValue({
+      succeeded: [],
+      failed: [
+        { testKey: "QA-1", error: "summary changed since the preview was taken" },
+      ],
+    });
+    renderModal();
+    await screen.findByText("Login works");
+
+    await userEvent.type(screen.getByLabelText(/prefix/i), "[SMOKE] ");
+    await userEvent.click(screen.getByRole("button", { name: /rename/i }));
+
+    expect(await screen.findByText(/failed \(1\)/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/changed since the preview/i),
+    ).toBeInTheDocument();
   });
 
   it("disables apply until something would change", async () => {
@@ -960,6 +1113,7 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
   const [suffix, setSuffix] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [result, setResult] = useState<BulkEditResult | null>(null);
 
   const summariesQuery = useTestSummaries(activeId, testKeys);
   const tests = summariesQuery.data ?? [];
@@ -976,20 +1130,39 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
   const counts = useMemo(() => renameCounts(rows), [rows]);
 
   const shown = rows.slice(0, PREVIEW_LIMIT);
-  const canApply = counts.changed > 0 && !busy;
+  const canApply = counts.changed > 0 && !busy && result === null;
+  // Keys can vanish between selection and modal open (a sync deleted them).
+  // Say so rather than quietly previewing fewer rows than the toolbar counted
+  // (spec N5).
+  const missing = testKeys.length - tests.length;
+  // An affix that is only spaces is legitimate but usually a typo, and trailing
+  // spaces are invisible in the preview (spec N7).
+  const affixIsBlank =
+    (activePrefix !== "" && activePrefix.trim() === "") ||
+    (activeSuffix !== "" && activeSuffix.trim() === "");
 
   async function apply() {
     const renames: TestRename[] = rows
       .filter((r) => r.state === "changed")
-      .map((r) => ({ key: r.key, summary: r.after }));
+      // expectedBefore lets the backend reject a rename computed from a summary
+      // a sync has since moved, instead of silently reverting it (spec N2).
+      .map((r) => ({ key: r.key, summary: r.after, expectedBefore: r.before }));
     if (renames.length === 0) return;
 
     setBusy(true);
     setError("");
     try {
-      const result = await BulkRenameTests(activeId, renames);
-      announce(`Renamed ${result.succeeded.length} tests`);
-      onComplete(result);
+      const r = await BulkRenameTests(activeId, renames);
+      announce(`Renamed ${r.succeeded.length} tests`);
+      // Matching BulkEditModal: a clean result closes, anything else stays open
+      // so the failures can be read. With the expectedBefore guard, a partial
+      // failure is a normal outcome rather than an edge case (spec N6).
+      if (r.failed.length === 0) {
+        onComplete(r);
+        return;
+      }
+      setResult(r);
+      setBusy(false);
     } catch (e) {
       setError(errMsg(e));
       setBusy(false);
@@ -1079,27 +1252,73 @@ export function BulkRenameModal({ testKeys, onComplete, onCancel }: Props) {
           </>
         )}
 
+        {missing > 0 && (
+          <p className="muted">
+            {missing} of the {testKeys.length} selected tests are no longer in
+            the local cache.
+          </p>
+        )}
+        {affixIsBlank && (
+          <p className="muted">This prefix is only spaces.</p>
+        )}
         {counts.unchanged > 0 && (activePrefix !== "" || activeSuffix !== "") && (
           <p className="muted">
             {counts.unchanged} tests already have this. They stay as they are.
           </p>
         )}
-        {counts.tooLong > 0 && (
+        {/* When the affix alone is near the limit every row fails, and a list of
+            512 identical rows explains nothing. Say it once (spec N3). */}
+        {counts.changed === 0 && counts.tooLong > 0 ? (
           <p className="warn-text">
-            {counts.tooLong} tests would go over Jira's {SUMMARY_MAX} character
-            limit. They are left out.
+            This is too long to add to any of the selected tests.
           </p>
+        ) : (
+          counts.tooLong > 0 && (
+            <p className="warn-text">
+              {counts.tooLong} tests would go over Jira's {SUMMARY_MAX} character
+              limit. They are left out.
+            </p>
+          )
+        )}
+
+        {result && (
+          <div className="rename-result">
+            {result.succeeded.length > 0 && (
+              <p className="ok-text">
+                ✓ Queued pending changes on {result.succeeded.length}{" "}
+                {result.succeeded.length === 1 ? "test" : "tests"}.
+              </p>
+            )}
+            {result.failed.length > 0 && (
+              <>
+                <p className="warn-text">Failed ({result.failed.length}):</p>
+                <ul className="commit-fail-list">
+                  {result.failed.map((f, i) => (
+                    <li key={i}>
+                      <span className="mono">{f.testKey}</span>: {f.error}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
         )}
         {error && <div className="error-text">{error}</div>}
       </div>
 
       <div className="pending-actions">
-        <button className="btn" onClick={onCancel} disabled={busy}>
-          Cancel
+        <button
+          className="btn"
+          onClick={() => (result ? onComplete(result) : onCancel())}
+          disabled={busy}
+        >
+          {result ? "Close" : "Cancel"}
         </button>
-        <button className="btn btn-primary" onClick={apply} disabled={!canApply}>
-          {busy ? "Renaming…" : `Rename ${counts.changed} tests`}
-        </button>
+        {!result && (
+          <button className="btn btn-primary" onClick={apply} disabled={!canApply}>
+            {busy ? "Renaming…" : `Rename ${counts.changed} tests`}
+          </button>
+        )}
       </div>
     </Modal>
   );
@@ -1173,6 +1392,12 @@ Add to `frontend/src/App.css`, beside the other modal rules. Use the existing to
 }
 .rename-arrow {
   color: var(--text-muted);
+}
+.rename-result {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
 }
 /* Unchanged rows stay legible but recede; too-long rows are the only ones
    that need to catch the eye, since they are the ones being dropped. */
@@ -1284,6 +1509,8 @@ Run `wails dev` with a profile whose Jira base URL is `demo`, then:
 6. Apply. The pending count rises by exactly the changed count, and the grid shows the new summaries.
 7. Open Pending changes and confirm each row is an ordinary summary edit that can be discarded.
 8. Switch to Suffix, then Both, and confirm the hidden affix does not contribute.
+9. Select every test in a large project with select-all, then open the modal. It must load rather than fail: this is the path that broke past 32,765 keys before chunking (spec N1).
+10. Open the modal, leave it open, run a Sync from another window or wait for one, then Apply. The affected rows must come back as failures reading "summary changed since the preview was taken", and their synced summaries must be intact in the grid (spec N2).
 
 - [ ] **Step 6: Commit**
 
