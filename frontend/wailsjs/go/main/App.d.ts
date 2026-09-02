@@ -49,6 +49,8 @@ export function BulkEditTests(arg1:string,arg2:Array<string>,arg3:testrepo.BulkE
 
 export function BulkMoveToFolder(arg1:string,arg2:Array<string>,arg3:string):Promise<testrepo.BulkEditResult>;
 
+export function BulkRenameTests(arg1:string,arg2:Array<testrepo.TestRename>):Promise<testrepo.BulkEditResult>;
+
 export function BulkReplacePreconditions(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:Array<string>):Promise<testrepo.BulkEditResult>;
 
 export function BulkReplaceRequirements(arg1:string,arg2:Array<string>,arg3:Array<string>,arg4:Array<string>):Promise<testrepo.BulkEditResult>;
@@ -260,6 +262,8 @@ export function GetTestReview(arg1:string,arg2:string):Promise<testrepo.Review>;
 export function GetTestRunHistory(arg1:string,arg2:string):Promise<Array<testrepo.TestRunEntry>>;
 
 export function GetTestSteps(arg1:string,arg2:string,arg3:boolean):Promise<Array<testrepo.Step>>;
+
+export function GetTestSummaries(arg1:string,arg2:Array<string>):Promise<Array<testrepo.TestSummary>>;
 
 export function GetTestTransitions(arg1:string,arg2:string):Promise<Array<jira.Transition>>;
 

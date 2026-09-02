@@ -133,6 +133,8 @@ export {
   CommitPendingChanges,
   CommitPendingChangesByIDs,
   BulkEditTests,
+  BulkRenameTests,
+  GetTestSummaries,
   GetTestTransitions,
   TransitionTest,
   AddTestComment,
@@ -715,6 +717,22 @@ export interface SyncLogEntry {
   fetched: number;
   error: string;
   stageFailures: StageFailure[];
+}
+
+// TestSummary mirrors testrepo.TestSummary — a Test's key and current summary,
+// the minimum the bulk-rename preview needs (-354).
+export interface TestSummary {
+  key: string;
+  summary: string;
+}
+
+// TestRename mirrors testrepo.TestRename — one Test's precomputed new summary,
+// plus the summary the preview was computed from so the backend can reject a
+// rename a sync has since made stale.
+export interface TestRename {
+  key: string;
+  summary: string;
+  expectedBefore: string;
 }
 
 // SavedView mirrors testrepo.SavedView — a named browse filter (FR-11.4). The

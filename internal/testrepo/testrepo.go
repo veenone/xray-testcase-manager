@@ -4557,6 +4557,69 @@ type BulkFailure struct {
 	Error   string `json:"error"`
 }
 
+// TestRename is one Test's new summary (RND_P_4TFINT_05-354). Unlike BulkEdit,
+// which carries one Value applied to every Test, a rename carries a different
+// value per Test, because the prefix / suffix rule produces a different result
+// for each summary.
+type TestRename struct {
+	Key     string `json:"key"`
+	Summary string `json:"summary"`
+	// ExpectedBefore is the summary the caller's preview was computed from.
+	// A sync can rewrite test_case.summary while the rename modal is open, and
+	// applying from stale data would revert the synced value and queue that
+	// reversion for Jira. Same optimistic-concurrency shape as the commit
+	// path's base_version check.
+	ExpectedBefore string `json:"expectedBefore"`
+}
+
+// BulkRenameTests applies a precomputed summary to each Test, queueing each as
+// an ordinary "summary" field edit so the pending-change journal, conflict
+// detection and commit path need no special casing.
+//
+// The rename rule itself lives in the frontend (frontend/src/lib/rename.ts):
+// the modal previews the exact string it sends, so preview and result cannot
+// disagree. This method deliberately does not re-derive anything; it only
+// checks that what the preview was based on is still true.
+func (r *Repository) BulkRenameTests(profileID string, renames []TestRename) (BulkEditResult, error) {
+	result := BulkEditResult{Succeeded: []string{}, Failed: []BulkFailure{}}
+	for _, rn := range renames {
+		var current string
+		err := r.db.QueryRow(
+			`SELECT summary FROM test_case WHERE profile_id = ? AND jira_key = ?`,
+			profileID, rn.Key,
+		).Scan(&current)
+		if errors.Is(err, sql.ErrNoRows) {
+			result.Failed = append(result.Failed, BulkFailure{
+				TestKey: rn.Key,
+				Error:   "test not found",
+			})
+			continue
+		}
+		if err != nil {
+			result.Failed = append(result.Failed, BulkFailure{TestKey: rn.Key, Error: err.Error()})
+			continue
+		}
+		// Reject a rename computed from a summary that has since moved. Without
+		// this a sync during the open modal silently reverts what it just pulled.
+		if current != rn.ExpectedBefore {
+			result.Failed = append(result.Failed, BulkFailure{
+				TestKey: rn.Key,
+				Error:   "summary changed since the preview was taken",
+			})
+			continue
+		}
+		if err := r.EditTestField(profileID, rn.Key, "summary", rn.Summary); err != nil {
+			result.Failed = append(result.Failed, BulkFailure{
+				TestKey: rn.Key,
+				Error:   err.Error(),
+			})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, rn.Key)
+	}
+	return result, nil
+}
+
 // BulkEditTests applies a single field-level operation to a batch of Tests,
 // queuing a pending change for each modified Test (FR-3.2 / FR-3.3 / FR-3.7).
 // Each Test is processed in its own transaction (via EditTestField) so one

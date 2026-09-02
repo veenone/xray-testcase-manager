@@ -3381,6 +3381,22 @@ export namespace testrepo {
 		}
 	}
 	
+	export class TestRename {
+	    key: string;
+	    summary: string;
+	    expectedBefore: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TestRename(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.summary = source["summary"];
+	        this.expectedBefore = source["expectedBefore"];
+	    }
+	}
 	export class TestRunEntry {
 	    execKey: string;
 	    execSummary: string;
@@ -3425,6 +3441,20 @@ export namespace testrepo {
 	        this.execCreated = source["execCreated"];
 	        this.execUpdated = source["execUpdated"];
 	        this.execResolved = source["execResolved"];
+	    }
+	}
+	export class TestSummary {
+	    key: string;
+	    summary: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TestSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.summary = source["summary"];
 	    }
 	}
 	export class TypeConversion {

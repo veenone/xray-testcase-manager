@@ -74,6 +74,10 @@ export function BulkMoveToFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['BulkMoveToFolder'](arg1, arg2, arg3);
 }
 
+export function BulkRenameTests(arg1, arg2) {
+  return window['go']['main']['App']['BulkRenameTests'](arg1, arg2);
+}
+
 export function BulkReplacePreconditions(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BulkReplacePreconditions'](arg1, arg2, arg3, arg4);
 }
@@ -496,6 +500,10 @@ export function GetTestRunHistory(arg1, arg2) {
 
 export function GetTestSteps(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetTestSteps'](arg1, arg2, arg3);
+}
+
+export function GetTestSummaries(arg1, arg2) {
+  return window['go']['main']['App']['GetTestSummaries'](arg1, arg2);
 }
 
 export function GetTestTransitions(arg1, arg2) {

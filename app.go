@@ -2303,6 +2303,23 @@ func (a *App) GetTestSummaries(profileID string, testKeys []string) ([]testrepo.
 	return a.repo.ListTestSummaries(profileID, testKeys)
 }
 
+// BulkRenameTests applies a precomputed summary to each given Test
+// (RND_P_4TFINT_05-354). The prefix / suffix rule runs in the frontend, which
+// previews the exact strings it sends here. Each rename carries the summary the
+// preview was computed from, so one that a sync has since moved is rejected
+// rather than silently reverting it.
+func (a *App) BulkRenameTests(profileID string, renames []testrepo.TestRename) (result testrepo.BulkEditResult, err error) {
+	defer recoverToError("BulkRenameTests", &err)
+	empty := testrepo.BulkEditResult{
+		Succeeded: []string{},
+		Failed:    []testrepo.BulkFailure{},
+	}
+	if err := a.requireStore(); err != nil {
+		return empty, err
+	}
+	return a.repo.BulkRenameTests(profileID, renames)
+}
+
 // BulkTransitionOptions answers two questions the bulk-transition modal
 // needs before the user can confirm: how the selected Tests break down by
 // current status, and which target statuses are reachable from at least
