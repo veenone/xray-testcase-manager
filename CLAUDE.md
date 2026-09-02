@@ -131,7 +131,7 @@ cd frontend; npx tsc --noEmit   # typecheck only
 ```
 
 Prerequisites: Go 1.25+, Node.js, and the Wails CLI
-(`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
+(`go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0`).
 
 Most backend behavior is verified by Go unit tests against the store and the
 demo client. When changing backend logic, add or update the `_test.go` beside

@@ -43,7 +43,7 @@ instance. The app also remains fully usable in demo mode.
 ## Development
 
 Prerequisites: Go 1.25+, Node.js, and the Wails CLI
-(`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
+(`go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0`).
 
 ```sh
 wails dev                              # run with live reload

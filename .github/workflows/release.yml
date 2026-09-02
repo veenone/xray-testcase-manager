@@ -36,8 +36,11 @@ jobs:
         with:
           node-version: "20"
 
+      # Pinned to match go.mod. The Wails CLI rewrites go.mod to its own
+      # version on every invocation, so @latest silently changes the module
+      # requirement and the released binary's Wails version drifts with it.
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
 
       - name: Install Inno Setup (for the installer)
         run: choco install innosetup -y --no-progress
@@ -89,8 +92,11 @@ jobs:
         with:
           node-version: "20"
 
+      # Pinned to match go.mod. The Wails CLI rewrites go.mod to its own
+      # version on every invocation, so @latest silently changes the module
+      # requirement and the released binary's Wails version drifts with it.
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
 
       - name: Resolve version
         id: ver
