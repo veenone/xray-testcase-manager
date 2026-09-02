@@ -2293,6 +2293,16 @@ func (a *App) BulkEditTests(profileID string, testKeys []string, op testrepo.Bul
 	return a.repo.BulkEditTests(profileID, testKeys, op)
 }
 
+// GetTestSummaries returns the current summary of each given Test, in the order
+// requested, for the bulk-rename preview (RND_P_4TFINT_05-354). Keys this
+// profile does not have are omitted.
+func (a *App) GetTestSummaries(profileID string, testKeys []string) ([]testrepo.TestSummary, error) {
+	if err := a.requireStore(); err != nil {
+		return nil, err
+	}
+	return a.repo.ListTestSummaries(profileID, testKeys)
+}
+
 // BulkTransitionOptions answers two questions the bulk-transition modal
 // needs before the user can confirm: how the selected Tests break down by
 // current status, and which target statuses are reachable from at least

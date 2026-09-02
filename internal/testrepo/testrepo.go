@@ -751,6 +751,83 @@ func (r *Repository) HasPendingPreconditionChange(profileID, testKey string) (bo
 	return true, nil
 }
 
+// TestSummary is a Test's key and current summary, the minimum the bulk-rename
+// preview needs (RND_P_4TFINT_05-354). No existing read covers an arbitrary key
+// list: the paged query is filter-driven, and the per-test reads take one key.
+type TestSummary struct {
+	Key     string `json:"key"`
+	Summary string `json:"summary"`
+}
+
+// summaryChunkSize bounds how many keys go into one IN (...) clause. The driver
+// rejects a statement with more than 32,765 parameters, and a select-all on a
+// 50k-test project produces far more keys than that.
+const summaryChunkSize = 5000
+
+// ListTestSummaries returns the current summary for each requested key, in the
+// order requested. Keys the profile does not have are omitted rather than
+// erroring: a Test can disappear between selection and use, and that should
+// cost one row rather than the whole operation.
+func (r *Repository) ListTestSummaries(profileID string, testKeys []string) ([]TestSummary, error) {
+	out := []TestSummary{}
+	if len(testKeys) == 0 {
+		return out, nil
+	}
+
+	found := make(map[string]string, len(testKeys))
+
+	// Chunked because this driver rejects an IN (...) clause above 32,765
+	// parameters ("too many SQL variables"), and a select-all on a 50k project
+	// goes well past that (RND_P_4TFINT_05-354).
+	for start := 0; start < len(testKeys); start += summaryChunkSize {
+		end := start + summaryChunkSize
+		if end > len(testKeys) {
+			end = len(testKeys)
+		}
+		chunk := testKeys[start:end]
+
+		placeholders := make([]string, len(chunk))
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, profileID)
+		for i, k := range chunk {
+			placeholders[i] = "?"
+			args = append(args, k)
+		}
+
+		rows, err := r.db.Query(
+			fmt.Sprintf(
+				`SELECT jira_key, summary FROM test_case
+				 WHERE profile_id = ? AND jira_key IN (%s)`,
+				strings.Join(placeholders, ", "),
+			), args...)
+		if err != nil {
+			return nil, fmt.Errorf("list test summaries: %w", err)
+		}
+		for rows.Next() {
+			var k, sum string
+			if err := rows.Scan(&k, &sum); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			found[k] = sum
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+
+	// Re-emit in request order so the preview matches the user's selection
+	// order rather than SQLite's scan order.
+	for _, k := range testKeys {
+		if sum, ok := found[k]; ok {
+			out = append(out, TestSummary{Key: k, Summary: sum})
+		}
+	}
+	return out, nil
+}
+
 // ListTestPreconditions returns the Preconditions linked to a Test.
 func (r *Repository) ListTestPreconditions(profileID, testKey string) ([]Precondition, error) {
 	rows, err := r.db.Query(
