@@ -3753,6 +3753,11 @@ tr.row-selected td:first-child {
 .modal-overlay {
   position: fixed;
   inset: 0;
+  /* The Browse grid's sticky thead sets z-index: 1, and this overlay set none,
+     so the column header painted over every dialog opened from that view and
+     obscured its title. Sits above the menus (41) and below the multiselect
+     panel (70), which opens from inside dialogs. */
+  z-index: 60;
   background: rgba(0, 0, 0, 0.4);
   display: flex;
   justify-content: center;
