@@ -8,14 +8,15 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
 
 ## [Unreleased]
 
-Two user-facing themes plus a large internal rework. **Bulk summary rename**,
-an **onboarding tour**, **select-all when adding tests**, and a
-**keyboard-operable, virtualized grid** are the new features. The
-**precondition sync** is rebuilt so a first sync on a big project actually
-keeps what it fetched. Underneath, the frontend moved to a **server-data cache**
-and `App.tsx` was decomposed into **contexts**, which together removed the
-full-view reloads that made every mutation feel like a page refresh. Schema
-reaches v49.
+New features plus a large internal rework. **Bulk summary rename**, an
+**onboarding tour**, **select-all when adding tests**, and a
+**keyboard-operable, virtualized grid** are the additions, and **Kiwi
+categories now read as Test Repository folders**. Two syncs are rebuilt: the
+**precondition** stage keeps what it fetched when a first sync is interrupted,
+and a large **Kiwi** product syncs in under a minute instead of eight.
+Underneath, the frontend moved to a **server-data cache** and `App.tsx` was
+decomposed into **contexts**, which together removed the full-view reloads that
+made every mutation feel like a page refresh. Schema reaches v49.
 
 ### Added
 
@@ -42,6 +43,17 @@ reaches v49.
   fully selected, a banner that selects **every test matching the current
   folder and search**. Tests already in the container stay excluded from both.
   The Preconditions view reuses the same picker and gets it too.
+
+**Kiwi: categories read as Test Repository folders (#152)**
+- A Kiwi **Category** is the closest thing Kiwi has to an Xray folder: one per
+  test case, scoped to the product, used to organise the repository. It now
+  surfaces as a folder, so a Kiwi profile gets the same folder sidebar and
+  grouping an Xray one has. Kiwi's `--default--` category means "not filed", so
+  those tests show as unfiled rather than in a folder of that name.
+- Folders are **read-only** for Kiwi. A category has no parent, so nesting
+  cannot be represented and creating one would invent product-level structure.
+  Capabilities now separate reporting folders from reshaping them, and the UI
+  hides create / rename / delete rather than offering buttons that fail.
 
 **Keyboard and accessibility (#97, #98)**
 - The test grid is **keyboard-operable** and **virtualized**, so a large project
@@ -75,6 +87,18 @@ reaches v49.
   success, then failed every test at commit. Unknown names are now reported
   before anything is queued, with a suggestion when the only difference is
   case, and an option to import without them.
+
+**Kiwi: syncing a large product took minutes (#152)**
+- Each page refetched the **entire product**, sorted it, kept 100 rows and threw
+  the rest away, so the wasted work grew with the size of the product rather
+  than the page. A product with 18,583 tests needed 186 full fetches, about
+  eight minutes. Kiwi cannot page server-side, so the scope is now fetched once
+  per sync and sliced locally: the same product syncs in **under a minute**.
+- A product name typed with the wrong capitalisation synced nothing and said
+  nothing, because Kiwi's filters are case-sensitive and an unknown product is
+  indistinguishable from an empty one on the wire. An empty first page now
+  reports the mismatch and suggests the real name, or lists the products the
+  server actually has. A genuinely empty product still syncs clean.
 
 **Modal fixes (#149, #151)**
 - The Browse grid's sticky column header painted over every dialog opened from
