@@ -58,6 +58,22 @@ type Adapter struct {
 	// redo detection.
 	hasReviewPlugin bool
 
+	// pageMu/pageCache hold one sync's worth of TestCase rows. Kiwi's
+	// TestCase.filter has no server-side limit or offset — verified against a
+	// live instance, which answers "Cannot resolve keyword 'limit'" because the
+	// RPC only accepts model field lookups — so a page has to be sliced from
+	// the full scoped result. Without this cache every page refetched the whole
+	// product: on a real 18,583-test product that was 186 full fetches, about
+	// eight minutes, to store 18,583 rows once.
+	//
+	// The cache is keyed by scope and reset when the caller asks for offset 0,
+	// which is how the sync engine starts every pull (engine.go's pullTests
+	// walks offsets from 0). That keeps it to one pull's lifetime: a later sync
+	// starts at 0 and refetches, so an edited or new test is never missed.
+	pageMu    sync.Mutex
+	pageKey   string
+	pageCache []kiwiTestCase
+
 	// detectMu/detectDone guard ensureDetected (P4.5): detectMu serializes
 	// concurrent callers so two goroutines racing into ensureDetected on the
 	// same Adapter never double-probe or observe a half-written pair of
@@ -192,6 +208,37 @@ func (a *Adapter) fetchTestCases(ctx context.Context, filter map[string]any) ([]
 	return rows, nil
 }
 
+// scopedCases returns every TestCase in a product, sorted by id, fetching from
+// the server only when the scope changes or a new pull begins.
+//
+// startAt == 0 means the caller is at the top of a fresh pull, so the cache is
+// discarded and the scope re-fetched. Every later offset in that same pull is
+// served from memory. See the pageCache field comment for why paging cannot be
+// pushed to the server.
+func (a *Adapter) scopedCases(ctx context.Context, projectKey string, startAt int) ([]kiwiTestCase, error) {
+	a.pageMu.Lock()
+	defer a.pageMu.Unlock()
+
+	if startAt > 0 && a.pageKey == projectKey && a.pageCache != nil {
+		return a.pageCache, nil
+	}
+
+	filter := map[string]any{}
+	if projectKey != "" {
+		filter["category__product__name"] = projectKey
+	}
+	rows, err := a.fetchTestCases(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	// Sorted once, here, so every page slices the same stable order. Kiwi
+	// rejects order_by, so this cannot be asked of the server either.
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+
+	a.pageKey, a.pageCache = projectKey, rows
+	return rows, nil
+}
+
 // fetchTestCaseByID fetches a single TestCase by pk via
 // TestCase.filter({"pk": id}), erroring if no row is returned.
 func (a *Adapter) fetchTestCaseByID(ctx context.Context, id int) (kiwiTestCase, error) {
@@ -281,15 +328,10 @@ func (a *Adapter) fetchComponentsForCase(ctx context.Context, id int) ([]string,
 // Kiwi pull is always "full" and the hub diffs locally via content-hash
 // (spec §5 OQ-2).
 func (a *Adapter) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, since string, startAt, maxResults int) ([]backend.Test, int, error) {
-	filter := map[string]any{}
-	if projectKey != "" {
-		filter["category__product__name"] = projectKey
-	}
-	rows, err := a.fetchTestCases(ctx, filter)
+	rows, err := a.scopedCases(ctx, projectKey, startAt)
 	if err != nil {
 		return nil, 0, err
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
 
 	total := len(rows)
 	if startAt < 0 {
