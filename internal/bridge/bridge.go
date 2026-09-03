@@ -46,11 +46,23 @@ type Gap struct {
 func ComputeGaps(source, target backend.Capabilities) []Gap {
 	var gaps []Gap
 
-	if source.SupportsFolders && !target.SupportsFolders {
+	// Two different folder gaps. A target with no folder concept at all loses
+	// placement entirely. A target that reports folders but cannot be reshaped
+	// (Kiwi, whose per-product Categories are flat and not creatable through
+	// this adapter) keeps a test's folder only where a matching one already
+	// exists, and flattens any nesting.
+	switch {
+	case source.SupportsFolders && !target.SupportsFolders:
 		gaps = append(gaps, Gap{
 			Feature:  "folders",
 			Severity: SeverityLossy,
 			Message:  "Test Repository folder placement is not preserved — tests will be published without a folder location.",
+		})
+	case source.SupportsFolders && !target.SupportsFolderWrites:
+		gaps = append(gaps, Gap{
+			Feature:  "folders",
+			Severity: SeverityLossy,
+			Message:  "The target reports folders but cannot create them, and its folders do not nest — tests land in a matching existing folder or none, and any hierarchy is flattened.",
 		})
 	}
 	if source.StepModel == "objects" && target.StepModel == "inline-text" {

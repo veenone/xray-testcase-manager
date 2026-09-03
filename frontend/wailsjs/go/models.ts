@@ -7,6 +7,7 @@ export namespace backend {
 	    stepModel: string;
 	    supportsTestTypes: boolean;
 	    supportsFolders: boolean;
+	    supportsFolderWrites: boolean;
 	    supportsPreconditionObjects: boolean;
 	    supportsRequirementObjects: boolean;
 	    supportsIssueLinkTypes: boolean;
@@ -32,6 +33,7 @@ export namespace backend {
 	        this.stepModel = source["stepModel"];
 	        this.supportsTestTypes = source["supportsTestTypes"];
 	        this.supportsFolders = source["supportsFolders"];
+	        this.supportsFolderWrites = source["supportsFolderWrites"];
 	        this.supportsPreconditionObjects = source["supportsPreconditionObjects"];
 	        this.supportsRequirementObjects = source["supportsRequirementObjects"];
 	        this.supportsIssueLinkTypes = source["supportsIssueLinkTypes"];

@@ -24,6 +24,7 @@ export const defaultCapabilities: Capabilities = {
   stepModel: "objects",
   supportsTestTypes: true,
   supportsFolders: true,
+  supportsFolderWrites: true,
   supportsPreconditionObjects: true,
   supportsRequirementObjects: true,
   supportsIssueLinkTypes: true,

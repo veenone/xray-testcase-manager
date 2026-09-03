@@ -41,8 +41,17 @@ type Capabilities struct {
 	// StepModel is how test steps are represented ("objects" for Xray steps).
 	StepModel string `json:"stepModel"`
 
-	SupportsTestTypes           bool `json:"supportsTestTypes"`
-	SupportsFolders             bool `json:"supportsFolders"`
+	SupportsTestTypes bool `json:"supportsTestTypes"`
+	// SupportsFolders advertises that the backend can REPORT a folder
+	// structure. It does not promise the folders can be created, renamed or
+	// moved between: Kiwi surfaces its per-product Categories as a flat set of
+	// folders it can read but not reshape, so the two questions had to
+	// separate. Callers that offer folder editing gate on
+	// SupportsFolderWrites; everything that only displays folders gates here.
+	SupportsFolders bool `json:"supportsFolders"`
+	// SupportsFolderWrites advertises create / rename / delete / move-test.
+	// Always false where SupportsFolders is false.
+	SupportsFolderWrites        bool `json:"supportsFolderWrites"`
 	SupportsPreconditionObjects bool `json:"supportsPreconditionObjects"`
 	SupportsRequirementObjects  bool `json:"supportsRequirementObjects"`
 	SupportsIssueLinkTypes      bool `json:"supportsIssueLinkTypes"`

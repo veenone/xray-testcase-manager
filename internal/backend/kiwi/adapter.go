@@ -954,20 +954,133 @@ func (a *Adapter) GetBugDetail(ctx context.Context, bugKey string) (backend.BugD
 
 // --- folders ---
 
+// Kiwi has no folder tree, but it has Categories: a per-product grouping with
+// exactly one per test case, used to organise the repository. That is the same
+// job an Xray Test Repository folder does, so categories surface as folders.
+//
+// The mapping is flat by nature. A Kiwi Category is {name, product,
+// description} with no parent, so every category is a root folder and the tree
+// is one level deep. A nested Xray hierarchy cannot round-trip through Kiwi,
+// which matters for the migration bridge and is why folder WRITES stay
+// unsupported here (see CreateFolder below).
+//
+// The "--default--" category Kiwi creates for every product is treated as
+// unfiled rather than as a folder, matching how Xray shows tests that are in
+// no folder.
+
+// kiwiCategory is a Category.filter row.
+type kiwiCategory struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// fetchCategories returns a product's categories, excluding the default one.
+func (a *Adapter) fetchCategories(ctx context.Context, projectKey string) ([]kiwiCategory, error) {
+	if projectKey == "" {
+		return nil, nil
+	}
+	var rows []kiwiCategory
+	if err := a.c.call(ctx, "Category.filter",
+		[]any{map[string]any{"product__name": projectKey}}, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]kiwiCategory, 0, len(rows))
+	for _, r := range rows {
+		if r.Name == kiwiDefaultCategory {
+			continue
+		}
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
 func (a *Adapter) FolderTree(ctx context.Context, projectKey string) (backend.FolderTreeResult, error) {
-	return backend.FolderTreeResult{}, nil // P4.2 — EMPTY: no folder tree in core (spec §3.10)
+	cats, err := a.fetchCategories(ctx, projectKey)
+	if err != nil {
+		return backend.FolderTreeResult{}, err
+	}
+	if len(cats) == 0 {
+		return backend.FolderTreeResult{}, nil
+	}
+
+	// Test membership comes off the rows the pull already fetched, so building
+	// the tree costs no extra round trip per folder. startAt 0 is deliberate:
+	// FolderTree runs at the top of a sync stage, so it refreshes the scope the
+	// page walk then reuses.
+	rows, err := a.scopedCases(ctx, projectKey, 0)
+	if err != nil {
+		return backend.FolderTreeResult{}, err
+	}
+	counts := map[int]int{}
+	membership := map[string]string{}
+	for _, tc := range rows {
+		if tc.CategoryID == 0 || tc.CategoryName == kiwiDefaultCategory {
+			continue
+		}
+		counts[tc.CategoryID]++
+		membership[strconv.Itoa(tc.ID)] = tc.CategoryName
+	}
+
+	folders := make([]backend.Folder, 0, len(cats))
+	withTests := make([]backend.FolderRef, 0, len(cats))
+	for _, c := range cats {
+		id := strconv.Itoa(c.ID)
+		n := counts[c.ID]
+		folders = append(folders, backend.Folder{
+			ID:       id,
+			ParentID: "",
+			Name:     c.Name,
+			// The native id a move would target. Kiwi cannot move tests
+			// between categories through this adapter yet, but the field is
+			// what a future MoveTestToFolder would use.
+			XrayID: id,
+			// Flat, so a category's own count is also its total.
+			TestCount:      n,
+			TotalTestCount: n,
+		})
+		if n > 0 {
+			withTests = append(withTests, backend.FolderRef{ID: id, Path: c.Name})
+		}
+	}
+	return backend.FolderTreeResult{
+		Folders:          folders,
+		TreeMembership:   membership,
+		FoldersWithTests: withTests,
+	}, nil
 }
 
 func (a *Adapter) ListFolders(ctx context.Context, projectKey string) ([]backend.Folder, error) {
-	return nil, nil // P4.2 — EMPTY (spec §3.10)
+	tree, err := a.FolderTree(ctx, projectKey)
+	if err != nil {
+		return nil, err
+	}
+	return tree.Folders, nil
 }
 
 func (a *Adapter) ListTestsInFolder(ctx context.Context, projectKey, folderID string) ([]string, error) {
-	return nil, nil // P4.2 — EMPTY (spec §3.10)
+	id, err := strconv.Atoi(folderID)
+	if err != nil {
+		return nil, fmt.Errorf("kiwi: folder id %q is not a category id", folderID)
+	}
+	rows, err := a.fetchTestCases(ctx, map[string]any{"category": id})
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, len(rows))
+	for i, tc := range rows {
+		keys[i] = strconv.Itoa(tc.ID)
+	}
+	return keys, nil
 }
 
+// Folder writes stay unsupported. A category is not a folder in the sense a
+// write implies: it has no parent, so a nested path cannot be created, and
+// Category.create would be inventing product-level structure from a folder
+// name. Reads surface what already exists; writes would fabricate it.
 func (a *Adapter) CreateFolder(ctx context.Context, projectKey, parentPath, name string) error {
-	return backend.ErrUnsupported // P4.2 (write)
+	return backend.ErrUnsupported
 }
 
 func (a *Adapter) RenameFolder(ctx context.Context, projectKey, path, newName string) error {
@@ -1100,12 +1213,15 @@ func (a *Adapter) AddComment(ctx context.Context, issueKey, body string) error {
 // ensureDetected now delivers regardless of what Capabilities() reports.
 func (a *Adapter) Capabilities() backend.Capabilities {
 	caps := backend.Capabilities{
-		Name:                        "kiwi",
-		IDStyle:                     "numeric", // Kiwi pks are ints (spec §4.1; see p4_1-report.md for the "integer" vs "numeric" note)
-		SupportsJQLScope:            false,     // Product/Version/Build + ORM filters, not JQL
-		StepModel:                   "inline-text",
-		SupportsTestTypes:           true, // is_automated -> Manual/Automated
-		SupportsFolders:             false,
+		Name:              "kiwi",
+		IDStyle:           "numeric", // Kiwi pks are ints (spec §4.1; see p4_1-report.md for the "integer" vs "numeric" note)
+		SupportsJQLScope:  false,     // Product/Version/Build + ORM filters, not JQL
+		StepModel:         "inline-text",
+		SupportsTestTypes: true, // is_automated -> Manual/Automated
+
+		// Categories read as a flat folder set; they cannot be reshaped.
+		SupportsFolders:             true,
+		SupportsFolderWrites:        false,
 		SupportsPreconditionObjects: false,
 		SupportsRequirementObjects:  false, // flipped below if the requirements plugin was detected
 		SupportsIssueLinkTypes:      false, // flipped below if the requirements plugin was detected (typed links verifies/validates/derives-from/related, spec §3.8/§4.2)

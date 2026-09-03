@@ -51,6 +51,30 @@ type kiwiTestCase struct {
 	AuthorUsername string `json:"author__username"`
 	CreateDate     string `json:"create_date"`
 	HistoryDate    string `json:"history_date"`
+	// Category is Kiwi's per-product grouping of test cases, which is the
+	// closest analogue to an Xray Test Repository folder: one per test,
+	// scoped to the product, and used to organise the repository. Both keys
+	// are on the live row (verified against a real instance) and were
+	// previously decoded by neither, so every test synced with an empty
+	// FolderID. The id is what folder membership is keyed on, since category
+	// names are only unique within a product.
+	CategoryID   int    `json:"category"`
+	CategoryName string `json:"category__name"`
+}
+
+// kiwiDefaultCategory is the category Kiwi creates for every product. Tests
+// sitting in it have not been filed anywhere, so it maps to "no folder"
+// rather than to a folder literally named "--default--".
+const kiwiDefaultCategory = "--default--"
+
+// categoryFolderID returns the folder id for a test's category, or "" when the
+// test is unfiled. Kiwi's category ids are globally unique, so the id alone
+// identifies the folder.
+func categoryFolderID(tc kiwiTestCase) string {
+	if tc.CategoryID == 0 || tc.CategoryName == kiwiDefaultCategory {
+		return ""
+	}
+	return strconv.Itoa(tc.CategoryID)
 }
 
 // flattenSteps is the SINGLE shared transform for Kiwi's inline-text step
@@ -97,7 +121,7 @@ func toTest(tc kiwiTestCase, tags, components []string) backend.Test {
 		Labels:      tags,
 		Components:  components,
 		Updated:     tc.HistoryDate,
-		FolderID:    "",
+		FolderID:    categoryFolderID(tc),
 		ExecType:    execType,
 		FixVersions: nil,
 	}

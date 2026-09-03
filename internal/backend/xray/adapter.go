@@ -491,6 +491,7 @@ func (a *Adapter) Capabilities() backend.Capabilities {
 		StepModel:                   "objects",
 		SupportsTestTypes:           true,
 		SupportsFolders:             true,
+		SupportsFolderWrites:        true,
 		SupportsPreconditionObjects: true,
 		SupportsRequirementObjects:  true,
 		SupportsIssueLinkTypes:      true,

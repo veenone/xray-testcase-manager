@@ -1223,7 +1223,7 @@ function App() {
           >
             Allocate…
           </button>
-          {caps.supportsFolders && folders.length > 0 && (
+          {caps.supportsFolderWrites && folders.length > 0 && (
             <button
               className="btn btn-primary"
               onClick={() => openModal("bulkMove")}
@@ -1407,6 +1407,10 @@ function App() {
                   onRename={renameFolder}
                   onDelete={deleteFolder}
                   onNewTest={(folderId) => openNewTest(folderId)}
+                  // Kiwi reports categories as folders but cannot reshape
+                  // them, so the create/rename/delete actions are hidden
+                  // rather than offered and then failing.
+                  readOnly={!caps.supportsFolderWrites}
                 />
               ) : (
                 <div className="browse-sidebar-empty">

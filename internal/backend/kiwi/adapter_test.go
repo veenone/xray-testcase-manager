@@ -100,7 +100,8 @@ func TestCapabilitiesBaseValues(t *testing.T) {
 		SupportsJQLScope:            false,
 		StepModel:                   "inline-text",
 		SupportsTestTypes:           true,
-		SupportsFolders:             false,
+		SupportsFolders:             true,
+		SupportsFolderWrites:        false,
 		SupportsPreconditionObjects: false,
 		SupportsRequirementObjects:  false,
 		SupportsIssueLinkTypes:      false,
@@ -183,6 +184,10 @@ func TestUnimplementedMethodsReturnErrUnsupported(t *testing.T) {
 
 // TestEmptyStubsReturnEmptyNoError spot-checks the methods the spec decided
 // are EMPTY (no analog, non-fatal) rather than UNSUP.
+//
+// FolderTree is deliberately NOT in this list any more: Kiwi's per-product
+// Categories are a real analog for Xray's Test Repository folders, so it is a
+// live read now (see folders_test.go) rather than a zero-value stub.
 func TestEmptyStubsReturnEmptyNoError(t *testing.T) {
 	a := New("http://example.invalid", "alice:secret")
 	ctx := context.Background()
@@ -192,10 +197,6 @@ func TestEmptyStubsReturnEmptyNoError(t *testing.T) {
 	}
 	if pcs, membership, err := a.ListPreconditions(ctx, "PROJ", nil); err != nil || len(pcs) != 0 || len(membership) != 0 {
 		t.Errorf("ListPreconditions: expected (empty, empty, nil), got (%v, %v, %v)", pcs, membership, err)
-	}
-	tree, err := a.FolderTree(ctx, "PROJ")
-	if err != nil || !reflect.DeepEqual(tree, backend.FolderTreeResult{}) {
-		t.Errorf("FolderTree: expected (zero-value, nil), got (%#v, %v)", tree, err)
 	}
 	if ts, err := a.GetTransitions(ctx, "1", "Open"); err != nil || len(ts) != 0 {
 		t.Errorf("GetTransitions: expected (empty, nil), got (%v, %v)", ts, err)

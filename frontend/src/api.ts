@@ -532,7 +532,11 @@ export interface Capabilities {
   supportsJqlScope: boolean;
   stepModel: string;
   supportsTestTypes: boolean;
+  // Can REPORT folders. Does not imply they can be edited: Kiwi surfaces
+  // its per-product categories as folders it can read but not reshape.
   supportsFolders: boolean;
+  // Can create / rename / delete folders and move tests between them.
+  supportsFolderWrites: boolean;
   supportsPreconditionObjects: boolean;
   supportsRequirementObjects: boolean;
   supportsIssueLinkTypes: boolean;
