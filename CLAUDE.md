@@ -151,15 +151,25 @@ GitHub Release. See README for the artifact table.
 
 ## Current status
 
-**Feature-complete in demo mode (Phases 0–6).** Implemented and exercised end to
-end against demo data: sync, fast browse/search/filter/sort, saved views,
+**1.9.0 released; 1.10.0 in development.** Feature-complete for Xray on Jira DC
+and in daily use: sync, fast browse/search/filter/sort, saved views,
 configurable columns, local field/step/custom-field editing with on-commit sync
 and conflict resolution, workflow transitions (single + bulk), all bulk
-operations, Test Sets/Plans/Executions (board, CRUD, allocate), Test Repository
-folders, preconditions, test review (single + bulk), CSV/XLSX import + export, a
-pytest scaffold generator, a statistics dashboard with a traceability Sankey,
+operations, Test Sets/Plans/Executions, Test Repository folders, preconditions,
+requirements and coverage, defect tracking, duplicates, test calls,
+misspellings, test review, CSV/XLSX import + export, a pytest scaffold
+generator, a statistics dashboard with traceability Sankeys, Gap Analysis,
 diagnostics, sync history, light/dark themes, and profile management.
 
-**Phase 7 pending: live Xray/Jira REST wiring.** The real REST calls in
-`internal/jira/` are stubbed behind the demo short-circuit until they can be
-verified against an actual Xray Server/DC 8.4.0 instance.
+**Live Xray/Jira REST is wired.** Every call in `internal/jira/` has a real
+implementation behind the demo short-circuit. Instance-specific shapes (link
+types and direction, custom-field names and value shapes, mandatory create
+fields) are marked `NOTE(xtm)` where they still want verification against
+another instance.
+
+**More than one backend since 1.9.0.** The local store is a neutral hub rather
+than an Xray-only cache. Kiwi TCMS is supported alongside Xray via the
+`backend.Backend` interface, each backend advertises its capabilities, and a
+migration bridge moves a dataset between connections.
+
+See `CHANGELOG.md` for what has shipped and what is pending release.

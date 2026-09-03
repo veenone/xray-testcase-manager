@@ -13,23 +13,29 @@ bulk-first interface, writing changes back to Jira on commit.
 
 ## Status
 
-✅ **1.6.0 release candidate.** Phases 0 to 7 are implemented and exercised end
-to end against the built-in demo data: sync, fast browse/search/filter/sort,
-saved views, configurable columns, local field/step/custom-field editing with
-on-commit sync and conflict resolution, workflow transitions (single + bulk),
-all bulk operations, Test Sets / Plans / Executions (board, detail view, CRUD,
-assign/remove tests, Test Environments, Fix Version(s)), Test Repository folders
-(browse/move + CRUD), preconditions, requirements and coverage, defect tracking,
-duplicates, test calls, a statistics dashboard with traceability Sankeys, Test
-Case Gap Analysis, CSV/XLSX import and export, a pytest scaffold generator,
-diagnostics, sync history, light/dark themes, and profile management.
+✅ **1.9.0 released; 1.10.0 in development.** The app is feature-complete for
+Xray on Jira DC and in daily use. Sync, fast browse/search/filter/sort, saved
+views, configurable columns, local field/step/custom-field editing with
+on-commit sync and conflict resolution, workflow transitions, all bulk
+operations, Test Sets / Plans / Executions, Test Repository folders,
+preconditions, requirements and coverage, defect tracking, duplicates, test
+calls, misspellings, a statistics dashboard with traceability Sankeys, Gap
+Analysis, CSV/XLSX import and export, a pytest scaffold generator, diagnostics,
+sync history, light/dark themes, and profile management.
 
-🔌 **Live Xray/Jira REST is wired (Phase 7).** Every call in `internal/jira/`
-now has a real implementation behind the demo short-circuit; no demo-only stubs
-remain. Instance-specific shapes (link types and direction, custom-field names
-and value shapes, mandatory create fields, folder endpoints) are marked
-`NOTE(xtm)` and still need verification against an actual Xray Server/DC 8.4.0
-instance. The app also remains fully usable in demo mode.
+🔌 **Live Xray/Jira REST is wired.** Every call in `internal/jira/` has a real
+implementation behind the demo short-circuit. Instance-specific shapes (link
+types and direction, custom-field names and value shapes, mandatory create
+fields) are marked `NOTE(xtm)` where they still want verification against
+another instance. The app remains fully usable in demo mode.
+
+🔀 **More than one backend.** Since 1.9.0 the local store is a neutral hub
+rather than an Xray-only cache. **Kiwi TCMS** is supported alongside Xray, each
+backend advertises what it can do, and a **migration bridge** moves a dataset
+from one connection to another with a capability-gap pre-flight.
+
+See [CHANGELOG.md](CHANGELOG.md) for what has shipped and what is pending
+release.
 
 ## Stack
 
@@ -120,6 +126,12 @@ end. The header shows a yellow `DEMO` chip while a demo profile is active.
 | 5 | XLSX / CSV import + export | ✅ |
 | 6 | pytest scaffold, containers & folder CRUD, test review, themes, diagnostics | ✅ |
 | 7 | Live Xray/Jira REST wiring (wired; verify against a real instance) | ✅ |
+| 8 | Coverage module, requirements suite, Gap Analysis | ✅ |
+| 9 | Backend-agnostic core, Kiwi TCMS, migration bridge | ✅ |
+
+Beyond the phase plan, current work is tracked in
+[CHANGELOG.md](CHANGELOG.md) and in Jira (`RND_P_4TFINT_05`, component
+*Xray-test-management*).
 
 Full planning, requirements (FR-1…FR-13) and design notes are maintained in the
 project's Outline documentation collection.

@@ -19,6 +19,47 @@ you commit.
 
 ---
 
+## What's new in 1.10.0
+
+Version 1.10.0 adds bulk summary renaming and a guided tour, and rebuilds the
+precondition sync so a first sync on a large project keeps what it fetched.
+
+- **Rename many summaries at once.** Select tests in Browse, then **Rename
+  summaries…**, and add a common **prefix, suffix, or both**. A live preview
+  shows each summary before and after with the inserted text highlighted, so a
+  trailing space or a missing bracket is visible rather than something to spot
+  by eye. Tests that already carry the affix are left alone, so the same rename
+  is safe to run twice, and a result that would exceed Jira's 255-character
+  limit is flagged and left out while the rest still applies.
+- **A guided tour.** A seven-step walkthrough of the core loop: profile, sync,
+  views, search, the grid, and the local-edit-then-commit model. It starts once
+  after your first successful sync and can be replayed any time from **More ->
+  Take the tour** or from **About**.
+- **Select all when adding tests.** The add-tests picker gains a select-all for
+  the page and, when the page is full, a banner that selects **every test
+  matching the current folder and search**. Tests already in the container stay
+  excluded. The Preconditions view uses the same picker and gets this too.
+- **Preconditions are no longer lost on a first sync.** The stage used to hold
+  everything in memory until it finished, so an interruption saved nothing, and
+  its failure was swallowed while the sync reported success. It now saves as it
+  goes, runs far faster, and a stage that fails is reported as a **partial**
+  sync in sync history instead of a silent success.
+- **Preconditions load on demand.** Opening a test whose preconditions were
+  never stored now fetches them from Jira, with a **Refresh** control on the
+  Preconditions section.
+- **Imports warn about unknown components.** A CSV or XLSX import naming a
+  component the project does not have used to report success and then fail
+  every test at commit. Unknown names are now listed before anything is queued,
+  with a suggestion when the only difference is capitalisation, and an option
+  to import without them.
+- **A keyboard-operable, virtualized test grid**, an accessible modal layer that
+  traps and restores focus, and screen-reader announcements for results that
+  were previously silent.
+- **A faster interface.** Editing something no longer reloads a whole view;
+  only what actually changed refreshes.
+
+---
+
 ## What's new in 1.9.0
 
 Version 1.9.0 is a major feature release. Highlights:
