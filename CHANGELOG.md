@@ -8,6 +8,101 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
 
 ## [Unreleased]
 
+Two user-facing themes plus a large internal rework. **Bulk summary rename**,
+an **onboarding tour**, **select-all when adding tests**, and a
+**keyboard-operable, virtualized grid** are the new features. The
+**precondition sync** is rebuilt so a first sync on a big project actually
+keeps what it fetched. Underneath, the frontend moved to a **server-data cache**
+and `App.tsx` was decomposed into **contexts**, which together removed the
+full-view reloads that made every mutation feel like a page refresh. Schema
+reaches v49.
+
+### Added
+
+**Bulk summary rename (#147, #151, RND_P_4TFINT_05-354)**
+- Add a common **prefix, suffix, or both** to the summaries of every selected
+  test, with a **live before/after preview** of each one. The inserted text is
+  highlighted, so a trailing space or a missing bracket is visible rather than
+  something to spot by eye.
+- A summary that already carries the affix is left alone, so the same rename is
+  safe to run twice over a selection that mixes renamed and new tests. A result
+  that would exceed Jira's 255-character limit is flagged and excluded, and the
+  rest of the batch still applies.
+- A rename computed before a sync moved the summary underneath it is rejected
+  rather than silently reverting what the sync pulled.
+
+**Onboarding tour (#94, #95, RND_P_4TFINT_05-335)**
+- A seven-step walkthrough of the core loop: profile, sync, views, search, the
+  grid, and the local-edit-then-commit model. It starts once after the first
+  successful sync, so it never spotlights an empty grid, and can be replayed
+  from **More -> Take the tour** or from **About**.
+
+**Select all when adding tests (#94, RND_P_4TFINT_05-324)**
+- The add-tests picker gains a page-level select-all and, when the page is
+  fully selected, a banner that selects **every test matching the current
+  folder and search**. Tests already in the container stay excluded from both.
+  The Preconditions view reuses the same picker and gets it too.
+
+**Keyboard and accessibility (#97, #98)**
+- The test grid is **keyboard-operable** and **virtualized**, so a large project
+  scrolls without rendering every row.
+- An **accessible modal layer**: dialogs trap focus, restore it on close, and
+  are labelled. **Live regions** announce async results that were previously
+  silent to assistive tech. Dark-mode tokens and spellcheck paging round it out.
+
+### Fixed
+
+**Preconditions are no longer lost on a first sync (#94, RND_P_4TFINT_05-336)**
+- The stage held every precondition in memory until the whole pass finished, so
+  an interruption anywhere in that window saved nothing, and its failure was
+  logged and swallowed while the sync reported success. Links now carry a sync
+  generation and are swept only after a clean pass, so an interrupted run leaves
+  stale links rather than deleting valid ones. Batches persist as they resolve.
+- The per-item 150ms sleep is gone. It sat on top of a rate limiter that already
+  paced every request, which was 15 minutes of dead time on a 6,000-precondition
+  project. Association reads now run 8-way concurrent and retry on the
+  intermittent 401 that used to drop a precondition's links silently.
+- A failed stage is recorded on the sync log as a **partial** outcome and shown
+  in sync history, instead of a run that stamps its watermark and claims success.
+
+**Preconditions missing in the test panel (#91, RND_P_4TFINT_05-339)**
+- Opening a test showed no preconditions when a sync had never managed to store
+  them, with no way to recover short of a full resync. The panel now fetches
+  from Jira on a cache miss and offers a **Refresh** control.
+
+**Import blocked by an unknown component (#91, RND_P_4TFINT_05-340)**
+- A CSV or XLSX import naming a component the project does not have reported
+  success, then failed every test at commit. Unknown names are now reported
+  before anything is queued, with a suggestion when the only difference is
+  case, and an option to import without them.
+
+**Modal fixes (#149, #151)**
+- The Browse grid's sticky column header painted over every dialog opened from
+  that view, covering its title and intercepting clicks meant for the dialog.
+- The rename modal's body had no padding, its dialog was too narrow for two
+  255-character summaries, and its footer buttons sat at opposite edges.
+
+### Changed
+
+**Server-data layer (#99, then #102-#133 in slices)**
+- Every read moved onto a **query cache** with shared keys, replacing the
+  hand-rolled `refreshKey` counters that forced whole views to reload after any
+  mutation. Mutations now invalidate exactly what they changed. The counter
+  itself is deleted.
+
+**App shell decomposition (spec in #100, delivered in #135-#145)**
+- `App.tsx` split into **ProfileContext, SyncContext, SelectionContext,
+  NavContext and ModalProvider**, with the sync/commit mutual-exclusion rules
+  moved into a pure reducer. The `profileId` prop no longer threads through the
+  component tree.
+
+**Toolchain**
+- Wails **2.15.0** (#90), pinned in CI and the docs so the CLI cannot rewrite
+  `go.mod` to a different version (#150).
+- The frontend gains a **Vitest suite** (#146), 26 files at time of writing,
+  plus `@tanstack/react-query`, `@tanstack/react-virtual`, `driver.js`, and
+  Testing Library.
+
 ## [1.9.0] - 2026-08-11
 
 Major feature release for the 1.9.0 line, finalizing the `1.9.0a` test builds. The
