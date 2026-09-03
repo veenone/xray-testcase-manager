@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="800" viewBox="0 0 1240 800" font-family="Segoe UI, system-ui, sans-serif" font-size="13">
+  <defs>
+    <style>
+      .txt{fill:#1F2937}.muted{fill:#6B7280}.sm{font-size:11px}.xs{font-size:10px}.b{font-weight:600}
+      .surface{fill:#FFFFFF;stroke:#E1E4EA}.row-alt{fill:#FAFBFC}.row-sel{fill:#E8ECFB}
+      .accent{fill:#3B5BDB}.accent-txt{fill:#3B5BDB}
+    </style>
+  </defs>
+
+  <!-- app ground -->
+  <rect width="1240" height="800" fill="#F7F8FA"/>
+
+  <!-- ===== topbar ===== -->
+  <rect x="0" y="0" width="1240" height="48" fill="#FFFFFF" stroke="#E1E4EA"/>
+  <text x="20" y="30" class="txt b" font-size="15">Task Activity Manager</text>
+  <rect x="212" y="15" width="48" height="18" rx="9" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="222" y="28" class="xs b" fill="#92400E">DEMO</text>
+  <!-- profile picker (shared with XTM) -->
+  <rect x="284" y="11" width="232" height="26" rx="4" class="surface"/>
+  <text x="294" y="28" class="txt">Acme Platform (PLAT)</text>
+  <path d="M500 21 l5 6 l5 -6" stroke="#6B7280" fill="none" stroke-width="1.5"/>
+  <!-- right cluster -->
+  <rect x="986" y="11" width="88" height="26" rx="4" class="surface"/>
+  <text x="998" y="28" class="txt">Manage</text>
+  <rect x="1086" y="11" width="66" height="26" rx="4" class="accent"/>
+  <text x="1105" y="28" fill="#FFFFFF" class="b">Sync</text>
+  <rect x="1164" y="11" width="56" height="26" rx="4" class="surface"/>
+  <text x="1180" y="28" class="txt">Help</text>
+
+  <!-- ===== nav rail ===== -->
+  <rect x="0" y="48" width="180" height="724" fill="#FFFFFF" stroke="#E1E4EA"/>
+  <rect x="8" y="64" width="164" height="32" rx="6" class="row-sel"/>
+  <text x="22" y="85" class="accent-txt b">Backlog</text>
+  <text x="22" y="125" class="txt">Epics</text>
+  <text x="22" y="165" class="txt">Boards</text>
+  <text x="22" y="205" class="txt">Reports</text>
+  <text x="22" y="245" class="txt">Rituals</text>
+  <line x1="16" y1="270" x2="164" y2="270" stroke="#E1E4EA"/>
+  <text x="22" y="298" class="muted sm">Suite</text>
+  <text x="22" y="322" class="txt">Tests (XTM)</text>
+
+  <!-- ===== main: backlog ===== -->
+  <text x="200" y="80" class="txt b" font-size="17">Backlog</text>
+  <text x="272" y="80" class="muted">PLAT · 1,248 issues</text>
+
+  <!-- filter bar -->
+  <rect x="200" y="96" width="300" height="28" rx="4" class="surface"/>
+  <text x="212" y="114" class="muted">Search summary, key, label</text>
+  <!-- issue-type chips -->
+  <g class="sm">
+    <rect x="512" y="98" width="52" height="24" rx="12" fill="#DBEAFE"/><text x="522" y="114" fill="#1E40AF" class="b">Task</text>
+    <rect x="570" y="98" width="52" height="24" rx="12" fill="#DCFCE7"/><text x="580" y="114" fill="#166534" class="b">Story</text>
+    <rect x="628" y="98" width="46" height="24" rx="12" fill="#FEE2E2"/><text x="638" y="114" fill="#991B1B" class="b">Bug</text>
+    <rect x="680" y="98" width="46" height="24" rx="12" fill="#EDE9FE"/><text x="690" y="114" fill="#5B21B6" class="b">Epic</text>
+    <rect x="732" y="98" width="46" height="24" rx="12" fill="#FEF3C7"/><text x="741" y="114" fill="#92400E" class="b">Req</text>
+  </g>
+  <rect x="792" y="96" width="120" height="28" rx="4" class="surface"/>
+  <text x="802" y="114" class="txt">Sprint 12</text>
+  <path d="M896 108 l4 5 l4 -5" stroke="#6B7280" fill="none" stroke-width="1.5"/>
+  <rect x="1000" y="96" width="76" height="28" rx="4" class="surface"/>
+  <text x="1014" y="114" class="txt">Import</text>
+  <rect x="1084" y="96" width="76" height="28" rx="4" class="accent"/>
+  <text x="1100" y="114" fill="#FFFFFF" class="b">+ New</text>
+
+  <!-- table -->
+  <rect x="200" y="136" width="656" height="620" class="surface"/>
+  <rect x="200" y="136" width="656" height="30" fill="#F3F4F6" stroke="#E1E4EA"/>
+  <g class="sm b muted">
+    <rect x="210" y="145" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="232" y="156">KEY</text><text x="300" y="156">TYPE</text><text x="352" y="156">SUMMARY</text>
+    <text x="606" y="156">STATUS</text><text x="690" y="156">ASSIGNEE</text><text x="780" y="156">SPRINT</text><text x="826" y="156">PTS</text>
+  </g>
+  <g class="sm">
+    <!-- row 1: selected -->
+    <rect x="200" y="166" width="656" height="34" class="row-sel"/>
+    <rect x="210" y="177" width="12" height="12" rx="2" fill="#3B5BDB"/><path d="M212 183 l3 3 l6 -6" stroke="#fff" fill="none" stroke-width="1.6"/>
+    <text x="232" y="188" class="txt b">PLAT-412</text>
+    <rect x="300" y="176" width="40" height="16" rx="8" fill="#DCFCE7"/><text x="307" y="188" fill="#166534" class="xs b">Story</text>
+    <text x="352" y="188" class="txt">Checkout: apply promo code at payment step</text>
+    <rect x="606" y="176" width="72" height="16" rx="3" fill="#DBEAFE"/><text x="612" y="188" fill="#1E40AF" class="xs b">In Progress</text>
+    <text x="690" y="188" class="txt">R. Anand</text><text x="780" y="188" class="txt">12</text><text x="826" y="188" class="txt">5</text>
+    <!-- row 2 -->
+    <rect x="200" y="200" width="656" height="34" class="row-alt"/>
+    <rect x="210" y="211" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="232" y="222" class="txt">PLAT-409</text>
+    <rect x="300" y="210" width="36" height="16" rx="8" fill="#DBEAFE"/><text x="307" y="222" fill="#1E40AF" class="xs b">Task</text>
+    <text x="352" y="222" class="txt">Rotate payment gateway API keys</text>
+    <rect x="606" y="210" width="44" height="16" rx="3" fill="#F3F4F6"/><text x="614" y="222" fill="#374151" class="xs b">To Do</text>
+    <text x="690" y="222" class="txt">-</text><text x="780" y="222" class="txt">12</text><text x="826" y="222" class="txt">2</text>
+    <!-- row 3 -->
+    <rect x="200" y="234" width="656" height="34" fill="#FFFFFF"/>
+    <rect x="210" y="245" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="232" y="256" class="txt">PLAT-401</text>
+    <rect x="300" y="244" width="32" height="16" rx="8" fill="#FEE2E2"/><text x="306" y="256" fill="#991B1B" class="xs b">Bug</text>
+    <text x="352" y="256" class="txt">Order total wrong when VAT changes mid-session</text>
+    <rect x="606" y="244" width="72" height="16" rx="3" fill="#DBEAFE"/><text x="612" y="256" fill="#1E40AF" class="xs b">In Progress</text>
+    <text x="690" y="256" class="txt">M. Ortiz</text><text x="780" y="256" class="txt">12</text><text x="826" y="256" class="txt">3</text>
+    <!-- row 4: requirement (the XTM seam) -->
+    <rect x="200" y="268" width="656" height="34" class="row-alt"/>
+    <rect x="210" y="279" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="232" y="290" class="txt">PLAT-388</text>
+    <rect x="300" y="278" width="34" height="16" rx="8" fill="#FEF3C7"/><text x="306" y="290" fill="#92400E" class="xs b">Req</text>
+    <text x="352" y="290" class="txt">Promo codes must be single-use per customer</text>
+    <rect x="606" y="278" width="58" height="16" rx="3" fill="#DCFCE7"/><text x="612" y="290" fill="#166534" class="xs b">Approved</text>
+    <text x="690" y="290" class="txt">PO</text><text x="780" y="290" class="txt">-</text><text x="826" y="290" class="txt">-</text>
+    <!-- row 5: epic -->
+    <rect x="200" y="302" width="656" height="34" fill="#FFFFFF"/>
+    <rect x="210" y="313" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="232" y="324" class="txt">PLAT-350</text>
+    <rect x="300" y="312" width="36" height="16" rx="8" fill="#EDE9FE"/><text x="306" y="324" fill="#5B21B6" class="xs b">Epic</text>
+    <text x="352" y="324" class="txt">Promotions and discounts</text>
+    <rect x="606" y="312" width="72" height="16" rx="3" fill="#DBEAFE"/><text x="612" y="324" fill="#1E40AF" class="xs b">In Progress</text>
+    <text x="690" y="324" class="txt">PO</text><text x="780" y="324" class="txt">-</text><text x="826" y="324" class="txt">21</text>
+    <!-- row 6: has a pending (journaled) edit -->
+    <rect x="200" y="336" width="656" height="34" class="row-alt"/>
+    <rect x="210" y="347" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="232" y="358" class="txt">PLAT-347</text>
+    <rect x="300" y="346" width="36" height="16" rx="8" fill="#DBEAFE"/><text x="307" y="358" fill="#1E40AF" class="xs b">Task</text>
+    <text x="352" y="358" class="txt">Write retro notes template</text>
+    <rect x="606" y="346" width="44" height="16" rx="3" fill="#F3F4F6"/><text x="614" y="358" fill="#374151" class="xs b">To Do</text>
+    <text x="690" y="358" class="txt">S. Kim</text><text x="780" y="358" class="txt">13</text><text x="826" y="358" class="txt">1</text>
+    <circle cx="846" cy="353" r="3.5" fill="#F59E0B"/>
+    <!-- row 7 -->
+    <rect x="200" y="370" width="656" height="34" fill="#FFFFFF"/>
+    <rect x="210" y="381" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="232" y="392" class="txt">PLAT-331</text>
+    <rect x="300" y="380" width="40" height="16" rx="8" fill="#DCFCE7"/><text x="307" y="392" fill="#166534" class="xs b">Story</text>
+    <text x="352" y="392" class="txt">Guest checkout without an account</text>
+    <rect x="606" y="380" width="44" height="16" rx="3" fill="#DCFCE7"/><text x="613" y="392" fill="#166534" class="xs b">Done</text>
+    <text x="690" y="392" class="txt">R. Anand</text><text x="780" y="392" class="txt">11</text><text x="826" y="392" class="txt">8</text>
+  </g>
+  <text x="212" y="740" class="muted sm">Showing 1 to 25 of 1,248</text>
+  <text x="760" y="740" class="muted sm">1  2  3 ... 50</text>
+
+  <!-- ===== detail panel ===== -->
+  <rect x="868" y="136" width="352" height="620" class="surface"/>
+  <text x="884" y="164" class="txt b" font-size="15">PLAT-412</text>
+  <rect x="960" y="151" width="40" height="16" rx="8" fill="#DCFCE7"/><text x="967" y="163" fill="#166534" class="xs b">Story</text>
+  <text x="1196" y="164" class="muted">x</text>
+  <text x="884" y="190" class="txt" font-size="14">Checkout: apply promo code at payment step</text>
+  <!-- tabs -->
+  <g class="sm">
+    <text x="884" y="222" class="accent-txt b">Details</text>
+    <rect x="884" y="228" width="44" height="2" class="accent"/>
+    <text x="944" y="222" class="muted">Links</text>
+    <text x="992" y="222" class="muted">Tests</text>
+    <text x="1040" y="222" class="muted">Activity</text>
+  </g>
+  <line x1="868" y1="232" x2="1220" y2="232" stroke="#E1E4EA"/>
+  <!-- fields -->
+  <g class="sm">
+    <text x="884" y="258" class="muted">Status</text><rect x="980" y="246" width="72" height="16" rx="3" fill="#DBEAFE"/><text x="986" y="258" fill="#1E40AF" class="xs b">In Progress</text>
+    <text x="884" y="286" class="muted">Assignee</text><text x="980" y="286" class="txt">R. Anand</text>
+    <text x="884" y="314" class="muted">Sprint</text><text x="980" y="314" class="txt">Sprint 12 - Checkout polish</text>
+    <text x="884" y="342" class="muted">Story points</text><text x="980" y="342" class="txt">5</text>
+    <text x="884" y="370" class="muted">Epic</text><text x="980" y="370" class="accent-txt">PLAT-350 Promotions and discounts</text>
+    <text x="884" y="398" class="muted">Priority</text><text x="980" y="398" class="txt">High</text>
+    <text x="884" y="426" class="muted">Labels</text>
+    <rect x="980" y="414" width="56" height="16" rx="8" fill="#F3F4F6"/><text x="988" y="426" class="txt xs">checkout</text>
+    <rect x="1042" y="414" width="44" height="16" rx="8" fill="#F3F4F6"/><text x="1050" y="426" class="txt xs">promo</text>
+  </g>
+  <line x1="884" y1="448" x2="1204" y2="448" stroke="#E1E4EA"/>
+  <!-- the XTM seam: tests covering this story -->
+  <text x="884" y="472" class="txt b sm">Covered by tests</text>
+  <text x="1120" y="472" class="muted xs">via XTM, link: tested by</text>
+  <g class="sm">
+    <rect x="884" y="482" width="320" height="26" rx="4" fill="#F7F8FA" stroke="#E1E4EA"/>
+    <text x="894" y="499" class="accent-txt b">XT-1018</text><text x="954" y="499" class="txt">Promo code applies discount</text>
+    <rect x="1140" y="487" width="56" height="16" rx="3" fill="#DCFCE7"/><text x="1150" y="499" fill="#166534" class="xs b">PASS</text>
+    <rect x="884" y="514" width="320" height="26" rx="4" fill="#F7F8FA" stroke="#E1E4EA"/>
+    <text x="894" y="531" class="accent-txt b">XT-1019</text><text x="954" y="531" class="txt">Expired promo code rejected</text>
+    <rect x="1140" y="519" width="56" height="16" rx="3" fill="#FEE2E2"/><text x="1153" y="531" fill="#991B1B" class="xs b">FAIL</text>
+    <text x="884" y="560" class="accent-txt">+ Link a test</text>
+  </g>
+  <line x1="884" y1="576" x2="1204" y2="576" stroke="#E1E4EA"/>
+  <text x="884" y="600" class="txt b sm">Description</text>
+  <g class="sm txt">
+    <text x="884" y="622">As a shopper I can enter a promo code on the</text>
+    <text x="884" y="640">payment step and see the discount before I pay.</text>
+  </g>
+  <!-- actions: the two write paths, side by side -->
+  <rect x="884" y="700" width="96" height="28" rx="4" class="accent"/>
+  <text x="906" y="718" fill="#FFFFFF" class="b">Save edit</text>
+  <rect x="990" y="700" width="110" height="28" rx="4" class="surface"/>
+  <text x="1004" y="718" class="txt">Move to sprint</text>
+  <text x="884" y="746" class="muted xs">Field edits are journaled and pushed on Commit. Sprint and status moves apply live.</text>
+
+  <!-- ===== status bar ===== -->
+  <rect x="0" y="772" width="1240" height="28" fill="#FFFFFF" stroke="#E1E4EA"/>
+  <text x="196" y="790" class="muted sm">1,248 issues, last synced today 10:42</text>
+  <rect x="1020" y="777" width="134" height="18" rx="9" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="1030" y="790" class="xs b" fill="#92400E">3 pending changes: Commit</text>
+</svg>
