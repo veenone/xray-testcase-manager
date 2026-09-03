@@ -150,8 +150,9 @@ export function ProfileForm({
   const [kiwiUsername, setKiwiUsername] = useState("");
   const [kiwiPassword, setKiwiPassword] = useState("");
   const [showToken, setShowToken] = useState(false);
-  // Reuse a stored credential from an existing profile (create only). "" =
-  // enter new credentials below.
+  // Start a new profile from an existing one (create only). "" = start blank.
+  // Selecting a source copies its settings AND reuses its stored credential,
+  // so a profile that differs in a field or two is a pick plus one edit.
   const [reuseFrom, setReuseFrom] = useState("");
   const [caCert, setCaCert] = useState(profile?.caCert ?? connection?.caCert ?? "");
   const [allowUntrustedTLS, setAllowUntrustedTLS] = useState(
@@ -192,6 +193,27 @@ export function ProfileForm({
   // A credential is needed for create unless reusing one from another
   // profile; on edit a blank credential keeps the stored one.
   const tokenSatisfied = isEdit || reuseFrom !== "" || credEnteredForCreate;
+  // copyFrom fills the form from an existing profile. The name is left alone:
+  // it must be new, and it is the one field the user always has to supply.
+  // Everything stays editable, so this is a starting point rather than a lock.
+  function copyFrom(sourceId: string) {
+    setReuseFrom(sourceId);
+    if (sourceId === "") return;
+    const src = others.find((p) => p.id === sourceId);
+    if (!src) return;
+    setJiraUrl(src.jiraUrl ?? "");
+    setProjectKey(src.projectKey ?? "");
+    setScopeJql(src.scopeJql ?? "");
+    setCrossProjectSources(src.crossProjectSources ?? "");
+    setBugIssueType(src.bugIssueType ?? "");
+    setBugProjectMode(src.bugProjectMode || "test");
+    setBugProjectKey(src.bugProjectKey ?? "");
+    // TLS travels with the URL it was configured for. Copying the server but
+    // not its certificate settings produces a profile that cannot connect.
+    setCaCert(src.caCert ?? "");
+    setAllowUntrustedTLS(src.allowUntrustedTls ?? false);
+  }
+
   const canTest =
     jiraUrl.trim() !== "" &&
     urlError === "" &&
@@ -320,6 +342,8 @@ export function ProfileForm({
           bugProjKey,
           reuseFrom,
           backend,
+          caCert.trim(),
+          allowUntrustedTLS,
         );
       } else {
         p = await CreateProfile(
@@ -477,18 +501,19 @@ export function ProfileForm({
       )}
       {!isEdit && reusable.length > 0 && (
         <label>
-          {backendIsKiwi ? "Credential" : "Personal Access Token"}
-          <select
-            value={reuseFrom}
-            onChange={(e) => setReuseFrom(e.target.value)}
-          >
-            <option value="">Enter new credentials…</option>
+          Start from
+          <select value={reuseFrom} onChange={(e) => copyFrom(e.target.value)}>
+            <option value="">A blank profile</option>
             {reusable.map((p) => (
               <option key={p.id} value={p.id}>
-                Reuse credential from: {p.name} ({p.projectKey})
+                Copy of: {p.name} ({p.projectKey})
               </option>
             ))}
           </select>
+          <span className="field-hint muted">
+            Copies the settings below and reuses the stored{" "}
+            {backendIsKiwi ? "credential" : "token"}. Everything stays editable.
+          </span>
         </label>
       )}
 

@@ -3970,8 +3970,24 @@ tr.row-selected td:first-child {
 }
 
 /* ===== About dialog ===== */
+/* field-hint is the explanatory line under a form control. It was used in three
+   places (ProfileForm twice, CreateBugModal once) with no rule anywhere, so it
+   rendered at the parent's size with no separation from its input. */
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .about-card {
   position: relative;
+  /* .modal-overlay is a flex container, so a child stretches to the full
+     overlay height unless it opts out. .modal does that with margin: auto;
+     this card did not, so it rendered 672px tall around 486px of content. */
+  margin: auto;
   width: 430px;
   max-width: calc(100vw - 32px);
   background: var(--surface);

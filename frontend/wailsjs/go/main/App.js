@@ -170,8 +170,8 @@ export function CreateProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, ar
   return window['go']['main']['App']['CreateProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
-export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
-  return window['go']['main']['App']['CreateProfileReusingToken'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+export function CreateProfileReusingToken(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+  return window['go']['main']['App']['CreateProfileReusingToken'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
 export function CreateRequirement(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {

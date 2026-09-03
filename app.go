@@ -290,7 +290,7 @@ func (a *App) CreateProfile(name, jiraURL, projectKey, scopeJQL, bugIssueType, b
 // several projects share one Jira instance. The token is copied within the OS
 // credential manager and never exposed to the frontend. backendType selects
 // which system the new profile connects to ("xray" or "kiwi").
-func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, sourceProfileID, backendType string) (profile.Profile, error) {
+func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, sourceProfileID, backendType, caCert string, allowUntrustedTLS bool) (profile.Profile, error) {
 	if err := a.requireStore(); err != nil {
 		return profile.Profile{}, err
 	}
@@ -301,7 +301,10 @@ func (a *App) CreateProfileReusingToken(name, jiraURL, projectKey, scopeJQL, bug
 	if strings.TrimSpace(token) == "" {
 		return profile.Profile{}, fmt.Errorf("the selected profile has no stored token to reuse")
 	}
-	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, "", false, backendType)
+	// TLS settings are passed through rather than defaulted. They travel with
+	// the server URL, so a profile copied from one that needs a custom CA or a
+	// relaxed check was previously created unable to connect.
+	p, err := a.profiles.Create(name, jiraURL, projectKey, scopeJQL, bugIssueType, bugProjectMode, bugProjectKey, caCert, allowUntrustedTLS, backendType)
 	if err != nil {
 		return profile.Profile{}, err
 	}
