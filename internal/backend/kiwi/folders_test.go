@@ -34,9 +34,9 @@ func newFolderKiwi(t *testing.T) *Adapter {
 		body := make([]byte, r.ContentLength)
 		_, _ = r.Body.Read(body)
 		var req struct {
-			Method string          `json:"method"`
+			Method string            `json:"method"`
 			Params []json.RawMessage `json:"params"`
-			ID     int             `json:"id"`
+			ID     int               `json:"id"`
 		}
 		_ = json.Unmarshal(body, &req)
 		w.Header().Set("Content-Type", "application/json")
@@ -128,8 +128,10 @@ func TestFolderTreeTreatsDefaultCategoryAsUnfiled(t *testing.T) {
 	if path, ok := tree.TreeMembership["4"]; ok {
 		t.Errorf("unfiled test mapped to folder %q, want no entry", path)
 	}
-	if tree.TreeMembership["1"] != "Phase-1" {
-		t.Errorf("membership for test 1 = %q, want Phase-1", tree.TreeMembership["1"])
+	// Membership values are folder ids, not names — see
+	// TestFolderMembershipUsesFolderIDsNotNames.
+	if tree.TreeMembership["1"] != "335" {
+		t.Errorf("membership for test 1 = %q, want the folder id 335", tree.TreeMembership["1"])
 	}
 }
 
@@ -200,4 +202,64 @@ func TestFolderCapabilitiesSeparateReadFromWrite(t *testing.T) {
 	if caps.SupportsFolderWrites {
 		t.Error("SupportsFolderWrites = true, want false: categories cannot be reshaped")
 	}
+}
+
+// TestFolderMembershipUsesFolderIDsNotNames is the contract every backend must
+// hold: FolderTreeResult.TreeMembership values are folder IDs, because
+// ApplyTestFolders writes them straight into test_case.folder_id, which the UI
+// joins against test_folder.id.
+//
+// Kiwi originally mapped membership to the category NAME while Folder.ID was
+// the category id, so folders rendered but were always empty: test_folder.id
+// was "329" while every test carried "Functional".
+func TestFolderMembershipUsesFolderIDsNotNames(t *testing.T) {
+	tree, err := newFolderKiwi(t).FolderTree(context.Background(), "SNMP")
+	if err != nil {
+		t.Fatalf("folder tree: %v", err)
+	}
+	ids := map[string]bool{}
+	for _, f := range tree.Folders {
+		ids[f.ID] = true
+	}
+	if len(tree.TreeMembership) == 0 {
+		t.Fatal("no membership recorded")
+	}
+	for testKey, folder := range tree.TreeMembership {
+		if !ids[folder] {
+			t.Errorf("test %s maps to %q, which is not one of the folder ids %v",
+				testKey, folder, keysOf(ids))
+		}
+	}
+}
+
+// TestFolderMembershipAgreesWithTheTestRow pins the other half: the folder id
+// on the test row and the one in the tree must be the same string, or the
+// folder stage overwrites the pull's correct value with a wrong one.
+func TestFolderMembershipAgreesWithTheTestRow(t *testing.T) {
+	a := newFolderKiwi(t)
+	ctx := context.Background()
+	tree, err := a.FolderTree(ctx, "SNMP")
+	if err != nil {
+		t.Fatalf("folder tree: %v", err)
+	}
+	page, _, err := a.SearchTestsPage(ctx, "SNMP", "", "", 0, 100)
+	if err != nil {
+		t.Fatalf("page: %v", err)
+	}
+	for _, tc := range page {
+		if tc.FolderID == "" {
+			continue // unfiled, absent from membership by design
+		}
+		if got := tree.TreeMembership[tc.Key]; got != tc.FolderID {
+			t.Errorf("test %s: row folder %q, tree membership %q", tc.Key, tc.FolderID, got)
+		}
+	}
+}
+
+func keysOf(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

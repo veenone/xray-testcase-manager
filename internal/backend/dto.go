@@ -165,9 +165,15 @@ type FolderRef struct {
 
 // FolderTreeResult is the full folder tree plus test membership.
 type FolderTreeResult struct {
-	Folders          []Folder
-	TreeMembership   map[string]string // testKey -> folder path
-	FoldersWithTests []FolderRef       // only folders whose testCount > 0
+	Folders []Folder
+	// TreeMembership maps a test key to the ID of the folder holding it. The
+	// value MUST be one of Folders[].ID: the syncer feeds this map to
+	// ApplyTestFolders, which writes it into test_case.folder_id, and the UI
+	// joins that against test_folder.id. Xray satisfies this by making a
+	// folder's id its path; Kiwi uses the category id. Putting a display name
+	// here renders every folder empty.
+	TreeMembership   map[string]string
+	FoldersWithTests []FolderRef // only folders whose testCount > 0
 }
 
 // Requirement is a requirement/coverage source issue.

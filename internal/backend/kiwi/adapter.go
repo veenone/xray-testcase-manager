@@ -332,6 +332,17 @@ func (a *Adapter) SearchTestsPage(ctx context.Context, projectKey, scopeJQL, sin
 	if err != nil {
 		return nil, 0, err
 	}
+	// An empty result is ambiguous on the wire: Kiwi returns [] both for a
+	// product with no tests and for a product name that does not exist, because
+	// its filters are case-sensitive and it does not validate the lookup value.
+	// Typing "SPHERE HSM" for "Sphere HSM" therefore synced nothing and said
+	// nothing. Only when the result is empty is it worth one extra call to tell
+	// the two apart.
+	if len(rows) == 0 && projectKey != "" && startAt == 0 {
+		if err := a.explainEmptyProduct(ctx, projectKey); err != nil {
+			return nil, 0, err
+		}
+	}
 
 	total := len(rows)
 	if startAt < 0 {
@@ -996,6 +1007,42 @@ func (a *Adapter) fetchCategories(ctx context.Context, projectKey string) ([]kiw
 	return out, nil
 }
 
+// explainEmptyProduct turns a silent empty sync into an actionable error when
+// the product name is wrong. It returns nil when the name is genuinely correct
+// and the product simply holds no tests, so an empty product still syncs
+// cleanly.
+func (a *Adapter) explainEmptyProduct(ctx context.Context, projectKey string) error {
+	var products []struct {
+		Name string `json:"name"`
+	}
+	if err := a.c.call(ctx, "Product.filter", []any{map[string]any{}}, &products); err != nil {
+		// The probe is a courtesy. If it fails, fall back to the old behaviour
+		// of an empty sync rather than inventing a second failure.
+		return nil
+	}
+
+	names := make([]string, 0, len(products))
+	for _, p := range products {
+		if p.Name == projectKey {
+			return nil // exact match: the product exists and is simply empty
+		}
+		names = append(names, p.Name)
+	}
+	for _, n := range names {
+		if strings.EqualFold(n, projectKey) {
+			return fmt.Errorf(
+				"kiwi: no product named %q; did you mean %q? Product names are case-sensitive",
+				projectKey, n)
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return fmt.Errorf("kiwi: no product named %q, and this server has no products", projectKey)
+	}
+	return fmt.Errorf("kiwi: no product named %q. Available products: %s",
+		projectKey, strings.Join(names, ", "))
+}
+
 func (a *Adapter) FolderTree(ctx context.Context, projectKey string) (backend.FolderTreeResult, error) {
 	cats, err := a.fetchCategories(ctx, projectKey)
 	if err != nil {
@@ -1020,7 +1067,11 @@ func (a *Adapter) FolderTree(ctx context.Context, projectKey string) (backend.Fo
 			continue
 		}
 		counts[tc.CategoryID]++
-		membership[strconv.Itoa(tc.ID)] = tc.CategoryName
+		// The VALUE is a folder id, not a name: syncFolders feeds this map
+		// straight to ApplyTestFolders, which writes it into
+		// test_case.folder_id, and the UI joins that against test_folder.id.
+		// Xray holds the same invariant by making a folder's id its path.
+		membership[strconv.Itoa(tc.ID)] = strconv.Itoa(tc.CategoryID)
 	}
 
 	folders := make([]backend.Folder, 0, len(cats))
