@@ -36,11 +36,13 @@ agile-suite/                   holds both apps
     backend/     the backend.Backend interface + capabilities
     demo/        deterministic offline generators (issues, sprints, boards, tests)
   xtm/                         Go module: Xray Test Manager, moved in as-is
+    frontend/    XTM's React app. It lives inside the module because Wails
+                 embeds frontend/dist relative to main.go and go:embed cannot
+                 reach a parent directory.
   tam/                         Go module: Task Activity Manager, a new Wails app
+    frontend/    TAM's React app, for the same reason
   frontend/
     core/        npm workspace package: contexts, query-key helpers, app shell, dialogs, theme
-    xtm/         XTM's React app
-    tam/         TAM's React app
 ```
 
 Extraction is pull-based. XTM moves into the repo untouched. A `core` package is created only when TAM needs it: lift XTM's implementation, point both apps at it, and land it as one reviewed PR with XTM's full test suite proving nothing moved. `core` never holds speculative code.
