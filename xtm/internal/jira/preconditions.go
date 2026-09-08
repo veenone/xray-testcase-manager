@@ -23,10 +23,10 @@ type Precondition struct {
 	Type        string
 	Description string
 	// Condition is the Xray precondition definition text, distinct from the Jira
-	// issue description. NOTE(xtm): the condition text lives in an
-	// instance-specific Xray custom field; its field id varies per deployment, so
-	// Condition is left empty for live Jira until the field id can be verified on
-	// a real Xray Server/DC 8.4.0 instance. Demo mode populates it.
+	// issue description. It lives in an instance-specific custom field whose id
+	// varies per deployment, so it is resolved by name at read and write time
+	// (see conditionFieldID). An instance without the field leaves this empty
+	// rather than failing the sync.
 	Condition string
 }
 
@@ -264,6 +264,19 @@ func (c *Client) listPreconditionTestsRetrying(ctx context.Context, key string) 
 func (c *Client) searchPreconditions(ctx context.Context, projectKey, typeID string) ([]Precondition, error) {
 	jql := fmt.Sprintf(`project = "%s" AND issuetype = %s ORDER BY key ASC`, projectKey, typeID)
 
+	// Resolved once per search rather than per page. A lookup failure is not
+	// fatal: the search still returns summaries and descriptions, which is
+	// what this did before the condition was read at all.
+	condID, err := c.conditionFieldID(ctx)
+	if err != nil {
+		log.Printf("xtm: resolve precondition condition field: %v", err)
+		condID = ""
+	}
+	fields := "summary,description"
+	if condID != "" {
+		fields += "," + condID
+	}
+
 	out := []Precondition{}
 	startAt := 0
 	for {
@@ -274,16 +287,17 @@ func (c *Client) searchPreconditions(ctx context.Context, projectKey, typeID str
 		q.Set("jql", jql)
 		q.Set("startAt", strconv.Itoa(startAt))
 		q.Set("maxResults", "100")
-		q.Set("fields", "summary,description")
+		q.Set("fields", fields)
 
+		// The condition arrives under an id only known at run time, so the
+		// whole fields object is decoded as a raw map and every column is
+		// pulled out by name. Two struct fields sharing the json tag "fields"
+		// would make encoding/json drop both.
 		var resp struct {
 			Total  int `json:"total"`
 			Issues []struct {
-				Key    string `json:"key"`
-				Fields struct {
-					Summary     string `json:"summary"`
-					Description string `json:"description"`
-				} `json:"fields"`
+				Key    string                     `json:"key"`
+				Fields map[string]json.RawMessage `json:"fields"`
 			} `json:"issues"`
 		}
 		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
@@ -295,11 +309,15 @@ func (c *Client) searchPreconditions(ctx context.Context, projectKey, typeID str
 			return nil, err
 		}
 		for _, iss := range resp.Issues {
-			out = append(out, Precondition{
+			p := Precondition{
 				Key:         iss.Key,
-				Summary:     iss.Fields.Summary,
-				Description: iss.Fields.Description,
-			})
+				Summary:     stringifyFieldValue(iss.Fields["summary"]),
+				Description: stringifyFieldValue(iss.Fields["description"]),
+			}
+			if condID != "" {
+				p.Condition = stringifyFieldValue(iss.Fields[condID])
+			}
+			out = append(out, p)
 		}
 		startAt += len(resp.Issues)
 		if len(resp.Issues) == 0 || startAt >= resp.Total {
@@ -509,10 +527,15 @@ func (c *Client) preconditionDetails(ctx context.Context, keys []string) (map[st
 // placeholder is reconciled on the next sync).
 //
 // Maps to POST /rest/api/2/issue with the resolved Precondition issue type id
-// (the type name varies per instance), summary and description. NOTE(xtm): Xray
-// stores the precondition type (Manual / Generic / Cucumber) in an
-// instance-specific custom field; setting it on create needs that field id, so
-// ptype is accepted but not sent until it can be verified on a live instance.
+// (the type name varies per instance), summary and description. The condition
+// is not sent here: the UI creates a precondition and then journals its
+// condition as a normal field edit, which the commit path pushes through the
+// resolved custom field (see ConditionFieldValue).
+//
+// NOTE(xtm): Xray stores the precondition type (Manual / Generic / Cucumber) in
+// an instance-specific custom field ("Pre-Condition Type", customfield_13988 on
+// the instance checked for RND_P_4TFINT_05-358). ptype is accepted and not
+// sent; wiring it needs the same name resolution the condition now uses.
 func (c *Client) CreatePrecondition(ctx context.Context, projectKey, summary, ptype, description string) (string, error) {
 	_ = ptype
 	if isDemoURL(c.baseURL) {

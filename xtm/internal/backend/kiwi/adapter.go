@@ -610,6 +610,13 @@ func (a *Adapter) ExecTypeFieldValue(ctx context.Context, execType string) (fiel
 	return "", nil, false, nil // P4.2 — ExecType derives from is_automated, not a field (spec §3.4)
 }
 
+// A Kiwi precondition carries its text in the object itself, not a custom
+// field, so there is nothing to resolve: ok=false and the commit engine skips
+// the field.
+func (a *Adapter) ConditionFieldValue(ctx context.Context, v string) (string, any, bool, error) {
+	return "", nil, false, nil
+}
+
 // Cucumber/Generic body fields have no Kiwi analog (#54): ok=false so the
 // commit engine skips them.
 func (a *Adapter) CucumberScenarioFieldValue(ctx context.Context, v string) (string, any, bool, error) {
