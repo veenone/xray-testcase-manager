@@ -104,6 +104,22 @@ beforeEach(() => {
   vi.mocked(api.CreateIssue).mockResolvedValue("TAM-NEW-1");
 });
 
+// pickEpic waits for an epic to actually be on the select before choosing it.
+//
+// Waiting for the control to be enabled is not enough, and was flaky on CI: the
+// epics query is enabled only once a profile id arrives, and a disabled
+// TanStack query reports isLoading false. So there is a window where the select
+// is enabled and carries nothing but the placeholder. The wait passed there,
+// the query then started, isLoading flipped true, and the select went back to
+// "(loading)" with no options for selectOptions to find. Waiting for the option
+// itself covers both the load and the enabled state.
+async function pickEpic(scope: HTMLElement, key: string) {
+  await waitFor(() =>
+    expect(within(scope).getByRole("option", { name: new RegExp(key) })).toBeInTheDocument(),
+  );
+  await userEvent.selectOptions(within(scope).getByLabelText("Epic"), key);
+}
+
 describe("NewIssueModal", () => {
   it("creates a task from the minimal form", async () => {
     const user = userEvent.setup();
@@ -142,8 +158,7 @@ describe("NewIssueModal", () => {
     const user = userEvent.setup();
     renderModal(vi.fn(), vi.fn(), "story");
     const dialog = await screen.findByRole("dialog", { name: "New story" });
-    await waitFor(() => expect(within(dialog).getByLabelText("Epic")).toBeEnabled());
-    await user.selectOptions(within(dialog).getByLabelText("Epic"), "PLAT-350");
+    await pickEpic(dialog, "PLAT-350");
     await user.type(within(dialog).getByLabelText("Summary *"), "Apply a promo code");
     await user.click(await submitButton(dialog));
     await waitFor(() => expect(api.CreateIssue).toHaveBeenCalled());
@@ -154,8 +169,7 @@ describe("NewIssueModal", () => {
     const user = userEvent.setup();
     renderModal(vi.fn(), vi.fn(), "story");
     const dialog = await screen.findByRole("dialog", { name: "New story" });
-    await waitFor(() => expect(within(dialog).getByLabelText("Epic")).toBeEnabled());
-    await user.selectOptions(within(dialog).getByLabelText("Epic"), "PLAT-360");
+    await pickEpic(dialog, "PLAT-360");
     await user.selectOptions(within(dialog).getByLabelText("Type"), "epic");
     expect(within(dialog).queryByLabelText("Epic")).not.toBeInTheDocument();
     await user.type(within(dialog).getByLabelText("Summary *"), "Checkout revamp");
