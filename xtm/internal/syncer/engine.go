@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -96,6 +97,24 @@ func mapRunRows(runs []backend.TestRun, execKey string, envFallback []string) []
 type Engine struct {
 	backend backend.Backend
 	repo    *testrepo.Repository
+	// bugBackend is the backend bug ISSUES are created in and read from, when
+	// it differs from the primary one. A Kiwi workspace has no Jira-style
+	// issue type, so its defects live in a separate Jira project
+	// (RND_P_4TFINT_05-359). nil means bug work goes to the primary backend,
+	// which is every Xray profile and every unconfigured Kiwi profile.
+	//
+	// Only the ISSUE moves. The LINK between a test and its bug stays on the
+	// primary backend, because that is where the test lives.
+	bugBackend backend.Backend
+	// bugBackendErr records that the profile's bug connection is configured
+	// but could not be turned into a working backend (a keyring miss, an
+	// unreadable connection row, ...). It is distinct from bugBackend == nil,
+	// which means "no bug connection configured at all" and is the normal,
+	// silent case for every Xray profile. syncBugs treats a non-nil value here
+	// as "fail the bug work only" (RND_P_4TFINT_05-359): it returns the error
+	// before touching the cache, leaving previously synced bugs and links
+	// exactly as they were rather than wiping them with an empty read.
+	bugBackendErr error
 	// crossProjectSources is the profile's configured source projects (already
 	// scoped to exclude the profile's own project). The container sync searches
 	// these for Test Executions that include the profile's tests. Empty means
@@ -111,6 +130,34 @@ type Option func(*Engine)
 // project excluded); an empty list skips discovery.
 func WithCrossProjectSources(sources []string) Option {
 	return func(e *Engine) { e.crossProjectSources = sources }
+}
+
+// WithBugBackend routes bug issue reads and writes to a second backend. Pass
+// nil (or omit the option) to keep every bug call on the primary backend.
+func WithBugBackend(b backend.Backend) Option {
+	return func(e *Engine) { e.bugBackend = b }
+}
+
+// WithBugBackendError marks the profile's bug connection as configured but
+// unusable, rather than routing bug work anywhere. syncBugs surfaces err
+// immediately, before reading or replacing anything in the local bug cache,
+// so a transient failure (a keyring hiccup, an unreadable connection row)
+// fails only the bug work for this run instead of silently emptying the Bugs
+// view. Pass nil (or omit the option) for the normal case: either no bug
+// connection at all, or one that resolved cleanly.
+func WithBugBackendError(err error) Option {
+	return func(e *Engine) { e.bugBackendErr = err }
+}
+
+// bugTarget is the backend that owns bug ISSUES: the configured bug backend
+// when there is one, the primary backend otherwise. Every bug create and every
+// bug read goes through this rather than reading e.backend directly, so the
+// routing decision is stated once.
+func (e *Engine) bugTarget() backend.Backend {
+	if e.bugBackend != nil {
+		return e.bugBackend
+	}
+	return e.backend
 }
 
 // New returns a sync engine bound to a backend and the local repository.
@@ -206,9 +253,15 @@ func (e *Engine) Sync(ctx context.Context, profileID, projectKey, scopeJQL, sinc
 	// member Tests (UpsertBugs/UpsertBugLinks). Running bugs first guarantees the
 	// container harvest is not clobbered by the wipe (#219).
 	emitStage(onProgress, "Syncing bugs")
-	if err := e.syncBugs(ctx, profileID, projectKey, onProgress); err != nil {
-		log.Printf("xtm: bug sync failed (continuing): %v", err)
+	bugWarnings, bugErr := e.syncBugs(ctx, profileID, projectKey, onProgress)
+	if bugErr != nil {
+		log.Printf("xtm: bug sync failed (continuing): %v", bugErr)
 	}
+	// The bug stage can complete and still have left something out. Those
+	// warnings join the stage failures so the run is recorded as partial and
+	// the user is told, instead of the drop living only in a log line
+	// (RND_P_4TFINT_05-359).
+	stageFailures = append(stageFailures, bugWarnings...)
 
 	emitStage(onProgress, "Syncing containers")
 	if err := e.syncContainers(ctx, profileID, projectKey, onProgress); err != nil {
@@ -269,8 +322,17 @@ func (e *Engine) SyncContainers(ctx context.Context, profileID, projectKey strin
 // per-view partial sync behind the Bugs panel's refresh button, so refreshing
 // bugs doesn't trigger the preconditions / containers / requirements passes
 // (RND_P_4TFINT_05-214).
+// A run that completed but left linked bugs out returns a *PartialSyncError,
+// so the Bugs panel reports the gap rather than showing a quietly short list.
 func (e *Engine) SyncBugs(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
-	return e.syncBugs(ctx, profileID, projectKey, onProgress)
+	warnings, err := e.syncBugs(ctx, profileID, projectKey, onProgress)
+	if err != nil {
+		return err
+	}
+	if len(warnings) > 0 {
+		return &PartialSyncError{StageFailures: warnings}
+	}
+	return nil
 }
 
 // SyncTests pulls just the project's Tests and refreshes the Test Repository
@@ -969,6 +1031,24 @@ func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey str
 	return e.repo.ReplaceAllReqReqLinks(profileID, repoRRLinks)
 }
 
+// droppedBugsMessage phrases the dropped-key warning for the sync history.
+// The keys are named (that is what makes it actionable) but capped, because
+// a permissions gap drops EVERY linked bug and the whole list would otherwise
+// be thousands of keys long in one sync_log row.
+func droppedBugsMessage(dropped []string) string {
+	const maxNamed = 10
+	named := dropped
+	suffix := ""
+	if len(named) > maxNamed {
+		named = named[:maxNamed]
+		suffix = fmt.Sprintf(", and %d more", len(dropped)-maxNamed)
+	}
+	return fmt.Sprintf(
+		"%d linked bug(s) are not shown: the bug tracker did not return %s%s. "+
+			"They were either deleted, or this account cannot browse them.",
+		len(dropped), strings.Join(named, ", "), suffix)
+}
+
 // syncBugs discovers the defect issues for the profile and reconciles the local
 // cache. It runs two complementary passes and merges the results:
 //
@@ -987,13 +1067,26 @@ func (e *Engine) syncRequirements(ctx context.Context, profileID, projectKey str
 // The final merged bugs and the harvest links are stored via ReplaceAllBugs /
 // ReplaceAllBugLinks. If the project-wide search fails it is logged and the
 // sync continues with the link-harvest bugs only.
-func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
+//
+// It returns the stage-level warnings the run produced alongside its error:
+// work that completed but left something out (linked bugs the tracker did not
+// return, see below). A GUI app has no console, so these have to reach the
+// sync result rather than only a log line (RND_P_4TFINT_05-359).
+func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) ([]testrepo.StageFailure, error) {
+	// A configured-but-unusable bug connection fails the bug work only: bail
+	// out before the first read (AllTestKeys below) and before either
+	// ReplaceAll* call, so the cache from the last good sync survives
+	// untouched rather than being wiped by an empty result set.
+	if e.bugBackendErr != nil {
+		return nil, fmt.Errorf("bug connection unusable, leaving cached bugs untouched: %w", e.bugBackendErr)
+	}
+
 	// testKeys is a non-nil slice (possibly empty). ListBugs/demoBugs treat nil
 	// as "no filter" and a non-nil empty slice as "nothing", so a profile with
 	// zero synced tests correctly yields no bugs rather than every defect.
 	testKeys, err := e.repo.AllTestKeys(profileID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	issueType := e.repo.ProfileBugIssueType(profileID)
 
@@ -1009,11 +1102,20 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 
 	// Pass 1: project-wide bug search (best-effort). Labelled so the sync bar
 	// shows this phase is running before the (longer) per-test harvest.
-	emitStage(onProgress, "Syncing bugs (project search)")
-	projectBugs, projectBugErr := e.backend.ListProjectBugs(ctx, bugProject, issueType)
-	if projectBugErr != nil {
-		log.Printf("xtm: project-wide bug search failed (continuing with link harvest only): %v", projectBugErr)
-		projectBugs = nil
+	//
+	// Skipped entirely when a bug backend is configured. That backend holds a
+	// Jira project this workspace files INTO, so a project-wide read would
+	// pull every unrelated defect in it. The linked keys are the whole answer
+	// there (RND_P_4TFINT_05-359).
+	var projectBugs []backend.Bug
+	if e.bugBackend == nil {
+		emitStage(onProgress, "Syncing bugs (project search)")
+		var projectBugErr error
+		projectBugs, projectBugErr = e.backend.ListProjectBugs(ctx, bugProject, issueType)
+		if projectBugErr != nil {
+			log.Printf("xtm: project-wide bug search failed (continuing with link harvest only): %v", projectBugErr)
+			projectBugs = nil
+		}
 	}
 
 	// Pass 2: link-harvest (authoritative source for BugLink records). Report
@@ -1026,7 +1128,7 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 			}
 		})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Merge: project-wide bugs seed the map (they have the Updated field);
@@ -1042,6 +1144,68 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 		}
 	}
 
+	// When bugs live in another backend the harvest returns keys with no
+	// detail: the primary backend holds only the link. Fill them in from the
+	// backend that owns the issues, fetching exactly the linked keys.
+	var warnings []testrepo.StageFailure
+	if e.bugBackend != nil && len(merged) > 0 {
+		reader, ok := e.bugBackend.(backend.BugKeyReader)
+		if !ok {
+			return nil, fmt.Errorf("bug backend %s cannot fetch issues by key", e.bugBackend.Capabilities().Name)
+		}
+		keys := make([]string, 0, len(merged))
+		for k := range merged {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys) // deterministic request order, and a stable test
+		emitStage(onProgress, "Syncing bugs (fetching linked issues)")
+		hydrated, err := reader.ListBugsByKeys(ctx, keys)
+		if err != nil {
+			return nil, fmt.Errorf("fetch linked bugs: %w", err)
+		}
+		hydratedKeys := make(map[string]bool, len(hydrated))
+		for _, b := range hydrated {
+			merged[b.Key] = b
+			hydratedKeys[b.Key] = true
+		}
+
+		// Jira is the system of record for these issues: a key it did not
+		// return is either a deleted issue or was never a valid issue key, and
+		// either way this workspace has nothing true left to show for it. Drop
+		// it rather than storing a blank-summary/status/priority row that
+		// invites a click to nowhere, and drop the matching link so nothing
+		// points at a bug row that no longer exists. The hyperlink itself still
+		// exists on the Kiwi execution (nothing remote is lost); logging the
+		// drop keeps the situation diagnosable.
+		var dropped []string
+		for _, k := range keys {
+			if !hydratedKeys[k] {
+				delete(merged, k)
+				dropped = append(dropped, k)
+			}
+		}
+		if len(dropped) > 0 {
+			log.Printf("xtm: bug backend did not return %d linked key(s), dropping from the Bugs view: %v", len(dropped), dropped)
+			// A log line is not a user-facing signal in a GUI app with no
+			// console, and the most likely cause is not a deleted issue at
+			// all: Jira OMITS issues the token cannot browse rather than
+			// erroring, so a permission gap on the bug project silently drops
+			// EVERY bug. Report it as a stage warning so the sync result says
+			// so, while the run still completes (RND_P_4TFINT_05-359).
+			warnings = append(warnings, testrepo.StageFailure{
+				Stage:   "bugs",
+				Message: droppedBugsMessage(dropped),
+			})
+			kept := links[:0]
+			for _, l := range links {
+				if hydratedKeys[l.BugKey] {
+					kept = append(kept, l)
+				}
+			}
+			links = kept
+		}
+	}
+
 	repoBugs := make([]testrepo.Bug, 0, len(merged))
 	for _, b := range merged {
 		repoBugs = append(repoBugs, testrepo.Bug{
@@ -1050,13 +1214,16 @@ func (e *Engine) syncBugs(ctx context.Context, profileID, projectKey string, onP
 		})
 	}
 	if err := e.repo.ReplaceAllBugs(profileID, repoBugs); err != nil {
-		return err
+		return nil, err
 	}
 	repoLinks := make([]testrepo.BugLink, 0, len(links))
 	for _, l := range links {
 		repoLinks = append(repoLinks, testrepo.BugLink{TestKey: l.TestKey, BugKey: l.BugKey, LinkID: l.LinkID})
 	}
-	return e.repo.ReplaceAllBugLinks(profileID, repoLinks)
+	if err := e.repo.ReplaceAllBugLinks(profileID, repoLinks); err != nil {
+		return nil, err
+	}
+	return warnings, nil
 }
 
 // syncCustomFields pulls the custom field definitions configured for the

@@ -1,6 +1,7 @@
 package connection_test
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func TestCreateGetListDelete(t *testing.T) {
 	m := newManager(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
-	c, err := m.Create("c1", "w1", "Primary", "xray", "https://jira.example.com", "QA",
+	c, err := m.Create("w1", "w1", "Primary", "xray", "https://jira.example.com", "QA",
 		"", "Bug", "test", "", "", false, "", now)
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -32,7 +33,7 @@ func TestCreateGetListDelete(t *testing.T) {
 		t.Errorf("blank role normalized to %q, want 'both'", c.Role)
 	}
 
-	got, err := m.Get("c1")
+	got, err := m.Get("w1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -44,22 +45,22 @@ func TestCreateGetListDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if len(list) != 1 || list[0].ID != "c1" {
-		t.Errorf("list = %+v, want one connection c1", list)
+	if len(list) != 1 || list[0].ID != "w1" {
+		t.Errorf("list = %+v, want one connection w1", list)
 	}
 
 	primary, err := m.Primary("w1")
 	if err != nil {
 		t.Fatalf("primary: %v", err)
 	}
-	if primary.ID != "c1" {
-		t.Errorf("primary = %+v, want c1", primary)
+	if primary.ID != "w1" {
+		t.Errorf("primary = %+v, want w1", primary)
 	}
 
-	if err := m.Delete("c1"); err != nil {
+	if err := m.Delete("w1"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if _, err := m.Get("c1"); err != connection.ErrNotFound {
+	if _, err := m.Get("w1"); err != connection.ErrNotFound {
 		t.Errorf("get after delete = %v, want ErrNotFound", err)
 	}
 }
@@ -129,5 +130,81 @@ func TestPutCreatesThenUpdates(t *testing.T) {
 	}
 	if len(list) != 1 {
 		t.Fatalf("list = %+v, want exactly one row (Put must not duplicate)", list)
+	}
+}
+
+// TestBugsRoleSurvivesARoundTrip pins the role vocabulary. roleOrDefault
+// normalizes anything it does not recognize to "both", so a bug connection
+// written before "bugs" was a known role would read back as a second PRIMARY
+// connection rather than a bug connection.
+func TestBugsRoleSurvivesARoundTrip(t *testing.T) {
+	m := newManager(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	if _, err := m.Create("bug1", "w1", "Bug Jira", "xray", "https://jira.example.com", "DEF",
+		"", "Bug", "dedicated", "DEF", "", false, "bugs", now); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	got, err := m.Get("bug1")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Role != "bugs" {
+		t.Errorf("role = %q, want %q", got.Role, "bugs")
+	}
+}
+
+// TestPrimaryIgnoresABugConnection is the ordering trap. Primary used
+// ORDER BY created_at, id LIMIT 1, so two rows sharing a created_at break the
+// tie by id, and a generated connection id can sort ahead of a profile id.
+// Primary must select the row whose id equals the workspace id.
+func TestPrimaryIgnoresABugConnection(t *testing.T) {
+	m := newManager(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// "aaa" sorts before the workspace id "w1" and shares its created_at.
+	if _, err := m.Create("aaa", "w1", "Bug Jira", "xray", "https://jira.example.com", "DEF",
+		"", "Bug", "dedicated", "DEF", "", false, "bugs", now); err != nil {
+		t.Fatalf("create bug connection: %v", err)
+	}
+	if _, err := m.Create("w1", "w1", "Primary", "kiwi", "https://kiwi.example.com", "SNMP",
+		"", "Bug", "test", "", "", false, "both", now); err != nil {
+		t.Fatalf("create primary: %v", err)
+	}
+
+	p, err := m.Primary("w1")
+	if err != nil {
+		t.Fatalf("primary: %v", err)
+	}
+	if p.ID != "w1" {
+		t.Errorf("primary id = %q, want the workspace id w1 (a bug connection displaced it)", p.ID)
+	}
+}
+
+// TestByRoleFindsTheBugConnection is the lookup the app uses to decide whether
+// a profile routes bugs. No profile column records it: the role on the
+// connection row is the single source of truth.
+func TestByRoleFindsTheBugConnection(t *testing.T) {
+	m := newManager(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	if _, err := m.Create("w1", "w1", "Primary", "kiwi", "https://kiwi.example.com", "SNMP",
+		"", "Bug", "test", "", "", false, "both", now); err != nil {
+		t.Fatalf("create primary: %v", err)
+	}
+	if _, err := m.ByRole("w1", "bugs"); !errors.Is(err, connection.ErrNotFound) {
+		t.Fatalf("ByRole on a workspace with no bug connection = %v, want ErrNotFound", err)
+	}
+
+	if _, err := m.Create("bug1", "w1", "Bug Jira", "xray", "https://jira.example.com", "DEF",
+		"", "Bug", "dedicated", "DEF", "", false, "bugs", now); err != nil {
+		t.Fatalf("create bug connection: %v", err)
+	}
+	got, err := m.ByRole("w1", "bugs")
+	if err != nil {
+		t.Fatalf("ByRole: %v", err)
+	}
+	if got.ID != "bug1" || got.ProjectKey != "DEF" {
+		t.Errorf("got = %+v, want the bug connection bug1/DEF", got)
 	}
 }

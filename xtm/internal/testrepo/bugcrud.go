@@ -20,6 +20,14 @@ type bugCreatePayload struct {
 	Labels      []string       `json:"labels"`
 	TestKey     string         `json:"testKey"`
 	Fields      map[string]any `json:"fields,omitempty"`
+	// ExecKey is the Test Execution the bug was raised from, or "" when it was
+	// raised from a Test outside any execution. Kiwi hyperlinks attach to an
+	// execution rather than a test case, so the commit path needs it.
+	ExecKey string `json:"execKey,omitempty"`
+	// CreatedKey is set only by MarkBugCreated, after a remote create
+	// succeeded but the link back failed. Its presence tells a retry the issue
+	// already exists, so it links instead of creating a duplicate.
+	CreatedKey string `json:"createdKey,omitempty"`
 }
 
 // CreateBugForTest queues a brand-new local Bug (temp "NEW-BUG-N" key) linked to
@@ -56,7 +64,7 @@ func (r *Repository) CreateBugForTest(profileID, testKey, execKey string, d BugD
 
 	payload, _ := json.Marshal(bugCreatePayload{
 		ProjectKey: d.ProjectKey, IssueType: issueType, Summary: d.Summary, Description: d.Description,
-		Priority: d.Priority, Labels: d.Labels, TestKey: testKey, Fields: d.Fields,
+		Priority: d.Priority, Labels: d.Labels, TestKey: testKey, ExecKey: execKey, Fields: d.Fields,
 	})
 	if err := upsertPendingChange(
 		tx, profileID, entityBugCreate, tempKey, "bug", "", string(payload), "",
@@ -116,4 +124,52 @@ func nextNewBugKey(tx *sql.Tx, profileID string) (string, error) {
 			return "", fmt.Errorf("probe temp bug key: %w", err)
 		}
 	}
+}
+
+// MarkBugCreated records the real issue key on a queued bug_create whose
+// remote create succeeded but whose link back to the Test failed.
+//
+// The pending row deliberately survives that failure so the user can retry
+// (the spec's partial-failure rule: never delete an issue that already
+// exists). A bare retry would call CreateBug again and file a duplicate, so
+// the key is written into the payload and the commit path skips the create
+// when it is present. Every other field is preserved: the retry still needs
+// them to build the link. The read-modify-write must be atomic in a
+// transaction, or a concurrent commit could interleave and drop the key.
+func (r *Repository) MarkBugCreated(profileID string, changeID int64, realKey string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var afterVal string
+	err = tx.QueryRow(
+		`SELECT after_val FROM pending_change WHERE id = ? AND profile_id = ?`,
+		changeID, profileID).Scan(&afterVal)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("pending change %d not found", changeID)
+	}
+	if err != nil {
+		return fmt.Errorf("read pending change: %w", err)
+	}
+
+	var p bugCreatePayload
+	if err := json.Unmarshal([]byte(afterVal), &p); err != nil {
+		return fmt.Errorf("malformed bug payload: %w", err)
+	}
+	p.CreatedKey = realKey
+	next, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("encode bug payload: %w", err)
+	}
+	if _, err := tx.Exec(
+		`UPDATE pending_change SET after_val = ? WHERE id = ? AND profile_id = ?`,
+		string(next), changeID, profileID); err != nil {
+		return fmt.Errorf("record created bug key: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit mark bug created: %w", err)
+	}
+	return nil
 }

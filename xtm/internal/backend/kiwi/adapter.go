@@ -87,6 +87,11 @@ type Adapter struct {
 	// comment for the full retry rule.
 	detectMu   sync.Mutex
 	detectDone bool
+
+	// bugBrowseBase is the browse-URL prefix of the tracker this workspace
+	// files its defects into, set by SetBugBrowseBase. Empty means bug links
+	// are not recognizable, so the bug read reports nothing (see bugs.go).
+	bugBrowseBase string
 }
 
 // New builds a Kiwi backend.Backend against baseURL, authenticating with
@@ -946,10 +951,6 @@ func (a *Adapter) ListReqToReqLinks(ctx context.Context, reqKeys []string) ([]ba
 
 // --- bugs ---
 
-func (a *Adapter) ListBugs(ctx context.Context, testProjectKey string, testKeys []string, issueType string, onProgress func(done, total int)) ([]backend.Bug, []backend.BugLink, error) {
-	return nil, nil, backend.ErrUnsupported // P4.3 — best-effort via TestExecution.get_links (spec §3.9)
-}
-
 func (a *Adapter) ListProjectBugs(ctx context.Context, projKey, issueType string) ([]backend.Bug, error) {
 	return nil, nil // P4.3 — EMPTY (spec §3.9)
 }
@@ -960,10 +961,6 @@ func (a *Adapter) GetBugCreateFields(ctx context.Context, projectKey, issueType 
 
 func (a *Adapter) CreateBug(ctx context.Context, projectKey, issueType, summary, description, priority string, labels []string, extraFields map[string]any) (string, error) {
 	return "", backend.ErrUnsupported // P4.3 (write)
-}
-
-func (a *Adapter) CreateBugLink(ctx context.Context, testKey, bugKey string) error {
-	return backend.ErrUnsupported // P4.3 (write)
 }
 
 func (a *Adapter) GetBugDetail(ctx context.Context, bugKey string) (backend.BugDetail, error) {

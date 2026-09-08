@@ -30,6 +30,9 @@ export {
   DeleteProfile,
   TestConnection,
   TestProfileConnection,
+  GetBugConnection,
+  SaveBugConnection,
+  DeleteBugConnection,
   ListConnections,
   AddConnection,
   UpdateConnection,
@@ -548,6 +551,13 @@ export interface Capabilities {
   supportsWorkflowTransitions: boolean;
   supportsBugCreation: boolean;
   supportsBugLinks: boolean;
+  // Reports that this profile files its defects into a Jira project via a
+  // configured bug connection, even though the backend itself (e.g. Kiwi)
+  // cannot create the Jira issue directly -- something else does it on the
+  // backend's behalf. Kept distinct from supportsBugCreation so gates that
+  // mean "this backend can create a Jira issue itself" don't accidentally
+  // widen to cover routed creation, and vice versa.
+  supportsBugRouting: boolean;
   supportsTags: boolean;
 }
 

@@ -38,8 +38,9 @@ type Connection struct {
 	BugProjectKey     string `json:"bugProjectKey"`
 	CACert            string `json:"caCert"`
 	AllowUntrustedTLS bool   `json:"allowUntrustedTls"`
-	// Role is 'source', 'target', or 'both'. A single-connection workspace's
-	// connection is always 'both'.
+	// Role is 'source', 'target', 'both', or 'bugs'. A single-connection
+	// workspace's connection is always 'both'. 'bugs' marks the Jira
+	// connection a Kiwi workspace files its defects into.
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -80,9 +81,15 @@ func scan(s scanner) (Connection, error) {
 
 // roleOrDefault normalises the connection role, falling back to "both" for
 // blank or unrecognized values.
+//
+// "bugs" names a connection used only for bug work: a Kiwi workspace whose
+// defects are filed into a Jira project holds one alongside its primary
+// connection (RND_P_4TFINT_05-359). It must be listed here, because an
+// unrecognized role silently reads back as "both", which would turn a bug
+// connection into a second primary.
 func roleOrDefault(role string) string {
 	switch strings.TrimSpace(role) {
-	case "source", "target", "both":
+	case "source", "target", "both", "bugs":
 		return strings.TrimSpace(role)
 	default:
 		return "both"
@@ -120,12 +127,35 @@ func (m *Manager) Get(id string) (Connection, error) {
 	return c, err
 }
 
-// Primary returns the workspace's primary connection — for a single-
-// connection workspace (the only shape that exists as of task B1) this is
-// its one and only connection, whose id equals workspaceID.
+// Primary returns the workspace's primary connection: the row whose id equals
+// the workspace id, which is the invariant internal/profile's syncConnection
+// maintains.
+//
+// This selects by id rather than taking the first row by (created_at, id). A
+// workspace can now hold a second, non-primary connection (role "bugs"), and
+// both rows can carry the same created_at, which left the tie to be broken by
+// id: a generated connection id sorting before a profile id would return the
+// wrong row.
 func (m *Manager) Primary(workspaceID string) (Connection, error) {
 	row := m.db.QueryRow(
-		`SELECT `+selectColumns+` FROM connection WHERE workspace_id = ? ORDER BY created_at, id LIMIT 1`, workspaceID)
+		`SELECT `+selectColumns+` FROM connection WHERE workspace_id = ? AND id = ?`,
+		workspaceID, workspaceID)
+	c, err := scan(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Connection{}, ErrNotFound
+	}
+	return c, err
+}
+
+// ByRole returns the workspace's connection with the given role, or
+// ErrNotFound. It is how a caller asks "does this workspace route bugs
+// somewhere else?" without a profile column recording the answer: the role on
+// the connection row is the single source of truth. When more than one row
+// shares a role the oldest wins, which keeps the result stable.
+func (m *Manager) ByRole(workspaceID, role string) (Connection, error) {
+	row := m.db.QueryRow(
+		`SELECT `+selectColumns+` FROM connection WHERE workspace_id = ? AND role = ? ORDER BY created_at, id LIMIT 1`,
+		workspaceID, roleOrDefault(role))
 	c, err := scan(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Connection{}, ErrNotFound

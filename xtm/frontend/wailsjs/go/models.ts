@@ -19,6 +19,7 @@ export namespace backend {
 	    supportsWorkflowTransitions: boolean;
 	    supportsBugCreation: boolean;
 	    supportsBugLinks: boolean;
+	    supportsBugRouting: boolean;
 	    supportsTags: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -45,6 +46,7 @@ export namespace backend {
 	        this.supportsWorkflowTransitions = source["supportsWorkflowTransitions"];
 	        this.supportsBugCreation = source["supportsBugCreation"];
 	        this.supportsBugLinks = source["supportsBugLinks"];
+	        this.supportsBugRouting = source["supportsBugRouting"];
 	        this.supportsTags = source["supportsTags"];
 	    }
 	}

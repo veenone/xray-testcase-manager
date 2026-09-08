@@ -1,6 +1,7 @@
 package testrepo_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"agile-suite/xtm/internal/testrepo"
@@ -259,5 +260,105 @@ func TestListBugsWithTestsExposesIssueTypeAndUpdated(t *testing.T) {
 	}
 	if len(b.TestKeys) != 1 || b.TestKeys[0] != "QA-1" {
 		t.Errorf("TestKeys = %v, want [QA-1]", b.TestKeys)
+	}
+}
+
+// TestBugCreatePayloadCarriesTheExecutionKey pins the payload shape the commit
+// path reads. Kiwi hyperlinks attach to a Test Execution, so the execution key
+// has to survive from the queue into the commit; before this it was written
+// only to the audit log.
+func TestBugCreatePayloadCarriesTheExecutionKey(t *testing.T) {
+	repo := newRepo(t)
+	profileID := "p1"
+
+	if _, err := repo.CreateBugForTest(profileID, "T-1", "EXEC-9", testrepo.BugDraft{
+		ProjectKey: "DEF", IssueType: "Bug", Summary: "Boom",
+	}); err != nil {
+		t.Fatalf("create bug: %v", err)
+	}
+
+	rows, err := repo.ListPendingChanges(profileID)
+	if err != nil {
+		t.Fatalf("list pending: %v", err)
+	}
+	var payload struct {
+		ExecKey    string `json:"execKey"`
+		CreatedKey string `json:"createdKey"`
+	}
+	found := false
+	for _, r := range rows {
+		if r.EntityType != "bug_create" {
+			continue
+		}
+		found = true
+		if err := json.Unmarshal([]byte(r.AfterVal), &payload); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+	}
+	if !found {
+		t.Fatal("no bug_create pending change was queued")
+	}
+	if payload.ExecKey != "EXEC-9" {
+		t.Errorf("execKey = %q, want EXEC-9", payload.ExecKey)
+	}
+	if payload.CreatedKey != "" {
+		t.Errorf("createdKey = %q, want empty before any commit attempt", payload.CreatedKey)
+	}
+}
+
+// TestMarkBugCreatedRecordsTheRealKey is what makes a retry safe. When Jira
+// created the issue but the link back failed, the pending row survives so the
+// user can retry. Without the real key recorded, that retry would create a
+// SECOND Jira issue.
+func TestMarkBugCreatedRecordsTheRealKey(t *testing.T) {
+	repo := newRepo(t)
+	profileID := "p1"
+
+	if _, err := repo.CreateBugForTest(profileID, "T-1", "EXEC-9", testrepo.BugDraft{
+		ProjectKey: "DEF", IssueType: "Bug", Summary: "Boom",
+	}); err != nil {
+		t.Fatalf("create bug: %v", err)
+	}
+	rows, err := repo.ListPendingChanges(profileID)
+	if err != nil {
+		t.Fatalf("list pending: %v", err)
+	}
+	var changeID int64
+	for _, r := range rows {
+		if r.EntityType == "bug_create" {
+			changeID = r.ID
+		}
+	}
+	if changeID == 0 {
+		t.Fatal("no bug_create pending change was queued")
+	}
+
+	if err := repo.MarkBugCreated(profileID, changeID, "DEF-42"); err != nil {
+		t.Fatalf("mark created: %v", err)
+	}
+
+	rows, err = repo.ListPendingChanges(profileID)
+	if err != nil {
+		t.Fatalf("list pending after mark: %v", err)
+	}
+	var payload struct {
+		CreatedKey string `json:"createdKey"`
+		Summary    string `json:"summary"`
+		ExecKey    string `json:"execKey"`
+	}
+	for _, r := range rows {
+		if r.ID != changeID {
+			continue
+		}
+		if err := json.Unmarshal([]byte(r.AfterVal), &payload); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+	}
+	if payload.CreatedKey != "DEF-42" {
+		t.Errorf("createdKey = %q, want DEF-42", payload.CreatedKey)
+	}
+	// The rest of the payload must survive: the retry still needs it to link.
+	if payload.Summary != "Boom" || payload.ExecKey != "EXEC-9" {
+		t.Errorf("mark overwrote the rest of the payload: %+v", payload)
 	}
 }
