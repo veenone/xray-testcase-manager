@@ -85,6 +85,26 @@ func (c *Client) ExecTypeFieldValue(ctx context.Context, execType string) (field
 	return id, map[string]string{"value": execType}, true, nil
 }
 
+// ConditionFieldValue resolves this instance's Xray precondition condition
+// custom field id and returns it with the plain-string value Jira expects for a
+// text field PUT. Returns ok=false (no error) when the field cannot be resolved
+// on this instance, so a commit carrying a condition edit skips that one field
+// rather than failing, the same way exec_type does.
+//
+// The commit path needs this because FieldsForJira only knows the four system
+// fields; a condition edit reached the PUT as nothing at all before, so the
+// edit was dropped between XTM and Jira without an error.
+func (c *Client) ConditionFieldValue(ctx context.Context, condition string) (fieldID string, value any, ok bool, err error) {
+	id, err := c.conditionFieldID(ctx)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if id == "" {
+		return "", nil, false, nil
+	}
+	return id, condition, true, nil
+}
+
 // CucumberScenarioFieldValue resolves this instance's Xray "Cucumber Scenario"
 // custom field id and returns it with the plain-string value Jira expects for a
 // text field PUT. Returns ok=false (no error) when the field id cannot be

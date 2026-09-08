@@ -94,6 +94,19 @@ func (c *Client) genericDefinitionFieldID(ctx context.Context) (string, error) {
 	return c.resolveCustomFieldID(ctx, "Generic Test Definition")
 }
 
+// conditionFieldID resolves the custom field id holding an Xray Precondition's
+// definition text. Xray names it "Conditions" on Server/DC 8.4.0 (verified as
+// customfield_13989 on a live instance, RND_P_4TFINT_05-358); older versions
+// name it "Condition", so both are tried. Returns "" (no error) when neither is
+// present, which is what lets a precondition sync run on an instance that has
+// no such field.
+func (c *Client) conditionFieldID(ctx context.Context) (string, error) {
+	if id, err := c.resolveCustomFieldID(ctx, "Conditions"); err != nil || id != "" {
+		return id, err
+	}
+	return c.resolveCustomFieldID(ctx, "Condition") // version alias
+}
+
 // testEnvironmentsFieldID resolves and caches the custom field id of the Xray
 // "Test Environments" field (a multi-select on Test Executions) for this
 // instance, returning "" (no error) when the instance has no such field so the

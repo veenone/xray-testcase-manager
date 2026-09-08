@@ -30,6 +30,13 @@ func newPreconditionServerWithAssocHandler(t *testing.T, count int, assoc http.H
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "42", "name": "Pre-Condition"},
 			})
+		case r.URL.Path == "/rest/api/2/field":
+			// The search resolves the condition custom field by name. This
+			// instance has none, which is the degrade path: the preconditions
+			// still stream, with an empty Condition.
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "summary", "name": "Summary", "custom": false},
+			})
 		case r.URL.Path == "/rest/api/2/search":
 			startAt, _ := strconv.Atoi(r.URL.Query().Get("startAt"))
 			maxResults, _ := strconv.Atoi(r.URL.Query().Get("maxResults"))

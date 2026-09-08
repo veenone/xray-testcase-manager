@@ -32,6 +32,12 @@ func TestListPreconditionsResolvesTypeAndPaginates(t *testing.T) {
 				{"id": "1", "name": "Bug"},
 				{"id": "42", "name": "Pre-Condition"},
 			})
+		case r.URL.Path == "/rest/api/2/field":
+			// The search resolves the condition custom field by name; this
+			// instance does not have one.
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "summary", "name": "Summary", "custom": false},
+			})
 		case r.URL.Path == "/rest/api/2/search":
 			if it := r.URL.Query().Get("jql"); !strings.Contains(it, "issuetype = 42") {
 				t.Errorf("search JQL should target the resolved id, got %q", it)

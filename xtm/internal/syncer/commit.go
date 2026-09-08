@@ -41,6 +41,9 @@ type SkippedCommit struct {
 const (
 	skipReasonFolders       = "backend does not support Test Repository folders"
 	skipReasonPreconditions = "backend does not support precondition objects"
+	// A precondition edit whose only field is one this instance cannot store
+	// (the condition custom field is absent), so there is nothing to push.
+	skipReasonPreconditionFields = "this instance has no field for the edited precondition value"
 	skipReasonRequirements  = "backend does not support requirement writes"
 	skipReasonReviews       = "backend does not support test reviews"
 	skipReasonContainerEdit = "backend does not support container rename"
@@ -1708,11 +1711,48 @@ func (e *Engine) commitPreconditionEdits(ctx context.Context, profileID string, 
 		group := byPrecondition[key]
 		updates := make(map[string]string, len(group))
 		ids := make([]int64, len(group))
+		condition := ""
+		hasCondition := false
 		for i, c := range group {
-			updates[c.Field] = c.AfterVal
+			// The condition lives in a custom field whose id is only known at
+			// run time, so it is resolved separately rather than passed through
+			// FieldsForJira, which maps the system fields alone. Sending it
+			// there silently dropped the edit: Jira accepted an update that
+			// carried nothing, and the pending row was cleared as committed.
+			if c.Field == "condition" {
+				condition, hasCondition = c.AfterVal, true
+			} else {
+				updates[c.Field] = c.AfterVal
+			}
 			ids[i] = c.ID
 		}
-		if err := e.backend.UpdateIssue(ctx, key, e.backend.FieldsForJira(updates)); err != nil {
+		fields := e.backend.FieldsForJira(updates)
+		if hasCondition {
+			fieldID, value, resolved, ferr := e.backend.ConditionFieldValue(ctx, condition)
+			if ferr != nil {
+				result.Failed = append(result.Failed, FailedCommit{
+					TestKey: key,
+					Error:   "resolve precondition condition field: " + sanitizeError(ferr.Error()),
+				})
+				continue
+			}
+			if resolved {
+				fields[fieldID] = value
+			}
+			// Not resolved: this backend or instance has no condition field, so
+			// the rest of the update still goes and the condition is skipped.
+		}
+		if len(fields) == 0 {
+			// Nothing this backend can push. Leave the rows pending rather
+			// than PUTting an empty update and reporting success.
+			result.Skipped = append(result.Skipped, SkippedCommit{
+				EntityKey:  key,
+				EntityType: "precondition_edit",
+				Reason:     skipReasonPreconditionFields,
+			})
+			continue
+		}
+		if err := e.backend.UpdateIssue(ctx, key, fields); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{
 				TestKey: key,
 				Error:   "update precondition: " + sanitizeError(err.Error()),

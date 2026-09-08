@@ -136,6 +136,11 @@ type Backend interface {
 	CucumberScenarioFieldValue(ctx context.Context, v string) (fieldID string, value any, ok bool, err error)
 	CucumberTypeFieldValue(ctx context.Context, v string) (fieldID string, value any, ok bool, err error)
 	GenericDefinitionFieldValue(ctx context.Context, v string) (fieldID string, value any, ok bool, err error)
+	// ConditionFieldValue resolves a Precondition's condition text to the
+	// backend's field id + value. Xray keeps it in an instance-specific custom
+	// field; ok=false means the backend or instance has no such field, so the
+	// commit engine skips that one field rather than failing the commit.
+	ConditionFieldValue(ctx context.Context, v string) (fieldID string, value any, ok bool, err error)
 
 	// --- containers (Test Sets / Plans / Executions) ---
 	ListContainers(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Container, []ContainerLink, error)

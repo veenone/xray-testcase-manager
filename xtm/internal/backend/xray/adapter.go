@@ -171,6 +171,11 @@ func (a *Adapter) ExecTypeFieldValue(ctx context.Context, execType string) (fiel
 	return a.c.ExecTypeFieldValue(ctx, execType)
 }
 
+// ConditionFieldValue resolves the Xray precondition condition custom field.
+func (a *Adapter) ConditionFieldValue(ctx context.Context, v string) (string, any, bool, error) {
+	return a.c.ConditionFieldValue(ctx, v)
+}
+
 func (a *Adapter) CucumberScenarioFieldValue(ctx context.Context, v string) (string, any, bool, error) {
 	return a.c.CucumberScenarioFieldValue(ctx, v)
 }
