@@ -1395,33 +1395,43 @@ function App() {
                     Folders are not supported by this backend.
                   </p>
                 </div>
-              ) : folders.length > 0 ? (
-                <FolderTree
-                  folders={folders}
-                  selected={selectedFolder}
-                  onSelect={(id) => {
-                    setSelectedFolder(id);
-                    setSelectedKey(null);
-                  }}
-                  onCreate={createFolder}
-                  onRename={renameFolder}
-                  onDelete={deleteFolder}
-                  onNewTest={(folderId) => openNewTest(folderId)}
-                  // Kiwi reports categories as folders but cannot reshape
-                  // them, so the create/rename/delete actions are hidden
-                  // rather than offered and then failing.
-                  readOnly={!caps.supportsFolderWrites}
-                />
               ) : (
-                <div className="browse-sidebar-empty">
-                  <p className="muted">No folders synced.</p>
-                  <button
-                    className="link-btn"
-                    onClick={() => createFolder("")}
-                  >
-                    ＋ New folder
-                  </button>
-                </div>
+                // The tree is rendered even with nothing in it. Xray reports no
+                // folders for a repository whose tests were never filed into
+                // one, and replacing the tree with "No folders synced." left
+                // those tests with no "All tests" row to reach them through.
+                <>
+                  <FolderTree
+                    folders={folders}
+                    selected={selectedFolder}
+                    onSelect={(id) => {
+                      setSelectedFolder(id);
+                      setSelectedKey(null);
+                    }}
+                    onCreate={createFolder}
+                    onRename={renameFolder}
+                    onDelete={deleteFolder}
+                    onNewTest={(folderId) => openNewTest(folderId)}
+                    totalTests={syncState?.testCount}
+                    // Kiwi reports categories as folders but cannot reshape
+                    // them, so the create/rename/delete actions are hidden
+                    // rather than offered and then failing.
+                    readOnly={!caps.supportsFolderWrites}
+                  />
+                  {folders.length === 0 && (
+                    <div className="browse-sidebar-empty">
+                      <p className="muted">No folders synced.</p>
+                      {caps.supportsFolderWrites && (
+                        <button
+                          className="link-btn"
+                          onClick={() => createFolder("")}
+                        >
+                          ＋ New folder
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
               )
             ) : (
               <ContainerList

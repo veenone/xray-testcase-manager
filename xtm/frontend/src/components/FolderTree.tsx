@@ -9,6 +9,10 @@ interface Props {
   onRename?: (path: string, currentName: string) => void;
   onDelete?: (path: string) => void;
   onNewTest?: (folderId: string) => void;
+  // totalTests is the repository's own test count, for the "All tests" badge.
+  // Summing the root folders only counts tests that were filed into one, and a
+  // repository can hold folders and loose tests, or no folders at all.
+  totalTests?: number;
   // readOnly hides the per-folder create/rename/delete actions — for reusing
   // the tree purely as a navigation/filter control (e.g. in the add-tests
   // modal).
@@ -55,6 +59,7 @@ export function FolderTree({
   onRename,
   onDelete,
   onNewTest,
+  totalTests,
   readOnly = false,
 }: Props) {
   // Index folders by parentId so each node can find its children in O(1).
@@ -69,10 +74,13 @@ export function FolderTree({
   }, [folders]);
 
   const roots = childrenOf.get("") ?? [];
-  const allCount = useMemo(
+  const summed = useMemo(
     () => roots.reduce((sum, r) => sum + (r.totalTestCount || 0), 0),
     [roots],
   );
+  // Prefer the caller's total: the sum below it misses every test that sits
+  // outside a folder, and in a repository with no folders that is all of them.
+  const allCount = totalTests ?? summed;
 
   return (
     <nav className="folder-tree">
