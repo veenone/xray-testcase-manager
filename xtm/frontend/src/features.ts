@@ -36,6 +36,13 @@ export const defaultCapabilities: Capabilities = {
   supportsWorkflowTransitions: true,
   supportsBugCreation: true,
   supportsBugLinks: true,
+  // false, matching real Xray (internal/backend/xray.Adapter.Capabilities
+  // never sets it, so it's the Go zero value). Bug routing is a Kiwi-only
+  // concept -- an Xray profile creates bugs directly (supportsBugCreation),
+  // so it never needs this true. Leaving it false also can't gate anything
+  // off prematurely: every place that reads it ORs it with
+  // supportsBugCreation, which is already true here.
+  supportsBugRouting: false,
   supportsTags: false,
 };
 

@@ -48,7 +48,7 @@ const (
 	skipReasonReviews       = "backend does not support test reviews"
 	skipReasonContainerEdit = "backend does not support container rename"
 	skipReasonContainerEnv  = "backend does not support test-execution environments"
-	skipReasonBugCreate     = "backend does not support bug creation"
+	skipReasonBugCreate     = "backend cannot create bugs and no bug tracker is configured"
 	skipReasonComments      = "backend does not support issue comments"
 	skipReasonExecType      = "backend does not support the Test Type (exec_type) field"
 	skipReasonRunDefects    = "backend does not support run-level defect links"
@@ -881,7 +881,20 @@ testLoop:
 		e.skipRows(requirementCreateRows, skipReasonRequirements, &result)
 		e.skipRows(reqReqLinkRows, skipReasonRequirements, &result)
 	}
-	if caps.SupportsBugCreation {
+	// A backend that cannot create bugs itself can still have them created on
+	// its behalf: a Kiwi workspace files its defects into a Jira bug
+	// connection, and e.bugBackend is that connection. Gating on the primary
+	// backend's own capability alone would skip every queued bug create on
+	// exactly the profiles this routing exists to serve.
+	//
+	// The e.bugBackendErr arm lets rows through even when routing FAILED to
+	// resolve into a backend: skipping them here would report
+	// skipReasonBugCreate ("no bug tracker is configured"), which is false —
+	// one IS configured, it is just broken — and would send the user hunting
+	// for a setting that already exists instead of fixing the connection.
+	// commitBugCreates itself reports the real reason and fails the rows
+	// (not skips them) without attempting a create.
+	if caps.SupportsBugCreation || e.bugBackend != nil || e.bugBackendErr != nil {
 		e.commitBugCreates(ctx, profileID, bugCreateRows, &result)
 	} else {
 		e.skipRows(bugCreateRows, skipReasonBugCreate, &result)
@@ -1196,7 +1209,41 @@ func (e *Engine) commitRequirementDeletes(ctx context.Context, profileID string,
 
 // commitBugCreates creates each queued Bug issue, repoints the placeholder key
 // to the real one, then links it to its Test. Reported under the test key.
+//
+// The two halves can land on different servers. The ISSUE is created on
+// bugTarget() (a Kiwi workspace files its defects into Jira); the LINK is
+// always written on the primary backend, because that is where the Test lives.
+//
+// A create that succeeds followed by a link that fails keeps the issue: it
+// already exists remotely and deleting it would be worse than losing the link.
+// The real key is recorded on the pending row so a retry links the existing
+// issue instead of filing a duplicate.
 func (e *Engine) commitBugCreates(ctx context.Context, profileID string, rows []testrepo.PendingChange, result *CommitResult) {
+	if e.bugBackendErr != nil {
+		// Routing is configured but unusable (a keyring miss, an unreadable
+		// connection row, ...): report the REAL reason on every queued row
+		// instead of attempting a create against a backend that doesn't
+		// exist. No pending row is touched (no CommitPendingChanges call),
+		// so each survives for a retry once the connection is fixed — the
+		// same "fail this work only" contract syncBugs applies on the sync
+		// side (RND_P_4TFINT_05-359).
+		for _, c := range rows {
+			var p struct {
+				TestKey string `json:"testKey"`
+			}
+			_ = json.Unmarshal([]byte(c.AfterVal), &p)
+			testKey := p.TestKey
+			if testKey == "" {
+				testKey = c.EntityKey
+			}
+			result.Failed = append(result.Failed, FailedCommit{
+				TestKey: testKey,
+				Error:   "bug connection unusable, cannot create bug: " + sanitizeError(e.bugBackendErr.Error()),
+			})
+		}
+		return
+	}
+
 	for _, c := range rows {
 		var p struct {
 			ProjectKey  string         `json:"projectKey"`
@@ -1206,26 +1253,90 @@ func (e *Engine) commitBugCreates(ctx context.Context, profileID string, rows []
 			Priority    string         `json:"priority"`
 			Labels      []string       `json:"labels"`
 			TestKey     string         `json:"testKey"`
+			ExecKey     string         `json:"execKey"`
+			CreatedKey  string         `json:"createdKey"`
 			Fields      map[string]any `json:"fields"`
 		}
 		if err := json.Unmarshal([]byte(c.AfterVal), &p); err != nil {
 			result.Failed = append(result.Failed, FailedCommit{TestKey: c.EntityKey, Error: "malformed bug payload: " + err.Error()})
 			continue
 		}
-		realKey, err := e.backend.CreateBug(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Labels, p.Fields)
-		if err != nil {
-			result.Failed = append(result.Failed, FailedCommit{TestKey: p.TestKey, Error: "create bug: " + sanitizeError(err.Error())})
-			continue
-		}
+
 		key := c.EntityKey
-		if realKey != "" && realKey != c.EntityKey {
-			if rErr := e.repo.RenameBug(profileID, c.EntityKey, realKey); rErr != nil {
-				_ = rErr // remote create already succeeded; a cache-rename hiccup must not fail the commit
+		if p.CreatedKey != "" {
+			// A previous attempt already created this issue and only the link
+			// (or a later step) failed. Skip the create so the retry cannot file
+			// a duplicate. Re-attempt the cache rename too: the first attempt
+			// could have created the issue, recorded its key, and then failed
+			// the rename itself, which would otherwise leave a phantom
+			// "NEW-BUG-N" row in the cache after this retry succeeds and clears
+			// the pending row.
+			key = p.CreatedKey
+			if key != c.EntityKey {
+				if rErr := e.repo.RenameBug(profileID, c.EntityKey, key); rErr != nil {
+					_ = rErr // remote create already succeeded; a cache-rename hiccup must not fail the commit
+				}
 			}
-			key = realKey
+		} else {
+			realKey, err := e.bugTarget().CreateBug(ctx, p.ProjectKey, p.IssueType, p.Summary, p.Description, p.Priority, p.Labels, p.Fields)
+			if err != nil {
+				result.Failed = append(result.Failed, FailedCommit{TestKey: p.TestKey, Error: "create bug: " + sanitizeError(err.Error())})
+				continue
+			}
+			if realKey != "" && realKey != c.EntityKey {
+				key = realKey
+			}
+			// The issue now exists remotely: record its real key on the pending
+			// row right here, before attempting the link, not only when the
+			// link fails. Either MarkBugCreated itself or CommitPendingChanges
+			// below could still fail after a successful link, and either
+			// failure would otherwise leave the row pending with no createdKey
+			// — so a retry would call CreateBug again and file a duplicate
+			// issue.
+			if mErr := e.repo.MarkBugCreated(profileID, c.ID, key); mErr != nil {
+				log.Printf("xtm: record created bug key for retry: %v", mErr)
+			}
+			if key != c.EntityKey {
+				if rErr := e.repo.RenameBug(profileID, c.EntityKey, key); rErr != nil {
+					_ = rErr // remote create already succeeded; a cache-rename hiccup must not fail the commit
+				}
+			}
 		}
-		if err := e.backend.CreateBugLink(ctx, p.TestKey, key); err != nil {
-			result.Failed = append(result.Failed, FailedCommit{TestKey: p.TestKey, Error: "link bug: " + sanitizeError(err.Error())})
+
+		// The primary backend carries the link, and what it anchors to depends
+		// on which system holds the bug. When bugs live elsewhere, the primary
+		// backend is Kiwi, whose links attach to a Test Execution: pass the
+		// execution key even when it is empty, and let the backend reject an
+		// empty one by name. Falling back to the TEST key here would be worse
+		// than failing, because Kiwi test keys are numeric case ids that parse
+		// happily as an execution id and would hyperlink an unrelated
+		// execution. A reported link failure keeps the created issue and can
+		// be retried; a silently wrong link cannot be noticed.
+		//
+		// The execution key on the pending row is the KindTestExec CONTAINER
+		// key, which for Kiwi is a TestRun id, not the id of the execution row
+		// the link hangs on. A backend that implements RunScopedBugLinker
+		// resolves that row itself from the (run, test) pair, so it gets both
+		// keys; anything else keeps today's single-key call
+		// (RND_P_4TFINT_05-359).
+		linkErr := func() error {
+			if linker, ok := e.backend.(backend.RunScopedBugLinker); ok && e.bugBackend != nil {
+				return linker.CreateRunBugLink(ctx, p.ExecKey, p.TestKey, key)
+			}
+			linkTarget := p.TestKey
+			if e.bugBackend != nil {
+				linkTarget = p.ExecKey
+			}
+			return e.backend.CreateBugLink(ctx, linkTarget, key)
+		}()
+		if linkErr != nil {
+			// The real key was already recorded on the pending row above (or on
+			// a prior attempt, if this is a retry), so a retry links the
+			// existing issue instead of creating a duplicate.
+			result.Failed = append(result.Failed, FailedCommit{
+				TestKey: p.TestKey,
+				Error:   "created " + key + " but linking it failed (retry to link it): " + sanitizeError(linkErr.Error()),
+			})
 			continue
 		}
 		if err := e.repo.CommitPendingChanges(profileID, []int64{c.ID}); err != nil {

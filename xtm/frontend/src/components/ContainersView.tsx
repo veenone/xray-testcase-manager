@@ -1545,6 +1545,7 @@ export function ContainersView({
                   )}
                   <td className="board-remove-cell">
                     {kind === "testexec" &&
+                      (caps.supportsBugCreation || caps.supportsBugRouting) &&
                       /^fail/i.test(r.runStatus || "") && (
                         <button
                           className="btn btn-ghost board-bug"

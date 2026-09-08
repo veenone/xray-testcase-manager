@@ -639,6 +639,24 @@ func (a *App) DeleteProfile(id string) error {
 	if err := a.creds.Delete(id); err != nil {
 		log.Printf("xtm: delete credentials for %s: %v", id, err)
 	}
+	// A profile can own more than one connection (a Kiwi profile's bug
+	// connection). Each has its OWN credential keyed by its connection id, so
+	// deleting the profile's own credential is not enough.
+	if conns, cErr := a.connections.List(id); cErr == nil {
+		for _, c := range conns {
+			if c.ID == id {
+				continue // the primary connection's credential was deleted above
+			}
+			if err := a.creds.Delete(c.ID); err != nil {
+				log.Printf("xtm: delete credentials for connection %s: %v", c.ID, err)
+			}
+			if err := a.connections.Delete(c.ID); err != nil {
+				log.Printf("xtm: delete connection %s: %v", c.ID, err)
+			}
+		}
+	} else {
+		log.Printf("xtm: list connections for %s: %v", id, cErr)
+	}
 	// Remove the profile's cached data so it doesn't linger (FR-5.3).
 	if err := a.repo.PurgeProfile(id); err != nil {
 		log.Printf("xtm: purge cached data for %s: %v", id, err)
@@ -730,6 +748,213 @@ func (a *App) DeleteConnection(id string) error {
 		log.Printf("xtm: delete credentials for connection %s: %v", id, err)
 	}
 	return nil
+}
+
+// --- Bug connection (RND_P_4TFINT_05-359) ---
+//
+// A Kiwi workspace has no Jira-style issue type, so its defects go into a
+// separate Jira project. That target is a second connection row with role
+// "bugs", configured independently of the profile's own connection and of any
+// other profile. The role on the row is the only record that a profile routes
+// bugs; no profile column mirrors it.
+
+// bugConnectionRole is the connection role reserved for the bug target.
+const bugConnectionRole = "bugs"
+
+// GetBugConnection returns the profile's bug connection, or a zero Connection
+// when none is configured. An unconfigured profile is the normal case, not an
+// error, so the frontend can render the form either way.
+func (a *App) GetBugConnection(profileID string) (c connection.Connection, err error) {
+	defer recoverToError("GetBugConnection", &err)
+	if err := a.requireStore(); err != nil {
+		return connection.Connection{}, err
+	}
+	got, err := a.connections.ByRole(profileID, bugConnectionRole)
+	if errors.Is(err, connection.ErrNotFound) {
+		return connection.Connection{}, nil
+	}
+	if err != nil {
+		return connection.Connection{}, err
+	}
+	return got, nil
+}
+
+// GetBugBrowseBase returns the browse-URL prefix of the profile's bug tracker
+// (for example "https://jira.example.com/browse/"), or "" when the profile
+// does not route its bugs.
+//
+// The frontend needs it because a routed profile's bug keys belong to the bug
+// tracker, not to the profile's own server: building "open in browser" links
+// off the profile URL opens a 404 on the Kiwi host. An empty result means
+// "use the profile URL", which is what every Xray profile gets.
+func (a *App) GetBugBrowseBase(profileID string) (base string, err error) {
+	defer recoverToError("GetBugBrowseBase", &err)
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	return a.bugBrowseBaseFor(profileID)
+}
+
+// SaveBugConnection creates or updates the profile's bug connection and stores
+// its token in the OS credential manager under the connection's own id. A
+// blank token on an update keeps the stored one, so the form can round-trip
+// without re-showing or re-sending the secret.
+func (a *App) SaveBugConnection(profileID, url, projectKey, issueType, token, caCert string, allowUntrustedTLS bool) (c connection.Connection, err error) {
+	defer recoverToError("SaveBugConnection", &err)
+	if err := a.requireStore(); err != nil {
+		return connection.Connection{}, err
+	}
+	if strings.TrimSpace(url) == "" || strings.TrimSpace(projectKey) == "" {
+		return connection.Connection{}, errors.New("a bug connection needs a URL and a project key")
+	}
+	if strings.TrimSpace(issueType) == "" {
+		issueType = "Bug"
+	}
+
+	existing, err := a.connections.ByRole(profileID, bugConnectionRole)
+	id := ""
+	created := false
+	switch {
+	case err == nil:
+		id = existing.ID
+	case errors.Is(err, connection.ErrNotFound):
+		id = connection.NewID()
+		created = true
+	default:
+		return connection.Connection{}, err
+	}
+
+	if strings.TrimSpace(token) == "" {
+		if _, lErr := a.creds.Load(id); lErr != nil {
+			// CredentialStore has no sentinel that separates "nothing stored
+			// under this id" from a genuine store failure (locked keyring,
+			// I/O error, ...) — the real (Windows/keyring) stores return a
+			// plain error for both. Either way, without a usable stored
+			// credential there is nothing to save, so this fails closed; the
+			// underlying error is wrapped rather than discarded so a genuine
+			// store failure still surfaces its real cause instead of reading
+			// as "no token was ever set".
+			return connection.Connection{}, fmt.Errorf("a bug connection needs a token: %w", lErr)
+		}
+	}
+
+	// The bug target is always a Jira/Xray backend: it is where the issue is
+	// created. bugProjectMode "dedicated" records that the bug project is the
+	// connection's own project rather than the tests' project.
+	saved, err := a.connections.Put(id, profileID, "Bug tracker", "xray", url, projectKey,
+		"", issueType, "dedicated", projectKey, caCert, allowUntrustedTLS,
+		bugConnectionRole, time.Now().UTC())
+	if err != nil {
+		return connection.Connection{}, err
+	}
+	if strings.TrimSpace(token) != "" {
+		if err := a.creds.Save(saved.ID, token); err != nil {
+			if created {
+				_ = a.connections.Delete(saved.ID) // don't leave a credential-less connection behind
+			}
+			return connection.Connection{}, fmt.Errorf("store bug credentials: %w", err)
+		}
+	}
+	return saved, nil
+}
+
+// DeleteBugConnection removes the bug connection and its credential. The
+// profile keeps working; it simply stops offering bug creation.
+func (a *App) DeleteBugConnection(profileID string) (err error) {
+	defer recoverToError("DeleteBugConnection", &err)
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	c, err := a.connections.ByRole(profileID, bugConnectionRole)
+	if errors.Is(err, connection.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := a.connections.Delete(c.ID); err != nil {
+		return err
+	}
+	if err := a.creds.Delete(c.ID); err != nil {
+		log.Printf("xtm: delete bug credentials for connection %s: %v", c.ID, err)
+	}
+	return nil
+}
+
+// bugBackendAndBrowseBase resolves the profile's bug connection in a SINGLE
+// row lookup and returns both artifacts derived from it: the Backend bugs are
+// filed into, and the browse-URL prefix the primary backend uses to recognize
+// its own bug links (Kiwi stores hyperlinks as plain untyped URLs, so the
+// prefix is the only thing separating a defect from a wiki page). Reading the
+// row once here — instead of once per artifact — also closes the window where
+// the two reads could otherwise observe different rows.
+//
+// A nil backend, an empty base, and a nil error together mean "no bug
+// connection configured": the normal case for every Xray profile and for a
+// Kiwi profile that has not been configured. A non-nil error means one IS
+// configured but could not be turned into a working backend (a keyring miss,
+// an unreadable row); it already names the connection, so callers can log or
+// wrap it as-is.
+func (a *App) bugBackendAndBrowseBase(profileID string) (backend.Backend, string, error) {
+	c, err := a.connections.ByRole(profileID, bugConnectionRole)
+	if errors.Is(err, connection.ErrNotFound) {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("look up bug connection for profile %s: %w", profileID, err)
+	}
+	token, err := a.creds.Load(c.ID)
+	if err != nil {
+		return nil, "", fmt.Errorf("load credentials for bug connection %s: %w", c.URL, err)
+	}
+	b := newBackend(c.Backend, c.URL, token, c.CACert, c.AllowUntrustedTLS)
+	base := strings.TrimRight(c.URL, "/") + "/browse/"
+	return b, base, nil
+}
+
+// bugBackendFor returns the Backend a profile's bugs are filed into, or
+// (nil, nil) when the profile has no bug connection. A nil result is the
+// normal case for every Xray profile and for a Kiwi profile that has not been
+// configured: the engines treat it as "route bug work to the primary backend,
+// exactly as before".
+func (a *App) bugBackendFor(profileID string) (backend.Backend, error) {
+	b, _, err := a.bugBackendAndBrowseBase(profileID)
+	return b, err
+}
+
+// bugBrowseBaseFor returns the browse-URL prefix of the profile's bug tracker,
+// or "" when no bug connection is configured.
+//
+// The primary backend needs it to recognize its own bug links: Kiwi stores
+// hyperlinks as plain untyped URLs, so the prefix is the only thing separating
+// a defect from a wiki page.
+func (a *App) bugBrowseBaseFor(profileID string) (string, error) {
+	_, base, err := a.bugBackendAndBrowseBase(profileID)
+	return base, err
+}
+
+// bugRoutingOptions returns the syncer options that route a profile's bug work
+// to its bug connection, and tells the primary backend how to recognize bug
+// links. It returns no options when the profile has no bug connection, which
+// is what keeps every Xray profile's behaviour identical.
+//
+// A configuration error here does not stop the sync or commit: it is logged
+// and turned into syncer.WithBugBackendError, which fails only the bug work
+// for this run (RND_P_4TFINT_05-359) rather than silently reporting an empty
+// Bugs view.
+func (a *App) bugRoutingOptions(profileID string, primary backend.Backend) []syncer.Option {
+	bugB, base, err := a.bugBackendAndBrowseBase(profileID)
+	if err != nil {
+		log.Printf("xtm: %v", err)
+		return []syncer.Option{syncer.WithBugBackendError(err)}
+	}
+	if bugB == nil {
+		return nil
+	}
+	if setter, ok := primary.(interface{ SetBugBrowseBase(string) }); ok {
+		setter.SetBugBrowseBase(base)
+	}
+	return []syncer.Option{syncer.WithBugBackend(bugB)}
 }
 
 // --- Bridge (Phase 6 task B4: gap report + mapping model) ------------------
@@ -872,10 +1097,10 @@ func (a *App) ListRequirementLinkTypeDetails(profileID string) ([]backend.IssueL
 	return b.ListIssueLinkTypeDetails(a.ctx)
 }
 
-// GetCapabilities reports what the given profile's backend supports, so the
-// frontend can gate features once a non-Xray backend exists. Xray reports the
-// full/permissive capability set today (see xray.Adapter.Capabilities), so
-// this is currently informational only.
+// GetCapabilities reports what the profile's backend can do. Most fields come
+// straight from the adapter; SupportsBugRouting is merged in here because it
+// describes the profile's CONFIGURATION (does it have a bug connection?)
+// rather than anything the adapter knows about itself.
 func (a *App) GetCapabilities(profileID string) (backend.Capabilities, error) {
 	if err := a.requireStore(); err != nil {
 		return backend.Capabilities{}, err
@@ -884,7 +1109,17 @@ func (a *App) GetCapabilities(profileID string) (backend.Capabilities, error) {
 	if err != nil {
 		return backend.Capabilities{}, err
 	}
-	return b.Capabilities(), nil
+	caps := b.Capabilities()
+	switch _, err := a.connections.ByRole(profileID, bugConnectionRole); {
+	case err == nil:
+		caps.SupportsBugRouting = true
+	case !errors.Is(err, connection.ErrNotFound):
+		// A real store failure must not read as "this profile does not route
+		// bugs": that would quietly hide the Create Bug action instead of
+		// reporting what actually broke.
+		return backend.Capabilities{}, err
+	}
+	return caps, nil
 }
 
 // SetShowCoverage records whether the (opt-in, hidden-by-default) Coverage
@@ -970,11 +1205,11 @@ func (a *App) runPartialSync(profileID, stage string, fn func(*syncer.Engine, st
 	if err != nil {
 		return fmt.Errorf("load credentials: %w", err)
 	}
-	engine := syncer.New(
-		newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS),
-		a.repo,
+	primary := newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS)
+	opts := append([]syncer.Option{
 		syncer.WithCrossProjectSources(scopeCrossProjectSources(p.CrossProjectSources, p.ProjectKey)),
-	)
+	}, a.bugRoutingOptions(profileID, primary)...)
+	engine := syncer.New(primary, a.repo, opts...)
 
 	onProgress := func(pr syncer.Progress) {
 		runtime.EventsEmit(a.ctx, "sync:progress", pr)
@@ -1057,9 +1292,19 @@ func (a *App) GetBugDetail(profileID, bugKey string) (jira.BugDetail, error) {
 	if strings.HasPrefix(bugKey, "NEW-") {
 		return jira.BugDetail{}, nil
 	}
-	b, err := a.backendFor(profileID)
+	// The issue lives wherever it was created. On a routed profile that is the
+	// bug connection, and asking the primary backend (Kiwi, which has no
+	// Jira-style issue) would only ever answer ErrUnsupported
+	// (RND_P_4TFINT_05-359). An unrouted profile keeps today's path exactly.
+	b, err := a.bugBackendFor(profileID)
 	if err != nil {
 		return jira.BugDetail{}, err
+	}
+	if b == nil {
+		b, err = a.backendFor(profileID)
+		if err != nil {
+			return jira.BugDetail{}, err
+		}
 	}
 	detail, err := b.GetBugDetail(a.ctx, bugKey)
 	if err != nil {
@@ -1172,11 +1417,11 @@ func (a *App) runSync(profileID string, forceFull bool) error {
 	if forceFull {
 		since = ""
 	}
-	engine := syncer.New(
-		newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS),
-		a.repo,
+	primary := newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS)
+	opts := append([]syncer.Option{
 		syncer.WithCrossProjectSources(scopeCrossProjectSources(p.CrossProjectSources, p.ProjectKey)),
-	)
+	}, a.bugRoutingOptions(profileID, primary)...)
+	engine := syncer.New(primary, a.repo, opts...)
 	started := time.Now().UTC()
 	var lastFetched int
 	syncErr := engine.Sync(a.ctx, profileID, p.ProjectKey, p.ScopeJQL, since, func(pr syncer.Progress) {
@@ -1605,12 +1850,16 @@ func (a *App) SetRequirementLinks(profileID, requirementKey, linkType string, li
 
 // --- Bug (defect) tracking ---
 
-// GetBugCreateFields returns the required fields for the profile's bug issue
-// type's create screen (beyond project/issuetype/summary/description/priority/
-// labels), so the Create Bug form can render and collect them before the commit.
-// The target project is resolved the same way CreateBugForTest does (profile
-// bug-project mode), with an empty execKey (the project key is available from
-// the profile before any specific execution is known).
+// GetBugCreateFields returns the required fields for the bug issue type's
+// create screen (beyond project/issuetype/summary/description/priority/
+// labels), so the Create Bug form can render and collect them before the
+// commit. When the profile has a bug connection, the fields come from that
+// connection's OWN backend and project (a Kiwi profile's create form must
+// reflect Jira's create screen, not Kiwi's); otherwise they come from the
+// profile itself, exactly as before routing existed. The target project is
+// resolved the same way CreateBugForTest does (profile bug-project mode) when
+// there is no bug connection, with an empty execKey (the project key is
+// available from the profile before any specific execution is known).
 func (a *App) GetBugCreateFields(profileID string) (fields []jira.BugCreateField, err error) {
 	defer recoverToError("GetBugCreateFields", &err)
 	if err := a.requireStore(); err != nil {
@@ -1620,12 +1869,12 @@ func (a *App) GetBugCreateFields(profileID string) (fields []jira.BugCreateField
 	if err != nil {
 		return nil, err
 	}
-	token, err := a.creds.Load(profileID)
+
+	b, projKey, issueType, err := a.bugCreateTarget(profileID, p, "")
 	if err != nil {
-		return nil, fmt.Errorf("load credentials: %w", err)
+		return nil, err
 	}
-	projKey := bugProjectKey(p, "")
-	bf, err := newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS).GetBugCreateFields(a.ctx, projKey, p.BugIssueType)
+	bf, err := b.GetBugCreateFields(a.ctx, projKey, issueType)
 	if err != nil {
 		return nil, err
 	}
@@ -1633,10 +1882,13 @@ func (a *App) GetBugCreateFields(profileID string) (fields []jira.BugCreateField
 }
 
 // CreateBugForTest queues a new Bug issue linked to a failed Test, committed to
-// Jira on the next sync. The bug's project and issue type come from the profile.
-// extraFields carries any additional field values collected from the
-// createmeta-driven Create Bug form (keyed by Jira field id, values already
-// shaped for the POST body). Returns the placeholder key.
+// Jira on the next sync. When the profile has a bug connection, the bug's
+// project and issue type come from that CONNECTION (a Kiwi profile's defects
+// must land in the connection's Jira project, never in the Kiwi product named
+// on the profile itself); otherwise they come from the profile, exactly as
+// before routing existed. extraFields carries any additional field values
+// collected from the createmeta-driven Create Bug form (keyed by Jira field
+// id, values already shaped for the POST body). Returns the placeholder key.
 func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description, priority string, labels []string, extraFields map[string]any) (key string, err error) {
 	defer recoverToError("CreateBugForTest", &err)
 	if err := a.requireStore(); err != nil {
@@ -1646,10 +1898,64 @@ func (a *App) CreateBugForTest(profileID, testKey, execKey, summary, description
 	if err != nil {
 		return "", err
 	}
+	projKey, issueType, err := a.bugCreateProjectAndIssueType(profileID, p, execKey)
+	if err != nil {
+		return "", err
+	}
 	return a.repo.CreateBugForTest(profileID, testKey, execKey, testrepo.BugDraft{
-		ProjectKey: bugProjectKey(p, execKey), IssueType: p.BugIssueType, Summary: summary,
+		ProjectKey: projKey, IssueType: issueType, Summary: summary,
 		Description: description, Priority: priority, Labels: labels, Fields: extraFields,
 	})
+}
+
+// bugCreateProjectAndIssueType resolves which project and issue type a queued
+// bug create targets: the profile's bug connection's own values when one is
+// configured, otherwise the profile's own bug-project settings (unchanged
+// from before routing existed). Using GetBugConnection rather than
+// bugBackendFor here is deliberate: a zero Connection with a nil error is the
+// "unconfigured" signal that keeps the no-routing path byte-for-byte
+// identical, and the connection row itself is the source of truth for
+// ProjectKey/BugIssueType — bugBackendFor discards both once it builds the
+// Backend.
+//
+// This is deliberately a LOCAL-only lookup: it never calls a.creds.Load and
+// never builds a Backend. CreateBugForTest is a pending-change journal write
+// like every other mutating method in this app (nothing remote happens until
+// commit), so queuing a bug must not require a readable credential — a
+// locked keyring should not stop a user from recording that they found one.
+func (a *App) bugCreateProjectAndIssueType(profileID string, p profile.Profile, execKey string) (projectKey, issueType string, err error) {
+	bc, err := a.GetBugConnection(profileID)
+	if err != nil {
+		return "", "", err
+	}
+	if bc.ID != "" {
+		return bc.ProjectKey, bc.BugIssueType, nil
+	}
+	return bugProjectKey(p, execKey), p.BugIssueType, nil
+}
+
+// bugCreateTarget resolves the Backend a bug create-FIELDS lookup runs
+// against (GetBugCreateFields is the only caller — it genuinely needs a live
+// createmeta call), alongside the same project/issue type
+// bugCreateProjectAndIssueType would return: the profile's bug connection's
+// own backend when one is configured, otherwise the profile's own backend.
+func (a *App) bugCreateTarget(profileID string, p profile.Profile, execKey string) (b backend.Backend, projectKey, issueType string, err error) {
+	bc, err := a.GetBugConnection(profileID)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if bc.ID != "" {
+		token, err := a.creds.Load(bc.ID)
+		if err != nil {
+			return nil, "", "", fmt.Errorf("load credentials for bug connection %s: %w", bc.URL, err)
+		}
+		return newBackend(bc.Backend, bc.URL, token, bc.CACert, bc.AllowUntrustedTLS), bc.ProjectKey, bc.BugIssueType, nil
+	}
+	token, err := a.creds.Load(profileID)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("load credentials: %w", err)
+	}
+	return newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS), bugProjectKey(p, execKey), p.BugIssueType, nil
 }
 
 // bugProjectKey resolves which Jira project a filed defect lands in, from the
@@ -1999,7 +2305,7 @@ func (a *App) CommitPendingChanges(profileID string) (out syncer.CommitResult, e
 	}
 	b := newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS)
 	b.SetRequirementLinkType(s.RequirementLinkType)
-	engine := syncer.New(b, a.repo)
+	engine := syncer.New(b, a.repo, a.bugRoutingOptions(profileID, b)...)
 	return engine.CommitChanges(a.ctx, profileID, p.ProjectKey)
 }
 
@@ -2034,7 +2340,7 @@ func (a *App) CommitPendingChangesByIDs(profileID string, changeIDs []int64) (ou
 	}
 	b := newBackend(p.Backend, p.JiraURL, token, p.CACert, p.AllowUntrustedTLS)
 	b.SetRequirementLinkType(s.RequirementLinkType)
-	engine := syncer.New(b, a.repo)
+	engine := syncer.New(b, a.repo, a.bugRoutingOptions(profileID, b)...)
 	return engine.CommitChangesForIDs(a.ctx, profileID, p.ProjectKey, changeIDs)
 }
 

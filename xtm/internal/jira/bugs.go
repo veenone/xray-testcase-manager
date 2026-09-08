@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -921,6 +922,17 @@ func (c *Client) ListProjectBugs(ctx context.Context, projKey, issueType string)
 		strings.ReplaceAll(projKey, `"`, `\"`),
 		strings.ReplaceAll(issueType, `"`, `\"`))
 
+	return c.searchBugs(ctx, jql)
+}
+
+// searchBugs runs a paginated JQL search against /rest/api/2/search and
+// returns the accumulated Bugs, requesting fields=summary,status,priority,
+// issuetype,project,updated. Best-effort: a 400 response logs and returns
+// whatever has been accumulated so far, rather than failing the whole read.
+//
+// Shared by ListProjectBugs (one project, one issue type) and ListBugsByKeys
+// (an explicit "key in (...)" clause), so both paging behaviors stay in sync.
+func (c *Client) searchBugs(ctx context.Context, jql string) ([]Bug, error) {
 	out := []Bug{}
 	startAt := 0
 	for {
@@ -937,8 +949,10 @@ func (c *Client) ListProjectBugs(ctx context.Context, projKey, issueType string)
 		if err := c.get(ctx, "/rest/api/2/search?"+q.Encode(), &resp); err != nil {
 			var he *HTTPError
 			if errors.As(err, &he) && he.Code == http.StatusBadRequest {
-				log.Printf("xtm: project bug search rejected (project=%s, issuetype=%s): %v",
-					projKey, issueType, err)
+				// Identify the query by shape, not by content: jql can carry
+				// interpolated values (e.g. issue keys) that should not be
+				// dumped into logs verbatim.
+				log.Printf("xtm: bug search rejected (query length %d): %v", len(jql), err)
 				return out, nil
 			}
 			return out, err
@@ -963,6 +977,94 @@ func (c *Client) ListProjectBugs(ctx context.Context, projKey, issueType string)
 			break
 		}
 		time.Sleep(throttleContainers)
+	}
+	return out, nil
+}
+
+// bugKeyChunk caps how many keys go into one JQL "key in (...)" clause. Jira
+// DC accepts the search on a GET, so the whole query rides in the URL and a
+// long list would exceed the server's URL limit.
+const bugKeyChunk = 50
+
+// bugKeyPattern matches a well-formed Jira issue key, e.g. "PROJ-123".
+//
+// Keys passed to ListBugsByKeys arrive from a Kiwi hyperlink's URL suffix
+// (kiwi.bugKeyFromURL), which only rejects an empty key or one containing
+// "/" — quotes, backslashes, parentheses, and other JQL-meaningful characters
+// all pass through unvalidated. Interpolating that straight into a JQL
+// clause would let a crafted hyperlink corrupt or extend the query, so any
+// key that doesn't have this shape is dropped before it ever reaches a JQL
+// string, rather than trusted to round-trip through escaping.
+var bugKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]*-[0-9]+$`)
+
+// ListBugsByKeys fetches exactly the issues named, in chunks.
+//
+// This is the read a workspace needs when its tests and its bugs live in
+// different systems: the test side reports which keys are linked, and this
+// turns those keys into full records without pulling the whole bug project.
+//
+// Keys that don't look like a Jira issue key (see bugKeyPattern) are skipped
+// rather than failing the whole call: a single odd hyperlink somewhere in a
+// product must not fail an entire sync. If every key is skipped, this
+// behaves like an empty input and makes no HTTP request.
+//
+// Demo mode is handled here, matching ListProjectBugs and ListBugs: a demo
+// profile can be wired up as the secondary bug backend (SaveBugConnection
+// places no restriction on the URL beyond the backend type), so this must
+// answer the same way those two do rather than attempting a real HTTP call
+// against a fake host.
+func (c *Client) ListBugsByKeys(ctx context.Context, keys []string) ([]Bug, error) {
+	valid := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if bugKeyPattern.MatchString(k) {
+			valid = append(valid, k)
+		}
+	}
+	if len(valid) == 0 {
+		return nil, nil
+	}
+
+	if isDemoURL(c.baseURL) {
+		want := make(map[string]bool, len(valid))
+		for _, k := range valid {
+			want[k] = true
+		}
+		allBugs, _ := demoBugs("", nil)
+		seen := map[string]struct{}{}
+		out := make([]Bug, 0, len(valid))
+		for _, b := range allBugs {
+			if !want[b.Key] {
+				continue
+			}
+			if _, dup := seen[b.Key]; dup {
+				continue
+			}
+			seen[b.Key] = struct{}{}
+			out = append(out, b)
+		}
+		return out, nil
+	}
+
+	out := []Bug{}
+	for start := 0; start < len(valid); start += bugKeyChunk {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		end := start + bugKeyChunk
+		if end > len(valid) {
+			end = len(valid)
+		}
+		quoted := make([]string, 0, end-start)
+		for _, k := range valid[start:end] {
+			quoted = append(quoted, `"`+jqlEscape(k)+`"`)
+		}
+		jql := "key in (" + strings.Join(quoted, ",") + ") ORDER BY key ASC"
+
+		chunk, err := c.searchBugs(ctx, jql)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, chunk...)
 	}
 	return out, nil
 }

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   CreateProfile,
   CreateProfileReusingToken,
@@ -8,9 +8,13 @@ import {
   UpdateConnection,
   TestConnection,
   TestProfileConnection,
+  GetBugConnection,
+  SaveBugConnection,
+  DeleteBugConnection,
   errMsg,
 } from "../api";
 import type { Connection, Profile } from "../api";
+import { useConfirm } from "./useConfirm";
 
 interface Props {
   // Fires when a profile is created/updated. Required in "profile" mode
@@ -109,6 +113,7 @@ export function ProfileForm({
   connection,
   onSaved,
 }: Props) {
+  const { confirm } = useConfirm();
   const isConnection = mode === "connection";
   const isEdit = isConnection ? !!connection : !!profile;
   const others = (profiles ?? []).filter((p) => p.id !== profile?.id);
@@ -159,6 +164,77 @@ export function ProfileForm({
     profile?.allowUntrustedTls ?? connection?.allowUntrustedTls ?? false,
   );
 
+  // Bug tracker connection (Kiwi profiles only): routes defects into a Jira
+  // project since Kiwi has no issue type of its own (RND_P_4TFINT_05-359).
+  // Distinct from bugIssueType/bugProjectMode/bugProjectKey above, which only
+  // apply to a non-Kiwi backend filing bugs into its own Jira instance.
+  // bugConnId is "" until an existing connection loads; the profile form is
+  // the only place this is configured, so it's skipped entirely in
+  // "connection" mode.
+  const [bugConnId, setBugConnId] = useState("");
+  // bugConnLoaded* mirror exactly what was last loaded/saved from the
+  // backend -- kept separate from the editable fields below so (a) a confirm
+  // dialog can name the connection being removed even after the user has
+  // cleared the visible URL/project key fields, and (b) declining that
+  // confirm can restore the form to what is actually stored, instead of
+  // leaving it showing blanks that contradict the surviving connection.
+  const [bugConnLoadedUrl, setBugConnLoadedUrl] = useState("");
+  const [bugConnLoadedProjectKey, setBugConnLoadedProjectKey] = useState("");
+  const [bugConnLoadedIssueType, setBugConnLoadedIssueType] = useState("");
+  const [bugConnLoadedCaCert, setBugConnLoadedCaCert] = useState("");
+  const [bugConnLoadedAllowUntrustedTLS, setBugConnLoadedAllowUntrustedTLS] = useState(false);
+  const [bugTrackerUrl, setBugTrackerUrl] = useState("");
+  const [bugTrackerProjectKey, setBugTrackerProjectKey] = useState("");
+  const [bugTrackerIssueType, setBugTrackerIssueType] = useState("");
+  const [bugTrackerToken, setBugTrackerToken] = useState("");
+  const [bugTrackerCaCert, setBugTrackerCaCert] = useState("");
+  const [bugTrackerAllowUntrustedTLS, setBugTrackerAllowUntrustedTLS] = useState(false);
+  // Set when GetBugConnection itself fails (as opposed to "nothing
+  // configured", which resolves normally with a zero Connection). Left
+  // visible in the section and blocks Save -- an unreadable connection must
+  // never be mistaken for an unconfigured one, or Save would silently
+  // overwrite it (RND_P_4TFINT_05-359 review, Important 2).
+  const [bugTrackerLoadError, setBugTrackerLoadError] = useState("");
+
+  // Load any bug connection already saved for this profile, once per
+  // profile id -- not on every Backend-dropdown toggle, which would
+  // overwrite whatever the user had already typed into the section
+  // (RND_P_4TFINT_05-359 review, minor 2). A new (unsaved) profile has no id
+  // to look one up under yet, and GetBugConnection returns a zero Connection
+  // (never an error) when none is configured, which is the normal case.
+  const loadedBugConnFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (isConnection || !backendIsKiwi || !profile) return;
+    if (loadedBugConnFor.current === profile.id) return;
+    loadedBugConnFor.current = profile.id;
+    let cancelled = false;
+    GetBugConnection(profile.id)
+      .then((c) => {
+        if (cancelled) return;
+        setBugConnId(c.id);
+        setBugConnLoadedUrl(c.url);
+        setBugConnLoadedProjectKey(c.projectKey);
+        setBugConnLoadedIssueType(c.bugIssueType);
+        setBugConnLoadedCaCert(c.caCert);
+        setBugConnLoadedAllowUntrustedTLS(c.allowUntrustedTls);
+        setBugTrackerUrl(c.url);
+        setBugTrackerProjectKey(c.projectKey);
+        setBugTrackerIssueType(c.bugIssueType);
+        setBugTrackerCaCert(c.caCert);
+        setBugTrackerAllowUntrustedTLS(c.allowUntrustedTls);
+        setBugTrackerLoadError("");
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        // Allow a retry: an id that never loaded shouldn't stay "sticky".
+        loadedBugConnFor.current = null;
+        setBugTrackerLoadError(errMsg(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isConnection, backendIsKiwi, profile?.id]);
+
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState("");
   const [testOk, setTestOk] = useState(false);
@@ -169,6 +245,18 @@ export function ProfileForm({
   // validated against the strict key format.
   const keyError = backendIsKiwi ? "" : projectKeyError(projectKey);
   const urlError = jiraUrlError(jiraUrl);
+
+  // Bug tracker validation. Reuses jiraUrlError -- the bug tracker's target
+  // is always a Jira instance, same as the main URL field above.
+  const bugTrackerUrlError =
+    backendIsKiwi && !isConnection ? jiraUrlError(bugTrackerUrl) : "";
+  // Exactly one of URL/project key filled is an edit in progress, not a
+  // removal request -- block Save rather than guess what the user meant
+  // (RND_P_4TFINT_05-359 review, Important 1).
+  const bugTrackerPartial =
+    backendIsKiwi &&
+    !isConnection &&
+    (bugTrackerUrl.trim() !== "") !== (bugTrackerProjectKey.trim() !== "");
 
   const kiwiUser = kiwiUsername.trim();
   const kiwiPass = kiwiPassword.trim();
@@ -228,7 +316,10 @@ export function ProfileForm({
     projectKey.trim() !== "" &&
     keyError === "" &&
     tokenSatisfied &&
-    !kiwiCredInvalid;
+    !kiwiCredInvalid &&
+    !bugTrackerPartial &&
+    bugTrackerUrlError === "" &&
+    bugTrackerLoadError === "";
 
   // Warn when an edit changes the project/URL/backend — the cached data will
   // be cleared (app.go's UpdateProfile purges the store cache on any of the
@@ -363,6 +454,73 @@ export function ProfileForm({
       // Cross-project source projects are stored via a targeted setter
       // (RND_P_4TFINT_05-322), separate from the main profile write.
       await SetProfileCrossProjectSources(p.id, crossProjectSources.trim());
+
+      // Bug tracker connection (RND_P_4TFINT_05-359): also a targeted write,
+      // separate from the main profile write, and only relevant for Kiwi.
+      // The profile itself is already saved by this point -- a failure here
+      // is reported alongside the success rather than thrown, so onCreated
+      // still fires below and a retry updates the existing profile instead
+      // of creating a duplicate (review, Important 3).
+      if (backendIsKiwi) {
+        const trackerUrl = normalizeJiraUrl(bugTrackerUrl);
+        const trackerKey = bugTrackerProjectKey.trim();
+        try {
+          if (trackerUrl !== "" && trackerKey !== "") {
+            // A blank token here means "keep the stored one" (or "none yet"
+            // on create) -- SaveBugConnection treats that as keep-on-update
+            // and requires a real token only when nothing is stored yet.
+            const saved = await SaveBugConnection(
+              p.id,
+              trackerUrl,
+              trackerKey,
+              bugTrackerIssueType.trim(),
+              bugTrackerToken.trim(),
+              bugTrackerCaCert.trim(),
+              bugTrackerAllowUntrustedTLS,
+            );
+            setBugConnId(saved.id);
+            setBugConnLoadedUrl(saved.url);
+            setBugConnLoadedProjectKey(saved.projectKey);
+            setBugConnLoadedIssueType(saved.bugIssueType);
+            setBugConnLoadedCaCert(saved.caCert);
+            setBugConnLoadedAllowUntrustedTLS(saved.allowUntrustedTls);
+          } else if (trackerUrl === "" && trackerKey === "" && bugConnId !== "") {
+            // Both cleared with a connection on record: this is the one
+            // unambiguous "turn bug routing back off" signal (a half-cleared
+            // pair is blocked before Save is even enabled -- bugTrackerPartial
+            // above). Confirm first: this also deletes the stored credential
+            // and can't be undone from here.
+            const ok = await confirm({
+              title: "Remove the bug tracker connection?",
+              message: `This stops bugs from being filed at ${bugConnLoadedUrl} (project ${bugConnLoadedProjectKey}) and deletes its stored credential.`,
+              confirmLabel: "Remove connection",
+              danger: true,
+            });
+            if (ok) {
+              await DeleteBugConnection(p.id);
+              setBugConnId("");
+              setBugConnLoadedUrl("");
+              setBugConnLoadedProjectKey("");
+              setBugConnLoadedIssueType("");
+              setBugConnLoadedCaCert("");
+              setBugConnLoadedAllowUntrustedTLS(false);
+            } else {
+              // Declined: the connection survives, so the form must go back
+              // to showing what is actually stored rather than the blanks
+              // that prompted this confirm -- otherwise the displayed state
+              // contradicts reality and the next Save re-prompts for the
+              // same deletion.
+              setBugTrackerUrl(bugConnLoadedUrl);
+              setBugTrackerProjectKey(bugConnLoadedProjectKey);
+              setBugTrackerIssueType(bugConnLoadedIssueType);
+              setBugTrackerCaCert(bugConnLoadedCaCert);
+              setBugTrackerAllowUntrustedTLS(bugConnLoadedAllowUntrustedTLS);
+            }
+          }
+        } catch (e) {
+          setError(`Profile saved, but the bug tracker connection could not be saved: ${errMsg(e)}`);
+        }
+      }
       onCreated?.(p);
     } catch (e) {
       setError(errMsg(e));
@@ -499,6 +657,112 @@ export function ProfileForm({
           />
         </label>
       )}
+      {backendIsKiwi && !isConnection && (
+        <fieldset className="profile-bug-tracker">
+          <legend>Bug tracker</legend>
+          <p className="field-hint">
+            Kiwi has no issue type of its own, so defects raised here are
+            filed into a Jira project instead. Leave this empty to keep bug
+            reporting off.
+          </p>
+          {bugTrackerLoadError && (
+            <div className="error-text">
+              Could not load the saved bug tracker connection:{" "}
+              {bugTrackerLoadError}. Saving now could overwrite it -- fix the
+              connection (or toggle Backend off and back on to Kiwi to retry)
+              before saving.
+            </div>
+          )}
+          <label>
+            Bug tracker URL
+            <input
+              value={bugTrackerUrl}
+              onChange={(e) => setBugTrackerUrl(e.target.value)}
+              onBlur={() => setBugTrackerUrl(normalizeJiraUrl(bugTrackerUrl))}
+              placeholder="https://jira.example.com"
+              spellCheck={false}
+            />
+            {bugTrackerUrlError && (
+              <span className="field-error">{bugTrackerUrlError}</span>
+            )}
+          </label>
+          <label>
+            Bug project key
+            <input
+              value={bugTrackerProjectKey}
+              onChange={(e) => setBugTrackerProjectKey(e.target.value.toUpperCase())}
+              placeholder="e.g. DEF"
+              spellCheck={false}
+            />
+          </label>
+          {bugTrackerPartial && (
+            <span className="field-error">
+              Enter both a bug tracker URL and a project key, or clear both to
+              leave bug reporting off.
+            </span>
+          )}
+          <label>
+            Bug issue type
+            <input
+              value={bugTrackerIssueType}
+              onChange={(e) => setBugTrackerIssueType(e.target.value)}
+              placeholder="Bug"
+              spellCheck={false}
+            />
+          </label>
+          <label>
+            Bug tracker token
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={bugTrackerToken}
+              onChange={(e) => setBugTrackerToken(e.target.value)}
+              placeholder={
+                bugConnId
+                  ? "Leave blank to keep the current token"
+                  : "Personal access token"
+              }
+            />
+          </label>
+          <span className="field-hint">
+            Stored in Windows Credential Manager, never in the database.
+            Leave it blank to keep the one already saved.
+          </span>
+
+          <details className="profile-form-advanced">
+            <summary>Advanced: TLS / certificate settings (bug tracker)</summary>
+            <label>
+              CA certificate (PEM, optional)
+              <textarea
+                value={bugTrackerCaCert}
+                onChange={(e) => setBugTrackerCaCert(e.target.value)}
+                placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"}
+                rows={5}
+                spellCheck={false}
+              />
+              <span className="field-hint">
+                Paste a PEM-encoded CA certificate to trust when connecting to this Jira
+                instance. You'll need this if the server uses a private or internal CA
+                that isn't in your system's trust store (for example, a corporate CA on
+                macOS).
+              </span>
+            </label>
+            <label className="profile-form-checkbox">
+              <input
+                type="checkbox"
+                checked={bugTrackerAllowUntrustedTLS}
+                onChange={(e) => setBugTrackerAllowUntrustedTLS(e.target.checked)}
+              />
+              Allow untrusted certificate (skip TLS verification)
+              <span className="field-hint field-hint-warn">
+                Turns off all TLS certificate checks. Only use this for trusted
+                internal servers when no CA certificate is available. This is insecure
+                and should not be used in production.
+              </span>
+            </label>
+          </details>
+        </fieldset>
+      )}
       {!isEdit && reusable.length > 0 && (
         <label>
           Start from
@@ -596,7 +860,7 @@ export function ProfileForm({
       )}
 
       <details className="profile-form-advanced">
-        <summary>Advanced: TLS / certificate settings</summary>
+        <summary>Advanced: TLS / certificate settings (this connection)</summary>
         <label>
           CA certificate (PEM, optional)
           <textarea

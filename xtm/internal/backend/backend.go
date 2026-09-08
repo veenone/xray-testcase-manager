@@ -69,7 +69,17 @@ type Capabilities struct {
 	SupportsWorkflowTransitions bool `json:"supportsWorkflowTransitions"`
 	SupportsBugCreation         bool `json:"supportsBugCreation"`
 	SupportsBugLinks            bool `json:"supportsBugLinks"`
-	SupportsTags                bool `json:"supportsTags"`
+	// SupportsBugRouting reports that this profile files its defects into a
+	// SEPARATE backend: a Kiwi workspace with a Jira bug connection
+	// (RND_P_4TFINT_05-359). It is a property of the profile's configuration,
+	// not of the adapter, so no adapter's Capabilities() sets it; app.go's
+	// GetCapabilities merges it in.
+	//
+	// SupportsBugCreation stays whatever the primary adapter reports. Kiwi
+	// still cannot create a bug; something else does it on Kiwi's behalf, and
+	// flipping the adapter's own flag would make it lie.
+	SupportsBugRouting bool `json:"supportsBugRouting"`
+	SupportsTags       bool `json:"supportsTags"`
 }
 
 // Backend is the storage/tracker-agnostic contract the sync engine and app
@@ -251,4 +261,39 @@ type PreconditionStreamer interface {
 // skip the fast path when the backend does not implement it.
 type TestPreconditionReader interface {
 	ListTestPreconditions(ctx context.Context, testKey string) ([]Precondition, error)
+}
+
+// BugKeyReader is an optional capability: fetching specific bug issues by key.
+//
+// It is deliberately kept off Backend. Only a Jira-style tracker can answer it
+// cheaply (one JQL "key in (...)" search), and no other adapter has a better
+// answer than the project-wide ListProjectBugs it already provides.
+//
+// The syncer needs it when a workspace's bugs live in a DIFFERENT backend from
+// its tests (RND_P_4TFINT_05-359): the primary backend reports which keys are
+// linked, and this fills in what those keys actually are. Callers type-assert
+// and fall back to the project-wide read when the backend does not implement
+// it.
+type BugKeyReader interface {
+	ListBugsByKeys(ctx context.Context, keys []string) ([]Bug, error)
+}
+
+// RunScopedBugLinker is an optional capability: attaching a bug to the single
+// test run it was raised from, which takes BOTH the Test Execution container
+// and the test inside it.
+//
+// It is deliberately kept off Backend. Backend.CreateBugLink carries one key
+// because in an issue tracker a defect links to the Test issue itself, and
+// that is all Xray needs. Kiwi has no issue link: a defect is a hyperlink hung
+// on a TestExecution row, which IS the (run, case) pair and carries its own
+// id, distinct from both the run's and the case's. The execution key the
+// syncer holds is a Kiwi TestRun id (a KindTestExec container key), so neither
+// key alone identifies what to hang the link on — passing the run id where an
+// execution id is expected either fails or lands on an unrelated execution
+// whose pk happens to match (RND_P_4TFINT_05-359).
+//
+// Only Kiwi needs this. Callers type-assert, and fall back to
+// Backend.CreateBugLink when the backend does not implement it.
+type RunScopedBugLinker interface {
+	CreateRunBugLink(ctx context.Context, execKey, testKey, bugKey string) error
 }

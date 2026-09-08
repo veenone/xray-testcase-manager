@@ -378,6 +378,16 @@ func (a *Adapter) ListProjectBugs(ctx context.Context, projKey, issueType string
 	return toBugs(bugs), nil
 }
 
+// ListBugsByKeys implements backend.BugKeyReader by delegating to the Jira
+// client's key lookup.
+func (a *Adapter) ListBugsByKeys(ctx context.Context, keys []string) ([]backend.Bug, error) {
+	bugs, err := a.c.ListBugsByKeys(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+	return toBugs(bugs), nil
+}
+
 func (a *Adapter) GetBugCreateFields(ctx context.Context, projectKey, issueType string) ([]backend.BugCreateField, error) {
 	fields, err := a.c.GetBugCreateFields(ctx, projectKey, issueType)
 	if err != nil {

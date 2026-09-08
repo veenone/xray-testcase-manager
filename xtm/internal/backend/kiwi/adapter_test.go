@@ -163,7 +163,10 @@ func TestRemoteAhead(t *testing.T) {
 // implemented them for real; UpdateIssue/CreateTest/FieldsForJira moved to
 // write_test.go once P5.1 implemented the TestCase write surface for real
 // (an empty fields map is now a legitimate no-op call, not ErrUnsupported —
-// see TestUpdateIssueResolvesIdsAndAppliesFields and friends).
+// see TestUpdateIssueResolvesIdsAndAppliesFields and friends). ListBugs moved
+// to bugs_test.go once Task 6 implemented it for real: with no bug browse
+// base configured it now returns (empty, nil) rather than ErrUnsupported, by
+// design — see TestListBugsWithoutABrowseBaseReturnsNothing.
 func TestUnimplementedMethodsReturnErrUnsupported(t *testing.T) {
 	a := New("http://example.invalid", "alice:secret")
 	ctx := context.Background()
@@ -176,9 +179,6 @@ func TestUnimplementedMethodsReturnErrUnsupported(t *testing.T) {
 	}
 	if err := a.PostTransition(ctx, "1", "11"); !errors.Is(err, backend.ErrUnsupported) {
 		t.Errorf("PostTransition: expected ErrUnsupported, got %v", err)
-	}
-	if _, _, err := a.ListBugs(ctx, "PROJ", nil, "Bug", nil); !errors.Is(err, backend.ErrUnsupported) {
-		t.Errorf("ListBugs: expected ErrUnsupported, got %v", err)
 	}
 }
 

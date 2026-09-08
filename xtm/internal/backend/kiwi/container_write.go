@@ -499,35 +499,51 @@ func (a *Adapter) SetTestRunComment(ctx context.Context, execKey, testKey, comme
 	return backend.ErrUnsupported
 }
 
-func (a *Adapter) SetTestRunStatus(ctx context.Context, execKey, testKey, status string) error {
+// executionIDForRunCase resolves the TestExecution a (run, case) pair names.
+//
+// execKey is a Kiwi TestRun id (that is what a KindTestExec container's key
+// holds — see convert.go) and testKey is a TestCase id; the execution joining
+// them has its own pk, which is what every per-run write must address. A run
+// can legitimately hold more than one execution for the same case (a re-run),
+// so the rows are sorted and the lowest id wins, which is the first execution
+// of that case in the run.
+func (a *Adapter) executionIDForRunCase(ctx context.Context, execKey, testKey string) (int, error) {
 	runID, err := parseKiwiID(execKey)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	caseID, err := parseKiwiID(testKey)
 	if err != nil {
-		return err
+		return 0, err
 	}
+	var execs []kiwiExecRow
+	if err := a.c.call(ctx, "TestExecution.filter", []any{map[string]any{"run": runID, "case": caseID}}, &execs); err != nil {
+		return 0, err
+	}
+	if len(execs) == 0 {
+		return 0, fmt.Errorf("kiwi: no Test Execution found for run %d / case %d — add the test to the run first", runID, caseID)
+	}
+	sort.Slice(execs, func(i, j int) bool { return execs[i].ID < execs[j].ID })
+	return execs[0].ID, nil
+}
+
+func (a *Adapter) SetTestRunStatus(ctx context.Context, execKey, testKey, status string) error {
 	status = strings.TrimSpace(status)
 	if status == "" {
 		return fmt.Errorf("kiwi: a run status is required")
 	}
 
-	var execs []kiwiExecRow
-	if err := a.c.call(ctx, "TestExecution.filter", []any{map[string]any{"run": runID, "case": caseID}}, &execs); err != nil {
+	execID, err := a.executionIDForRunCase(ctx, execKey, testKey)
+	if err != nil {
 		return err
 	}
-	if len(execs) == 0 {
-		return fmt.Errorf("kiwi: no Test Execution found for run %d / case %d — add the test to the run before setting a result", runID, caseID)
-	}
-	sort.Slice(execs, func(i, j int) bool { return execs[i].ID < execs[j].ID })
 
 	statusID, err := a.resolveExecStatusID(ctx, status)
 	if err != nil {
 		return err
 	}
 
-	if err := a.c.call(ctx, "TestExecution.update", []any{execs[0].ID, map[string]any{"status": statusID}}, nil); err != nil {
+	if err := a.c.call(ctx, "TestExecution.update", []any{execID, map[string]any{"status": statusID}}, nil); err != nil {
 		return err
 	}
 	return nil

@@ -20,6 +20,33 @@ made every mutation feel like a page refresh. Schema reaches v49.
 
 ### Added
 
+**Kiwi TCMS bugs routed into a Jira project (RND_P_4TFINT_05-359)**
+- A Kiwi profile can now be given a Jira bug tracker: URL, project key, issue
+  type, and its own token, configured independently on the profile. A nested
+  **Advanced: TLS / certificate settings (bug tracker)** disclosure holds a
+  CA certificate and an untrusted-TLS option for that connection, separate
+  from the main connection's own TLS settings. The token is stored in
+  Windows Credential Manager, never the database.
+- Filing a bug creates the issue in Jira and adds a hyperlink back on the Kiwi
+  Test Execution the bug was raised from. Sync reads those hyperlinks,
+  extracts the Jira keys, and fetches only those issues, so the project-wide
+  bug search is skipped and the Bugs view shows what relates to this product
+  rather than every defect in the Jira project.
+- If Jira creates the issue but the link back fails, the issue is kept and the
+  commit reports it. Retrying links the existing issue instead of filing a
+  duplicate. A linked key Jira no longer returns (a deleted issue, or a
+  malformed key) is dropped from the Bugs view rather than shown as a blank
+  row, and the drop is logged.
+- If the bug connection is configured but its credential cannot be loaded,
+  the bug stage fails and names the connection rather than emptying the
+  cached Bugs view; a Jira server that is genuinely unreachable fails the
+  same way, during the key fetch. **Create Bug** is offered whenever the
+  backend can create bugs itself or a bug tracker is configured, so it now
+  appears on Kiwi profiles that have one set up.
+- Removing a bug tracker requires clearing both the URL and the project key,
+  and asks for confirmation before deleting the connection and its
+  credential.
+
 **Bulk summary rename (#147, #151, RND_P_4TFINT_05-354)**
 - Add a common **prefix, suffix, or both** to the summaries of every selected
   test, with a **live before/after preview** of each one. The inserted text is
