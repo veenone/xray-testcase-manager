@@ -42,14 +42,20 @@ type PreconditionTest struct {
 // with the count of Tests referencing it, ordered by key. Drives the
 // dedicated Preconditions management view (FR-13.4).
 func (r *Repository) ListPreconditionsWithUsage(profileID string) ([]PreconditionUsage, error) {
+	// The count is a correlated subquery, not a LEFT JOIN with a GROUP BY.
+	// The join shape had SQLite re-scan the profile's whole link table once per
+	// precondition and then group the result on five text columns, one of them
+	// the full description: measured on a live database (6,028 preconditions,
+	// 19,658 links) it took 57 seconds, which the view rendered as a
+	// permanent "Loading…". The subquery is one index seek per row and returns
+	// the same 6,028 rows in 48ms.
 	rows, err := r.db.Query(
 		`SELECT p.jira_key, p.summary, p.type, p.description, p.condition,
-		        COUNT(tp.test_key) AS test_count
+		        (SELECT COUNT(*) FROM test_precondition tp
+		          WHERE tp.profile_id = p.profile_id
+		            AND tp.precondition_key = p.jira_key) AS test_count
 		 FROM precondition p
-		 LEFT JOIN test_precondition tp
-		   ON tp.profile_id = p.profile_id AND tp.precondition_key = p.jira_key
 		 WHERE p.profile_id = ?
-		 GROUP BY p.jira_key, p.summary, p.type, p.description, p.condition
 		 ORDER BY `+keyNumericOrderExpr("p.jira_key")+` DESC, p.jira_key DESC`,
 		profileID)
 	if err != nil {

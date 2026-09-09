@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useProfile } from "../contexts/ProfileContext";
+import { useSync } from "../contexts/SyncContext";
 import {
   usePreconditions,
   usePreconditionTests,
@@ -90,6 +91,12 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
   const [detailKey, setDetailKey] = useViewState(profileId, "preconditions", "detailKey", "");
   const [detailVersion, setDetailVersion] = useState(0);
   const { confirm } = useConfirm();
+  // A view-initiated sync has to register with the sync machine, not just call
+  // the binding: the reducer drops every sync:progress frame while the machine
+  // is idle, so the status bar showed nothing for the whole run. Registering
+  // also makes the two syncs exclude each other, since both write the same
+  // profile's rows.
+  const { beginSync, endSync, canSync } = useSync();
 
   // editing toggles the detail pane between read-only display and an explicit
   // edit session. Resets to false whenever the selected precondition changes so
@@ -103,11 +110,16 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
   // The precondition stage is the slowest one in a full sync (an association
   // read per precondition), so a user who has just edited a condition in Jira
   // should not have to pay for the test, folder and container passes to see it.
+  // syncing is this view's own run, which is what the button label reports.
+  // canSync is the machine's global guard, which is what disables it: a sync
+  // started anywhere blocks one started here.
   const [syncing, setSyncing] = useState(false);
   async function syncPreconditions() {
-    setSyncing(true);
+    if (!canSync) return;
     setError("");
     setNotice("");
+    setSyncing(true);
+    beginSync();
     try {
       await SyncPreconditions(profileId);
       onChanged();
@@ -115,6 +127,7 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
     } catch (e) {
       setError(errMsg(e));
     } finally {
+      endSync();
       setSyncing(false);
     }
   }
@@ -323,7 +336,8 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
           <button
             className="btn"
             onClick={syncPreconditions}
-            disabled={syncing}
+            disabled={!canSync}
+            aria-busy={syncing}
             title="Refresh just the preconditions from Jira, without syncing everything else"
           >
             {syncing ? "Syncing…" : "Sync"}
