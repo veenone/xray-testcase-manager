@@ -3644,6 +3644,12 @@ tr.row-selected td:first-child {
   align-items: center;
   gap: 10px;
 }
+/* What a preconditions-only sync says when it worked. Mirrors .reqs-notice. */
+.precond-notice {
+  margin: 0 0 4px;
+  font-size: 12px;
+  word-break: break-all;
+}
 .precond-detail-key {
   font-size: 15px;
   font-weight: 600;

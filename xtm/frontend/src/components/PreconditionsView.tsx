@@ -10,6 +10,7 @@ import {
   EditPreconditionField,
   DeletePrecondition,
   BulkAssociatePreconditions,
+  SyncPreconditions,
   BrowserOpenURL,
   isDemoUrl,
   errMsg,
@@ -77,6 +78,11 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
   const [sortField, setSortField] = useViewState(profileId, "preconditions", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "preconditions", "sortDesc", true);
   const [error, setError] = useState("");
+  // Said after a preconditions-only sync. Errors go to the detail pane's error
+  // line with every other failure; a success has nowhere else to be reported,
+  // and a Sync button that leaves the list looking identical needs to say it
+  // did something.
+  const [notice, setNotice] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   // A test opened from the "Used by" list, docked as an inline detail beside the
@@ -92,6 +98,26 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
 
   const selectedPre = list.find((p) => p.key === selected) ?? null;
   const isLocal = selected.startsWith("new-precond-");
+
+  // Refreshing only the preconditions, the way Requirements and Containers do.
+  // The precondition stage is the slowest one in a full sync (an association
+  // read per precondition), so a user who has just edited a condition in Jira
+  // should not have to pay for the test, folder and container passes to see it.
+  const [syncing, setSyncing] = useState(false);
+  async function syncPreconditions() {
+    setSyncing(true);
+    setError("");
+    setNotice("");
+    try {
+      await SyncPreconditions(profileId);
+      onChanged();
+      setNotice("Preconditions refreshed from Jira.");
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   // The key opens the real Jira issue in the system browser, the way the test
   // key does in TestDetail. Hidden for demo profiles and for a precondition
@@ -294,6 +320,14 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
+          <button
+            className="btn"
+            onClick={syncPreconditions}
+            disabled={syncing}
+            title="Refresh just the preconditions from Jira, without syncing everything else"
+          >
+            {syncing ? "Syncing…" : "Sync"}
+          </button>
           <SortControl
             fields={[
               { value: "key", label: "Key" },
@@ -333,6 +367,7 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
             </button>
           ))}
         </div>
+        {notice && <p className="precond-notice muted">{notice}</p>}
 
         {loading ? (
           <p className="muted precond-empty">Loading…</p>
@@ -691,6 +726,7 @@ export function PreconditionsView({ onChanged, jiraUrl }: Props) {
       {detailKey && (
         <TestDetail
           testKey={detailKey}
+          jiraUrl={jiraUrl}
           version={detailVersion}
           pendingForTest={[]}
           folders={[]}

@@ -12,6 +12,7 @@ import {backend} from '../models';
 import {coveragepublish} from '../models';
 import {settings} from '../models';
 import {spellcheck} from '../models';
+import {importfile} from '../models';
 
 export function AddCalledTestStep(arg1:string,arg2:string,arg3:string):Promise<testrepo.Step>;
 
@@ -361,7 +362,7 @@ export function ListVersions(arg1:string,arg2:string):Promise<Array<coverage.Ver
 
 export function MoveTestToFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 
-export function PreviewImport(arg1:string,arg2:boolean):Promise<testrepo.ImportPreview>;
+export function PreviewImport(arg1:string,arg2:boolean):Promise<importfile.Preview>;
 
 export function PublishCoverageGroups(arg1:string,arg2:string):Promise<coveragepublish.Result>;
 
@@ -458,6 +459,8 @@ export function SetVersionStatus(arg1:string,arg2:string,arg3:string):Promise<vo
 export function SyncBugs(arg1:string):Promise<void>;
 
 export function SyncContainers(arg1:string):Promise<void>;
+
+export function SyncPreconditions(arg1:string):Promise<void>;
 
 export function SyncProfile(arg1:string):Promise<void>;
 

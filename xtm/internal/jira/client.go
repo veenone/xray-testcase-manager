@@ -53,6 +53,11 @@ type Client struct {
 	// at most once.
 	customFieldMu  sync.Mutex
 	customFieldIDs map[string]string
+	// fieldCatalog caches the whole /rest/api/2/field answer (see customFields).
+	// Every resolver consults it, and one resolver consults it twice, once for
+	// the defining plugin's key and once for the display name; the answer runs
+	// to hundreds of entries, so it is read once per client.
+	fieldCatalog []customField
 	// customFieldTypes caches the coarse schema type of every custom field on
 	// the instance, keyed by field id (see customFieldType), filled from one
 	// /rest/api/2/field fetch so a commit pushing several custom field edits
