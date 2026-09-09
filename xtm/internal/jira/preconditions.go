@@ -98,7 +98,14 @@ func normalizeTypeName(s string) string {
 func (c *Client) ListPreconditions(ctx context.Context, projectKey string, onProgress func(done, total int)) ([]Precondition, map[string][]string, error) {
 	allPre := []Precondition{}
 	allLinks := map[string][]string{}
-	err := c.ListPreconditionsStream(ctx, projectKey, onProgress,
+	// This shape has no stage, so only the association phase is forwarded: it
+	// is the one whose counter this caller's bar was already showing.
+	staged := func(stage string, done, total int) {
+		if onProgress != nil && stage == PreconditionStageLinking {
+			onProgress(done, total)
+		}
+	}
+	err := c.ListPreconditionsStream(ctx, projectKey, staged,
 		func(pre []Precondition, links map[string][]string) error {
 			allPre = append(allPre, pre...)
 			for tk, pks := range links {
@@ -121,10 +128,20 @@ func (c *Client) ListPreconditions(ctx context.Context, projectKey string, onPro
 // store failure cannot be silently absorbed. An instance with no Precondition
 // issue type returns nil having called onBatch zero times, which callers read
 // as a benign skip rather than an empty project.
+// The two halves of a precondition sync, named so a caller can label them
+// apart. Finding a project's preconditions is one paged search per 100 of
+// them, and linking is one association read per precondition; on a 6,000
+// precondition project each half is minutes long, so a bar that only moves
+// during the second reads as a hang during the first.
+const (
+	PreconditionStageFinding = "finding"
+	PreconditionStageLinking = "linking"
+)
+
 func (c *Client) ListPreconditionsStream(
 	ctx context.Context,
 	projectKey string,
-	onProgress func(done, total int),
+	onProgress func(stage string, done, total int),
 	onBatch func(pre []Precondition, links map[string][]string) error,
 ) error {
 	if isDemoURL(c.baseURL) {
@@ -144,7 +161,11 @@ func (c *Client) ListPreconditionsStream(
 		return nil
 	}
 
-	preconditions, err := c.searchPreconditions(ctx, projectKey, typeID)
+	preconditions, err := c.searchPreconditions(ctx, projectKey, typeID, func(done, total int) {
+		if onProgress != nil {
+			onProgress(PreconditionStageFinding, done, total)
+		}
+	})
 	if err != nil {
 		return fmt.Errorf("search preconditions: %w", err)
 	}
@@ -189,7 +210,7 @@ func (c *Client) ListPreconditionsStream(
 				if onProgress != nil {
 					n := atomic.AddInt64(&done, 1)
 					progMu.Lock()
-					onProgress(int(n), total)
+					onProgress(PreconditionStageLinking, int(n), total)
 					progMu.Unlock()
 				}
 			}()
@@ -261,7 +282,7 @@ func (c *Client) listPreconditionTestsRetrying(ctx context.Context, key string) 
 // searchPreconditions finds every Precondition issue in a project via JQL,
 // matching by issue-type id (robust to renamed/localised types), paging until
 // the reported total is reached.
-func (c *Client) searchPreconditions(ctx context.Context, projectKey, typeID string) ([]Precondition, error) {
+func (c *Client) searchPreconditions(ctx context.Context, projectKey, typeID string, onPage func(done, total int)) ([]Precondition, error) {
 	jql := fmt.Sprintf(`project = "%s" AND issuetype = %s ORDER BY key ASC`, projectKey, typeID)
 
 	// Resolved once per search rather than per page. A lookup failure is not
@@ -320,6 +341,12 @@ func (c *Client) searchPreconditions(ctx context.Context, projectKey, typeID str
 			out = append(out, p)
 		}
 		startAt += len(resp.Issues)
+		// Reported per page rather than per issue: the page is the unit of work
+		// (one HTTP round trip), and Jira hands back the project's total with
+		// the first one, so the bar has a scale from the very first frame.
+		if onPage != nil {
+			onPage(startAt, resp.Total)
+		}
 		if len(resp.Issues) == 0 || startAt >= resp.Total {
 			break
 		}

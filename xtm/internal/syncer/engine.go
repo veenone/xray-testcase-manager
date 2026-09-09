@@ -553,10 +553,28 @@ func (e *Engine) syncFolderMembership(ctx context.Context, profileID, projectKey
 // but demo mode populates them.
 func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
 	gen := time.Now().UnixMilli()
-	progress := func(done, total int) {
-		if onProgress != nil {
-			onProgress(Progress{Phase: "preconditions", Stage: "Syncing preconditions", Fetched: done, Total: total})
+	// Two labels, because the pass has two halves that each take minutes on a
+	// large project: finding the preconditions (one paged search per 100) and
+	// then reading each one's linked tests. One label across both made the bar
+	// fill, reset to zero and fill again, which reads as a restart.
+	stageLabels := map[string]string{
+		backend.PreconditionStageFinding: "Finding preconditions",
+		backend.PreconditionStageLinking: "Linking preconditions to tests",
+	}
+	staged := func(stage string, done, total int) {
+		if onProgress == nil {
+			return
 		}
+		label := stageLabels[stage]
+		if label == "" {
+			label = "Syncing preconditions"
+		}
+		onProgress(Progress{Phase: "preconditions", Stage: label, Fetched: done, Total: total})
+	}
+	// The non-streaming backends (Kiwi) still report one undifferentiated
+	// counter, which is what their single-shot read produces.
+	progress := func(done, total int) {
+		staged(backend.PreconditionStageLinking, done, total)
 	}
 
 	// batches counts how many times persist actually ran. Zero means the
@@ -587,7 +605,7 @@ func (e *Engine) syncPreconditions(ctx context.Context, profileID, projectKey st
 	}
 
 	if s, ok := e.backend.(backend.PreconditionStreamer); ok {
-		if err := s.ListPreconditionsStream(ctx, projectKey, progress, persist); err != nil {
+		if err := s.ListPreconditionsStream(ctx, projectKey, staged, persist); err != nil {
 			return fmt.Errorf("list preconditions: %w", err)
 		}
 	} else {

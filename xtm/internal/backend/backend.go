@@ -5,6 +5,16 @@ import (
 	"errors"
 )
 
+// The two halves of a precondition sync, as reported by
+// PreconditionStreamer.ListPreconditionsStream. Each is minutes long on a large
+// project (finding is one paged search per 100 preconditions, linking is one
+// association read per precondition), so a caller that shows progress has to
+// label them apart or its bar appears to fill, reset and start again.
+const (
+	PreconditionStageFinding = "finding"
+	PreconditionStageLinking = "linking"
+)
+
 // ErrUnsupported is returned by a backend for an operation its target system
 // does not support. Callers gate on Capabilities first; ErrUnsupported is the
 // runtime backstop.
@@ -246,7 +256,7 @@ type PreconditionStreamer interface {
 	ListPreconditionsStream(
 		ctx context.Context,
 		projectKey string,
-		onProgress func(done, total int),
+		onProgress func(stage string, done, total int),
 		onBatch func(pre []Precondition, links map[string][]string) error,
 	) error
 }
