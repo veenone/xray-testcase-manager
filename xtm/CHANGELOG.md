@@ -8,6 +8,10 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
 
 ## [Unreleased]
 
+## [1.10.0a] - 2026-09-09 (alpha)
+
+First alpha of the 1.10.0 line, for qualification testing.
+
 New features plus a large internal rework. **Bulk summary rename**, an
 **onboarding tour**, **select-all when adding tests**, and a
 **keyboard-operable, virtualized grid** are the additions, and **Kiwi
@@ -16,7 +20,12 @@ categories now read as Test Repository folders**. Two syncs are rebuilt: the
 and a large **Kiwi** product syncs in under a minute instead of eight.
 Underneath, the frontend moved to a **server-data cache** and `App.tsx` was
 decomposed into **contexts**, which together removed the full-view reloads that
-made every mutation feel like a page refresh. Schema reaches v49.
+made every mutation feel like a page refresh.
+
+The **Preconditions** view is the area most changed by late fixes: its
+definition text reads and writes for the first time, its list opens in
+milliseconds instead of a minute on a large project, and it has its own Sync
+button with a progress bar. Schema reaches v50.
 
 ### Added
 
@@ -46,6 +55,21 @@ made every mutation feel like a page refresh. Schema reaches v49.
 - Removing a bug tracker requires clearing both the URL and the project key,
   and asks for confirmation before deleting the connection and its
   credential.
+
+**A preconditions-only sync (#168)**
+- The Preconditions view has its own **Sync** button, beside Requirements',
+  Containers' and the Bugs panel's. The precondition stage is the slowest part
+  of a full sync, one association read per precondition, so seeing a condition
+  change no longer costs the test, folder and container passes as well.
+- The status bar tracks it in two halves, **Finding preconditions** and
+  **Linking preconditions to tests**, each with its own count. A single label
+  across both made the bar fill, reset to zero and fill again.
+
+**Jira links on a precondition (#168)**
+- The key in the Preconditions detail header opens its Jira issue in your
+  browser, the way the test key already did. Hidden for demo profiles and for a
+  precondition that exists only locally. The test detail opened from a
+  precondition's linked-test list gained the same link.
 
 **Bulk summary rename (#147, #151, RND_P_4TFINT_05-354)**
 - Add a common **prefix, suffix, or both** to the summaries of every selected
@@ -90,6 +114,50 @@ made every mutation feel like a page refresh. Schema reaches v49.
   silent to assistive tech. Dark-mode tokens and spellcheck paging round it out.
 
 ### Fixed
+
+**A precondition's Condition is read and written (#163, #168, RND_P_4TFINT_05-358)**
+- The definition text on a Precondition was never fetched, so every one of them
+  synced blank and the detail panel said "No condition defined" whatever Xray
+  held. It is now read with the search and pushed back on edit.
+- Resolving that field by its display name was not enough. An instance can
+  carry two custom fields with the same name, and this one does: a generic
+  select and Xray's own precondition editor, with the select listed first. Every
+  Xray field XTM reads is now resolved by the key of the plugin that defines it,
+  falling back to the display names Xray has used across versions. That covers
+  Test Type, Cucumber Scenario, Cucumber Test Type, Generic Test Definition,
+  Test Environments and Test Plan as well, none of which was broken here but
+  each of which would fail the same silent way on an instance that duplicated
+  one of those names.
+
+**The Preconditions list no longer looks stuck on a large project (#169)**
+- It was not stuck. It was a 57 second query, shown as "Loading...". The usage
+  count was a join that re-scanned the profile's whole link table once per
+  precondition and then grouped on five text columns including the full
+  description. Measured on a live database, 6,028 preconditions against 19,658
+  links: 57 seconds before, 48 milliseconds after. Schema v50 adds the index
+  the new shape seeks.
+
+**Views no longer inherit the previous profile's selection (#169)**
+- A view read its remembered per-profile state only when it first mounted, and
+  switching profiles does not remount it, so the Preconditions detail panel kept
+  showing the profile you had just left. Every view now re-reads when the
+  profile changes, and each profile gets its own selections back when you switch
+  between them.
+
+**The folder tree is shown for a repository with no folders (#166)**
+- Xray reports no folders for a project whose tests were never filed into one.
+  Browse replaced the tree with "No folders synced.", so there was no "All
+  tests" row and those tests could not be reached from the Folder grouping at
+  all. The tree is now always drawn, and its "All tests" count comes from the
+  profile's own test count rather than the sum of the root folders, which only
+  ever counted tests that were in a folder.
+
+**The About dialog fits its window (#167)**
+- The card stretched to the full height of the overlay, so it rendered 752px
+  tall around 486px of content, and had no upper bound either: in a short window
+  its footer sat below the fold with no way to reach it. Each readout row is
+  also one line now, with a filesystem path shortened from the left so the
+  filename stays visible, and the whole value on hover.
 
 **Preconditions are no longer lost on a first sync (#94, RND_P_4TFINT_05-336)**
 - The stage held every precondition in memory until the whole pass finished, so
