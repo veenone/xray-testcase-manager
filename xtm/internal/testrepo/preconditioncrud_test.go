@@ -128,3 +128,41 @@ func TestDeleteLocalPreconditionCancelsCreate(t *testing.T) {
 		}
 	}
 }
+
+// The usage count is read through a correlated subquery rather than a LEFT JOIN
+// with a GROUP BY, because the join shape re-scanned the profile's whole link
+// table once per precondition: on a live database (6,028 preconditions, 19,658
+// links) the list took 57 seconds, which the view showed as a permanent
+// "Loading…". This pins the two properties the rewrite has to preserve.
+func TestListPreconditionsWithUsageIsIndexedAndProfileScoped(t *testing.T) {
+	repo := seedTestWithPreconditions(t)
+	if err := repo.SetTestPreconditions("p1", "QA-1", []string{"QA-P-1"}); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+	// A second profile's links must not be counted into the first's, which a
+	// subquery missing the profile_id predicate would silently do.
+	if err := repo.UpsertPreconditions("p2", []testrepo.Precondition{
+		{Key: "QA-P-1", Summary: "same key, other profile"},
+	}); err != nil {
+		t.Fatalf("seed p2 precondition: %v", err)
+	}
+	if err := repo.UpsertTests("p2", []testrepo.TestCase{
+		{Key: "QA-9", ID: "9", Summary: "other profile test"},
+	}); err != nil {
+		t.Fatalf("seed p2 test: %v", err)
+	}
+	if err := repo.SetTestPreconditions("p2", "QA-9", []string{"QA-P-1"}); err != nil {
+		t.Fatalf("link p2: %v", err)
+	}
+
+	usage, err := repo.ListPreconditionsWithUsage("p1")
+	if err != nil {
+		t.Fatalf("usage: %v", err)
+	}
+	for _, u := range usage {
+		if u.Key == "QA-P-1" && u.TestCount != 1 {
+			t.Fatalf("QA-P-1 counted %d links, want 1 (the other profile's must not count)", u.TestCount)
+		}
+	}
+
+}

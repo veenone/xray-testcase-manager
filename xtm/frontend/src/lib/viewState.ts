@@ -20,16 +20,36 @@ export function useViewState<T>(
   initial: T,
 ): [T, (next: T | ((prev: T) => T)) => void] {
   const key = k(profileId, viewKey, fieldKey);
-  const [value, setValue] = useState<T>(() =>
-    store.has(key) ? (store.get(key) as T) : initial,
-  );
+  const read = () => (store.has(key) ? (store.get(key) as T) : initial);
+  // The key is tracked alongside the value so a key change re-reads the store.
+  // Seeding useState from the store only runs on mount, and a profile switch
+  // does not remount these views: the key moved to the new profile while the
+  // value stayed on the old one, so the Preconditions detail panel went on
+  // showing the previous profile's precondition. This is React's documented
+  // "adjust state when a prop changes" pattern: set during render, which React
+  // re-runs immediately without committing the discarded pass.
+  const [held, setHeld] = useState<{ key: string; value: T }>(() => ({
+    key,
+    value: read(),
+  }));
+  if (held.key !== key) {
+    setHeld({ key, value: read() });
+  }
+  const value = held.key === key ? held.value : read();
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
-      setValue((prev) => {
+      setHeld((prev) => {
+        const base = prev.key === key ? prev.value : (store.get(key) as T);
         const resolved =
-          typeof next === "function" ? (next as (p: T) => T)(prev) : next;
+          typeof next === "function" ? (next as (p: T) => T)(base) : next;
         store.set(key, resolved);
-        return resolved;
+        // Returning the same object when nothing moved keeps React's bail-out,
+        // which the plain useState this replaced got for free. Without it an
+        // effect that re-sets an unchanged value (the Preconditions view has
+        // three) re-rendered forever, since a fresh wrapper object is never
+        // Object.is-equal to the last one.
+        if (prev.key === key && Object.is(prev.value, resolved)) return prev;
+        return { key, value: resolved };
       });
     },
     [key],

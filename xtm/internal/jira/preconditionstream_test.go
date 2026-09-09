@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -305,7 +306,12 @@ func TestListPreconditionsStreamReportsProgress(t *testing.T) {
 
 	var maxDone, gotTotal int
 	err := c.ListPreconditionsStream(context.Background(), "QA",
-		func(done, total int) {
+		func(stage string, done, total int) {
+			// The association phase is the one whose counter runs across
+			// batches; the search phase has its own, tested separately.
+			if stage != PreconditionStageLinking {
+				return
+			}
 			if done > maxDone {
 				maxDone = done
 			}
@@ -320,5 +326,62 @@ func TestListPreconditionsStreamReportsProgress(t *testing.T) {
 	}
 	if maxDone != 250 {
 		t.Errorf("progress peaked at %d, want 250 (counter must span batches)", maxDone)
+	}
+}
+
+// The discovery pass has to report progress too. Finding 6,028 preconditions on
+// a live project is 61 paged searches, and until this the callback fired only
+// once the association reads began, so the status bar sat on a bare label for
+// the whole first half with no bar and no counts.
+func TestListPreconditionsStreamReportsTheSearchPhase(t *testing.T) {
+	const count = 250 // three pages at the 100-row page size
+	srv := newPreconditionServer(t, count)
+	defer srv.Close()
+
+	type frame struct {
+		stage string
+		done  int
+		total int
+	}
+	var frames []frame
+	var mu sync.Mutex
+	err := newTestClient(srv).ListPreconditionsStream(
+		context.Background(), "QA",
+		func(stage string, done, total int) {
+			mu.Lock()
+			frames = append(frames, frame{stage, done, total})
+			mu.Unlock()
+		},
+		func([]Precondition, map[string][]string) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+
+	var finding, linking []frame
+	for _, f := range frames {
+		switch f.stage {
+		case PreconditionStageFinding:
+			finding = append(finding, f)
+		case PreconditionStageLinking:
+			linking = append(linking, f)
+		default:
+			t.Fatalf("unknown progress stage %q", f.stage)
+		}
+	}
+
+	if len(finding) == 0 {
+		t.Fatal("the search phase reported no progress at all")
+	}
+	last := finding[len(finding)-1]
+	if last.done != count || last.total != count {
+		t.Errorf("search finished at %d/%d, want %d/%d", last.done, last.total, count, count)
+	}
+	// The search runs first: nothing can be linked before it is found.
+	if len(linking) == 0 {
+		t.Fatal("the association phase reported no progress")
+	}
+	if frames[0].stage != PreconditionStageFinding {
+		t.Errorf("first frame was %q, want the search phase", frames[0].stage)
 	}
 }

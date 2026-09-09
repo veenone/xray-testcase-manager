@@ -18,7 +18,7 @@ import (
 )
 
 // schemaVersion is bumped whenever the schema changes.
-const schemaVersion = 49
+const schemaVersion = 50
 
 // SchemaVersion returns the schema version this build writes — surfaced in the
 // diagnostics view (FR-12.4).
@@ -608,6 +608,11 @@ CREATE INDEX IF NOT EXISTS idx_test_case_status        ON test_case(profile_id, 
 CREATE INDEX IF NOT EXISTS idx_test_case_updated       ON test_case(profile_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_test_case_folder        ON test_case(profile_id, folder_id);
 CREATE INDEX IF NOT EXISTS idx_test_precondition_test  ON test_precondition(profile_id, test_key);
+-- The table's primary key is (profile_id, test_key, precondition_key), so
+-- precondition_key is not a usable prefix and every lookup from the
+-- precondition side scanned the profile's whole link table. Both the
+-- Preconditions list's usage count and its "Used by" list read that way.
+CREATE INDEX IF NOT EXISTS idx_test_precondition_precond ON test_precondition(profile_id, precondition_key);
 CREATE INDEX IF NOT EXISTS idx_test_requirement_test   ON test_requirement(profile_id, test_key);
 CREATE INDEX IF NOT EXISTS idx_test_requirement_req    ON test_requirement(profile_id, requirement_key);
 CREATE INDEX IF NOT EXISTS idx_pending_change_profile  ON pending_change(profile_id);

@@ -49,7 +49,7 @@ func (b *orderRecordingBackend) FolderTree(ctx context.Context, projectKey strin
 func (b *orderRecordingBackend) ListPreconditionsStream(
 	ctx context.Context,
 	projectKey string,
-	onProgress func(done, total int),
+	onProgress func(stage string, done, total int),
 	onBatch func(pre []backend.Precondition, links map[string][]string) error,
 ) error {
 	b.note("preconditions")
@@ -66,7 +66,7 @@ type failingPreconditionBackend struct {
 func (b *failingPreconditionBackend) ListPreconditionsStream(
 	ctx context.Context,
 	projectKey string,
-	onProgress func(done, total int),
+	onProgress func(stage string, done, total int),
 	onBatch func(pre []backend.Precondition, links map[string][]string) error,
 ) error {
 	return errors.New("context deadline exceeded")

@@ -270,13 +270,31 @@ func (a *Adapter) ListPreconditions(ctx context.Context, projectKey string, onPr
 func (a *Adapter) ListPreconditionsStream(
 	ctx context.Context,
 	projectKey string,
-	onProgress func(done, total int),
+	onProgress func(stage string, done, total int),
 	onBatch func(pre []backend.Precondition, links map[string][]string) error,
 ) error {
-	return a.c.ListPreconditionsStream(ctx, projectKey, onProgress,
+	staged := func(stage string, done, total int) {
+		if onProgress != nil {
+			onProgress(preconditionStage(stage), done, total)
+		}
+	}
+	return a.c.ListPreconditionsStream(ctx, projectKey, staged,
 		func(jp []jira.Precondition, links map[string][]string) error {
 			return onBatch(toPreconditions(jp), links)
 		})
+}
+
+// preconditionStage translates the Jira client's stage name into the neutral
+// one. Written out rather than passed through so the two packages drifting
+// apart is a compile error here instead of an unlabelled bar in the UI.
+func preconditionStage(s string) string {
+	switch s {
+	case jira.PreconditionStageFinding:
+		return backend.PreconditionStageFinding
+	case jira.PreconditionStageLinking:
+		return backend.PreconditionStageLinking
+	}
+	return ""
 }
 
 // ListTestPreconditions implements backend.TestPreconditionReader. Xray exposes

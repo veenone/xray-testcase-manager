@@ -13,6 +13,9 @@ import { clearViewState } from "../lib/viewState";
 const browserOpenURL = vi.fn();
 const syncPreconditions = vi.fn(async (..._args: unknown[]) => {});
 const testDetailProps = vi.fn();
+const beginSync = vi.fn();
+const endSync = vi.fn();
+let canSync = true;
 
 vi.mock("../api", () => ({
   CreatePreconditionDetailed: vi.fn(),
@@ -29,23 +32,35 @@ vi.mock("../contexts/ProfileContext", () => ({
   useProfile: () => ({ activeId: "p1" }),
 }));
 
+vi.mock("../contexts/SyncContext", () => ({
+  useSync: () => ({ beginSync, endSync, canSync }),
+}));
+
+// Hoisted so the mocked queries return the SAME array identity on every render.
+// A fresh literal per call makes every effect keyed on the data re-run each
+// render, which is a test artefact rather than how TanStack behaves.
+const PRECONDITIONS = [
+  {
+    key: "PC-1",
+    summary: "SNMP client tools reachable",
+    type: "Manual",
+    description: "",
+    condition: "snmpget -v3 ... $BOARD sysName.0",
+    testCount: 2,
+  },
+];
+const LINKED_TESTS = [
+  { key: "QA-7", summary: "Login works", status: "Approved" },
+];
+
 vi.mock("../queries/preconditions", () => ({
   usePreconditions: () => ({
-    data: [
-      {
-        key: "PC-1",
-        summary: "SNMP client tools reachable",
-        type: "Manual",
-        description: "",
-        condition: "snmpget -v3 ... $BOARD sysName.0",
-        testCount: 2,
-      },
-    ],
+    data: PRECONDITIONS,
     isLoading: false,
     error: null,
   }),
   usePreconditionTests: () => ({
-    data: [{ key: "QA-7", summary: "Login works", status: "Approved" }],
+    data: LINKED_TESTS,
     isLoading: false,
     error: null,
   }),
@@ -87,6 +102,7 @@ describe("PreconditionsView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearViewState("p1");
+    canSync = true;
   });
 
   it("opens the precondition in Jira from its key", async () => {
@@ -122,6 +138,10 @@ describe("PreconditionsView", () => {
     // The whole point of the button: one stage, not a full sync.
     expect(syncPreconditions).toHaveBeenCalledWith("p1");
     expect(onChanged).toHaveBeenCalled();
+    // Registered with the sync machine, which is what lets the status bar's
+    // progress frames through: the reducer drops them while it is idle.
+    expect(beginSync).toHaveBeenCalled();
+    expect(endSync).toHaveBeenCalled();
     expect(
       await screen.findByText("Preconditions refreshed from Jira."),
     ).toBeInTheDocument();
@@ -140,5 +160,15 @@ describe("PreconditionsView", () => {
         jiraUrl: "https://jira.example.com/",
       }),
     );
+  });
+
+  it("does not start a second sync while one is already running", async () => {
+    canSync = false;
+    renderView("https://jira.example.com/");
+
+    const button = screen.getByRole("button", { name: "Sync" });
+    expect(button).toBeDisabled();
+    await userEvent.click(button);
+    expect(syncPreconditions).not.toHaveBeenCalled();
   });
 });

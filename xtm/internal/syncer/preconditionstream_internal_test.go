@@ -50,7 +50,7 @@ type streamingPreBackend struct {
 func (f *streamingPreBackend) ListPreconditionsStream(
 	ctx context.Context,
 	projectKey string,
-	onProgress func(done, total int),
+	onProgress func(stage string, done, total int),
 	onBatch func(pre []backend.Precondition, links map[string][]string) error,
 ) error {
 	for i, b := range f.batches {
