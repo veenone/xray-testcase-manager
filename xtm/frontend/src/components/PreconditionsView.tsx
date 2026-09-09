@@ -10,6 +10,8 @@ import {
   EditPreconditionField,
   DeletePrecondition,
   BulkAssociatePreconditions,
+  BrowserOpenURL,
+  isDemoUrl,
   errMsg,
 } from "../api";
 import type { PreconditionUsage } from "../api";
@@ -26,6 +28,9 @@ import { Modal } from "./Modal";
 
 interface Props {
   onChanged: () => void;
+  // The active profile's Jira base URL, so the detail header's key can open the
+  // real issue. Absent on a profile that has none, which hides the link.
+  jiraUrl?: string;
 }
 
 // Xray Server/DC precondition types. The type drives how Xray interprets the
@@ -53,7 +58,7 @@ function cmpPre(
 // the Tests that reference it, create new ones, and delete. Everything is
 // computed from the local store and queued for commit; it recomputes when the
 // profile changes or a sync / commit invalidates the query cache.
-export function PreconditionsView({ onChanged }: Props) {
+export function PreconditionsView({ onChanged, jiraUrl }: Props) {
   const { activeId: profileId } = useProfile();
   // The precondition list and the selected precondition's linked tests both
   // come from the query cache with stable keys (Phase 4c); a mutation refreshes
@@ -87,6 +92,15 @@ export function PreconditionsView({ onChanged }: Props) {
 
   const selectedPre = list.find((p) => p.key === selected) ?? null;
   const isLocal = selected.startsWith("new-precond-");
+
+  // The key opens the real Jira issue in the system browser, the way the test
+  // key does in TestDetail. Hidden for demo profiles and for a precondition
+  // that only exists locally, neither of which has a Jira page to open.
+  const jiraBase = (jiraUrl ?? "").trim().replace(/\/+$/, "");
+  const canLinkToJira = !!jiraBase && !isDemoUrl(jiraUrl ?? "") && !isLocal;
+  function openInJira() {
+    if (canLinkToJira) BrowserOpenURL(`${jiraBase}/browse/${selected}`);
+  }
 
   // Draft buffers for the editable text fields. These are only committed to
   // Jira when the user explicitly clicks Save (not on blur). They resync from
@@ -401,7 +415,23 @@ export function PreconditionsView({ onChanged }: Props) {
                     {detailsOpen ? "▾" : "▸"}
                   </button>
                 )}
-                <span className="mono precond-detail-key">{selectedPre.key}</span>
+                {canLinkToJira ? (
+                  <button
+                    type="button"
+                    className="mono precond-detail-key precond-key-link"
+                    onClick={openInJira}
+                    title="Open this precondition in Jira (browser)"
+                  >
+                    {selectedPre.key}
+                    <span className="detail-key-ext" aria-hidden="true">
+                      ↗
+                    </span>
+                  </button>
+                ) : (
+                  <span className="mono precond-detail-key">
+                    {selectedPre.key}
+                  </span>
+                )}
                 {isLocal && (
                   <span className="pending-badge" title="Not yet created in Jira">
                     new · uncommitted

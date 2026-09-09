@@ -174,3 +174,63 @@ func TestConditionFieldValueDegradesWhenTheFieldIsAbsent(t *testing.T) {
 		t.Error("ok should be false when the instance has no condition field")
 	}
 }
+
+// An instance can carry two custom fields with the same display name. On the
+// live one (RND_P_4NSSPRT_05) "Conditions" is both a generic select at
+// customfield_10051 and Xray's own precondition editor at customfield_13989,
+// and /rest/api/2/field lists the select first. Matching on the name alone
+// took the select, which is empty on every Precondition, so the whole view
+// read "No condition defined". The plugin key is the field's real identity, so
+// resolve on that and let the name be the fallback.
+func TestConditionFieldIDPrefersTheXrayEditorOverASameNamedField(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/2/field" {
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": "summary", "name": "Summary", "custom": false},
+			// The decoy comes first, exactly as the live instance orders them.
+			{"id": "customfield_10051", "name": "Conditions", "custom": true,
+				"schema": map[string]any{
+					"type":   "option",
+					"custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+				}},
+			{"id": "customfield_13989", "name": "Conditions", "custom": true,
+				"schema": map[string]any{
+					"type":   "string",
+					"custom": "com.xpandit.plugins.xray:precondition-editor-custom-field",
+				}},
+		})
+	}))
+	defer srv.Close()
+
+	id, err := newTestClient(srv).conditionFieldID(context.Background())
+	if err != nil {
+		t.Fatalf("conditionFieldID: %v", err)
+	}
+	if id != "customfield_13989" {
+		t.Fatalf("condition field id = %q, want customfield_13989", id)
+	}
+}
+
+// The plugin key is preferred, not required: an instance whose field carries a
+// different plugin key (or none in the response) still resolves by name, which
+// is what every instance did before this.
+func TestConditionFieldIDStillFallsBackToTheName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": "customfield_20001", "name": "Condition", "custom": true},
+		})
+	}))
+	defer srv.Close()
+
+	id, err := newTestClient(srv).conditionFieldID(context.Background())
+	if err != nil {
+		t.Fatalf("conditionFieldID: %v", err)
+	}
+	if id != "customfield_20001" {
+		t.Fatalf("condition field id = %q, want customfield_20001", id)
+	}
+}

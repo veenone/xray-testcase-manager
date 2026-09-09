@@ -27,21 +27,18 @@ func (c *Client) resolveCustomFieldID(ctx context.Context, fieldName string) (st
 		return "", nil
 	}
 
+	cacheKey := customFieldNameKey + want
 	c.customFieldMu.Lock()
 	if c.customFieldIDs != nil {
-		if id, ok := c.customFieldIDs[want]; ok {
+		if id, ok := c.customFieldIDs[cacheKey]; ok {
 			c.customFieldMu.Unlock()
 			return id, nil
 		}
 	}
 	c.customFieldMu.Unlock()
 
-	var fields []struct {
-		ID     string `json:"id"`
-		Name   string `json:"name"`
-		Custom bool   `json:"custom"`
-	}
-	if err := c.get(ctx, "/rest/api/2/field", &fields); err != nil {
+	fields, err := c.customFields(ctx)
+	if err != nil {
 		return "", err
 	}
 
@@ -57,7 +54,79 @@ func (c *Client) resolveCustomFieldID(ctx context.Context, fieldName string) (st
 	if c.customFieldIDs == nil {
 		c.customFieldIDs = make(map[string]string)
 	}
-	c.customFieldIDs[want] = id
+	c.customFieldIDs[cacheKey] = id
+	c.customFieldMu.Unlock()
+	return id, nil
+}
+
+// The two resolvers below share one id cache, so their keys are namespaced:
+// one resolves by display name, the other by the defining plugin's key, and an
+// instance can hold a field whose name is another field's plugin key.
+const (
+	customFieldNameKey = "name:"
+	customFieldTypeKey = "type:"
+)
+
+// customField is one entry of /rest/api/2/field reduced to what the resolvers
+// match on. Schema.Custom is the key of the plugin that defines the field
+// ("com.xpandit.plugins.xray:precondition-editor-custom-field" for Xray's
+// precondition editor), which is the field's real identity: a display name is
+// only a label, and two fields on one instance can share one.
+type customField struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Custom bool   `json:"custom"`
+	Schema struct {
+		Custom string `json:"custom"`
+	} `json:"schema"`
+}
+
+// customFields reads the instance's field catalogue. Not cached itself: the
+// resolvers above and below cache the id they resolve, which is what repeats.
+func (c *Client) customFields(ctx context.Context) ([]customField, error) {
+	var fields []customField
+	if err := c.get(ctx, "/rest/api/2/field", &fields); err != nil {
+		return nil, err
+	}
+	return fields, nil
+}
+
+// resolveCustomFieldIDByType resolves a custom field id by the key of the
+// plugin that defines it, rather than by its display name. Returns ("", nil)
+// when the instance has no such field, so a caller can fall back to a name.
+func (c *Client) resolveCustomFieldIDByType(ctx context.Context, pluginKey string) (string, error) {
+	if pluginKey == "" || isDemoURL(c.baseURL) {
+		return "", nil
+	}
+
+	cacheKey := customFieldTypeKey + pluginKey
+	c.customFieldMu.Lock()
+	if c.customFieldIDs != nil {
+		if id, ok := c.customFieldIDs[cacheKey]; ok {
+			c.customFieldMu.Unlock()
+			return id, nil
+		}
+	}
+	c.customFieldMu.Unlock()
+
+	fields, err := c.customFields(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	id := ""
+	for _, f := range fields {
+		if f.Custom && f.Schema.Custom == pluginKey {
+			id = f.ID
+			break
+		}
+	}
+
+	c.customFieldMu.Lock()
+	if c.customFieldIDs == nil {
+		c.customFieldIDs = make(map[string]string)
+	}
+	c.customFieldIDs[cacheKey] = id
 	c.customFieldMu.Unlock()
 	return id, nil
 }
@@ -94,13 +163,29 @@ func (c *Client) genericDefinitionFieldID(ctx context.Context) (string, error) {
 	return c.resolveCustomFieldID(ctx, "Generic Test Definition")
 }
 
+// xrayPreconditionEditorType is the plugin key of the Xray custom field that
+// holds a Precondition's definition text.
+const xrayPreconditionEditorType = "com.xpandit.plugins.xray:precondition-editor-custom-field"
+
 // conditionFieldID resolves the custom field id holding an Xray Precondition's
-// definition text. Xray names it "Conditions" on Server/DC 8.4.0 (verified as
-// customfield_13989 on a live instance, RND_P_4TFINT_05-358); older versions
-// name it "Condition", so both are tried. Returns "" (no error) when neither is
-// present, which is what lets a precondition sync run on an instance that has
-// no such field.
+// definition text. Returns "" (no error) when the instance has no such field,
+// which is what lets a precondition sync run without one.
+//
+// The plugin key is tried first because a display name does not identify a
+// field. A live instance (RND_P_4TFINT_05-358) carries two custom fields both
+// named "Conditions": a generic select at customfield_10051 and Xray's editor
+// at customfield_13989, and /rest/api/2/field lists the select first. Matching
+// on the name took the select, which is empty on every Precondition, so every
+// precondition synced with a blank condition and the view read "No condition
+// defined" no matter what Xray held.
+//
+// The names remain the fallback, for an instance that renames the field or
+// answers without a schema: Xray calls it "Conditions" on Server/DC 8.4.0 and
+// "Condition" on older versions, so both are tried.
 func (c *Client) conditionFieldID(ctx context.Context) (string, error) {
+	if id, err := c.resolveCustomFieldIDByType(ctx, xrayPreconditionEditorType); err != nil || id != "" {
+		return id, err
+	}
 	if id, err := c.resolveCustomFieldID(ctx, "Conditions"); err != nil || id != "" {
 		return id, err
 	}
