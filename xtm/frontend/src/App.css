@@ -3988,6 +3988,12 @@ tr.row-selected td:first-child {
      overlay height unless it opts out. .modal does that with margin: auto;
      this card did not, so it rendered 672px tall around 486px of content. */
   margin: auto;
+  /* And a bound the other way, so the card cannot outgrow a short window and
+     put its footer below the fold. The body between the fixed banner and the
+     fixed footer is what scrolls. */
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
   width: 430px;
   max-width: calc(100vw - 32px);
   background: var(--surface);
@@ -4086,6 +4092,9 @@ tr.row-selected td:first-child {
 }
 
 .about-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding: 20px 24px 22px;
 }
 .about-tagline {
@@ -4131,10 +4140,24 @@ tr.row-selected td:first-child {
 }
 .about-row dd {
   margin: 0;
+  min-width: 0;
   font-size: 11.5px;
   color: var(--text-strong);
-  word-break: break-all;
-  text-align: right;
+  /* One line per value. word-break: break-all split the database path
+     mid-word and cost the row a second line. CSS truncation does not truncate
+     the text itself, so selecting the readout for a bug report still yields
+     the whole path, and the title attribute shows it on hover. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+/* A path's tail identifies it while its leading AppData\Roaming stretch is the
+   same on every row, so a path truncates from the left. Scoped to paths on
+   purpose: rtl reorders a neutral character at the end of a string, which
+   would turn the Targets row's "Jira DC 8.14+" into "+Jira DC 8.14". */
+.about-row dd.about-path {
+  direction: rtl;
 }
 
 .about-actions {
@@ -4154,6 +4177,7 @@ tr.row-selected td:first-child {
 }
 
 .about-foot {
+  flex: none;
   padding: 11px 24px;
   border-top: 1px solid var(--border-subtle);
   background: var(--surface-2);
