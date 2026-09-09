@@ -894,6 +894,10 @@ export function SyncContainers(arg1) {
   return window['go']['main']['App']['SyncContainers'](arg1);
 }
 
+export function SyncPreconditions(arg1) {
+  return window['go']['main']['App']['SyncPreconditions'](arg1);
+}
+
 export function SyncProfile(arg1) {
   return window['go']['main']['App']['SyncProfile'](arg1);
 }

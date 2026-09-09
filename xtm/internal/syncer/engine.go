@@ -318,6 +318,15 @@ func (e *Engine) SyncContainers(ctx context.Context, profileID, projectKey strin
 	return e.syncContainers(ctx, profileID, projectKey, onProgress)
 }
 
+// SyncPreconditions pulls only the Preconditions and their Test links — the
+// per-view partial sync behind the Preconditions tab's Sync button. The stage
+// is the slowest one in a full sync (one association read per precondition), so
+// refreshing it alone is what makes a condition or a link change visible
+// without paying for the test, folder and container passes as well.
+func (e *Engine) SyncPreconditions(ctx context.Context, profileID, projectKey string, onProgress func(Progress)) error {
+	return e.syncPreconditions(ctx, profileID, projectKey, onProgress)
+}
+
 // SyncBugs reconciles only the defect issues linked to the profile's tests — the
 // per-view partial sync behind the Bugs panel's refresh button, so refreshing
 // bugs doesn't trigger the preconditions / containers / requirements passes

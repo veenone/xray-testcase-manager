@@ -1264,6 +1264,7 @@ function App() {
       {view === "preconditions" && caps.supportsPreconditionObjects ? (
         <main className="content content-preconditions">
           <PreconditionsView
+            jiraUrl={activeProfile?.jiraUrl ?? ""}
             onChanged={() => {
               refreshProfileData();
               reloadPending();

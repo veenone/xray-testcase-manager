@@ -1236,6 +1236,14 @@ func (a *App) SyncContainers(profileID string) error {
 	})
 }
 
+// SyncPreconditions refreshes just the Preconditions and their Test links from
+// Jira, the per-view partial sync behind the Preconditions view's Sync button.
+func (a *App) SyncPreconditions(profileID string) error {
+	return a.runPartialSync(profileID, "Syncing preconditions", func(e *syncer.Engine, projectKey string, onProgress func(syncer.Progress)) error {
+		return e.SyncPreconditions(a.ctx, profileID, projectKey, onProgress)
+	})
+}
+
 // SyncBugs reconciles defect issues linked to the profile's tests (partial
 // sync behind the Bugs panel's refresh button). It also refreshes the
 // run/execution data for all bug-affected tests so the run-history breakdown

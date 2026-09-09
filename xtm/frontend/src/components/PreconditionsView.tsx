@@ -10,6 +10,9 @@ import {
   EditPreconditionField,
   DeletePrecondition,
   BulkAssociatePreconditions,
+  SyncPreconditions,
+  BrowserOpenURL,
+  isDemoUrl,
   errMsg,
 } from "../api";
 import type { PreconditionUsage } from "../api";
@@ -26,6 +29,9 @@ import { Modal } from "./Modal";
 
 interface Props {
   onChanged: () => void;
+  // The active profile's Jira base URL, so the detail header's key can open the
+  // real issue. Absent on a profile that has none, which hides the link.
+  jiraUrl?: string;
 }
 
 // Xray Server/DC precondition types. The type drives how Xray interprets the
@@ -53,7 +59,7 @@ function cmpPre(
 // the Tests that reference it, create new ones, and delete. Everything is
 // computed from the local store and queued for commit; it recomputes when the
 // profile changes or a sync / commit invalidates the query cache.
-export function PreconditionsView({ onChanged }: Props) {
+export function PreconditionsView({ onChanged, jiraUrl }: Props) {
   const { activeId: profileId } = useProfile();
   // The precondition list and the selected precondition's linked tests both
   // come from the query cache with stable keys (Phase 4c); a mutation refreshes
@@ -72,6 +78,11 @@ export function PreconditionsView({ onChanged }: Props) {
   const [sortField, setSortField] = useViewState(profileId, "preconditions", "sortField", "key");
   const [sortDesc, setSortDesc] = useViewState(profileId, "preconditions", "sortDesc", true);
   const [error, setError] = useState("");
+  // Said after a preconditions-only sync. Errors go to the detail pane's error
+  // line with every other failure; a success has nowhere else to be reported,
+  // and a Sync button that leaves the list looking identical needs to say it
+  // did something.
+  const [notice, setNotice] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   // A test opened from the "Used by" list, docked as an inline detail beside the
@@ -87,6 +98,35 @@ export function PreconditionsView({ onChanged }: Props) {
 
   const selectedPre = list.find((p) => p.key === selected) ?? null;
   const isLocal = selected.startsWith("new-precond-");
+
+  // Refreshing only the preconditions, the way Requirements and Containers do.
+  // The precondition stage is the slowest one in a full sync (an association
+  // read per precondition), so a user who has just edited a condition in Jira
+  // should not have to pay for the test, folder and container passes to see it.
+  const [syncing, setSyncing] = useState(false);
+  async function syncPreconditions() {
+    setSyncing(true);
+    setError("");
+    setNotice("");
+    try {
+      await SyncPreconditions(profileId);
+      onChanged();
+      setNotice("Preconditions refreshed from Jira.");
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  // The key opens the real Jira issue in the system browser, the way the test
+  // key does in TestDetail. Hidden for demo profiles and for a precondition
+  // that only exists locally, neither of which has a Jira page to open.
+  const jiraBase = (jiraUrl ?? "").trim().replace(/\/+$/, "");
+  const canLinkToJira = !!jiraBase && !isDemoUrl(jiraUrl ?? "") && !isLocal;
+  function openInJira() {
+    if (canLinkToJira) BrowserOpenURL(`${jiraBase}/browse/${selected}`);
+  }
 
   // Draft buffers for the editable text fields. These are only committed to
   // Jira when the user explicitly clicks Save (not on blur). They resync from
@@ -280,6 +320,14 @@ export function PreconditionsView({ onChanged }: Props) {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
+          <button
+            className="btn"
+            onClick={syncPreconditions}
+            disabled={syncing}
+            title="Refresh just the preconditions from Jira, without syncing everything else"
+          >
+            {syncing ? "Syncing…" : "Sync"}
+          </button>
           <SortControl
             fields={[
               { value: "key", label: "Key" },
@@ -319,6 +367,7 @@ export function PreconditionsView({ onChanged }: Props) {
             </button>
           ))}
         </div>
+        {notice && <p className="precond-notice muted">{notice}</p>}
 
         {loading ? (
           <p className="muted precond-empty">Loading…</p>
@@ -401,7 +450,23 @@ export function PreconditionsView({ onChanged }: Props) {
                     {detailsOpen ? "▾" : "▸"}
                   </button>
                 )}
-                <span className="mono precond-detail-key">{selectedPre.key}</span>
+                {canLinkToJira ? (
+                  <button
+                    type="button"
+                    className="mono precond-detail-key precond-key-link"
+                    onClick={openInJira}
+                    title="Open this precondition in Jira (browser)"
+                  >
+                    {selectedPre.key}
+                    <span className="detail-key-ext" aria-hidden="true">
+                      ↗
+                    </span>
+                  </button>
+                ) : (
+                  <span className="mono precond-detail-key">
+                    {selectedPre.key}
+                  </span>
+                )}
                 {isLocal && (
                   <span className="pending-badge" title="Not yet created in Jira">
                     new · uncommitted
@@ -661,6 +726,7 @@ export function PreconditionsView({ onChanged }: Props) {
       {detailKey && (
         <TestDetail
           testKey={detailKey}
+          jiraUrl={jiraUrl}
           version={detailVersion}
           pendingForTest={[]}
           folders={[]}

@@ -27,21 +27,18 @@ func (c *Client) resolveCustomFieldID(ctx context.Context, fieldName string) (st
 		return "", nil
 	}
 
+	cacheKey := customFieldNameKey + want
 	c.customFieldMu.Lock()
 	if c.customFieldIDs != nil {
-		if id, ok := c.customFieldIDs[want]; ok {
+		if id, ok := c.customFieldIDs[cacheKey]; ok {
 			c.customFieldMu.Unlock()
 			return id, nil
 		}
 	}
 	c.customFieldMu.Unlock()
 
-	var fields []struct {
-		ID     string `json:"id"`
-		Name   string `json:"name"`
-		Custom bool   `json:"custom"`
-	}
-	if err := c.get(ctx, "/rest/api/2/field", &fields); err != nil {
+	fields, err := c.customFields(ctx)
+	if err != nil {
 		return "", err
 	}
 
@@ -57,70 +54,184 @@ func (c *Client) resolveCustomFieldID(ctx context.Context, fieldName string) (st
 	if c.customFieldIDs == nil {
 		c.customFieldIDs = make(map[string]string)
 	}
-	c.customFieldIDs[want] = id
+	c.customFieldIDs[cacheKey] = id
 	c.customFieldMu.Unlock()
 	return id, nil
 }
 
-// testTypeFieldID resolves and caches the custom field id of the Xray "Test Type"
-// field (the app's exec_type) for this instance, returning "" (no error) when the
-// instance has no such field so the caller can proceed without it.
+// The two resolvers below share one id cache, so their keys are namespaced:
+// one resolves by display name, the other by the defining plugin's key, and an
+// instance can hold a field whose name is another field's plugin key.
+const (
+	customFieldNameKey = "name:"
+	customFieldTypeKey = "type:"
+)
+
+// customField is one entry of /rest/api/2/field reduced to what the resolvers
+// match on. Schema.Custom is the key of the plugin that defines the field
+// ("com.xpandit.plugins.xray:precondition-editor-custom-field" for Xray's
+// precondition editor), which is the field's real identity: a display name is
+// only a label, and two fields on one instance can share one.
+type customField struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Custom bool   `json:"custom"`
+	Schema struct {
+		Custom string `json:"custom"`
+	} `json:"schema"`
+}
+
+// customFields reads the instance's field catalogue, once per client. Caching
+// the ids alone is not enough: a resolver that misses on the plugin key falls
+// through to the display name, and that second consultation would re-fetch
+// several hundred entries for every field a sync resolves.
+func (c *Client) customFields(ctx context.Context) ([]customField, error) {
+	c.customFieldMu.Lock()
+	cached := c.fieldCatalog
+	c.customFieldMu.Unlock()
+	if cached != nil {
+		return cached, nil
+	}
+
+	var fields []customField
+	if err := c.get(ctx, "/rest/api/2/field", &fields); err != nil {
+		return nil, err
+	}
+	// A field-less instance would otherwise re-fetch forever, so an empty
+	// answer is still an answer.
+	if fields == nil {
+		fields = []customField{}
+	}
+
+	c.customFieldMu.Lock()
+	c.fieldCatalog = fields
+	c.customFieldMu.Unlock()
+	return fields, nil
+}
+
+// resolveCustomFieldIDByType resolves a custom field id by the key of the
+// plugin that defines it, rather than by its display name. Returns ("", nil)
+// when the instance has no such field, so a caller can fall back to a name.
+func (c *Client) resolveCustomFieldIDByType(ctx context.Context, pluginKey string) (string, error) {
+	if pluginKey == "" || isDemoURL(c.baseURL) {
+		return "", nil
+	}
+
+	cacheKey := customFieldTypeKey + pluginKey
+	c.customFieldMu.Lock()
+	if c.customFieldIDs != nil {
+		if id, ok := c.customFieldIDs[cacheKey]; ok {
+			c.customFieldMu.Unlock()
+			return id, nil
+		}
+	}
+	c.customFieldMu.Unlock()
+
+	fields, err := c.customFields(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	id := ""
+	for _, f := range fields {
+		if f.Custom && f.Schema.Custom == pluginKey {
+			id = f.ID
+			break
+		}
+	}
+
+	c.customFieldMu.Lock()
+	if c.customFieldIDs == nil {
+		c.customFieldIDs = make(map[string]string)
+	}
+	c.customFieldIDs[cacheKey] = id
+	c.customFieldMu.Unlock()
+	return id, nil
+}
+
+// Xray's own custom fields, keyed by the plugin that defines each. A plugin key
+// identifies a field; a display name does not, which is what conditionFieldID
+// below explains in full. Read off a live Xray Server/DC 8.4.0 instance on
+// 2026-09-09, where all 27 of Xray's field types were unique.
+const (
+	xrayTestTypeType           = "com.xpandit.plugins.xray:test-type-custom-field"
+	xrayCucumberScenarioType   = "com.xpandit.plugins.xray:steps-editor-custom-field"
+	xrayCucumberTestTypeType   = "com.xpandit.plugins.xray:automated-test-type-custom-field"
+	xrayGenericDefinitionType  = "com.xpandit.plugins.xray:path-editor-custom-field"
+	xrayPreconditionEditorType = "com.xpandit.plugins.xray:precondition-editor-custom-field"
+	xrayTestEnvironmentsType   = "com.xpandit.plugins.xray:test-environments-custom-field"
+	xrayTestPlanType           = "com.xpandit.plugins.xray:test-plan-custom-field"
+)
+
+// xrayFieldID resolves one of Xray's own custom fields: by the defining
+// plugin's key first, then by each display name Xray has used for it across
+// versions. Returns ("", nil) when the instance has neither, so every caller
+// can degrade to "this instance does not have the field" rather than failing.
+//
+// The names are kept as a fallback rather than dropped: an instance can rename
+// a field, and an older Jira can answer /rest/api/2/field without a schema at
+// all, in which case the name is all there is to go on.
+func (c *Client) xrayFieldID(ctx context.Context, pluginKey string, names ...string) (string, error) {
+	if id, err := c.resolveCustomFieldIDByType(ctx, pluginKey); err != nil || id != "" {
+		return id, err
+	}
+	for _, name := range names {
+		if id, err := c.resolveCustomFieldID(ctx, name); err != nil || id != "" {
+			return id, err
+		}
+	}
+	return "", nil
+}
+
+// testTypeFieldID resolves the custom field id of the Xray "Test Type" field
+// (the app's exec_type).
 func (c *Client) testTypeFieldID(ctx context.Context) (string, error) {
-	return c.resolveCustomFieldID(ctx, "Test Type")
+	return c.xrayFieldID(ctx, xrayTestTypeType, "Test Type")
 }
 
 // cucumberScenarioFieldID resolves the custom field id for the Xray "Cucumber
-// Scenario" field (the Gherkin text on Cucumber tests), returning "" (no error)
-// when the instance does not have the field.
+// Scenario" field (the Gherkin text on Cucumber tests).
 func (c *Client) cucumberScenarioFieldID(ctx context.Context) (string, error) {
-	return c.resolveCustomFieldID(ctx, "Cucumber Scenario")
+	return c.xrayFieldID(ctx, xrayCucumberScenarioType, "Cucumber Scenario")
 }
 
 // cucumberTypeFieldID resolves the custom field id for the Xray "Cucumber Test
-// Type" (a.k.a. "Scenario Type") field, trying the canonical name first and
-// falling back to the version alias, returning "" (no error) when neither is
-// found on the instance.
+// Type" field, which older versions name "Scenario Type".
 func (c *Client) cucumberTypeFieldID(ctx context.Context) (string, error) {
-	if id, _ := c.resolveCustomFieldID(ctx, "Cucumber Test Type"); id != "" {
-		return id, nil
-	}
-	return c.resolveCustomFieldID(ctx, "Scenario Type") // version alias
+	return c.xrayFieldID(ctx, xrayCucumberTestTypeType, "Cucumber Test Type", "Scenario Type")
 }
 
 // genericDefinitionFieldID resolves the custom field id for the Xray "Generic
-// Test Definition" field (the plain-text definition on Generic tests), returning
-// "" (no error) when the instance does not have the field.
+// Test Definition" field (the plain-text definition on Generic tests).
 func (c *Client) genericDefinitionFieldID(ctx context.Context) (string, error) {
-	return c.resolveCustomFieldID(ctx, "Generic Test Definition")
+	return c.xrayFieldID(ctx, xrayGenericDefinitionType, "Generic Test Definition")
 }
 
 // conditionFieldID resolves the custom field id holding an Xray Precondition's
-// definition text. Xray names it "Conditions" on Server/DC 8.4.0 (verified as
-// customfield_13989 on a live instance, RND_P_4TFINT_05-358); older versions
-// name it "Condition", so both are tried. Returns "" (no error) when neither is
-// present, which is what lets a precondition sync run on an instance that has
-// no such field.
+// definition text.
+//
+// This is the resolver that proved a display name does not identify a field. A
+// live instance (RND_P_4TFINT_05-358) carries two custom fields both named
+// "Conditions": a generic select at customfield_10051 and Xray's editor at
+// customfield_13989, and /rest/api/2/field lists the select first. Matching on
+// the name took the select, which is empty on every Precondition, so every
+// precondition synced with a blank condition and the view read "No condition
+// defined" no matter what Xray held. Xray calls it "Conditions" on Server/DC
+// 8.4.0 and "Condition" on older versions, so both remain as the fallback.
 func (c *Client) conditionFieldID(ctx context.Context) (string, error) {
-	if id, err := c.resolveCustomFieldID(ctx, "Conditions"); err != nil || id != "" {
-		return id, err
-	}
-	return c.resolveCustomFieldID(ctx, "Condition") // version alias
+	return c.xrayFieldID(ctx, xrayPreconditionEditorType, "Conditions", "Condition")
 }
 
-// testEnvironmentsFieldID resolves and caches the custom field id of the Xray
-// "Test Environments" field (a multi-select on Test Executions) for this
-// instance, returning "" (no error) when the instance has no such field so the
-// read path can proceed without it.
+// testEnvironmentsFieldID resolves the custom field id of the Xray "Test
+// Environments" field (a multi-select on Test Executions).
 func (c *Client) testEnvironmentsFieldID(ctx context.Context) (string, error) {
-	return c.resolveCustomFieldID(ctx, "Test Environments")
+	return c.xrayFieldID(ctx, xrayTestEnvironmentsType, "Test Environments")
 }
 
-// testPlanFieldID resolves and caches the custom field id of the Xray "Test
-// Plan" field on a Test Execution issue (the plan(s) the execution belongs to)
-// for this instance, returning "" (no error) when the instance has no such
-// field so the read path can proceed without it.
+// testPlanFieldID resolves the custom field id of the Xray "Test Plan" field on
+// a Test Execution issue (the plan(s) the execution belongs to).
 func (c *Client) testPlanFieldID(ctx context.Context) (string, error) {
-	return c.resolveCustomFieldID(ctx, "Test Plan")
+	return c.xrayFieldID(ctx, xrayTestPlanType, "Test Plan")
 }
 
 // CustomFieldDef describes a Jira custom field configured for the Test issue

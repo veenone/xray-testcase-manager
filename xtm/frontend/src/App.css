@@ -3644,9 +3644,33 @@ tr.row-selected td:first-child {
   align-items: center;
   gap: 10px;
 }
+/* What a preconditions-only sync says when it worked. Mirrors .reqs-notice. */
+.precond-notice {
+  margin: 0 0 4px;
+  font-size: 12px;
+  word-break: break-all;
+}
 .precond-detail-key {
   font-size: 15px;
   font-weight: 600;
+}
+/* The key opens the issue in Jira, as the test key does in TestDetail. It does
+   not reuse .detail-key-link: that rule's hover colour is white, tuned for
+   TestDetail's dark header, and this panel sits on --surface. */
+.precond-key-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.precond-key-link:hover {
+  color: var(--accent);
 }
 /* Button group for Edit / Save+Cancel in the detail header. */
 .precond-detail-actions {

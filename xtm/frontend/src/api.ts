@@ -44,6 +44,7 @@ export {
   SyncProfile,
   SyncRequirements,
   SyncContainers,
+  SyncPreconditions,
   SyncBugs,
   SyncTestCalls,
   SyncTests,
