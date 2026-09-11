@@ -1,6 +1,6 @@
 # Xray Test Manager — User Guide
 
-**Version:** 1.9.0 · **Platform:** Windows 10/11 (64-bit) · **Audience:** QA engineers,
+**Version:** 1.10.0 · **Platform:** Windows 10/11 (64-bit) · **Audience:** QA engineers,
 test leads, and anyone managing Xray test cases in Jira Data Center.
 
 Xray Test Manager is a lightweight Windows desktop app for managing **Xray test
@@ -21,8 +21,11 @@ you commit.
 
 ## What's new in 1.10.0
 
-Version 1.10.0 adds bulk summary renaming and a guided tour, and rebuilds the
-precondition sync so a first sync on a large project keeps what it fetched.
+Version 1.10.0 adds bulk summary renaming and a guided tour, rebuilds the
+precondition sync so a first sync on a large project keeps what it fetched, and
+gives the Preconditions view a large overhaul: its definition text, its own
+Sync button, and a list that opens instantly on a project with thousands of
+them. Kiwi TCMS users can now file bugs into a Jira project.
 
 - **Rename many summaries at once.** Select tests in Browse, then **Rename
   summaries…**, and add a common **prefix, suffix, or both**. A live preview
@@ -57,6 +60,33 @@ precondition sync so a first sync on a large project keeps what it fetched.
   were previously silent.
 - **A faster interface.** Editing something no longer reloads a whole view;
   only what actually changed refreshes.
+- **A precondition's Condition is shown and editable.** The definition text on
+  a Precondition was never read, so every one of them arrived blank and the
+  detail panel said "No condition defined" whatever Xray held. It now syncs,
+  and editing it pushes back on commit.
+- **The Preconditions view has its own Sync.** Refreshing preconditions no
+  longer costs a full sync of tests, folders and containers. The status bar
+  tracks both halves of the run, **Finding preconditions** and **Linking
+  preconditions to tests**, each with its own count.
+- **A precondition key opens its Jira issue.** The key in the Preconditions
+  detail header is a link, the way the test key already was.
+- **The Preconditions list opens instantly on a large project.** On a project
+  with several thousand preconditions the list used to sit on "Loading..." for
+  about a minute. It is now near-instant.
+- **Switching profiles clears what the last one had selected.** A view used to
+  keep the previous profile's selection, so the Preconditions detail panel went
+  on showing a precondition from the profile you had just left.
+- **Browse shows the folder tree even with no folders.** A project whose tests
+  were never filed into a folder showed "No folders synced." and no way to
+  reach them. The tree is now always drawn, with an **All tests** row counting
+  every test in the profile.
+- **Kiwi TCMS bugs can be filed into Jira.** A Kiwi profile can be given a Jira
+  bug tracker of its own: URL, project, issue type, token and TLS settings,
+  configured on the profile. Filing a bug creates the Jira issue and links it
+  back on the Kiwi Test Execution, and sync reads those links so the Bugs view
+  shows what relates to this product.
+- **The About dialog fits its window.** It used to stretch to the full height
+  of the screen, and in a short window its footer sat below the fold.
 
 ---
 

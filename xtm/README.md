@@ -13,7 +13,7 @@ bulk-first interface, writing changes back to Jira on commit.
 
 ## Status
 
-✅ **1.9.0 released; 1.10.0 in development.** The app is feature-complete for
+✅ **1.10.0 released.** The app is feature-complete for
 Xray on Jira DC and in daily use. Sync, fast browse/search/filter/sort, saved
 views, configurable columns, local field/step/custom-field editing with
 on-commit sync and conflict resolution, workflow transitions, all bulk
