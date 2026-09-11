@@ -8,9 +8,9 @@ The version is single-sourced in `wails.json` (`info.productVersion`).
 
 ## [Unreleased]
 
-## [1.10.0a] - 2026-09-09 (alpha)
+## [1.10.0] - 2026-09-11
 
-First alpha of the 1.10.0 line, for qualification testing.
+Stable **1.10.0**, finalizing the `1.10.0a` qualification build.
 
 New features plus a large internal rework. **Bulk summary rename**, an
 **onboarding tour**, **select-all when adding tests**, and a
@@ -686,6 +686,7 @@ with on-commit sync, bulk operations, Test Sets/Plans/Executions, Test
 Repository folders, preconditions, CSV/XLSX import & export, pytest scaffold,
 statistics dashboard, diagnostics, light/dark themes, profile management).
 
+[1.10.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/xtm/v1.10.0
 [1.9.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.9.0
 [1.8.0]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.8.0
 [1.7.1]: https://github.com/veenone/xray-testcase-manager/releases/tag/v1.7.1
