@@ -2,7 +2,6 @@ package boardrepo_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"agile-suite/tam/internal/backend"
@@ -19,22 +18,16 @@ func twoColumns() []backend.BoardColumn {
 	}
 }
 
-// countKeys reads how many keys one board holds for a sprint scope. It
-// takes no *testing.T, so the reader goroutine below can call it.
-func countKeys(db *sql.DB, profileID string, boardID int, sprintID string) (int, error) {
-	var n int
-	err := db.QueryRow(
-		`SELECT count(*) FROM board_issue WHERE profile_id = ? AND board_id = ? AND sprint_id = ?`,
-		profileID, boardID, sprintID).Scan(&n)
-	return n, err
-}
-
-// TestReplaceBoardLandsColumnsAndMembershipTogether writes two boards while
-// a reader shaped like the Boards view runs beside it: columns, then
-// membership, over and over. One column per card is the invariant the seed
-// and the replacement both hold, so a reader that ever sees a different
-// count has caught a board with its columns replaced and its membership
-// still old, which is what the four separate transactions allowed.
+// TestReplaceBoardLandsColumnsAndMembershipTogether writes two boards while a
+// reader shaped like the Boards view runs beside it, over and over. One column
+// per card is the invariant the seed and the replacement both hold, so a reader
+// that ever sees a different count has caught a board with its columns replaced
+// and its membership still old.
+//
+// The reader goes through Shape, which is what the view uses, because the
+// guarantee takes both halves: ReplaceBoard writes the two in one transaction,
+// and Shape reads them in one snapshot. Two separate reads would tear against a
+// perfectly atomic write, which is what this test caught.
 func TestReplaceBoardLandsColumnsAndMembershipTogether(t *testing.T) {
 	r, db := newRepo(t)
 	ctx := context.Background()
@@ -57,17 +50,13 @@ func TestReplaceBoardLandsColumnsAndMembershipTogether(t *testing.T) {
 				return
 			default:
 			}
-			cols, err := r.Columns(ctx, "p1", 1)
+			shape, err := r.Shape(ctx, "p1", 1, "")
 			if err != nil {
 				continue
 			}
-			keys, err := countKeys(db, "p1", 1, "")
-			if err != nil {
-				continue
-			}
-			if len(cols) != keys {
+			if len(shape.Columns) != len(shape.Keys) {
 				select {
-				case torn <- [2]int{len(cols), keys}:
+				case torn <- [2]int{len(shape.Columns), len(shape.Keys)}:
 				default:
 				}
 				return

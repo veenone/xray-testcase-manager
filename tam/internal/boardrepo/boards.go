@@ -81,9 +81,20 @@ func (r *Repository) ListBoards(ctx context.Context, profileID string) ([]Board,
 	return out, rows.Err()
 }
 
+// queryer is the read surface the board reads need, satisfied by both *sql.DB
+// and *sql.Tx. Taking it as a parameter is what lets two of these reads share
+// one transaction, and so one snapshot (see Shape).
+type queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
 // Columns returns one board's columns in board order.
 func (r *Repository) Columns(ctx context.Context, profileID string, boardID int) ([]backend.BoardColumn, error) {
-	rows, err := r.db.QueryContext(ctx, columnsSQL, profileID, boardID)
+	return columnsFrom(ctx, r.db, profileID, boardID)
+}
+
+func columnsFrom(ctx context.Context, q queryer, profileID string, boardID int) ([]backend.BoardColumn, error) {
+	rows, err := q.QueryContext(ctx, columnsSQL, profileID, boardID)
 	if err != nil {
 		return nil, fmt.Errorf("board %d columns: %w", boardID, err)
 	}
@@ -128,7 +139,11 @@ func (r *Repository) ListSprints(ctx context.Context, profileID string, boardID 
 // issueKeys returns the keys one board holds for a sprint, in board order.
 // An empty sprintID reads the board's own list, the way the sync stored it.
 func (r *Repository) issueKeys(ctx context.Context, profileID string, boardID int, sprintID string) ([]string, error) {
-	rows, err := r.db.QueryContext(ctx, boardKeysSQL, profileID, boardID, sprintID)
+	return issueKeysFrom(ctx, r.db, profileID, boardID, sprintID)
+}
+
+func issueKeysFrom(ctx context.Context, q queryer, profileID string, boardID int, sprintID string) ([]string, error) {
+	rows, err := q.QueryContext(ctx, boardKeysSQL, profileID, boardID, sprintID)
 	if err != nil {
 		return nil, fmt.Errorf("board %d issue keys: %w", boardID, err)
 	}
@@ -142,6 +157,44 @@ func (r *Repository) issueKeys(ctx context.Context, profileID string, boardID in
 		out = append(out, key)
 	}
 	return out, rows.Err()
+}
+
+// BoardShape is the pair ReplaceBoard writes together: a board's columns and
+// the key list of one scope. One column per card is not the invariant; landing
+// together is. Both are read in one snapshot so a caller cannot draw the
+// columns of one sync against the membership of another.
+type BoardShape struct {
+	Columns []backend.BoardColumn
+	Keys    []string
+}
+
+// Shape reads a board's columns and one scope's membership inside a single
+// read transaction.
+//
+// Reading them as two statements meant two snapshots, and ReplaceBoard commits
+// between them often enough to matter: the sync replaces every board on every
+// pass, so the Boards view could draw a board's new columns against its
+// previous membership. The write side has always been one transaction; this is
+// the other half of that guarantee.
+func (r *Repository) Shape(ctx context.Context, profileID string, boardID int, sprintID string) (BoardShape, error) {
+	// Deferred and read-only: SQLite opens the snapshot at the first read and
+	// holds it until the transaction ends, which is exactly the window the two
+	// reads below need to share.
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return BoardShape{}, fmt.Errorf("board %d read: %w", boardID, err)
+	}
+	defer tx.Rollback()
+
+	cols, err := columnsFrom(ctx, tx, profileID, boardID)
+	if err != nil {
+		return BoardShape{}, err
+	}
+	keys, err := issueKeysFrom(ctx, tx, profileID, boardID, sprintID)
+	if err != nil {
+		return BoardShape{}, err
+	}
+	return BoardShape{Columns: cols, Keys: keys}, nil
 }
 
 // inTx runs fn inside one transaction, so a replace never leaves the table
