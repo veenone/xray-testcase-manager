@@ -116,10 +116,15 @@ func (r *Repository) Board(ctx context.Context, issues IssueSource, profileID st
 		Lanes:            []LaneView{},
 		UnmappedStatuses: []string{},
 	}
-	cols, err := r.Columns(ctx, profileID, boardID)
+	// Columns and membership come from one snapshot, since ReplaceBoard writes
+	// them together and the sync replaces every board on every pass. Read as
+	// two statements the view could draw this sync's columns against the last
+	// one's cards.
+	shape, err := r.Shape(ctx, profileID, boardID, sprintID)
 	if err != nil {
 		return BoardView{}, err
 	}
+	cols := shape.Columns
 	if len(cols) == 0 {
 		// The board's row and its columns are written in one transaction,
 		// so no columns is what Jira's configuration answered with, not a
@@ -130,10 +135,7 @@ func (r *Repository) Board(ctx context.Context, issues IssueSource, profileID st
 		view.Columns = append(view.Columns, ColumnView{Name: c.Name})
 	}
 
-	keys, err := r.issueKeys(ctx, profileID, boardID, sprintID)
-	if err != nil {
-		return BoardView{}, err
-	}
+	keys := shape.Keys
 	cards, err := issues.IssuesByKeys(ctx, profileID, keys)
 	if err != nil {
 		return BoardView{}, err
