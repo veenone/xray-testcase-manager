@@ -4,15 +4,15 @@ go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/wailsapp/wails/v2 v2.15.0
+	github.com/wailsapp/wails/v2 v2.16.0
 	github.com/xuri/excelize/v2 v2.10.1
-	golang.org/x/time v0.15.0
 	modernc.org/sqlite v1.53.0
 )
 
 require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
+	golang.org/x/time v0.15.0 // indirect
 )
 
 require (
