@@ -358,8 +358,14 @@
 }
 .syncbar-fill {
   height: 100%;
+  width: 100%;
+  /* Scaled, not width-animated: transform runs on the compositor instead of
+     forcing layout on every progress tick. Visually identical because the fill
+     is empty and anchored left inside an overflow-hidden track. */
+  transform: scaleX(0);
+  transform-origin: left;
   background: #4c8dff;
-  transition: width 0.2s ease;
+  transition: transform 0.2s ease;
 }
 
 /* Layout primitives */

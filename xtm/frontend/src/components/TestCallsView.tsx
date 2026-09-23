@@ -468,7 +468,7 @@ function TestCallsSyncBar({ progress }: { progress: SyncProgress }) {
     <div className="syncbar">
       {hasCount && (
         <div className="syncbar-track">
-          <div className="syncbar-fill" style={{ width: `${pct}%` }} />
+          <div className="syncbar-fill" style={{ transform: `scaleX(${pct / 100})` }} />
         </div>
       )}
       <span className="muted">
