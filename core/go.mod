@@ -1,13 +1,13 @@
 module agile-suite/core
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/danieljoos/wincred v1.2.3
 	github.com/google/uuid v1.6.0
 	github.com/xuri/excelize/v2 v2.10.1
 	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.16.0
 	modernc.org/sqlite v1.53.0
 )
 
